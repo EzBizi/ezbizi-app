@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
+import '../marketing/social_post_state.dart';
 
 /// Posts to approve (design 176, Jose picked layout 1 + phone 4): the weekly
 /// AI Google post for each listing waits here. Approve publishes it (Edit
@@ -30,6 +31,10 @@ class _PostQueueViewState extends State<PostQueueView> {
   bool _editing = false;
   bool _disapproving = false;
   bool _busy = false;
+
+  /// The server said this draft has no time and would publish now; the next
+  /// Approve is the person's explicit yes (Jose, 2026-11-18).
+  bool _confirmNow = false;
   final _body = TextEditingController();
   final _reason = TextEditingController();
 
@@ -85,6 +90,7 @@ class _PostQueueViewState extends State<PostQueueView> {
     _openId = r?['id'] as String?;
     _editing = false;
     _disapproving = false;
+    _confirmNow = false;
     _body.text = '${r?['body'] ?? ''}';
     _reason.clear();
   }
@@ -94,11 +100,15 @@ class _PostQueueViewState extends State<PostQueueView> {
     if (r == null) return;
     setState(() => _busy = true);
     final res = approve
-        ? await widget.api
-              .post('/business-profile/post-queue/${r['id']}/approve', {
-                if (_editing && _body.text.trim() != '${r['body']}')
-                  'body': _body.text.trim(),
-              })
+        ? await widget.api.post(
+            '/business-profile/post-queue/${r['id']}/approve',
+            socialApproveBody(
+              body: _editing && _body.text.trim() != '${r['body']}'
+                  ? _body.text.trim()
+                  : null,
+              publishNow: _confirmNow,
+            ),
+          )
         : await widget.api.post(
             '/business-profile/post-queue/${r['id']}/disapprove',
             {if (_reason.text.trim().isNotEmpty) 'reason': _reason.text.trim()},
@@ -108,8 +118,11 @@ class _PostQueueViewState extends State<PostQueueView> {
       _busy = false;
       if (!res.ok) {
         _notice = res.message;
+        _confirmNow =
+            approve && socialNeedsPublishNowConfirm(res.statusCode, res.body);
         return;
       }
+      _confirmNow = false;
       _notice = approve
           ? 'Approved. Sending to Google; the result shows in '
                 'Marketing › Social.'
@@ -355,7 +368,7 @@ class _PostQueueViewState extends State<PostQueueView> {
               key: const ValueKey('gbp-post-approve'),
               onPressed: _busy ? null : () => _decide(true),
               icon: const Icon(Icons.check),
-              label: const Text('Approve'),
+              label: Text(_confirmNow ? 'Publish now' : 'Approve'),
             ),
             OutlinedButton.icon(
               key: const ValueKey('gbp-post-edit'),

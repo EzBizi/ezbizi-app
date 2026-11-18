@@ -47,7 +47,7 @@ class BusinessProfilePostQueueTest extends TestCase
         $this->assertNotSame($queue[0]['body'], $queue[1]['body']);
         Bus::assertNotDispatched(PublishSocialTarget::class);
 
-        $this->postJson("/api/v1/business-profile/post-queue/{$queue[0]['id']}/approve")->assertOk();
+        $this->postJson("/api/v1/business-profile/post-queue/{$queue[0]['id']}/approve", ['publish_now' => true])->assertOk();
         Bus::assertDispatched(PublishSocialTarget::class, 1);
         $this->postJson("/api/v1/business-profile/post-queue/{$queue[1]['id']}/disapprove", ['reason' => 'Off topic'])->assertOk();
         $this->postJson("/api/v1/business-profile/post-queue/{$queue[1]['id']}/approve")->assertStatus(409);
