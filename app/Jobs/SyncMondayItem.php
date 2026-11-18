@@ -25,7 +25,10 @@ final class SyncMondayItem implements ShouldQueue
         public readonly string $connectionId,
         public readonly string $boardId,
         public readonly string $itemId,
-    ) {}
+    ) {
+        // Its own queue (desk 11-18): Monday's echoes of our pushes stalled missed calls on default.
+        $this->onQueue('monday');
+    }
 
     public function handle(MondaySync $sync): void
     {
