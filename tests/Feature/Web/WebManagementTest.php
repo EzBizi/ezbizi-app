@@ -470,6 +470,24 @@ class WebManagementTest extends TestCase
         $this->assertSame($counted - 3, $missing['nj.a-1chimney.com']);
     }
 
+    /** Audit 01a1ef57: the list says when details last changed, to compare with the site's last read. */
+    public function test_each_site_says_when_its_details_were_last_saved(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $saved = $this->registerSite($editor, $tenant, 'a-1chimney.com')['data']['id'];
+        $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->travelTo(now()->startOfMinute());
+        $this->setValues($editor, $saved, ['phone' => '555-0100']);
+
+        $at = collect($this->signedInAs($editor)->getJson('/api/v1/web/sites')->assertOk()->json('data'))
+            ->pluck('values_saved_at', 'host');
+
+        $this->assertSame(now()->utc()->toIso8601String(), $at['a-1chimney.com']);
+        $this->assertNull($at['nj.a-1chimney.com']);
+    }
+
     public function test_a_field_marked_not_needed_stops_counting_and_can_be_undone(): void
     {
         $tenant = $this->provisionTenant('Alpha');

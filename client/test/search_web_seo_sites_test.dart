@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 /// Web Management › SEO: the search bar over the site list keeps the
 /// websites whose host or state matches. Every name invented.
 void main() {
+  setUp(SeoTab.forgetSearch);
   Future<void> pump(WidgetTester tester) async {
     // A phone: the list is the screen, with no detail fetched beside it.
     tester.view.physicalSize = const Size(390, 844);
