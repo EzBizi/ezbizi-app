@@ -130,6 +130,73 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a draft with no time asks before publishing now, and the yes is explicit',
+    (tester) async {
+      tester.view.physicalSize = const Size(1300, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final approvals = <Map<String, dynamic>>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/business-profile/post-queue')) {
+            return http.Response(jsonEncode({'data': queue()}), 200);
+          }
+          if (request.url.path.endsWith('/t1/approve')) {
+            final body = request.body.isEmpty
+                ? <String, dynamic>{}
+                : jsonDecode(request.body) as Map<String, dynamic>;
+            approvals.add(body);
+            if (body['publish_now'] != true) {
+              return http.Response(
+                jsonEncode({
+                  'code': 'needs_publish_now_confirm',
+                  'message':
+                      'This post has no time set — approving publishes it '
+                      'now to Brightside Chimney · Hartford.',
+                  'accounts': ['Brightside Chimney · Hartford'],
+                }),
+                422,
+                // The sentence carries an em dash: say UTF-8, as the server does.
+                headers: {'content-type': 'application/json; charset=utf-8'},
+              );
+            }
+          }
+          return http.Response(
+            jsonEncode({
+              'data': {'status': 'queued'},
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(body: PostQueueView(api: api)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('gbp-post-approve')));
+      await tester.pumpAndSettle();
+      expect(approvals.single.containsKey('publish_now'), isFalse);
+      expect(
+        find.textContaining('approving publishes it now to Brightside'),
+        findsOneWidget,
+      );
+      expect(find.text('Publish now'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('gbp-post-approve')));
+      await tester.pumpAndSettle();
+      expect(approvals.last['publish_now'], isTrue);
+      expect(
+        find.textContaining('Approved. Sending to Google'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('on a phone it is one post at a time with Next listing', (
     tester,
   ) async {

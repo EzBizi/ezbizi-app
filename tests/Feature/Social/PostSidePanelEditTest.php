@@ -34,7 +34,7 @@ class PostSidePanelEditTest extends TestCase
             ->assertOk()->assertJsonPath('data.body', 'Edited: book your fall sweep today.');
         $this->assertSame(SocialPostTarget::STATUS_AWAITING_APPROVAL, SocialPostTarget::withoutGlobalScopes()->find($target->id)->status, 'Save keeps the status');
 
-        $this->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve")->assertOk();
+        $this->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve", ['publish_now' => true])->assertOk();
 
         Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/localPosts') && $r['summary'] === 'Edited: book your fall sweep today.');
     }
@@ -52,7 +52,7 @@ class PostSidePanelEditTest extends TestCase
             ->assertOk()->assertJsonPath('data.has_media', true);
         $this->getJson("/api/v1/social/posts/{$post->id}/media")->assertOk();
 
-        $this->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve")->assertOk();
+        $this->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve", ['publish_now' => true])->assertOk();
 
         $sent = null;
         Http::assertSent(function (Request $r) use (&$sent) {

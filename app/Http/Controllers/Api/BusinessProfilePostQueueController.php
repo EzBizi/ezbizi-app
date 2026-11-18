@@ -45,7 +45,7 @@ class BusinessProfilePostQueueController extends Controller
     public function approve(Request $request, SocialPostTarget $target): JsonResponse
     {
         $place = $this->awaiting($target);
-        $input = $request->validate(['body' => ['nullable', 'string', 'min:20', 'max:1500']]);
+        $input = $request->validate(['body' => ['nullable', 'string', 'min:20', 'max:1500'], 'publish_now' => ['sometimes', 'boolean']]);
         abort_unless($place->isLive(), 422, $place->title.' is not live on Google, so Google would not show the post. Nothing was sent.');
         // Approving is not releasing (suggestion 01a1ef57): a post with a time
         // ahead is approved FOR that time and the sweep sends it then; one
@@ -54,6 +54,17 @@ class BusinessProfilePostQueueController extends Controller
         $due = $target->post?->dueAt();
         abort_if($due !== null && $due->lte(now()), 422,
             'Its planned time has passed. Pick a new time, then approve it.');
+        // No time set: approving publishes now, so the person is told first and
+        // says so (Jose, 2026-11-18). Without `publish_now` nothing changes.
+        if ($due === null && ! $request->boolean('publish_now')) {
+            $account = ($target->options['gbp_title'] ?? null) ?: $place->title;
+
+            return response()->json([
+                'code' => 'needs_publish_now_confirm',
+                'message' => "This post has no time set — approving publishes it now to {$account}.",
+                'accounts' => [$account],
+            ], 422);
+        }
         $next = $due === null ? SocialPostTarget::STATUS_QUEUED : SocialPostTarget::STATUS_SCHEDULED;
         // One decision per draft: two Approves (two tabs, two people) flip it once and send once.
         if (! $this->decide($target, ['status' => $next])) {
