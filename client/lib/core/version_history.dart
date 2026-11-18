@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0590', date: '18 Nov 2026', items: [
+      'Newsletter: the editor centres on the email; click a block to type and format it, with its settings beside it, a small toolbar, drag or keyboard moves, and undo and redo',
+      'Newsletter: every save is kept in Version history and can be restored; an internal name and an inbox preheader; if someone else edits at the same time you can compare, reload or keep your copy; pictures can be cropped without changing the original',
+      'Task Board: people get the boards they belong to in Monday automatically, and someone removed from a board in EzBizi stays off it',
+    ]),
     VersionRelease(version: '0.0.0589', date: '17 Nov 2026', items: [
       'Project Management: a Dashboard tab with jobs and items waiting for parts, parts 3+ days late in red, and reminders per part; alerts for late parts and due reminders',
       'Project Management: an Inbox with one conversation per client, replying from the branch line',
