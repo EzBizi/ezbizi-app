@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0598', date: '18 Nov 2026', items: [
+      'Task Board: the weekly misfiled report names the rule or automation that filed a task, not the person who made the rule',
       'Task Board: complaint and bad-review tasks stay in Customer Relations until a person approves a refund or files a chargeback',
       'Leads: a Local Services reply no longer shows twice (once as sent outside EzBizi)',
       'Task Board: people added to or removed from a board here are added or removed on Monday too',
