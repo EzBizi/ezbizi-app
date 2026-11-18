@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/alert_popup.dart' show questionAnswerLine;
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
@@ -43,6 +44,17 @@ class _AlertsTabState extends State<AlertsTab> {
 
   /// The alert whose people are shown.
   String? _open;
+
+  /// A question's answers, read when it is opened (UI queue 200).
+  final _answers = <String, Map<String, dynamic>>{};
+
+  Future<void> _loadAnswers(String id) async {
+    final response = await widget.api.get('/alerts/$id/replies');
+    if (!mounted || !response.ok) return;
+    setState(
+      () => _answers[id] = Map<String, dynamic>.from(response.data as Map),
+    );
+  }
 
   /// Every list has a search (deep dive 2026-11-02 #12): the message, the
   /// sender or a recipient.
@@ -178,10 +190,20 @@ class _AlertsTabState extends State<AlertsTab> {
         ? 'To ${_join(names)}'
         : 'To ${names.length} people';
     final open = _open == id;
+    final question = alert['kind'] == 'question';
+    final answered = (alert['answered'] as num?)?.toInt() ?? 0;
+    final answers = {
+      for (final r in (_answers[id]?['replies'] as List? ?? const []))
+        if (r is Map) '${r['user_id']}': Map<String, dynamic>.from(r),
+    };
+    final choices = _answers[id]?['choices'] as List? ?? const [];
 
     return InkWell(
       key: ValueKey('alert-sent-$id'),
-      onTap: () => setState(() => _open = open ? null : id),
+      onTap: () {
+        setState(() => _open = open ? null : id);
+        if (!open && question) _loadAnswers(id);
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
@@ -206,6 +228,11 @@ class _AlertsTabState extends State<AlertsTab> {
                 // Sent to nobody: "Dismissed by all 0" in green read as done.
                 if (people.isEmpty)
                   const StatusPill('Sent to nobody', tone: Tone.neutral)
+                else if (question)
+                  StatusPill(
+                    'Answered by $answered of ${people.length}',
+                    tone: answered >= people.length ? Tone.ok : Tone.caution,
+                  )
                 else
                   StatusPill(
                     done == people.length
@@ -227,19 +254,34 @@ class _AlertsTabState extends State<AlertsTab> {
                   child: Row(
                     children: [
                       Expanded(child: Text('${person['name']}')),
-                      Text(
-                        person['dismissed_at'] == null
-                            ? 'Not yet'
-                            : 'Dismissed ${formatListStamp(person['dismissed_at'], '', formats: widget.formats)}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: person['dismissed_at'] == null
-                              ? ToneColours.of(context, Tone.caution).ink
-                              : null,
-                          fontWeight: person['dismissed_at'] == null
-                              ? FontWeight.w700
-                              : null,
+                      if (question)
+                        Flexible(
+                          flex: 2,
+                          child: Text(
+                            switch (answers['${person['id']}']) {
+                              final Map<String, dynamic> a =>
+                                questionAnswerLine(a, choices),
+                              _ => 'Not answered yet',
+                            },
+                            key: ValueKey('alert-answer-$id-${person['id']}'),
+                            textAlign: TextAlign.end,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        )
+                      else
+                        Text(
+                          person['dismissed_at'] == null
+                              ? 'Not yet'
+                              : 'Dismissed ${formatListStamp(person['dismissed_at'], '', formats: widget.formats)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: person['dismissed_at'] == null
+                                ? ToneColours.of(context, Tone.caution).ink
+                                : null,
+                            fontWeight: person['dismissed_at'] == null
+                                ? FontWeight.w700
+                                : null,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -273,6 +315,14 @@ class _AlertFormState extends State<AlertForm> {
   final _message = TextEditingController();
   final _search = TextEditingController();
 
+  /// A question rather than an alert (UI queue 200): context, up to eight
+  /// choices and/or a reply box.
+  bool _question = false;
+  final _context = TextEditingController();
+  final _choiceInput = TextEditingController();
+  final _choices = <String>[];
+  bool _allowText = false;
+
   List<Map<String, dynamic>> _people = const [];
   final _picked = <String>[];
   bool _sending = false;
@@ -288,6 +338,8 @@ class _AlertFormState extends State<AlertForm> {
   void dispose() {
     _message.dispose();
     _search.dispose();
+    _context.dispose();
+    _choiceInput.dispose();
     super.dispose();
   }
 
@@ -314,9 +366,16 @@ class _AlertFormState extends State<AlertForm> {
       _sending = true;
       _error = null;
     });
+    final about = _context.text.trim();
     final response = await widget.api.post('/alerts', {
       'user_ids': _picked,
       'message': _message.text.trim(),
+      if (_question) ...{
+        'kind': 'question',
+        if (about.isNotEmpty) 'context': about,
+        if (_choices.isNotEmpty) 'choices': _choices,
+        'allow_text': _allowText,
+      },
     });
     if (!mounted) return;
     setState(() => _sending = false);
@@ -325,14 +384,17 @@ class _AlertFormState extends State<AlertForm> {
       return;
     }
     final count = _picked.length;
+    final what = _question ? 'Question' : 'Alert';
     setState(() {
       _picked.clear();
       _message.clear();
+      _context.clear();
+      _choices.clear();
     });
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(
-          'Alert sent to $count ${count == 1 ? 'person' : 'people'}.',
+          '$what sent to $count ${count == 1 ? 'person' : 'people'}.',
         ),
       ),
     );
@@ -350,13 +412,31 @@ class _AlertFormState extends State<AlertForm> {
           person,
     ];
     final ready =
-        !_sending && _picked.isNotEmpty && _message.text.trim().isNotEmpty;
+        !_sending &&
+        _picked.isNotEmpty &&
+        _message.text.trim().isNotEmpty &&
+        // A question needs something to answer with.
+        (!_question || _choices.isNotEmpty || _allowText);
 
     return Column(
       key: const Key('alert-form'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<bool>(
+            key: const Key('alert-kind'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: false, label: Text('Alert')),
+              ButtonSegment(value: true, label: Text('Question')),
+            ],
+            selected: {_question},
+            onSelectionChanged: (v) => setState(() => _question = v.single),
+          ),
+        ),
+        const SizedBox(height: 12),
         Text('To', style: theme.textTheme.labelMedium),
         const SizedBox(height: 4),
         if (_picked.isNotEmpty) ...[
@@ -414,21 +494,91 @@ class _AlertFormState extends State<AlertForm> {
           maxLength: 500,
           minLines: 3,
           maxLines: 6,
-          decoration: const InputDecoration(
-            labelText: 'Message',
-            hintText: 'What should they know?',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: _question ? 'Question' : 'Message',
+            hintText: _question
+                ? 'What do you want to ask?'
+                : 'What should they know?',
+            border: const OutlineInputBorder(),
             alignLabelWithHint: true,
           ),
           onChanged: (_) => setState(() {}),
         ),
+        if (_question) ...[
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('alert-context'),
+            controller: _context,
+            maxLength: 4000,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Context (optional)',
+              hintText: 'What they need to know to answer',
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('Choices · up to 8', style: theme.textTheme.labelMedium),
+          const SizedBox(height: 4),
+          if (_choices.isNotEmpty) ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (i, c) in _choices.indexed)
+                  InputChip(
+                    key: ValueKey('alert-choice-$i'),
+                    avatar: CircleAvatar(
+                      child: Text(String.fromCharCode(97 + i)),
+                    ),
+                    label: Text(c),
+                    onDeleted: () => setState(() => _choices.removeAt(i)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (_choices.length < 8)
+            TextField(
+              key: const Key('alert-choice-input'),
+              controller: _choiceInput,
+              maxLength: 200,
+              decoration: const InputDecoration(
+                hintText: 'Add a choice, then Enter',
+                border: OutlineInputBorder(),
+                isDense: true,
+                counterText: '',
+              ),
+              onSubmitted: (value) {
+                final c = value.trim();
+                setState(() {
+                  if (c.isNotEmpty && !_choices.contains(c)) _choices.add(c);
+                  _choiceInput.clear();
+                });
+              },
+            ),
+          SwitchListTile(
+            key: const Key('alert-allow-text'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('They can also write a reply'),
+            value: _allowText,
+            onChanged: (on) => setState(() => _allowText = on),
+          ),
+        ],
         if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: Text(
-                'It pops up for each of them until they dismiss it.',
+                !_question
+                    ? 'It pops up for each of them until they dismiss it.'
+                    : _choices.isEmpty && !_allowText
+                    ? 'Add a choice or let them reply.'
+                    : 'It pops up for each of them until they answer it or '
+                          'choose Later.',
                 style: theme.textTheme.bodySmall,
               ),
             ),
@@ -436,8 +586,17 @@ class _AlertFormState extends State<AlertForm> {
             FilledButton.icon(
               key: const Key('alert-send'),
               onPressed: ready ? _send : null,
-              icon: const Icon(Icons.campaign_outlined, size: 18),
-              label: Text(_sending ? 'Sending…' : 'Send alert'),
+              icon: Icon(
+                _question ? Icons.help_outline : Icons.campaign_outlined,
+                size: 18,
+              ),
+              label: Text(
+                _sending
+                    ? 'Sending…'
+                    : _question
+                    ? 'Send question'
+                    : 'Send alert',
+              ),
             ),
           ],
         ),
