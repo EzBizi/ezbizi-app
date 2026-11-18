@@ -13,6 +13,7 @@ import 'package:ezbizi_client/screens/marketing/newsletter_history.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_studio.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_templates.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
@@ -49,6 +50,7 @@ import 'package:video_player/video_player.dart';
 /// starts defending the wrong behaviour.
 void main() {
   _studioTests();
+  _templateTests();
 
   _jose1116Tests();
 
@@ -6928,6 +6930,180 @@ void _studioTests() {
       await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+/// Branded starters (suggestion 01a1ef54, 2026-11-18): the A1 Chimney pack
+/// is offered in A1 Chimney's view only, previewed at Desktop and Phone, and
+/// Use template clones it into one new editable draft with no audience or
+/// schedule; each one can be edited, saved and reopened.
+void _templateTests() {
+  group('newsletter templates', () {
+    /// A server with a real list: POST makes a draft, PUT changes it, GET
+    /// reads them back. The view is A-1 Chimney unless [view] says otherwise.
+    MockClientHandler server(
+      List<Map<String, Object?>> drafts,
+      List<Map<String, dynamic>> posts, {
+      String view = 'A-1 Chimney',
+    }) {
+      final base = _handler(canEdit: true, newsletters: drafts);
+      return (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          final r = await base(request);
+          final body = jsonDecode(r.body) as Map<String, dynamic>;
+          final data = Map<String, dynamic>.from(body['data'] as Map);
+          data['scope'] = {...(data['scope'] as Map), 'label': view};
+          return _json({'data': data});
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletters')) {
+          final sent = jsonDecode(request.body) as Map<String, dynamic>;
+          posts.add(sent);
+          final made = <String, Object?>{
+            ...sent,
+            'id': 'n-t${posts.length}',
+            'status': 'draft',
+            'audience': null,
+            'revision': 1,
+          };
+          drafts.add(made);
+          return _json({'data': made}, 201);
+        }
+        final put = RegExp(r'/newsletters/([^/]+)$').firstMatch(path);
+        if (request.method == 'PUT' && put != null) {
+          final sent = jsonDecode(request.body) as Map<String, dynamic>;
+          final i = drafts.indexWhere((d) => d['id'] == put.group(1));
+          drafts[i] = {...drafts[i], ...sent, 'revision': ((drafts[i]['revision'] as int?) ?? 1) + 1};
+          return _json({'data': drafts[i]});
+        }
+        return base(request);
+      };
+    }
+
+    test('a starter hands out a fresh copy every time', () {
+      final s = NewsletterStarters.all.first;
+      final a = s.blocks();
+      a.first['src'] = 'https://changed.example/x.png';
+      expect(s.blocks().first['src'], NewsletterStarters.logo);
+      for (final starter in NewsletterStarters.all) {
+        final types = {for (final b in starter.blocks()) b['type']};
+        expect(types, containsAll(['image', 'heading', 'text', 'button']));
+        for (final b in starter.blocks()) {
+          if (b['type'] == 'image') expect('${b['alt']}', isNotEmpty);
+          if (b['type'] == 'button') expect('${b['url']}', startsWith('https://www.a-1chimney.com/'));
+        }
+      }
+    });
+
+    testWidgets('only A1 Chimney’s view offers the A1 starters', (tester) async {
+      await _pumpNewsletter(tester, server([], [], view: 'Everdoors'));
+      expect(find.byKey(const ValueKey('newsletter-start-template')), findsNothing);
+    });
+
+    for (final starter in NewsletterStarters.all) {
+      testWidgets('${starter.title}: thumbnail, Desktop/Phone proof, Use '
+          'template, edit, save and reopen', (tester) async {
+        final drafts = <Map<String, Object?>>[];
+        final posts = <Map<String, dynamic>>[];
+        await _pumpNewsletter(tester, server(drafts, posts), size: const Size(1440, 1400));
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+        await tester.pumpAndSettle();
+        // All three cards before any draft exists.
+        for (final s in NewsletterStarters.all) {
+          expect(find.byKey(ValueKey('newsletter-template-${s.id}')), findsOneWidget);
+        }
+        expect(posts, isEmpty);
+
+        await tester.tap(find.byKey(ValueKey('newsletter-template-${starter.id}')));
+        await tester.pumpAndSettle();
+        final email = find.descendant(
+          of: find.byKey(const ValueKey('newsletter-template-email')),
+          matching: find.byKey(const Key('newsletter-email')),
+        );
+        expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
+        await tester.tap(find.byKey(const ValueKey('newsletter-template-phone')));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(email).width, 375);
+        expect(find.text('Subject: ${starter.subject}'), findsOneWidget);
+
+        await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+        await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+        await tester.pumpAndSettle();
+
+        // One new draft: the starter's words and blocks, no audience, no time.
+        expect(posts, hasLength(1));
+        final made = posts.single;
+        expect(made['subject'], starter.subject);
+        expect(made['preheader'], starter.preheader);
+        expect(made['name'], starter.title);
+        expect(made.containsKey('audience_id'), isFalse);
+        expect(made.containsKey('scheduled_for'), isFalse);
+        expect(jsonEncode(made['blocks']), jsonEncode(starter.blocks()));
+
+        // It opened in the composer; edit the subject and the heading.
+        expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+          starter.subject,
+        );
+        await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Edited ${starter.id}');
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+        expect(drafts.single['subject'], 'Edited ${starter.id}');
+
+        // The starter itself is untouched.
+        expect(starter.subject, isNot('Edited ${starter.id}'));
+
+        // Reopen: back to the list and into the draft again.
+        await tester.tap(find.byKey(const ValueKey('newsletter-back')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Edited ${starter.id}').first);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+          'Edited ${starter.id}',
+        );
+        expect(jsonEncode(drafts.single['blocks']), jsonEncode(starter.blocks()));
+      });
+    }
+
+    testWidgets('Design › Templates replaces the open draft after a checkpoint', (tester) async {
+      final drafts = <Map<String, Object?>>[
+        {..._draft},
+      ];
+      final checkpoints = <String>[];
+      final inner = server(drafts, []);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/checkpoint')) {
+          checkpoints.add(request.url.path);
+          return _json({'data': {'ok': true}});
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+      await _toStep(tester, 'design');
+      await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('newsletter-left-tabs')),
+        matching: find.text('Templates'),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-chimney-check-in')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-note')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(checkpoints, hasLength(1));
+      expect(
+        find.descendant(of: find.byType(NewsletterEmail), matching: find.text('The Chimney Check-In')),
+        findsOneWidget,
+      );
+      // An existing subject is kept; the content's Undo is offered.
+      expect(drafts.single['subject'], 'Autumn sweeps');
+      expect(find.byKey(const ValueKey('newsletter-undo')), findsOneWidget);
     });
   });
 }

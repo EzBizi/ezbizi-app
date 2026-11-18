@@ -21,6 +21,7 @@ import 'newsletter_brand_saved.dart';
 import 'newsletter_import_panel.dart';
 import 'newsletter_preflight.dart';
 import 'newsletter_studio.dart';
+import 'newsletter_templates.dart';
 
 /// The three steps of the composer, in the order a campaign is built.
 enum NewsletterStep {
@@ -2596,6 +2597,18 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
+  /// A starter into the open draft: what is on screen is saved and kept in
+  /// history first (as an import is), so Undo or History brings it back.
+  /// Subject and preview text are filled only where empty.
+  Future<void> _applyStarter(NewsletterStarter s) async {
+    if (!await _beforeImport() || !mounted) return;
+    final subject = widget.subject.text.trim();
+    if (subject.isEmpty || subject == 'Untitled newsletter') widget.subject.text = s.subject;
+    if (widget.preheader.text.trim().isEmpty) widget.preheader.text = s.preheader;
+    _useBlocks(s.blocks());
+    setState(() => _leftTab = 'add');
+  }
+
   /// One line of a block for the outline: its words, else its kind.
   String _layerLabel(Map<String, dynamic> block) {
     final kind = BlockKind.forType(block['type'] as String? ?? '');
@@ -2754,6 +2767,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         if (api != null && widget.onBrand != null)
           const ButtonSegment(value: 'brand', label: Text('Brand')),
         if (api != null) const ButtonSegment(value: 'saved', label: Text('Saved')),
+        if (NewsletterStarters.forCompany(widget.viewName).isNotEmpty)
+          const ButtonSegment(value: 'templates', label: Text('Templates')),
       ],
       selected: {_leftTab},
       showSelectedIcon: false,
@@ -2761,6 +2776,14 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
     final Widget body = switch (_leftTab) {
       'assets' when api != null => _assets(context),
+      'templates' => NewsletterTemplateGallery(
+        company: widget.viewName,
+        useLabel: 'Use in this draft',
+        note: widget.blocks.isEmpty && !_htmlActive
+            ? null
+            : 'Replaces this draft’s content. Undo or Version history brings it back.',
+        onUse: _locked ? null : _applyStarter,
+      ),
       'brand' when api != null && widget.onBrand != null =>
         NewsletterBrandPanel(
           api: api,
