@@ -326,8 +326,47 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    // Each sub-tab's rules in its own card (Jose, 2026-11-16), and the
-    // technician roles, Technician + Local Manager by default.
+    Future<void> sub(String label) async {
+      final tab = find.descendant(
+        of: find.byKey(const Key('project-board-settings-tabs')),
+        matching: find.text(label),
+      );
+      await tester.ensureVisible(tab);
+      await tester.pumpAndSettle();
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+    }
+
+    // Five sub-tabs, opening on Columns (Shoval, 2026-11-18): the board's
+    // look here, and nothing of the stages until Stages is picked.
+    expect(find.byKey(const Key('project-board-warn-days')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-board-tab-card:unscheduled')),
+      findsNothing,
+    );
+    // A colour is a swatch, previewed on the label itself.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widgetList<StatusPill>(
+            find.widgetWithText(StatusPill, 'WAITING PARTS'),
+          )
+          .last
+          .tone,
+      Tone.bad,
+    );
+
+    await sub('Stages');
+    expect(session.me!.preferences['project_board.settings_tab'], 'stages');
+    expect(find.byKey(const Key('project-board-warn-days')), findsNothing);
+    // Each sub-tab's rules in its own card (Jose, 2026-11-16).
     for (final key in const [
       'unscheduled',
       'ready_to_schedule',
@@ -348,29 +387,15 @@ void main() {
         findsOneWidget,
       );
     }
-    expect(
-      tester
-          .widget<FilterChip>(
-            find.byKey(const ValueKey('project-board-tech-role:Technician')),
-          )
-          .selected,
-      isTrue,
-    );
-    // Tag lists are compact pickers, not a wall of chips; the new columns
-    // have their settings (Jose, 2026-11-10).
+    // Tag lists are compact pickers, not a wall of chips (Jose, 2026-11-10).
     expect(
       find.byKey(const Key('project-board-tab-tags:unscheduled-add')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('project-board-repair-tags-add')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('project-board-ready-needs:note')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('project-board-warn-days')), findsOneWidget);
     // Statuses are the company's real ones, picked as chips.
     await tester.tap(
       find.descendant(
@@ -379,24 +404,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // A colour is a swatch, previewed on the label itself.
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widgetList<StatusPill>(
-            find.widgetWithText(StatusPill, 'WAITING PARTS'),
-          )
-          .last
-          .tone,
-      Tone.bad,
-    );
     await tester.ensureVisible(
       find.byKey(const Key('project-board-save:tabs:unscheduled')),
     );
@@ -415,6 +422,17 @@ void main() {
       'On Hold',
     ]);
     expect(find.text('Project Management settings saved.'), findsOneWidget);
+    // Team: the technician roles, Technician + Local Manager by default, and
+    // the repair teams.
+    await sub('Team');
+    expect(
+      tester
+          .widget<FilterChip>(
+            find.byKey(const ValueKey('project-board-tech-role:Technician')),
+          )
+          .selected,
+      isTrue,
+    );
     // A repair team is added here and on every Workiz account (Jose, 2026-11-10).
     await tester.ensureVisible(
       find.byKey(const Key('project-board-repair-tags-add')),

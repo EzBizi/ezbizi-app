@@ -1,0 +1,226 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Alerts › Questions</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). Every post, account and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1080px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1100px}
+.cap b{color:var(--ink)}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:760px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column;position:relative}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.sp-page{flex:1;min-width:0;overflow:hidden;padding:14px 20px;display:flex;flex-direction:column;gap:10px}
+.sp-title{font-size:20px;font-weight:800;line-height:1.2}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.sm{height:26px;font-size:11.5px;padding:0 9px}
+.btn.ic{width:32px;padding:0}
+.badge{background:var(--pric);color:var(--prid);border-radius:999px;font-size:10.5px;padding:0 6px;font-weight:700}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)} .p-pri{background:var(--pric);color:var(--prid)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.row{display:flex;gap:8px;align-items:center;min-width:0}
+.in{min-height:32px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 9px;display:flex;align-items:center;gap:6px;background:var(--paper);font-size:12px;min-width:0;white-space:nowrap;overflow:hidden}
+.in .ph{color:#8a969e}
+.in.q::before{content:"⌕";color:var(--muted);font-size:14px}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:var(--r);overflow:hidden}
+.seg span{padding:0 8px;height:30px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;color:var(--neu)}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--neu);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+/* month grid */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);flex:1;min-height:0;grid-template-rows:auto repeat(5,minmax(0,1fr))}
+.cal .h{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#fafcfd}
+.cal .d{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden;background:var(--paper)}
+.cal .d .n{font-size:11px;font-weight:700}
+.cal .d.o{background:#f7f9fa}.cal .d.o .n{color:#a3adb4}
+.cal .d.t .n{background:var(--pri);color:#fff;border-radius:6px;padding:0 5px;align-self:flex-start}
+.cal .d .more{font-size:10.5px;font-weight:700;color:var(--pri)}
+.ev{border-left:3px solid;border-radius:5px;padding:2px 5px;font-size:10.5px;line-height:1.25;min-width:0}
+.ev b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--ink)}
+.ev i{font-style:normal;font-weight:700;font-size:9.5px}
+.ev.s{background:#eef6f9;border-color:var(--pri)} .ev.s i{color:var(--prid)}
+.ev.p{background:var(--okc);border-color:var(--ok)} .ev.p i{color:var(--ok)}
+.ev.a{background:var(--cauc);border-color:#c48a1a} .ev.a i{color:var(--cau)}
+.ev.x{background:var(--badc);border-color:var(--bad)} .ev.x i{color:var(--bad)}
+.ev.dr{background:var(--neuc);border-color:#7d8a94} .ev.dr i{color:var(--neu)}
+.ev.sel{outline:2px solid var(--pri);outline-offset:1px}
+.foot{display:flex;font-size:11px;color:var(--muted);padding-top:6px}
+/* inspector */
+.insp{width:360px;flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.insp .hd{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.insp .bd{padding:12px 14px;display:flex;flex-direction:column;gap:9px;flex:1;min-height:0;overflow:hidden}
+.insp .ft{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px}
+.ttl{font-size:17px;font-weight:800;line-height:1.25}
+.chtabs{display:flex;gap:6px;flex-wrap:wrap}
+.chtabs span{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--neu);display:inline-flex;gap:5px;align-items:center}
+.chtabs span.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.prev{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:11.5px}
+.prev .ph1{display:flex;gap:8px;align-items:center;padding:8px 10px}
+.prev .ph1 .lg{width:26px;height:26px;border-radius:6px;background:var(--ink);color:#fff;font-weight:800;font-size:10px;display:flex;align-items:center;justify-content:center}
+.img{background:linear-gradient(135deg,#334b55 0,#5e7e89 45%,#e3a548 46%,#e3a548 58%,#2b3a41 59%);height:150px}
+.img.sm{height:96px}
+.prev .tx{padding:8px 10px;color:#2b3a41}
+.prev .ln{padding:0 10px 8px;display:flex;font-weight:700;color:var(--pri);font-size:11px}
+.note{border-radius:8px;padding:8px 10px;font-size:11.5px}
+.note.cau{background:var(--cauc);color:var(--cau)} .note.bad{background:var(--badc);color:var(--bad)}
+.drawer{position:absolute;top:40px;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.14);display:flex;flex-direction:column}
+.drawer .hd{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.drawer .bd{padding:12px 16px;display:flex;flex-direction:column;gap:9px;flex:1;overflow:hidden}
+.drawer .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.scrim{position:absolute;inset:40px 0 0 0;background:rgba(6,8,8,.18)}
+.att{border:1px solid var(--line);border-radius:var(--r);background:var(--paper);display:flex;flex-direction:column}
+.att .r{display:flex;gap:8px;align-items:center;padding:7px 10px;border-top:1px solid var(--line);font-size:11.5px}
+.att .r:first-of-type{border-top:0}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.ta{min-height:86px;align-items:flex-start;white-space:normal}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.agl{display:flex;flex-direction:column;gap:6px}
+.agl .dh{font-size:11px;font-weight:800;color:var(--neu);margin-top:6px}
+.ag{display:flex;gap:8px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:7px 9px;min-width:0}
+.ag .th{width:40px;height:40px;border-radius:7px;flex:0 0 auto}
+.ag .tx2{min-width:0;flex:1}.ag .tx2 b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.ag.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:26px;background:var(--paper);flex:0 0 auto}
+.phn .ab{height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.phn .ab .pt{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:10px}
+.fab{position:absolute;right:16px;bottom:18px;height:48px;padding:0 18px;border-radius:14px;background:var(--pri);color:#fff;font-weight:700;display:flex;align-items:center;gap:6px;box-shadow:0 6px 16px rgba(0,112,143,.35)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wk span{border-radius:8px;padding:4px 0;text-align:center;font-size:11px;font-weight:700;background:var(--paper);border:1px solid var(--line);line-height:1.2;min-height:44px;display:flex;flex-direction:column;justify-content:center}
+.wk span small{display:block;font-weight:500;font-size:9.5px;color:var(--muted)}
+.wk span.on{background:var(--pri);color:#fff;border-color:var(--pri)} .wk span.on small{color:#d6edf5}
+.wk span em{font-style:normal;font-size:8px;color:var(--pri)}
+.wk span.on em{color:#fff}
+.mini{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11px}
+.mini b{font-size:9.5px;color:var(--muted)}
+.mini span{height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-weight:600}
+.mini span i{display:flex;gap:2px;height:5px}
+.mini span i u{width:5px;height:5px;border-radius:50%;display:block}
+.mini span.on{background:var(--pri);color:#fff}
+.mini span.o{color:#b5bec4}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.15);padding:8px 14px 16px;display:flex;flex-direction:column;gap:8px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:#c9d4d9;align-self:center}
+.need{display:flex;gap:6px;align-items:center;background:var(--cauc);color:var(--cau);border-radius:9px;padding:7px 10px;font-size:11.5px;font-weight:600}
+
+.qp{width:440px;background:var(--paper);border:1px solid #e9c98a;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.18);padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.qp .hd{display:flex;gap:8px;align-items:center;font-size:11.5px;font-weight:800;color:var(--cau)}
+.qp .q{font-size:15px;font-weight:700}
+.qp .ctx{background:#f4f7f9;border-left:3px solid var(--pri);border-radius:6px;padding:7px 10px;font-size:12px;color:#2b3a41}
+.ch{border:1px solid #93aab3;border-radius:10px;padding:9px 12px;font-weight:600;color:var(--prid);display:flex;gap:10px;align-items:center;font-size:12.5px}
+.ch b{width:22px;height:22px;border-radius:50%;background:var(--pric);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.ch.on{background:var(--pri);color:#fff;border-color:var(--pri)} .ch.on b{background:#fff;color:var(--pri)}
+.dim{position:absolute;inset:40px 0 0 0;background:rgba(6,8,8,.32);display:flex;align-items:center;justify-content:center}
+.bell{position:absolute;top:44px;right:12px;width:380px;background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 26px rgba(0,0,0,.16);display:flex;flex-direction:column}
+.bell .tb{display:flex;border-bottom:1px solid var(--line)} .bell .tb span{flex:1;text-align:center;padding:9px 0;font-weight:700;font-size:12px;color:var(--muted)} .bell .tb span.on{color:var(--pri);border-bottom:2px solid var(--pri)}
+.qr{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;font-size:12px}
+.sw{display:inline-flex;width:30px;height:17px;border-radius:9px;background:var(--pri);position:relative}.sw::after{content:"";position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#fff}
+</style>
+<div class="wrap">
+<h1>200 · Communication › Alerts: Questions</h1>
+<p class="sub">Jose, 2026-11-18. An alert can ask a question: a line of <b>context</b>, up to <b>8 choices</b> and/or a <b>reply box</b>. The person asked gets the same pop-up over the app, now with a button per choice. Dismiss leaves the question open; answering closes it. Everyone needs somewhere to find questions they haven't answered, even without the Alerts tab, and the person who asked sees each answer. Phone's backend is done (4b0b17e4e); the first real use is Jose asking Bar about the PPC job source.</p>
+
+<h2><span class="n">1</span> Pop-up with answer buttons; questions in the bell; answers in Sent <span class="rec">Recommended</span></h2>
+<p class="cap">The alert pop-up Jose picked in queue 65 gains <b>numbered choice buttons</b> under the context, plus the <b>reply box</b> when asked for. <b>Send answer</b> needs a choice or some words. <b>Later</b> dismisses and keeps the question open. Unanswered questions live in the <b>bell</b>, under a <b>Questions</b> tab with its own count, and the bell's badge includes them, so everyone signed in has them with no new tab or grant. In the Alerts send form, an <b>Alert · Question</b> switch shows context, choices and the reply-box switch. Under Sent, a question reads <b>2 of 3 answered</b> and opens its answers.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔<sup class="badge">3</sup></div>
+ <div class="dim"><div class="qp">
+  <div class="hd">❓ QUESTION FROM JOSE SILVA<span class="sp"></span><span class="tiny" style="font-weight:500">2:14 PM · 1 of 2</span></div>
+  <div class="q">Which job source should PPC leads get in Workiz?</div>
+  <div class="ctx">Google Ads leads are landing as "Website". Your team books them, so you pick.</div>
+  <div class="ch on"><b>a</b> Google PPC</div>
+  <div class="ch"><b>b</b> Google Ads · Search</div>
+  <div class="ch"><b>c</b> Keep "Website"</div>
+  <div class="in ta" style="min-height:52px"><span class="ph">Anything to add? (optional)</span></div>
+  <div class="row"><span class="btn">Later</span><span class="sp"></span><span class="btn f">Send answer</span></div>
+ </div></div>
+</div>
+<div class="phones" style="margin-top:18px">
+ <div class="win" style="width:590px;height:470px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔<sup class="badge">3</sup></div>
+  <div class="bell"><div class="tb"><span>Notifications · 1</span><span class="on">Questions · 2</span></div>
+   <div class="qr"><div class="row"><b>Jose Silva</b><span class="sp"></span><span class="pill p-cau">Not answered</span></div><div>Which job source should PPC leads get in Workiz?</div><div class="tiny">3 choices · reply box · 2:14 PM</div></div>
+   <div class="qr"><div class="row"><b>Mia</b><span class="sp"></span><span class="pill p-cau">Not answered</span></div><div>Can you cover Saturday in Fort Lauderdale?</div><div class="tiny">Yes / No · 11:02 AM</div></div>
+   <div class="qr" style="opacity:.75"><div class="row"><b>Mia</b><span class="sp"></span><span class="pill p-ok">Answered</span></div><div>Did the van go to the shop?</div><div class="tiny">You: (a) Yes, Tuesday</div></div>
+  </div></div>
+ <div class="win" style="width:590px;height:470px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div>
+  <div class="drawer"><div class="hd"><b>New alert</b><span class="sp"></span>✕</div><div class="bd">
+   <div class="seg" style="align-self:flex-start"><span>Alert</span><span class="on">Question</span></div>
+   <div class="fld"><label>To</label><div class="in"><span class="pill p-pri">Bar ✕</span><span class="ph">Add people…</span></div></div>
+   <div class="fld"><label>Question</label><div class="in">Which job source should PPC leads get in Workiz?</div></div>
+   <div class="fld"><label>Context (optional)</label><div class="in">Google Ads leads are landing as "Website"…</div></div>
+   <div class="fld"><label>Choices · up to 8</label><div class="in"><span class="pill p-pri">Google PPC ✕</span><span class="pill p-pri">Google Ads · Search ✕</span><span class="ph">Add a choice…</span></div></div>
+   <div class="row"><span class="sw"></span><span>They can also write a reply</span></div>
+  </div><div class="ft"><span class="sp"></span><span class="btn f">Send question</span></div></div>
+ </div>
+</div>
+<p class="cap" style="margin-top:12px"><b>Sent, as the asker sees it:</b> the row reads "Question · 1 of 1 answered"; it opens the answers (name, choice, words, time). The bell says <i>"Bar answered: (b) Google Ads · Search: we use that in Workiz already"</i>.</p>
+
+<h2><span class="n">2</span> Pop-up as in 1; questions under their own ❓ in the top bar</h2>
+<p class="cap">Same pop-up and send form. The unanswered list gets its <b>own top-bar icon</b> with a count, beside the bell, opening a side panel. It's easier to spot, but it adds a fourth icon to a top bar Jose has already trimmed, and most days the count is zero.</p>
+<div class="win" style="height:330px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>❓<sup class="badge">2</sup> 🔔<sup class="badge">1</sup></div>
+ <div class="drawer"><div class="hd"><b>Questions for you</b><span class="badge">2</span><span class="sp"></span>✕</div><div class="bd">
+  <div class="qr" style="border:1px solid var(--line);border-radius:10px"><div class="row"><b>Jose Silva</b><span class="sp"></span><span class="tiny">2:14 PM</span></div><div>Which job source should PPC leads get in Workiz?</div><div class="row"><span class="btn sm">Google PPC</span><span class="btn sm">Google Ads · Search</span><span class="btn sm">Keep "Website"</span></div></div>
+  <div class="qr" style="border:1px solid var(--line);border-radius:10px"><div class="row"><b>Mia</b><span class="sp"></span><span class="tiny">11:02 AM</span></div><div>Can you cover Saturday?</div><div class="row"><span class="btn sm">Yes</span><span class="btn sm">No</span></div></div>
+ </div></div>
+</div>
+
+<h2><span class="n">3</span> Answer inline on the Dashboard</h2>
+<p class="cap">No change to the bell. Unanswered questions sit as a <b>"Questions for you"</b> card at the top of the Dashboard, answered right there. This is visible only on the Dashboard, so a technician in the Field app could miss one.</p>
+<div class="win" style="height:300px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i class="on"></i><i></i><i></i></div><div class="sp-page">
+ <div class="sp-title">Dashboard</div>
+ <div class="card" style="border-color:#e9c98a"><div class="row"><b>❓ Questions for you · 2</b></div>
+  <div class="row"><b>Jose Silva:</b> Which job source should PPC leads get?<span class="sp"></span><span class="btn sm">Google PPC</span><span class="btn sm">Ads · Search</span><span class="btn sm">Keep</span></div>
+  <div class="row"><b>Mia:</b> Can you cover Saturday?<span class="sp"></span><span class="btn sm">Yes</span><span class="btn sm">No</span></div></div>
+</div></div></div>
+
+<h2 style="margin-top:56px">Phone</h2>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · The pop-up full width, buttons 48 tall <span class="rec">Recommended</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="pt">Jobs</span><span class="sp"></span>🔔<sup class="badge">3</sup></div>
+   <div class="pb" style="background:rgba(6,8,8,.32);justify-content:center">
+    <div class="qp" style="width:auto">
+     <div class="hd">❓ QUESTION FROM JOSE SILVA</div>
+     <div class="q">Which job source should PPC leads get in Workiz?</div>
+     <div class="ctx">Google Ads leads are landing as "Website".</div>
+     <div class="ch on" style="min-height:48px"><b>a</b> Google PPC</div>
+     <div class="ch" style="min-height:48px"><b>b</b> Google Ads · Search</div>
+     <div class="ch" style="min-height:48px"><b>c</b> Keep "Website"</div>
+     <div class="in ta"><span class="ph">Anything to add?</span></div>
+     <div class="row"><span class="btn" style="height:44px">Later</span><span class="btn f" style="flex:1;height:44px">Send answer</span></div>
+    </div></div></div></div>
+ <div class="pcol"><span class="pl">5 · A bottom sheet over the screen</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="pt">Jobs</span><span class="sp"></span>🔔</div>
+   <div class="pb" style="background:rgba(6,8,8,.32)"></div>
+   <div class="sheet"><span class="grab"></span><div class="tiny b" style="color:var(--cau)">❓ QUESTION FROM JOSE SILVA</div><div class="ttl" style="font-size:15px">Which job source should PPC leads get?</div><div class="ch">a · Google PPC</div><div class="ch">b · Google Ads · Search</div><div class="ch">c · Keep "Website"</div><div class="row"><span class="btn">Later</span><span class="btn f" style="flex:1">Send answer</span></div></div>
+  </div></div>
+ <div class="pcol"><span class="pl">6 · Full screen, like a form</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>✕</span><span class="pt">Question</span></div>
+   <div class="pb"><div class="tiny b">FROM JOSE SILVA · 2:14 PM</div><div class="ttl">Which job source should PPC leads get in Workiz?</div><div class="note cau">Google Ads leads are landing as "Website".</div><div class="ch">a · Google PPC</div><div class="ch">b · Google Ads · Search</div><div class="ch">c · Keep "Website"</div><div class="in ta"><span class="ph">Anything to add?</span></div><span class="sp"></span><span class="btn f" style="height:44px">Send answer</span></div></div></div>
+</div>
+<p class="cap" style="margin-top:22px"><b>Recommendation: 1 + 4.</b> The pop-up Jose already chose, gaining answer buttons. The bell is where everyone already looks, with no new icon and no new grant. And the asker's answers sit with what they sent.</p>
+</div>

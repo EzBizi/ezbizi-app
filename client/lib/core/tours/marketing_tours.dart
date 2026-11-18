@@ -16,62 +16,51 @@ import '../tab_tours.dart';
 /// Meta review said it does not.
 const Map<String, Tour> marketingTours = {
   // ── Social Media Management ──────────────────────────────────────
+  // 2: UI queue 199 (Rodrigo 01a1ef71) - one planner on the calendar, its
+  // tools beside it; no tabs under it, so no tours keyed by them.
   'marketing/Social Media Management': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-marketing-social-panes',
-        title: 'Social Media Management',
+        since: 2,
+        title: 'Beside the calendar',
         body:
-            'Dashboard, Compose, Calendar, Accounts, Comments and QR Codes, as '
-            'your role '
-            'allows.',
+            'Comments, Connections, QR codes and New post open over the '
+            'calendar and put it back as it was, as your role allows.',
       ),
       TourStep(
-        anchor: 'tour-marketing-social-none',
-        title: 'Nothing open to you',
-        body: 'None of these tabs is on your role yet.',
-      ),
-    ],
-  ),
-  'marketing/Social Media Management/Dashboard': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-marketing-social-tiles',
-        title: 'Scheduled, Sent, Failed',
-        body: 'Each narrows the timeline, with how many are in it.',
-      ),
-      TourStep(
-        anchor: 'social-posts-fact-pages',
-        title: 'Pages',
-        body: 'How many pages are connected here, and whether they can post.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-timeline',
-        title: 'Timeline',
+        anchor: 'tour-marketing-month',
+        since: 2,
+        title: 'The month',
         body:
-            "What is coming up, then each day's posts with each account's "
-            'answer. Click one for its links, or Retry one that failed.',
+            'Each post on the day it goes out, or went out: its networks, '
+            'time and state. Click one to see it beside the calendar; the + '
+            'on a day starts a post there.',
       ),
       TourStep(
-        anchor: 'tour-marketing-new-post',
-        title: 'New post',
-        body: 'Opens Compose to write one.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-social-accounts-card',
-        title: 'Accounts',
+        anchor: 'plan-attention',
+        since: 2,
+        title: 'Needs attention',
         body:
-            'Each connected page and whether it can post. Connect adds another.',
+            'Drafts and approvals with no send time yet. They sit on no day '
+            'until one is set.',
       ),
-    ],
-  ),
-  'marketing/Social Media Management/Compose': Tour(
-    version: 1,
-    steps: [
+      TourStep(
+        anchor: 'plan-view',
+        since: 2,
+        title: 'Month, Week, Agenda',
+        body: 'Agenda lists every post from this month on, day by day.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-agenda',
+        since: 2,
+        title: 'Your week',
+        body: "Pick a day to see its posts; tap one to open it.",
+      ),
       TourStep(
         anchor: 'tour-marketing-compose-form',
+        since: 2,
         title: 'New post',
         body:
             "Tick the accounts to post to and write the words; a count under "
@@ -79,12 +68,8 @@ const Map<String, Tour> marketingTours = {
             'drag one in.',
       ),
       TourStep(
-        anchor: 'tour-marketing-compose-when',
-        title: 'Now or later',
-        body: "Later picks a day and a time, on this view's clock.",
-      ),
-      TourStep(
         anchor: 'tour-marketing-compose-preview',
+        since: 2,
         title: 'How it will look',
         body:
             'The post drawn as each ticked network shows it. A close likeness: '
@@ -92,108 +77,16 @@ const Map<String, Tour> marketingTours = {
       ),
       TourStep(
         anchor: 'tour-marketing-compose-bar',
+        since: 2,
         title: 'Publish',
         body:
             'Where it is going and when, beside Publish now or Schedule. When '
             'the button is greyed, hover over it or long press it to see why.',
       ),
       TourStep(
-        anchor: 'tour-marketing-compose-outcome',
-        title: 'What happened',
-        body:
-            "Each account's answer as it comes in, with Retry on one that "
-            'failed. Write another starts a new post.',
-      ),
-    ],
-  ),
-  'marketing/Social Media Management/Calendar': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-marketing-week',
-        title: 'This week',
-        body: "This week's posts, day by day, for the pages this view can see.",
-      ),
-      TourStep(
-        anchor: 'tour-marketing-month',
-        title: 'The month',
-        body:
-            'Every post on its day: green went out, blue is scheduled, red '
-            'failed. The arrows move a month; click a post to open it.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-agenda',
-        title: 'Your posts',
-        body:
-            'Today, the days ahead, then earlier ones. Tap a post to open it.',
-      ),
-    ],
-  ),
-  'marketing/Social Media Management/Accounts': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-marketing-accounts',
-        title: 'Accounts',
-        body:
-            'The pages connected in this view, each with Disconnect. A '
-            'connection is made at the view you are in, and views side by side '
-            'do not share it.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-accounts-connect',
-        title: 'Connect a page',
-        body: 'Connects another page or account to this view.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-accounts-catalogue',
-        title: 'Catalogue',
-        body:
-            'The networks not connected here yet, and whether each is ready. '
-            'One that is not says why.',
-      ),
-    ],
-  ),
-  'marketing/Social Media Management/Comments': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'social-comments-inbox',
-        title: 'Comments',
-        body:
-            'Every comment on your connected accounts, newest first, with the '
-            'post it is on. Filter by account, unreplied or hidden; Reply and '
-            'Hide work right here.',
-      ),
-    ],
-  ),
-  'marketing/Social Media Management/QR Codes': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-marketing-qr-header',
-        title: 'QR codes',
-        body:
-            'Print a code once. Change where it sends people here, any time, '
-            'without reprinting.',
-      ),
-      TourStep(
-        anchor: 'qr-new',
-        title: 'New QR code',
-        body: 'Name it, say where it goes, and make the code.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-qr-list',
-        title: 'Your codes',
-        body:
-            'Each code with where it goes, its scans, its SVG and PNG downloads '
-            "and Stats. Deactivate, in a card's menu, pauses every printed copy "
-            'until you reactivate it.',
-      ),
-      TourStep(
-        anchor: 'tour-marketing-qr-empty',
-        title: 'No codes yet',
-        body: 'Make one for a van, a sign or your cards.',
+        anchor: 'tour-marketing-social-none',
+        title: 'Nothing open to you',
+        body: 'None of Social Media Management is on your role yet.',
       ),
     ],
   ),

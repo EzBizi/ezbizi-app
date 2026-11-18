@@ -36,17 +36,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('project-inbox')), findsOneWidget);
-    // Waiting is the default: the client spoke last.
-    expect(find.text('Lena Park  J-1001', findRichText: true), findsOneWidget);
-    expect(find.text('Waiting · 1'), findsOneWidget);
+    // All is the default (Shoval, 2026-11-18); the filters are one row.
+    expect(find.text('All · 2'), findsOneWidget);
+    expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsOneWidget);
+    final filters = [
+      for (final k in ['all', 'waiting', 'replied'])
+        tester.getRect(find.byKey(ValueKey('project-inbox-filter-$k'))).top,
+    ];
+    expect(filters.toSet(), hasLength(1), reason: 'one row, never wrapped');
+    // A row as in Leads: the name, the job, what it waits on.
+    expect(find.text('Lena Park'), findsWidgets);
+    expect(find.text('J-1001'), findsOneWidget);
     expect(find.byKey(const ValueKey('project-inbox-waiting-j-1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-inbox-state-j-1')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('project-inbox-filter-waiting')));
+    await tester.pumpAndSettle();
+    expect(find.text('Waiting · 1'), findsOneWidget);
     expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsNothing);
+    expect(session.me!.preferences['project_board.inbox_filter'], 'waiting');
     await tester.tap(find.byKey(const ValueKey('project-inbox-filter-replied')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('project-inbox-filter-all')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('project-inbox-thread-j-1')));
     await tester.pumpAndSettle();

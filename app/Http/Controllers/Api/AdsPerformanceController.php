@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Support\Ads\AllAccounts;
 use App\Services\Ads\CampaignPerformance;
 use App\Support\Audit\AuditLogger;
+use App\Support\Reports\MarketingReport;
+use App\Support\Reports\ReportJobs;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
@@ -255,7 +257,8 @@ class AdsPerformanceController extends Controller
                 $report = $this->performance->forConnection($row, $from, $to, withCampaigns: false, token: $token);
                 $accounts[] = [
                     'connection_id' => $token === null ? $row->getKey() : null,
-                    ...self::withLeads($row, $report['account'], $from, $to),
+                    ...self::withLeads($row, $report['account'], $from, $to,
+                        fn () => self::spend($this->performance->channelCost($row, $from, $to, token: $token))),
                 ];
             } catch (RuntimeException $e) {
                 $refused[] = [
@@ -298,7 +301,8 @@ class AdsPerformanceController extends Controller
             ->values();
 
         $read = AllAccounts::read($accounts, 'rollup', $from, $to, fn (SocialConnection $c) => [
-            self::withLeads($c, $this->performance->forConnection($c, $from, $to, withCampaigns: false)['account'], $from, $to),
+            self::withLeads($c, $this->performance->forConnection($c, $from, $to, withCampaigns: false)['account'], $from, $to,
+                fn () => self::spend($this->performance->channelCost($c, $from, $to))),
         ]);
 
         return response()->json([
@@ -412,7 +416,11 @@ class AdsPerformanceController extends Controller
      * @param  array<string, mixed>  $account
      * @return array<string, mixed>
      */
-    private static function withLeads(SocialConnection $connection, array $account, Carbon $from, Carbon $to): array
+    /**
+     * @param  callable(): array{lsa: float, ppc: float}  $spendOf  the account's spend in these dates,
+     *                                                             Local Services and the rest; asked only when there is something to price
+     */
+    private static function withLeads(SocialConnection $connection, array $account, Carbon $from, Carbon $to, callable $spendOf): array
     {
         $zone = $account['time_zone'] ?? config('app.timezone');
         $window = [
@@ -484,21 +492,91 @@ class AdsPerformanceController extends Controller
             ->first();
         $revenue = round(((int) $jobs->revenue) / 100, 2);
 
+        /*
+         * The leads are Local Services', so their price is Local Services'
+         * spend, not the account's (Bar, 2026-11-18: $2,500.46 a lead was
+         * Search spend over 5 Local Services leads). Read only with leads: a
+         * forty-account roll-up must not pay a query per account for nothing.
+         */
+        $ppcJobs = self::ppcJobs($connection, $from, $to);
+        $spend = $ppc = null;
+        if ($total > 0 || $revenue > 0 || $ppcJobs > 0) {
+            try {
+                ['lsa' => $spend, 'ppc' => $ppc] = $spendOf();
+                [$spend, $ppc] = [round((float) $spend, 2), round((float) $ppc, 2)];
+            } catch (RuntimeException $e) {
+                report($e);
+            }
+        }
+        // A branch's PPC jobs are the account's that paid for PPC, not every
+        // account in the branch (desk, 2026-11-18: NJ's three accounts would
+        // each show Mt Laurel's jobs, and the roll-up count them three times).
+        if ($ppcJobs !== null && ! ($ppc > 0)) {
+            $ppcJobs = 0;
+        }
+        $all = $total + (int) $ppcJobs;
+        $per = fn (?float $cost, int $n) => $n > 0 && $cost !== null ? round($cost / $n, 2) : null;
+
         return [
             ...$account,
-            'leads' => $total,
+            // Everything the account's ads brought (Jose, 2026-11-18: "all the
+            // created jobs basically everything from those jobs sources"):
+            // its Local Services leads plus its branch's PPC jobs.
+            'leads' => $all,
+            'lsa_leads' => $total,
+            'ppc_jobs' => $ppcJobs,
             'charged_leads' => (int) $leads->charged,
             'credited_leads' => (int) $leads->credited,
             // Null, not 0, with no leads: nothing was bought, so nothing had a price.
-            'cost_per_lead' => $total > 0 ? round(((float) $account['cost']) / $total, 2) : null,
+            'lsa_cost' => $spend,
+            'ppc_cost' => $ppc,
+            // With PPC jobs unknowable (no branch), the PPC spend is left out
+            // too: Search spend over Local Services leads is Bar's wrong number.
+            'lead_cost' => $leadCost = $ppcJobs === null || $spend === null ? $spend : round($spend + (float) $ppc, 2),
+            'cost_per_lead' => $per($leadCost, $all),
+            'cost_per_lsa_lead' => $per($spend, $total),
+            'cost_per_ppc_job' => $per($ppc, (int) $ppcJobs),
             'calls' => (int) $calls->total,
             'missed_calls' => (int) $calls->missed,
             'median_first_reply_minutes' => $median === null ? null : (int) round($median / 60),
             'unanswered_messages' => $unanswered,
             'jobs' => (int) $jobs->total,
             'revenue' => $revenue,
-            'return_on_spend' => ((float) $account['cost']) > 0 ? round($revenue / (float) $account['cost'], 2) : null,
+            'return_on_spend' => $spend > 0 ? round($revenue / $spend, 2) : null,
         ];
+    }
+
+    /** @return array{lsa: float, ppc: float} channelCost() in currency units */
+    private static function spend(array $cost): array
+    {
+        return ['lsa' => $cost['lsa']['cost_minor'] / 100, 'ppc' => $cost['ppc']['cost_minor'] / 100];
+    }
+
+    /**
+     * The PPC jobs of the account's branch, counted as Reports' Marketing tab
+     * counts them (Reports, 2026-11-18: one rule, so the two screens agree):
+     * Workiz jobs created in the dates whose source the business pays for
+     * from PPC (reports.paid_sources), less the ones Reports does not count.
+     * The dialed "- PPC" line sets that source (SourceFromDialed). Null for an
+     * account with no branch: nothing says which jobs are its.
+     *
+     * Given only to an account with PPC spend in the dates (withLeads).
+     * ponytail: two accounts with PPC spend in one branch would each get them
+     * all; none on prod 2026-11-18 (NJ: Mt Laurel, CT: Hamden). Split by
+     * spend if that changes.
+     */
+    private static function ppcJobs(SocialConnection $connection, Carbon $from, Carbon $to): ?int
+    {
+        $sources = array_keys(array_filter(MarketingReport::paid(), fn (string $c) => $c === 'ppc'));
+        $branch = ! $connection->exists ? null : SocialConnection::query()->withoutGlobalScopes()->whereKey($connection->getKey())
+            ->selectRaw(SocialConnection::BRANCH_SQL.' AS branch')->value('branch');
+        if ($branch === null || $sources === []) {
+            return null;
+        }
+
+        return ReportJobs::created(ReportJobs::jobs((string) $branch)
+            ->whereBetween('j.booked_at', [$from->format('Y-m-d').' 00:00:00', $to->format('Y-m-d').' 23:59:59'])->get())
+            ->filter(fn ($j) => in_array(trim((string) $j->job_source), $sources, true))->count();
     }
 
     public function index(Request $request): JsonResponse
@@ -546,7 +624,10 @@ class AdsPerformanceController extends Controller
         foreach ($connections as $connection) {
             try {
                 $report = $this->performance->forConnection($connection, $from, $to);
-                $report['account'] = self::withLeads($connection, $report['account'], $from, $to);
+                $campaigns = collect($report['campaigns']);
+                $lsa = (float) $campaigns->where('channel', 'LOCAL_SERVICES')->sum('cost');
+                $spend = ['lsa' => $lsa, 'ppc' => (float) $campaigns->sum('cost') - $lsa];
+                $report['account'] = self::withLeads($connection, $report['account'], $from, $to, fn () => $spend);
                 $accounts[] = [
                     'connection_id' => $connection->getKey(),
                     ...$report,

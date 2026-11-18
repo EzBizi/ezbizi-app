@@ -164,6 +164,10 @@ void main() {
           }
           return json({'data': groupColours});
         }
+        if (path.startsWith('/task-boards/') && request.method == 'PATCH') {
+          patches.add([path.split('/').last, jsonDecode(request.body)]);
+          return json({'data': <String, dynamic>{}});
+        }
         if (path.startsWith('/task-boards/')) {
           final id = path.split('/').last;
           opened.add(id);
@@ -389,6 +393,59 @@ void main() {
       expect(formatCellNumber(-1200, r'$'), r'-$1,200');
       expect(formatCellNumber(-5000.75, 'ft'), '-5,000.75 ft');
     });
+  });
+
+  testWidgets('Jose 11-18: the company board comes first in Team boards, and '
+      'Move up reorders, saved as a shared position', (tester) async {
+    arrange = true;
+    addTearDown(() => arrange = false);
+    patches.clear();
+    await pumpBoard(
+      tester,
+      boards: [
+        board(
+          'b-me',
+          'user',
+          'Maya Lopez',
+          section: 'mine',
+          owner: 'Maya Lopez',
+        ),
+        board(
+          'b-ct',
+          'franchise',
+          'CT - Connecticut',
+          section: 'shared',
+          franchiseId: 'f-1',
+        ),
+        board(
+          'b-dmv',
+          'franchise',
+          'DMV',
+          section: 'shared',
+          franchiseId: 'f-2',
+        ),
+        board(
+          'b-a1',
+          'company',
+          'A-1 Chimney',
+          section: 'shared',
+          companyId: 'c-1',
+        ),
+      ],
+    );
+    double y(String id) => tester.getTopLeft(row(id)).dy;
+    expect(y('b-a1'), lessThan(y('b-ct')), reason: 'the company board first');
+    expect(y('b-ct'), lessThan(y('b-dmv')));
+
+    await tester.tap(row('b-dmv'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('board-up-b-dmv')));
+    await tester.pumpAndSettle();
+    final positions = {
+      for (final p in patches.whereType<List>())
+        p[0]: (p[1] as Map)['position'],
+    };
+    expect(positions['b-dmv'], lessThan(positions['b-ct'] as int));
   });
 
   testWidgets('My Board is the first entry, above Shared with me, Folders, '

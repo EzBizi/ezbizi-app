@@ -42,7 +42,8 @@ final class MondaySync
      * @param  list<string>|null  $items  read just these items (a webhook), not the changed ones
      * @return array<string, array<string, mixed>> monday board id => report
      */
-    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null, bool $scan = false): array
+    /** @param  bool  $reapply  take Monday's state even when the item's clock did not move (a group move may not bump it) */
+    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null, bool $scan = false, bool $reapply = false): array
     {
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
         $reader = new MondayBoardReader($client ?? MondayClient::for($connection));
@@ -104,7 +105,7 @@ final class MondaySync
                         'people' => (array) ($state['people'] ?? []),
                         'users' => $reader->users(),
                         'boards' => [$meta + ['target_board_id' => $board->id, 'items' => $reader->items($mondayId, $chunk)]],
-                    ], $as, refresh: true);
+                    ], $as, refresh: true, reapply: $reapply);
                     foreach ($report['counts'] as $k => $v) {
                         $reports[$mondayId]['counts'][$k] = ($reports[$mondayId]['counts'][$k] ?? 0) + $v;
                     }

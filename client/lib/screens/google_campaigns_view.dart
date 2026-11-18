@@ -46,6 +46,13 @@ class _GoogleCampaignsViewState
   @override
   bool keepAccount(Map account) => account['is_manager'] != true;
 
+  /// Managers hold no campaigns, so they are not offered; each entry says it
+  /// is a campaign account, as two can share a name with their manager
+  /// ("A1 Chimney - Chicago", Rodrigo 01a1ef57).
+  @override
+  String accountDetail(Map account) =>
+      'Campaign account · ${googleCustomerId('${account['customer_id']}')}';
+
   @override
   bool isActive(Map<String, dynamic> row) => row['status'] == 'ENABLED';
 
@@ -153,7 +160,7 @@ class _GoogleCampaignsViewState
   }
 
   Future<void> _edit(Map<String, dynamic> c, {required bool target}) async {
-    final saved = await showSidePanel<bool>(
+    final sent = await showSidePanel<double>(
       context,
       builder: (_) => _AmountPanel(
         api: widget.api,
@@ -163,7 +170,29 @@ class _GoogleCampaignsViewState
         days: days,
       ),
     );
-    if (saved == true && mounted) load(quiet: true);
+    if (sent == null || !mounted) return;
+    // Google's own read-back, not our request (Rodrigo, 01a1ef57: "provider-
+    // confirmed or pending").
+    await load(quiet: true);
+    if (!mounted) return;
+    final field = target ? 'target' : 'daily_budget';
+    final now = (campaigns ?? const []).firstWhere(
+      (r) => '${r['id']}' == '${c['id']}',
+      orElse: () => const {},
+    )[field];
+    final confirmed = now is num && (now - sent).abs() < 0.01;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          key: const ValueKey('google-change-readback'),
+          content: Text(
+            confirmed
+                ? 'Google confirms the new ${target ? 'target' : 'budget'}.'
+                : 'Saved. Google does not show it yet; it can take a minute.',
+          ),
+        ),
+      );
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────
@@ -423,6 +452,16 @@ class _AmountPanelState extends State<_AmountPanel> {
       );
       return;
     }
+    // Before and after, side by side, before anything is sent (Rodrigo, 01a1ef57).
+    final ok = await confirmAdChange(
+      context,
+      title: widget.target
+          ? 'Change the bid target?'
+          : 'Change the ${_weekly ? 'weekly' : 'daily'} budget?',
+      change: '${_show(_start())} → ${_show(_amount.text)}',
+      detail: '${widget.campaign['name']}. Google applies it right away.',
+    );
+    if (!ok || !mounted) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -448,7 +487,23 @@ class _AmountPanelState extends State<_AmountPanel> {
       });
       return;
     }
-    Navigator.of(context).pop(true);
+    Navigator.of(context).pop(
+      widget.target
+          ? (_roas ? typed / 100 : typed)
+          : (_weekly ? typed / 7 : typed),
+    );
+  }
+
+  /// A typed or current amount as the panel means it: 350% or $45.00 / day.
+  String _show(String text) {
+    final v = double.tryParse(text.replaceAll(RegExp(r'[$%,]'), '').trim());
+    if (v == null) return 'not set';
+    if (_roas) return '${v.round()}%';
+    return '${adMoney(v)}${widget.target
+        ? ''
+        : _weekly
+        ? ' / week'
+        : ' / day'}';
   }
 
   @override
@@ -532,3 +587,8 @@ double lsaWeekly(num daily) {
   final whole = week.roundToDouble();
   return (week - whole).abs() <= 0.035 ? whole : (week * 100).round() / 100;
 }
+
+/// A Google Ads customer id as Google writes it: 123-456-7890.
+String googleCustomerId(String id) => id.length == 10
+    ? '${id.substring(0, 3)}-${id.substring(3, 6)}-${id.substring(6)}'
+    : id;

@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Support\Social\SocialProvider;
 use App\Support\Tasks\Monday\MondayWebhookSignature;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,10 +46,16 @@ class MondayWebhookController extends Controller
 
         // Where it lands: the task already holding the item, else the board
         // holding Monday's board (a new item). Every organization that has it.
-        $targets = Task::query()->withoutGlobalScopes()->where('tasks.external_ref', 'monday:'.$itemId)->whereNull('tasks.deleted_at')
+        $rows = Task::query()->withoutGlobalScopes()->where('tasks.external_ref', 'monday:'.$itemId)->whereNull('tasks.deleted_at')
             ->join('task_boards', 'task_boards.id', '=', 'tasks.board_id')
-            ->get(['tasks.organization_id', 'task_boards.external_ref'])
-            ->map(fn ($r) => [$r->organization_id, $r->external_ref]);
+            ->get(['tasks.organization_id', 'task_boards.external_ref', 'tasks.external_synced_at']);
+        // Our own push coming back (desk 11-18): a change Monday made at or before the moment we
+        // last wrote or read this item is already here. Dropped, not queued as a read.
+        $at = isset($event['triggerTime']) ? rescue(fn () => CarbonImmutable::parse((string) $event['triggerTime']), null, false) : null;
+        if ($at !== null && $rows->isNotEmpty() && $rows->every(fn ($r) => $r->external_synced_at !== null && ! $at->greaterThan(CarbonImmutable::parse($r->external_synced_at)))) {
+            return response()->json(['queued' => 0, 'echo' => true]);
+        }
+        $targets = $rows->map(fn ($r) => [$r->organization_id, $r->external_ref]);
         if ($targets->isEmpty() && ctype_digit($boardId)) {
             $targets = TaskBoard::query()->withoutGlobalScopes()->where('external_ref', 'monday:'.$boardId)->whereNull('deleted_at')
                 ->get(['organization_id', 'external_ref'])->map(fn ($b) => [$b->organization_id, $b->external_ref]);

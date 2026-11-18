@@ -460,6 +460,33 @@ void main() {
     );
   });
 
+  test('All conversions says why it equals Conversions, only when it does', () {
+    expect(allConversionsHint(32, 32), contains('Equal here'));
+    expect(allConversionsHint(31.5, 44.25), isNot(contains('Equal here')));
+    expect(allConversionsHint(null, 3), isNot(contains('Equal here')));
+  });
+
+  testWidgets('both conversion column headings explain themselves (Bar)', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final table = find.byKey(const ValueKey('ads-campaigns'));
+    expect(
+      find.descendant(of: table, matching: find.byTooltip(conversionsHint)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: table,
+        matching: find.byTooltip(allConversionsHint(null, null)),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a refused account is named rather than dropped', (tester) async {
     await pump(
       tester,
@@ -790,6 +817,8 @@ void main() {
             'conversions': 31.5,
             'all_conversions': 44.25,
             'cost': 1234.56,
+            'lead_cost': 300,
+            'leads': 3,
             'currency': 'USD',
           },
           {
@@ -801,6 +830,8 @@ void main() {
             'conversions': 4,
             'all_conversions': 6,
             'cost': 65.44,
+            'lead_cost': 100,
+            'leads': 1,
             'currency': 'USD',
           },
         ],
@@ -832,6 +863,12 @@ void main() {
     final figures = find.byKey(const ValueKey('ads-rollup-figures'));
     expect(
       find.descendant(of: figures, matching: find.text(r'$1,300.00')),
+      findsOneWidget,
+    );
+    // Cost / lead on Local Services spend (400 over 4), not all spend
+    // (1,300 over 4): Bar, 2026-11-18.
+    expect(
+      find.descendant(of: figures, matching: find.text(r'$100.00')),
       findsOneWidget,
     );
 

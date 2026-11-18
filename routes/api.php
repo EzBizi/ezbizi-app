@@ -3614,6 +3614,11 @@ Route::prefix('v1')
         Route::get('alerts/recipients', [AlertsController::class, 'recipients']);
         Route::get('alerts', [AlertsController::class, 'index']);
         Route::post('alerts', [AlertsController::class, 'send']);
+        // Questions (Jose 11-18): an alert that takes an answer. Being asked
+        // needs no tab; the controller checks the person was asked.
+        Route::get('alerts/questions', [AlertsController::class, 'questions']);
+        Route::get('alerts/{alert}/replies', [AlertsController::class, 'replies']);
+        Route::post('alerts/{alert}/reply', [AlertsController::class, 'reply']);
 
         // ── Settings (§6) ────────────────────────────────────────
         // Settings › Lists (2026-11-04): a business's own lists, a row per call.

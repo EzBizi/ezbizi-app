@@ -59,8 +59,13 @@ class SchedulerLanesTest extends TestCase
         // The control: a fast command, and a near-name that must stay fast.
         $this->assertTrue($fast['ezbizi:leads-reply-overdue']);
         $this->assertFalse($slow['ezbizi:leads-reply-overdue']);
-        $this->assertTrue($fast['ezbizi:monday-push'], 'the one-minute outbox stays fast');
-        $this->assertFalse($slow['ezbizi:monday-push']);
+        // The outbox senders (desk 11-18: four parallel shard jobs) stay in the fast slots.
+        putenv('EZBIZI_SCHEDULE_LANE');
+        $shards = array_filter($this->app->make(Schedule::class)->events(), fn ($e) => str_starts_with((string) $e->description, 'monday-push-shard-'));
+        $this->assertCount(4, $shards);
+        foreach ($shards as $e) {
+            $this->assertTrue($e->filtersPass($this->app), 'the one-minute outbox stays fast');
+        }
         $this->assertTrue($fast['ezbizi:sync-workiz-records'] ?? true);
         $this->assertFalse($slow['ezbizi:sync-workiz-records'] ?? false);
     }

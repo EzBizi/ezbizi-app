@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\PushMondayShard;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -210,8 +211,15 @@ Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(2
 // Both run in the slow lane (2026-11-16: the poll took ~4 min of a 5-min fast slot and the slot timed out).
 Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
-Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
+// Desk 11-18: four parallel senders, each on its own share of tasks (a task's rows stay in order),
+// on the "monday-push" queue with one worker each. ezbizi:monday-push stays for a manual run.
+foreach (range(0, 3) as $shard) {
+    Schedule::job(new PushMondayShard($shard, 4), 'monday-push')->everyMinute()->name('monday-push-shard-'.$shard);
+}
 // Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
+// Every 30 minutes, group moves only (desk 11-18: a missed call closed on Monday must close here soon,
+// and a Monday move may not bump the item's clock): Outgoing Calls and every Project Management board.
+Schedule::command("ezbizi:monday-parity --fix --groups-only --boards='Outgoing Calls,%Project Management%'")->everyThirtyMinutes()->withoutOverlapping(25);
 Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
