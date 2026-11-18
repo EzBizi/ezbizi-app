@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0599', date: '18 Nov 2026', items: [
+      'Task Board: the company board shows first in Team boards for everyone who can already open it',
+      'Project Management: the Inbox shows how long ago each recent message came in, as Leads does',
+      'Phone: the company and branch picker has its own row under the top bar, so it is never squeezed',
+      'Task Board: a task deleted on Monday right after it was created there now leaves EzBizi too',
+      'Task Board: every 30 minutes, moves and deletions made on Monday are checked on every board except the largest, so nothing stays out of step for long',
+    ]),
     VersionRelease(version: '0.0.0598', date: '18 Nov 2026', items: [
       'Task Board: the weekly misfiled report names the rule or automation that filed a task, not the person who made the rule',
       'Task Board: complaint and bad-review tasks stay in Customer Relations until a person approves a refund or files a chargeback',
