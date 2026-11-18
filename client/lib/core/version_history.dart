@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0593', date: '18 Nov 2026', items: [
+      'Scheduling: the full-window alert works on days that also hold a Workiz job not yet linked or a web booking',
+    ]),
     VersionRelease(version: '0.0.0592', date: '18 Nov 2026', items: [
       'Jobs: booking refuses a full or late time window and offers the next 3 open ones; an admin can override with a reason, which goes to the field managers; approving an online booking re-checks the window and assigns a technician',
       'Jobs › Book: book a job in one place, with a live grid of days and time windows where full or late windows cannot be picked; every Book button opens the same panel',
