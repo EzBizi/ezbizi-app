@@ -19,6 +19,7 @@ use App\Support\Social\Publishing\GoogleBusinessProfilePublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\PostState;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
@@ -67,9 +68,11 @@ class SocialPostsController extends Controller
      */
     private const MAX_BODY = 5000;
 
-    /** The Posts tiles, in the order the screen draws them. */
-    // `awaiting` is its own state: a post waiting for approval is never counted as Scheduled.
-    private const TILES = ['scheduled', 'sent', 'failed', 'awaiting'];
+    /**
+     * The Posts tiles: one per work state (PostState), each post in at most
+     * one. `awaiting` is Needs approval and `sent` is Published.
+     */
+    private const TILES = PostState::ALL;
 
     /** Business Profile's call-to-action buttons (v4 localPosts actionType). */
     private const CTA_TYPES = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
@@ -113,14 +116,24 @@ class SocialPostsController extends Controller
         // The Posts tiles count every post this view can see, not the twenty
         // drawn, so a tile can never say fewer than the list it filters
         // (Mia, 2026-10-02, Posts layout A). Counted before `status` narrows.
+        // Each post is read once by PostState, the same reading every row
+        // carries, so a tile and a pill can never disagree.
+        // ponytail: classified in PHP over the view's posts (ids, schedule and
+        // target statuses only); a SQL form needs per-post timezones.
+        $states = (clone $query)
+            ->with(['targets:id,social_post_id,social_connection_id,status'])
+            ->get(['id', 'scheduled_for', 'scheduled_timezone'])
+            ->mapWithKeys(fn (SocialPost $p) => [$p->getKey() => PostState::of(
+                $p, $p->targets->filter(fn (SocialPostTarget $t) => $visible->has($t->social_connection_id)),
+            )]);
         $tiles = [];
-        foreach (self::TILES as $status) {
-            $tiles[$status] = $this->inStatus(clone $query, $status, $visible->keys()->all())->count();
+        foreach (self::TILES as $state) {
+            $tiles[$state] = $states->filter(fn ($s) => $s === $state)->count();
         }
 
         $status = $request->query('status');
         if (in_array($status, self::TILES, true)) {
-            $this->inStatus($query, $status, $visible->keys()->all());
+            $query->whereIn('id', $states->filter(fn ($s) => $s === $status)->keys()->all());
         }
 
         // The search bar narrows the list like `status` does: after the tiles.
@@ -160,6 +173,10 @@ class SocialPostsController extends Controller
             'meta' => ['tiles' => $tiles],
             'data' => $posts->map(fn (SocialPost $post) => [
                 'id' => $post->getKey(),
+                // Needs approval, Ready, Scheduled, Past due, Published or
+                // Failed (PostState); null while sending or never sent.
+                'state' => PostState::of($post, $post->targets
+                    ->filter(fn (SocialPostTarget $t) => $visible->has($t->social_connection_id))),
                 'body' => $post->body,
                 'title' => $post->title,
                 'has_media' => $post->media_path !== null,
@@ -995,44 +1012,6 @@ class SocialPostsController extends Controller
         return $refused;
     }
 
-    /**
-     * Narrow to posts in one tile, judged on the targets THIS view can see -
-     * the same targets the list shows, so the pill and the tile agree.
-     *
-     * The same reading as the screen's colour for a post: any failed account
-     * makes it failed; every account waiting for its time makes it scheduled;
-     * otherwise, once nothing is still queued, it went out. A post still in
-     * the queue is in no tile: it is neither out nor refused yet.
-     *
-     * @param  list<string>  $visible
-     */
-    private function inStatus($query, string $status, array $visible)
-    {
-        $targets = fn ($q) => $q->whereIn('social_connection_id', $visible);
-
-        return match ($status) {
-            'failed' => $query->whereHas('targets', fn ($q) => $targets($q)
-                ->where('status', SocialPostTarget::STATUS_FAILED)),
-            // Needs approval (review 2026-11-09 A13): somebody has to decide it.
-            'awaiting' => $query->whereHas('targets', fn ($q) => $targets($q)
-                ->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)),
-            // Scheduled means a time is set and nothing is still waiting for a
-            // decision (suggestion 01a1ef57): a post awaiting approval, or one
-            // with no time, is not counted here. Needs approval has its own tile.
-            'scheduled' => $query->whereNotNull('scheduled_for')->where('scheduled_for', '!=', '')
-                ->whereHas('targets', $targets)
-                ->whereDoesntHave('targets', fn ($q) => $targets($q)
-                    ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
-            'sent' => $query
-                ->whereDoesntHave('targets', fn ($q) => $targets($q)
-                    ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED, SocialPostTarget::STATUS_AWAITING_APPROVAL]))
-                // At least one account really has it. Disapproved and removed
-                // never went out (or were taken down), so they alone are not Sent.
-                ->whereHas('targets', fn ($q) => $targets($q)
-                    ->where('status', SocialPostTarget::STATUS_SENT)),
-        };
-    }
-
     /** The TikTok target went (or goes) to the inbox: its own mode, else the installation's. */
     private function inboxTarget(SocialPostTarget $target, ?SocialConnection $connection): bool
     {
@@ -1044,6 +1023,24 @@ class SocialPostsController extends Controller
             'inbox' => true,
             'direct' => false,
             default => ! Publishers::tiktokIsAudited(),
+        };
+    }
+
+    /** @var array<string, ?string> */
+    private array $ownerNames = [];
+
+    /** The company or branch a connection belongs to, by name; null for the organization. */
+    private function ownerName(?SocialConnection $connection): ?string
+    {
+        if ($connection === null || $connection->scope_id === null) {
+            return null;
+        }
+        $key = $connection->scope_type.':'.$connection->scope_id;
+
+        return $this->ownerNames[$key] ??= match ($connection->scope_type) {
+            'company' => \App\Models\Company::query()->whereKey($connection->scope_id)->value('name'),
+            'franchise' => \App\Models\Franchise::query()->whereKey($connection->scope_id)->value('name'),
+            default => null,
         };
     }
 
@@ -1061,6 +1058,13 @@ class SocialPostsController extends Controller
             'status_label' => $this->inboxTarget($target, $connection) && $target->status === SocialPostTarget::STATUS_SENT
                 ? 'Sent to TikTok inbox' : null,
             'failure' => $target->failure,
+            // Whose account it is: the company or branch it was connected for.
+            'company' => $this->ownerName($connection),
+            // Business Profile's button, when the post has one.
+            'cta_type' => $target->options['cta_type'] ?? null,
+            'cta_url' => $target->options['cta_url'] ?? null,
+            // The account needs reconnecting: nothing posts there until then.
+            'connection_status' => $connection?->status,
             'sent_at' => $target->sent_at?->toIso8601String(),
             'url' => $target->url,
             // The server's answer, so the Delete button never drifts from what works.

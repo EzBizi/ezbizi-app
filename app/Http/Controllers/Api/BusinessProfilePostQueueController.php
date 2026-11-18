@@ -47,18 +47,29 @@ class BusinessProfilePostQueueController extends Controller
         $place = $this->awaiting($target);
         $input = $request->validate(['body' => ['nullable', 'string', 'min:20', 'max:1500']]);
         abort_unless($place->isLive(), 422, $place->title.' is not live on Google, so Google would not show the post. Nothing was sent.');
+        // Approving is not releasing (suggestion 01a1ef57): a post with a time
+        // ahead is approved FOR that time and the sweep sends it then; one
+        // whose time has passed is refused until somebody picks a new time;
+        // one with no time goes now, as the button says.
+        $due = $target->post?->dueAt();
+        abort_if($due !== null && $due->lte(now()), 422,
+            'Its planned time has passed. Pick a new time, then approve it.');
+        $next = $due === null ? SocialPostTarget::STATUS_QUEUED : SocialPostTarget::STATUS_SCHEDULED;
         // One decision per draft: two Approves (two tabs, two people) flip it once and send once.
-        if (! $this->decide($target, ['status' => SocialPostTarget::STATUS_QUEUED])) {
+        if (! $this->decide($target, ['status' => $next])) {
             abort(409, 'This post was already decided.');
         }
         if (($input['body'] ?? null) !== null) {
             $target->post->forceFill(['body' => trim($input['body'])])->save();
         }
         app(AuditLogger::class)->log('business_profile.post_approved', $place);
-        PublishSocialTarget::dispatch($target->getKey());
+        if ($next === SocialPostTarget::STATUS_QUEUED) {
+            PublishSocialTarget::dispatch($target->getKey());
+        }
         $this->writeNext($place);
 
-        return response()->json(['data' => ['id' => $target->id, 'status' => SocialPostTarget::STATUS_QUEUED]]);
+        return response()->json(['data' => ['id' => $target->id, 'status' => $next,
+            'scheduled_for' => $target->post?->scheduled_for]]);
     }
 
     /** POST /business-profile/post-queue/{target}/disapprove {reason?} */
