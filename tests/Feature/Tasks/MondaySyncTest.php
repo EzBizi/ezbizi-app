@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -147,6 +149,23 @@ class MondaySyncTest extends TestCase
 
         $this->assertSame($elsewhere->id, $this->task('11')->board_id);
         $this->assertNotNull($this->task('12'), 'the next item still arrived');
+    }
+
+    /** Jose 11-18, "everything must be mirrored": the nightly parity check finds both sides' gaps and closes them. */
+    public function test_parity_finds_what_one_side_lacks_and_fix_closes_it(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $mine = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(fn () => app(TaskWriter::class)->create($board, ['title' => 'Made before the outbox'], $this->jose)));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z'),
+            $this->mondayItem('13', 'Only on Monday', '2026-11-12T10:30:00Z'),
+        ])];
+
+        $this->artisan('ezbizi:monday-parity')->expectsOutputToContain('tasks only here 1, items only on Monday 1')->assertFailed();
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true])->assertSuccessful();
+
+        $this->assertNotNull($this->task('13'));
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 
     /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */

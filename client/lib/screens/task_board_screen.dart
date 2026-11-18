@@ -3270,12 +3270,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        SidewaysScroll(
-          key: const Key('tasks-table-scroll'),
+        // A visible sideways bar, as PM's table (Jose 11-18: "no way to scroll
+        // sideways"); shift-wheel and a trackpad also move it.
+        Scrollbar(
+          key: const Key('tasks-sideways-bar'),
           controller: _sideways,
-          // 32: page padding; 2: the group box's border.
-          contentWidth: 34 + _fixedWidth,
-          child: list,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: SidewaysScroll(
+            key: const Key('tasks-table-scroll'),
+            controller: _sideways,
+            // 32: page padding; 2: the group box's border.
+            contentWidth: 34 + _fixedWidth,
+            child: list,
+          ),
         ),
         if (_picked.isNotEmpty)
           Positioned(
@@ -3937,18 +3945,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ),
             ),
             ..._inOrder({
-            if (shown('creator')) 'creator': blank(_w('creator')),
-            if (shown('owner')) 'owner': blank(_w('owner')),
-            if (shown('status')) 'status':
-              SizedBox(width: _w('status'), height: 30, child: statusBar()),
-            if (shown('created')) 'created': blank(_w('created')),
-            if (shown('due')) 'due':
-              dates(_w('due'), [
-                for (final t in tasks) ...daysOf(t['due_on']),
-              ], const Key('due-footer')),
-            for (final c in columns) 'c:${c.id}': columnFooter(c),
-            if (shown('about')) 'about': blank(_w('about')),
-            if (shown('updates')) 'updates': blank(_w('updates')),
+              if (shown('creator')) 'creator': blank(_w('creator')),
+              if (shown('owner')) 'owner': blank(_w('owner')),
+              if (shown('status'))
+                'status': SizedBox(
+                  width: _w('status'),
+                  height: 30,
+                  child: statusBar(),
+                ),
+              if (shown('created')) 'created': blank(_w('created')),
+              if (shown('due'))
+                'due': dates(_w('due'), [
+                  for (final t in tasks) ...daysOf(t['due_on']),
+                ], const Key('due-footer')),
+              for (final c in columns) 'c:${c.id}': columnFooter(c),
+              if (shown('about')) 'about': blank(_w('about')),
+              if (shown('updates')) 'updates': blank(_w('updates')),
             }),
             if (_canEdit) blank(_widths.add),
           ],
@@ -4012,40 +4024,41 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ),
             ),
             ..._inOrder({
-            if (shown('creator')) 'creator': b('creator', _w('creator')),
-            if (shown('owner')) 'owner': b('owner', _w('owner')),
-            if (shown('status')) 'status': b('status', _w('status')),
-            if (shown('created')) 'created': b('created', _w('created')),
-            if (shown('due')) 'due': b('due', _w('due')),
-            for (final c in boardColumns(_board)) 'c:${c.id}':
-              _resizable(
-                'c:${c.id}',
-                _cell(context, _w('c:${c.id}'), _columnHeader(c, h(c.name))),
-              ),
-            if (shown('about')) 'about': _resizable(
-              'about',
-              _cell(
-                context,
-                _w('about'),
-                _builtinHead(
+              if (shown('creator')) 'creator': b('creator', _w('creator')),
+              if (shown('owner')) 'owner': b('owner', _w('owner')),
+              if (shown('status')) 'status': b('status', _w('status')),
+              if (shown('created')) 'created': b('created', _w('created')),
+              if (shown('due')) 'due': b('due', _w('due')),
+              for (final c in boardColumns(_board))
+                'c:${c.id}': _resizable(
+                  'c:${c.id}',
+                  _cell(context, _w('c:${c.id}'), _columnHeader(c, h(c.name))),
+                ),
+              if (shown('about'))
+                'about': _resizable(
                   'about',
-                  group,
-                  // One name on every board (Jose 11-17); a board's own
-                  // name for it shows on hover.
-                  Tooltip(
-                    message: _builtinLabel(_board, 'about'),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.link, size: 14),
-                        const SizedBox(width: 4),
-                        Flexible(child: h('Linked')),
-                      ],
+                  _cell(
+                    context,
+                    _w('about'),
+                    _builtinHead(
+                      'about',
+                      group,
+                      // One name on every board (Jose 11-17); a board's own
+                      // name for it shows on hover.
+                      Tooltip(
+                        message: _builtinLabel(_board, 'about'),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.link, size: 14),
+                            const SizedBox(width: 4),
+                            Flexible(child: h('Linked')),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            if (shown('updates')) 'updates': b('updates', _w('updates')),
+              if (shown('updates')) 'updates': b('updates', _w('updates')),
             }),
             if (_canEdit)
               SizedBox(
@@ -4093,217 +4106,229 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           context,
           '${t['id']}',
           SizedBox(
-          height: 38,
-          // The colour strip and the Task cell stay put when the row
-          // scrolls sideways (QA 11-16, #26).
-          child: PinnedRow(
-            sideways: _sideways,
-            edge: theme.dividerColor,
-            children: [
-              Container(
-                width: 6,
-                color: sub ? colour.withValues(alpha: 0.4) : colour,
-              ),
-              SizedBox(
-                width: _w('task'),
-                child: Padding(
-                  padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
-                  child: Row(
-                    children: [
-                      if (!sub && _canEdit) ...[
-                        SizedBox(width: 18, child: _dragHandle(context, t)),
-                        SizedBox(
-                          width: 32,
-                          // A toggle, not a Checkbox: the board's own
-                          // checkbox columns are the Checkboxes on a row.
-                          child: IconButton(
-                            key: ValueKey('task-pick-${t['id']}'),
-                            tooltip: 'Select',
-                            padding: EdgeInsets.zero,
-                            iconSize: 18,
-                            isSelected: _picked.contains(t['id']),
-                            icon: const Icon(Icons.check_box_outline_blank),
-                            selectedIcon: const Icon(Icons.check_box),
-                            onPressed: () => _pick(t['id'] as String),
+            height: 38,
+            // The colour strip and the Task cell stay put when the row
+            // scrolls sideways (QA 11-16, #26).
+            child: PinnedRow(
+              sideways: _sideways,
+              edge: theme.dividerColor,
+              children: [
+                Container(
+                  width: 6,
+                  color: sub ? colour.withValues(alpha: 0.4) : colour,
+                ),
+                SizedBox(
+                  width: _w('task'),
+                  child: Padding(
+                    padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
+                    child: Row(
+                      children: [
+                        if (!sub && _canEdit) ...[
+                          SizedBox(width: 18, child: _dragHandle(context, t)),
+                          SizedBox(
+                            width: 32,
+                            // A toggle, not a Checkbox: the board's own
+                            // checkbox columns are the Checkboxes on a row.
+                            child: IconButton(
+                              key: ValueKey('task-pick-${t['id']}'),
+                              tooltip: 'Select',
+                              padding: EdgeInsets.zero,
+                              iconSize: 18,
+                              isSelected: _picked.contains(t['id']),
+                              icon: const Icon(Icons.check_box_outline_blank),
+                              selectedIcon: const Icon(Icons.check_box),
+                              onPressed: () => _pick(t['id'] as String),
+                            ),
                           ),
-                        ),
-                      ],
-                      if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
-                      if (!sub) _subtaskToggle(t),
-                      Flexible(
-                        child: Text(
-                          taskTitle(t),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: sub ? FontWeight.w500 : FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      if (t['rolled_up_from'] case final Map from)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6),
+                        ],
+                        if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
+                        if (!sub) _subtaskToggle(t),
+                        Flexible(
                           child: Text(
-                            '${from['board_name']}',
-                            key: ValueKey('task-from-${t['id']}'),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                            taskTitle(t),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: sub
+                                  ? FontWeight.w500
+                                  : FontWeight.w600,
                             ),
                           ),
                         ),
-                      if (!sub) _subtaskCountChip(context, t),
-                    ],
-                  ),
-                ),
-              ),
-              ..._inOrder({
-              if (shown('creator')) 'creator':
-                _cell(context, _w('creator'), _creatorCell(context, t)),
-              if (shown('owner')) 'owner':
-                _cell(
-                  context,
-                  _w('owner'),
-                  _canEdit
-                      ? _ownerMenu(t, _ownerFaces(t, owners))
-                      : _ownerFaces(t, owners),
-                ),
-              if (shown('status')) 'status':
-                SizedBox(width: _w('status'), child: _statusCell(context, t)),
-              if (shown('created')) 'created':
-                _cell(
-                  context,
-                  _w('created'),
-                  Text(
-                    _createdLabel(t['created_at'], _formats),
-                    key: ValueKey('task-created-${t['id']}'),
-                    maxLines: 1,
-                  ),
-                ),
-              if (shown('due')) 'due':
-                _cell(
-                  context,
-                  _w('due'),
-                  _dueCell(
-                    t,
-                    Text(
-                      _dueLabel(t['due_on'], _formats),
-                      maxLines: 1,
-                      style: late
-                          ? TextStyle(
-                              color: theme.colorScheme.error,
-                              fontWeight: FontWeight.w700,
-                            )
-                          : null,
+                        if (t['rolled_up_from'] case final Map from)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Text(
+                              '${from['board_name']}',
+                              key: ValueKey('task-from-${t['id']}'),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        if (!sub) _subtaskCountChip(context, t),
+                      ],
                     ),
                   ),
                 ),
-              for (final c in boardColumns(_board)) 'c:${c.id}':
-                c.type == 'status'
-                    ? _rangeCell(
+                ..._inOrder({
+                  if (shown('creator'))
+                    'creator': _cell(
+                      context,
+                      _w('creator'),
+                      _creatorCell(context, t),
+                    ),
+                  if (shown('owner'))
+                    'owner': _cell(
+                      context,
+                      _w('owner'),
+                      _canEdit
+                          ? _ownerMenu(t, _ownerFaces(t, owners))
+                          : _ownerFaces(t, owners),
+                    ),
+                  if (shown('status'))
+                    'status': SizedBox(
+                      width: _w('status'),
+                      child: _statusCell(context, t),
+                    ),
+                  if (shown('created'))
+                    'created': _cell(
+                      context,
+                      _w('created'),
+                      Text(
+                        _createdLabel(t['created_at'], _formats),
+                        key: ValueKey('task-created-${t['id']}'),
+                        maxLines: 1,
+                      ),
+                    ),
+                  if (shown('due'))
+                    'due': _cell(
+                      context,
+                      _w('due'),
+                      _dueCell(
                         t,
-                        c,
-                        SizedBox(
-                          width: _w('c:${c.id}'),
-                          child: ColumnCell(
-                            column: c,
-                            value: columnValue(t, c),
-                            taskDone: _isDone(_board, t),
-                            people: _people,
-                            formats: _formats,
-                            onChanged: _canEdit
-                                ? (v) => _setValue(t, c.id, v)
-                                : null,
-                            onAddOption: _canEdit
-                                ? (label) => _addOption(c, label)
-                                : null,
-                            onEditOptions: _canEdit
-                                ? () => _editColumn(c)
-                                : null,
-                            onMenu: _statusMenu,
-                            api: widget.api,
-                            onAutoAssign: _canEdit && c.type == 'status'
-                                ? () => _suggestLabel(t, c.id)
-                                : null,
-                          ),
-                        ),
-                      )
-                    : _rangeCell(
-                        t,
-                        c,
-                        _cell(
-                          context,
-                          _w('c:${c.id}'),
-                          ColumnCell(
-                            column: c,
-                            value: columnValue(t, c),
-                            taskDone: _isDone(_board, t),
-                            people: _people,
-                            formats: _formats,
-                            onChanged: _canEdit
-                                ? (v) => _setValue(t, c.id, v)
-                                : null,
-                            onAddOption: _canEdit
-                                ? (label) => _addOption(c, label)
-                                : null,
-                            onEditOptions: _canEdit
-                                ? () => _editColumn(c)
-                                : null,
-                            onMenu: _statusMenu,
-                            api: widget.api,
-                            boardId: '${_board!['id']}',
-                            onFilter: () => _filterTo(c.id, _valueOf(c.id, t)),
-                            // Dependency: this board's other tasks; Connect
-                            // starts from them too.
-                            tasks: c.type == 'connect' || c.type == 'dependency'
-                                ? [
-                                    for (final o in _tasks)
-                                      if (o['id'] != t['id'])
-                                        ('${o['id']}', taskTitle(o)),
-                                  ]
-                                : null,
-                            onAddFile: _canEdit && c.type == 'files'
-                                ? () => _addFileTo(t, c)
-                                : null,
-                            onAutoAssign: _canEdit && c.type == 'status'
-                                ? () => _suggestLabel(t, c.id)
-                                : null,
-                          ),
+                        Text(
+                          _dueLabel(t['due_on'], _formats),
+                          maxLines: 1,
+                          style: late
+                              ? TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w700,
+                                )
+                              : null,
                         ),
                       ),
-              if (shown('about')) 'about':
-                _cell(
-                  context,
-                  _w('about'),
-                  _linkedCell(context, t, about),
-                ),
-              if (shown('updates')) 'updates':
-                _cell(
-                  context,
-                  _w('updates'),
-                  updates == 0
-                      ? const SizedBox.shrink()
-                      : Row(
-                          children: [
-                            unreadNotesBadge(
-                              Icon(
-                                Icons.chat_bubble_outline,
-                                size: 14,
-                                color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  for (final c in boardColumns(_board))
+                    'c:${c.id}': c.type == 'status'
+                        ? _rangeCell(
+                            t,
+                            c,
+                            SizedBox(
+                              width: _w('c:${c.id}'),
+                              child: ColumnCell(
+                                column: c,
+                                value: columnValue(t, c),
+                                taskDone: _isDone(_board, t),
+                                people: _people,
+                                formats: _formats,
+                                onChanged: _canEdit
+                                    ? (v) => _setValue(t, c.id, v)
+                                    : null,
+                                onAddOption: _canEdit
+                                    ? (label) => _addOption(c, label)
+                                    : null,
+                                onEditOptions: _canEdit
+                                    ? () => _editColumn(c)
+                                    : null,
+                                onMenu: _statusMenu,
+                                api: widget.api,
+                                onAutoAssign: _canEdit && c.type == 'status'
+                                    ? () => _suggestLabel(t, c.id)
+                                    : null,
                               ),
-                              t['unread_notes'],
-                              key: ValueKey('task-unread-${t['id']}'),
                             ),
-                            const SizedBox(width: 4),
-                            Text('$updates'),
-                          ],
-                        ),
-                ),
-              }),
-              // Under the headings' +, so every column lines up.
-              if (_canEdit) SizedBox(width: _widths.add),
-            ],
+                          )
+                        : _rangeCell(
+                            t,
+                            c,
+                            _cell(
+                              context,
+                              _w('c:${c.id}'),
+                              ColumnCell(
+                                column: c,
+                                value: columnValue(t, c),
+                                taskDone: _isDone(_board, t),
+                                people: _people,
+                                formats: _formats,
+                                onChanged: _canEdit
+                                    ? (v) => _setValue(t, c.id, v)
+                                    : null,
+                                onAddOption: _canEdit
+                                    ? (label) => _addOption(c, label)
+                                    : null,
+                                onEditOptions: _canEdit
+                                    ? () => _editColumn(c)
+                                    : null,
+                                onMenu: _statusMenu,
+                                api: widget.api,
+                                boardId: '${_board!['id']}',
+                                onFilter: () =>
+                                    _filterTo(c.id, _valueOf(c.id, t)),
+                                // Dependency: this board's other tasks; Connect
+                                // starts from them too.
+                                tasks:
+                                    c.type == 'connect' ||
+                                        c.type == 'dependency'
+                                    ? [
+                                        for (final o in _tasks)
+                                          if (o['id'] != t['id'])
+                                            ('${o['id']}', taskTitle(o)),
+                                      ]
+                                    : null,
+                                onAddFile: _canEdit && c.type == 'files'
+                                    ? () => _addFileTo(t, c)
+                                    : null,
+                                onAutoAssign: _canEdit && c.type == 'status'
+                                    ? () => _suggestLabel(t, c.id)
+                                    : null,
+                              ),
+                            ),
+                          ),
+                  if (shown('about'))
+                    'about': _cell(
+                      context,
+                      _w('about'),
+                      _linkedCell(context, t, about),
+                    ),
+                  if (shown('updates'))
+                    'updates': _cell(
+                      context,
+                      _w('updates'),
+                      updates == 0
+                          ? const SizedBox.shrink()
+                          : Row(
+                              children: [
+                                unreadNotesBadge(
+                                  Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 14,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  t['unread_notes'],
+                                  key: ValueKey('task-unread-${t['id']}'),
+                                ),
+                                const SizedBox(width: 4),
+                                Text('$updates'),
+                              ],
+                            ),
+                    ),
+                }),
+                // Under the headings' +, so every column lines up.
+                if (_canEdit) SizedBox(width: _widths.add),
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -4321,9 +4346,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               child: IgnorePointer(
                 child: ColoredBox(
                   key: ValueKey('task-picked-$id'),
-                  color: Theme.of(context).colorScheme.primary.withValues(
-                    alpha: 0.14,
-                  ),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.14),
                 ),
               ),
             ),
@@ -4340,7 +4365,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final saved = [
       for (final k in (_board?['column_order'] as List? ?? const [])) '$k',
     ];
-    final out = [for (final k in saved) if (defaults.contains(k)) k];
+    final out = [
+      for (final k in saved)
+        if (defaults.contains(k)) k,
+    ];
     for (var i = 0; i < defaults.length; i++) {
       if (out.contains(defaults[i])) continue;
       // ponytail: a column the saved order never named sits after its default
@@ -4374,7 +4402,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     });
     if (!mounted || r.ok) return;
     setState(() => _board = {..._board!, 'column_order': was});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.reason)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(r.reason)));
   }
 
   /// One place left (-1) or right (+1).
@@ -4383,7 +4413,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final at = keys.indexOf(key);
     final to = at + by;
     if (at < 0 || to < 0 || to >= keys.length) return;
-    await _placeColumn(key, by < 0 ? keys[to] : (to + 1 < keys.length ? keys[to + 1] : null));
+    await _placeColumn(
+      key,
+      by < 0 ? keys[to] : (to + 1 < keys.length ? keys[to + 1] : null),
+    );
   }
 
   List<Widget> _moveItems(String key) {

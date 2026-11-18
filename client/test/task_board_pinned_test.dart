@@ -6,7 +6,9 @@ import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -172,6 +174,22 @@ void main() {
     // The pinned cell is the one a click reaches, not a cell under it.
     expect(title.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Jose 11-18: a visible sideways bar, and shift-wheel scrolls '
+      'sideways', (tester) async {
+    await pumpBoard(tester);
+    expect(find.byKey(const Key('tasks-sideways-bar')), findsOneWidget);
+    final far = find.text('far right').first;
+    final farAt = tester.getTopLeft(far);
+    final at = tester.getCenter(find.text('Sweep the Oak Park flue'));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(pointer.hover(at));
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 400)));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(far).dx, lessThan(farAt.dx - 200));
   });
 
   testWidgets('#26: a cell scrolled under the pinned Task column cannot be '
