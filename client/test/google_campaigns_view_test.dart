@@ -223,11 +223,20 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('google-amount')), '65');
     await tester.tap(find.byKey(const ValueKey('google-amount-save')));
     await tester.pumpAndSettle();
+    // Before and after, reviewed before anything is sent (Rodrigo, 01a1ef57).
+    expect(find.textContaining(r'→ $65.00 / day'), findsOneWidget);
+    expect(posted('budget'), isEmpty);
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
+    await tester.pumpAndSettle();
+    // Then what Google itself reads back.
+    expect(find.byKey(const ValueKey('google-change-readback')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('google-target-11')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('google-amount')), '95');
     await tester.tap(find.byKey(const ValueKey('google-amount-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
     await tester.pumpAndSettle();
 
     expect(posted('budget').single, {
@@ -290,6 +299,9 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('google-amount')), '700');
     await tester.tap(find.byKey(const ValueKey('google-amount-save')));
     await tester.pumpAndSettle();
+    expect(find.textContaining(r'→ $700.00 / week'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
+    await tester.pumpAndSettle();
 
     expect(posted('budget').single['daily_budget'], 100.0, reason: 'Google takes a week as day x 7');
   });
@@ -328,8 +340,15 @@ void main() {
   testWidgets('All accounts lists every account with its name, and a change goes to the row\'s account', (tester) async {
     await open(tester, permissions: manage);
 
+    // Live figures say when they were read (Rodrigo, 01a1ef57).
+    expect(find.byKey(const ValueKey('google-ads-read-at')), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('google-ads-account')));
     await tester.pumpAndSettle();
+    // Each entry says it is a campaign account, its id as Google writes it;
+    // the manager is not offered (Rodrigo, 01a1ef57).
+    expect(find.text('Campaign account · 494-185-0746'), findsWidgets);
+    expect(find.text('Manager'), findsNothing);
     await tester.tap(find.text('All accounts').last);
     await tester.pumpAndSettle();
 
