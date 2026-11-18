@@ -432,7 +432,21 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           }
         : null,
     onDecide: _canPost
-        ? (target, approve) {
+        ? (target, approve) async {
+            // Jose's ruling (via Marketing, 2026-11-18): with no time set,
+            // approving publishes at once, so it is said first, with the
+            // way to set a time instead.
+            var publishNow = false;
+            if (approve && post.scheduledFor == null) {
+              final choice = await _confirmPostNow(post);
+              if (choice == null || !mounted) return;
+              if (choice == 'time') {
+                close();
+                await _editPost(post);
+                return;
+              }
+              publishNow = true;
+            }
             close();
             // Literal paths: ClientCallsRealRoutesTest reads them.
             _act(
@@ -440,7 +454,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                 approve
                     ? '/business-profile/post-queue/${target.id}/approve'
                     : '/business-profile/post-queue/${target.id}/disapprove',
-                const {},
+                {if (publishNow) 'publish_now': true},
               ),
             );
           }
@@ -465,6 +479,39 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           }
         : null,
   );
+
+  /// "Post now" or "Set a time", before an approval that would publish at
+  /// once: a panel, as every question here (no modals).
+  Future<String?> _confirmPostNow(_SentPost post) {
+    final accounts = [
+      for (final t in post.targets)
+        if (t.status == 'awaiting_approval')
+          t.account.isEmpty ? t.providerLabel : t.account,
+    ];
+    return showSidePanel<String>(
+      context,
+      builder: (panel) => SidePanel(
+        key: const Key('social-post-now-confirm'),
+        title: 'Post it now?',
+        actions: [
+          OutlinedButton(
+            key: const Key('social-post-now-set-time'),
+            onPressed: () => Navigator.of(panel).pop('time'),
+            child: const Text('Set a time'),
+          ),
+          FilledButton(
+            key: const Key('social-post-now-yes'),
+            onPressed: () => Navigator.of(panel).pop('now'),
+            child: const Text('Post now'),
+          ),
+        ],
+        child: Text(
+          'This post has no time set — approving publishes it now to '
+          '${accounts.length < 2 ? accounts.join() : '${accounts.sublist(0, accounts.length - 1).join(', ')} and ${accounts.last}'}.',
+        ),
+      ),
+    );
+  }
 
   /// Asks before something that cannot be taken back, in a side panel as
   /// every other question here.
