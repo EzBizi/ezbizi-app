@@ -89,29 +89,14 @@ class _RenderSideways extends RenderProxyBox {
 /// A table line: children side by side at their own widths, the first
 /// [pinned] of them fixed and the rest scrolled by [sideways].
 class PinnedRow extends MultiChildRenderObjectWidget {
-  /// Children keyed `lead:…` (the job-id columns, Jose 11-18: "EzBizi Id |
-  /// Workiz Id | Name | rest") are lifted to just after the first child (the
-  /// colour strip), ahead of the name, and pinned with it.
-  PinnedRow({
+  const PinnedRow({
     super.key,
     required this.sideways,
-    int pinned = 2,
+    this.pinned = 2,
     this.stretch = true,
     this.edge,
-    List<Widget> children = const [],
-  }) : pinned = pinned + children.where(_isLead).length,
-       super(children: _lifted(children));
-
-  static bool _isLead(Widget w) =>
-      w.key is ValueKey<String> &&
-      (w.key! as ValueKey<String>).value.startsWith('lead:');
-
-  static List<Widget> _lifted(List<Widget> children) {
-    final lead = children.where(_isLead).toList();
-    if (lead.isEmpty || children.isEmpty) return children;
-    final rest = children.where((w) => !_isLead(w)).toList();
-    return [rest.first, ...lead, ...rest.skip(1)];
-  }
+    super.children,
+  });
 
   final ScrollController sideways;
 

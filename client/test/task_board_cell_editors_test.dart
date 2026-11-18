@@ -245,19 +245,18 @@ void main() {
   Rect card(WidgetTester tester) =>
       tester.getRect(find.byKey(const Key('cell-card')));
 
-  testWidgets(
-    'Jose 11-18: EzBizi Job # | Workiz Job ID | Name | the rest, pinned with the name',
-    (tester) async {
-      await pumpBoard(tester);
-      double x(String t) => tester.getTopLeft(find.text(t).first).dx;
-      expect(x('JOB-60857'), lessThan(x('800021103')));
-      expect(x('800021103'), lessThan(x('Task t1')));
-      expect(
-        x('Task t1'),
-        lessThan(x('Left a voicemail about the chimney liner quote')),
-      );
-    },
-  );
+  testWidgets('Jose 11-18: Name | EzBizi Job # | Workiz Job ID | the rest', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    double x(String t) => tester.getTopLeft(find.text(t).first).dx;
+    expect(x('Task t1'), lessThan(x('JOB-60857')));
+    expect(x('JOB-60857'), lessThan(x('800021103')));
+    expect(
+      x('800021103'),
+      lessThan(x('Left a voicemail about the chimney liner quote')),
+    );
+  });
 
   testWidgets('a date cell opens a month, not a sheet to the bottom', (
     tester,

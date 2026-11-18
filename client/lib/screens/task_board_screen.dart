@@ -4360,17 +4360,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   List<Widget> _inOrder(Map<String, Widget> cells) {
     final lead = _leadKeys;
     return [
-      // EzBizi's, then Workiz's, whatever their saved place.
+      // Right after the name: EzBizi's, then Workiz's, whatever their saved place.
       for (final k in lead)
-        if (cells.containsKey(k))
-          KeyedSubtree(key: ValueKey('lead:$k'), child: cells[k]!),
+        if (cells.containsKey(k)) cells[k]!,
       for (final k in _ordered(cells.keys.toList()))
         if (!lead.contains(k)) cells[k]!,
     ];
   }
 
-  /// The job-id columns, which sit before the name on every board, EzBizi's
-  /// first (Jose 11-18: "EzBizi Id | Workiz Id | Name | Rest of the stuff").
+  /// The job-id columns, right after the name on every board, EzBizi's first
+  /// (Jose 11-18: "Name | EzBizi ID | Workiz ID | Rest of the stuff").
   List<String> get _leadKeys => [
     for (final name in const ['EzBizi Job #', 'Workiz Job ID'])
       for (final c in boardColumns(_board))
