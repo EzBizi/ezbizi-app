@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0595', date: '18 Nov 2026', items: [
+      'Task Board: the A-1 Chimney All markets board opens again (it loads the first rows of each group instead of all 31,000 tasks at once)',
+    ]),
     VersionRelease(version: '0.0.0594', date: '18 Nov 2026', items: [
       'Jobs › Book: a priced services list with a total, tags sent to Workiz, and a duplicate-customer check that offers Use this customer or Create anyway',
     ]),
