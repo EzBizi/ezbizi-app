@@ -64,13 +64,16 @@ class BoardRulesTest extends TestCase
             $plain = $w->create($board, ['title' => 'Reschedule ETA', 'group_id' => $g['Field Manager - Lucas']->id], $staff);
             $this->assertSame('Field Manager - Lucas', $group($plain));
 
-            $this->assertSame(3, AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
+            // Made by EzBizi itself (no person, no rule): counted as EzBizi, never as a person (desk 11-18).
+            $w->create($board, ['title' => 'Refund for Lee', 'group_id' => $g['Field Manager - Lucas']->id], null);
+
+            $this->assertSame(4, AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
             $this->assertSame(2, AuditEvent::query()->where('action', 'task.board_rule.flagged')->count());
         });
 
         // One line per organization: the counts, then who made them.
         $this->artisan('ezbizi:tasks-misfiled-report', ['--dry-run' => true])
-            ->expectsOutputToContain("3 moved, 2 flagged. {$staff->name} 5")
+            ->expectsOutputToContain("4 moved, 2 flagged. {$staff->name} 5, EzBizi (automation) 1")
             ->assertSuccessful();
     }
 
