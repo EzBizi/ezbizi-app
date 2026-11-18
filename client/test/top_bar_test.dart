@@ -41,15 +41,31 @@ void main() {
     testWidgets('with somewhere else to stand, the switcher does the naming', (
       tester,
     ) async {
-      await _pump(tester, width: 375, choices: true);
+      await _pump(
+        tester,
+        width: 375,
+        choices: true,
+        clock: true,
+        twoFactor: true,
+      );
 
+      expect(tester.takeException(), isNull);
       expect(find.byType(ScopeSwitcher), findsOneWidget);
+      // Its own row under the icons, full width: between the hamburger and
+      // the icons it got ~20 px and drew an empty box (live 0.0.0597).
+      final row = find.byKey(const Key('top-bar-scope-row'));
       expect(
-        find.descendant(
-          of: find.byType(AppBar),
-          matching: find.byType(ScopeSwitcher),
-        ),
+        find.descendant(of: row, matching: find.byType(ScopeSwitcher)),
         findsOneWidget,
+      );
+      expect(
+        tester.getSize(find.byType(ScopeSwitcher)).width,
+        greaterThan(300),
+      );
+      // Under the bar, and the page starts below it.
+      expect(
+        tester.getTopLeft(row).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.byIcon(Icons.login)).dy),
       );
     });
 
