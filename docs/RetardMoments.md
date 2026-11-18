@@ -7,6 +7,10 @@ Newest first. Each entry: what happened, what it cost, the rule that stops it.
 - **What:** Roles & Permissions turned out-of-reach mailboxes from 403 into 404 (eee9c0ae2). It grepped MailboxAccess callers and ran only its own new test. Two MailboxMessagesApiTest tests still asserted the 403, and main went red under the 0.0.0589 cut.
 - **Rule:** when a change alters a status code or a message, grep tests/ for the route and for the old assertion (`assertForbidden` on that path), and run every test file naming the route before handing over the SHA.
 
+## 2026-11-17 — Told Jose the video "will be sent" and never checked it was
+- **What:** I handed the training video to Meta to send "once the template is approved". Meta left it PENDING for 5.5h and nothing went out. Jose had to ask; neither he nor Eve had it. An already-approved UTILITY template (automation_alert) could have sent it at once.
+- **Rule:** never park a send on a third-party approval. Use an approved path first and treat the new one as optional. If anything is pending for Jose, set a check (Monitor or cron) on its delivered status and report the outcome, not the plan.
+
 ## 2026-11-17 — Release script derived two versions back: 0588 ran under 0587's names
 - **What:** I made q0588.sh from q0586.sh with `s/0587/0588; s/0586/0587`. It is two versions back, so every name became 0587. The 0588 cut deleted and re-created the cut-0587 worktree at 0588's SHA while 0587's Windows build was still using it. Windows published 0.0.0588 about an hour before the 0588 server, and 0587's own Windows build never shipped.
 - **Rule:** derive qN only from q(N-1) with `s/(N-1)/N; s/(N-2)/(N-1)`. Then grep the new script: every cut-/rel-/precheck- name must be N. Never edit a running qNNNN.sh in place; bash reads the edited bytes.
