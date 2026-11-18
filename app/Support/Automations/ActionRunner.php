@@ -4093,16 +4093,22 @@ class ActionRunner
                     }
                 }
             }
-            app(TaskWriter::class)->create($board, [
-                'title' => mb_substr($title, 0, 255),
+            // A long title (a whole review) is cut on a word and kept whole as the
+            // first update: the New-task bell's title has no room for it (11-18).
+            $short = mb_strlen($title) <= 120 ? $title : rtrim(preg_replace('/\s+\S*$/u', '', mb_substr($title, 0, 120)) ?: mb_substr($title, 0, 120), " ,.;:-").'…';
+            $made = app(TaskWriter::class)->create($board, [
+                'title' => $short,
                 'assignee_user_ids' => $owners->map->getKey()->all(),
                 ...($values === [] ? [] : ['values' => $values]),
                 ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
                 'about_id' => $about === false ? null : $record->getKey(),
             ], $actor, $automation?->getKey());
+            if ($short !== $title) {
+                app(TaskWriter::class)->comment($made, $actor, $title);
+            }
 
-            return 'Added the task "'.$title.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
+            return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
         });
     }
 
