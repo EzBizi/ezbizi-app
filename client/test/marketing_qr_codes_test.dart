@@ -316,7 +316,9 @@ void main() {
       permissions: const ['marketing.qr_codes.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsOneWidget);
+    // UI queue 199: a tool beside the calendar; with no post grant it is the
+    // page itself.
+    expect(find.byKey(const Key('social-qr')), findsOneWidget);
     expect(find.byType(QrCodesTab), findsOneWidget);
 
     await _pump(
@@ -324,7 +326,7 @@ void main() {
       permissions: const ['marketing.accounts.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsNothing);
+    expect(find.byKey(const Key('social-qr')), findsNothing);
     expect(find.byType(QrCodesTab), findsNothing);
   });
 
