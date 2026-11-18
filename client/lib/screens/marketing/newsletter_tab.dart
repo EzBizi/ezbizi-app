@@ -139,6 +139,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
   final TextEditingController _when = TextEditingController();
   List<Map<String, dynamic>> _blocks = [];
   String? _htmlOverride;
+
+  /// The brand applied to the open newsletter (P1b), or null.
+  Map<String, dynamic>? _brand;
   String? _audienceId;
 
   String _previewHtml = '';
@@ -341,6 +344,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
     _when.text = n.scheduledFor ?? '';
     _blocks = n.blocks.map((b) => Map<String, dynamic>.from(b)).toList();
     _htmlOverride = n.htmlOverride;
+    _brand = n.brand;
     _audienceId = n.audienceId;
     _revision = n.revision;
     _lastTest = n.lastTest;
@@ -437,6 +441,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       'preheader': _preheader.text,
       'blocks': _blocks,
       'html_override': _htmlOverride,
+      'brand': _brand,
       'audience_id': _audienceId,
     });
     if (!mounted) return;
@@ -537,6 +542,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       'blocks': _blocks,
       // Always sent: the server keeps what it holds only when this is absent.
       'html_override': _htmlOverride,
+      'brand': _brand,
       'audience_id': _audienceId,
       'name': _name.text.trim(),
       'preheader': _preheader.text.trim(),
@@ -1046,6 +1052,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
         setState(() => _htmlOverride = html);
         _touched();
       },
+      brand: _brand,
+      onBrand: (brand) {
+        setState(() => _brand = brand);
+        _touched();
+      },
       onSend: _send,
       api: widget.api,
       newsletterId: _selectedId,
@@ -1154,6 +1165,7 @@ class _Newsletter {
     this.scheduledFor,
     this.scheduledTimezone,
     this.htmlOverride,
+    this.brand,
     this.revision = 1,
     this.lastTest,
   });
@@ -1178,6 +1190,9 @@ class _Newsletter {
 
   /// The whole-mailing HTML, when somebody wrote one instead of blocks.
   final String? htmlOverride;
+
+  /// The brand applied to it (P1b), or null.
+  final Map<String, dynamic>? brand;
 
   /// The clock the SERVER filed that wall time against, which is not always
   /// the clock of the place named in the view. Above franchise scope it is the
@@ -1205,6 +1220,7 @@ class _Newsletter {
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
       htmlOverride: json['html_override'] as String?,
+      brand: json['brand'] is Map ? Map<String, dynamic>.from(json['brand'] as Map) : null,
       revision: (json['revision'] as num?)?.toInt() ?? 1,
       lastTest: NewsletterLastTest.fromJson(json['last_test']),
       blocks: ((json['blocks'] as List<dynamic>?) ?? const [])

@@ -152,6 +152,8 @@ class NewsletterEmail extends StatelessWidget {
     required this.blocks,
     required this.company,
     this.phone = false,
+    this.deviceWidth,
+    this.brand,
     this.selected,
     this.onSelect,
     this.editorFor,
@@ -165,6 +167,14 @@ class NewsletterEmail extends StatelessWidget {
   /// The name in the footer. The renderer writes the organization's.
   final String company;
   final bool phone;
+
+  /// The phone width being designed for (320, 375 or 414, P1b); null uses
+  /// [phoneWidth]. Only read when [phone] is true.
+  final double? deviceWidth;
+
+  /// The brand applied to this newsletter (P1b), drawn as the renderer
+  /// applies it: only where a block sets nothing itself.
+  final Map<String, dynamic>? brand;
   final int? selected;
 
   /// Null when the newsletter cannot be changed: nothing is tappable then.
@@ -198,7 +208,7 @@ class NewsletterEmail extends StatelessWidget {
       child: ConstrainedBox(
         key: const Key('newsletter-email'),
         constraints: BoxConstraints(
-          maxWidth: phone ? phoneWidth : desktopWidth,
+          maxWidth: phone ? (deviceWidth ?? phoneWidth) : desktopWidth,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6),
@@ -255,7 +265,7 @@ class NewsletterEmail extends StatelessWidget {
       primary: primary,
       onTap: onSelect == null ? null : () => onSelect!(i),
       chrome: isSelected ? chromeFor?.call(i) : null,
-      child: inline ?? EmailBlockView(block: blocks[i], phone: phone),
+      child: inline ?? EmailBlockView(block: blocks[i], phone: phone, brand: brand),
     );
   }
 
@@ -386,13 +396,46 @@ class _BlockFrameState extends State<_BlockFrame> {
 /// One block, as the renderer draws it: its spacing, size, colour and
 /// alignment, and formatted words.
 class EmailBlockView extends StatelessWidget {
-  const EmailBlockView({super.key, required this.block, this.phone = false});
+  const EmailBlockView({
+    super.key,
+    required this.block,
+    this.phone = false,
+    this.brand,
+    this.resolved = false,
+  });
 
   final Map<String, dynamic> block;
   final bool phone;
+  final Map<String, dynamic>? brand;
+
+  /// Brand and mobile overrides already applied to [block].
+  final bool resolved;
 
   @override
   Widget build(BuildContext context) {
+    if (!resolved) {
+      if (phone && block['mobile'] is Map && (block['mobile'] as Map)['hidden'] == true) {
+        return Opacity(
+          key: const ValueKey('newsletter-hidden-on-mobile'),
+          opacity: 0.45,
+          child: Container(
+            color: EmailInk.rule,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            child: const Text(
+              'Hidden on mobile',
+              style: TextStyle(fontSize: 12, color: EmailInk.footerInk),
+            ),
+          ),
+        );
+      }
+      if (block['type'] == 'section_ref') return _linked();
+      return EmailBlockView(
+        block: effectiveBlock(block, brand: brand, phone: phone),
+        phone: phone,
+        brand: brand,
+        resolved: true,
+      );
+    }
     // Kept exactly as typed on the server; drawn here close enough to edit
     // by, and exactly under Server preview.
     if (isHandWritten(block)) {
@@ -423,6 +466,33 @@ class EmailBlockView extends StatelessWidget {
       // does this.
       null => const SizedBox.shrink(),
     };
+  }
+
+  /// A linked saved section: its pinned version's blocks, marked as linked.
+  Widget _linked() {
+    final inner = [
+      for (final b in (block['preview_blocks'] as List? ?? const []))
+        if (b is Map<String, dynamic>) b,
+    ];
+    return Container(
+      key: const ValueKey('newsletter-linked-section'),
+      decoration: const BoxDecoration(
+        border: Border(left: BorderSide(color: EmailInk.button, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Text(
+              'Linked section · ${block['name'] ?? ''} · v${block['version'] ?? '?'}',
+              style: const TextStyle(fontSize: 11, color: EmailInk.footerInk),
+            ),
+          ),
+          for (final b in inner) EmailBlockView(block: b, phone: phone, brand: brand),
+        ],
+      ),
+    );
   }
 
   /// A heading's style, as the renderer writes it.
@@ -465,7 +535,9 @@ class EmailBlockView extends StatelessWidget {
     final pill = DecoratedBox(
       decoration: BoxDecoration(
         color: blockColor(block, 'background', EmailInk.button),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(
+          block['radius'] is num ? (block['radius'] as num).toDouble().clamp(0, 40).toDouble() : 6,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
@@ -567,7 +639,7 @@ class EmailBlockView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final child in inner) EmailBlockView(block: child, phone: phone),
+          for (final child in inner) EmailBlockView(block: child, phone: phone, brand: brand),
         ],
       ),
     );
@@ -616,4 +688,46 @@ Color blockColor(Map<String, dynamic> b, String key, Color fallback) {
   final raw = '${b[key] ?? ''}';
   if (!RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(raw)) return fallback;
   return Color(int.parse('FF${raw.substring(1)}', radix: 16));
+}
+
+/// Mobile override keys (P1b) and the desktop property each one overrides.
+const mobileOverrideOf = {
+  'font_size': 'size',
+  'padding': 'spacing',
+  'align': 'align',
+  'button_full_width': 'full_width',
+  'stack': 'stack',
+};
+
+/// A block as the renderer draws it: the applied [brand] fills what the
+/// block leaves unset (explicit block values win), and on a phone its
+/// `mobile` overrides replace the desktop values they name.
+Map<String, dynamic> effectiveBlock(
+  Map<String, dynamic> block, {
+  Map<String, dynamic>? brand,
+  bool phone = false,
+}) {
+  final out = Map<String, dynamic>.from(block);
+  if (brand != null) {
+    final defaults = switch (block['type']) {
+      'heading' || 'text' => {'color': brand['text']},
+      'button' => {
+        'background': brand['button_fill'] ?? brand['primary'],
+        'color': brand['button_text'],
+        'full_width': brand['button_full_width'],
+        'radius': brand['button_radius'],
+      },
+      _ => const <String, Object?>{},
+    };
+    defaults.forEach((k, v) {
+      if (v != null && !out.containsKey(k)) out[k] = v;
+    });
+  }
+  final mobile = block['mobile'];
+  if (phone && mobile is Map) {
+    mobileOverrideOf.forEach((m, d) {
+      if (mobile.containsKey(m) && mobile[m] != null) out[d] = mobile[m];
+    });
+  }
+  return out;
 }
