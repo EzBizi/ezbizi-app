@@ -13,7 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0595', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0596', date: '18 Nov 2026', items: [
+      'Project Management: the Inbox lists texts and the conversation scroll separately, with a pinned reply box, a header with the client, job, phone, stage, Call and Open job, Waiting / Replied by us / All filters with counts, and client vs team vs automatic messages in their own colours',
+      'Project Management: the work order PDF opens inside the app with zoom, Print, Share and Download',
+      'Automations: a Create task step finds the board group whose name contains the one given, and the Area set from the branch now uses the branch of the record itself',
+      'Task Board: the table always shows a sideways scrollbar',
+      'Automations: a rule started by a status change does nothing when the status was changed again before it ran (a task set to Done and straight back no longer moves to Done)',
       'Task Board: the A-1 Chimney All markets board opens again (it loads the first rows of each group instead of all 31,000 tasks at once)',
       'Task Board: the Monday sync keeps running when one item fails, and a task moved to another board here keeps its place',
     ]),
