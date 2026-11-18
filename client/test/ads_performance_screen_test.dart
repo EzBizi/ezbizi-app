@@ -57,9 +57,7 @@ void main() {
 
         if (request.url.path.contains('/ads/rollup')) {
           return http.Response(
-            jsonEncode(
-              rollup ?? {'data': [], 'children_total': 0, 'not_connected': 0},
-            ),
+            jsonEncode(rollup ?? {'data': [], 'children_total': 0, 'not_connected': 0}),
             200,
             headers: {'content-type': 'application/json'},
           );
@@ -82,11 +80,8 @@ void main() {
             headers: {'content-type': 'application/json'},
           );
         }
-        return http.Response(
-          '{}',
-          200,
-          headers: {'content-type': 'application/json'},
-        );
+        return http.Response('{}', 200,
+            headers: {'content-type': 'application/json'});
       }),
     );
 
@@ -196,8 +191,7 @@ void main() {
     expect(
       calls.where((c) => c.contains('/ads/performance')),
       isEmpty,
-      reason:
-          'a screen that reports on open spends the quota of whoever opens it',
+      reason: 'a screen that reports on open spends the quota of whoever opens it',
     );
   });
 
@@ -357,8 +351,7 @@ void main() {
     expect(
       find.text('Chimney - Cleveland - Search'),
       findsNothing,
-      reason:
-          'LS Ads must drop the Search campaigns, not merely include its own',
+      reason: 'LS Ads must drop the Search campaigns, not merely include its own',
     );
     expect(find.text('Chimney - Cleveland - Display'), findsNothing);
   });
@@ -378,8 +371,7 @@ void main() {
     expect(
       find.textContaining('LocalServicesCampaign'),
       findsNothing,
-      reason:
-          'Search Ads is defined as the rest, so the generated ones must go',
+      reason: 'Search Ads is defined as the rest, so the generated ones must go',
     );
   });
 
@@ -505,8 +497,7 @@ void main() {
           {
             'connection_id': 'c1',
             'account': '993-282-9592',
-            'because':
-                "The customer account can't be accessed because it is "
+            'because': "The customer account can't be accessed because it is "
                 'not yet enabled or has been deactivated.',
           },
         ],
@@ -519,8 +510,7 @@ void main() {
     expect(
       find.textContaining('deactivated'),
       findsOneWidget,
-      reason:
-          'dropping it would read as "this account spent nothing", which is '
+      reason: 'dropping it would read as "this account spent nothing", which is '
           'a different and wrong statement',
     );
   });
@@ -550,15 +540,16 @@ void main() {
     expect(
       find.textContaining('Connected sources'),
       findsOneWidget,
-      reason:
-          'an empty state that does not name the way in leaves somebody stuck',
+      reason: 'an empty state that does not name the way in leaves somebody stuck',
     );
   });
 
   /// TODAY is the default - Jose, 2026-09-24, replacing his 15 September
   /// call for yesterday. Asserted as the REQUEST, not the chip: a screen that
   /// highlighted "Today" and asked Google for yesterday would look right.
-  testWidgets('the default range is today, one day only', (tester) async {
+  testWidgets('the default range is today, one day only', (
+    tester,
+  ) async {
     await pump(tester, accounts: twoAccounts(), report: report());
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
@@ -577,8 +568,7 @@ void main() {
       '${today.year.toString().padLeft(4, '0')}-'
       '${today.month.toString().padLeft(2, '0')}-'
       '${today.day.toString().padLeft(2, '0')}',
-      reason:
-          'Jose, 2026-09-24: "Date of today ... as default instead of yesterday"',
+      reason: 'Jose, 2026-09-24: "Date of today ... as default instead of yesterday"',
     );
   });
 
@@ -598,11 +588,7 @@ void main() {
     final panel = tester.widget<DateRangePanel>(find.byType(DateRangePanel));
 
     expect(panel.initial, DateSpan(today, today));
-    expect(
-      panel.today,
-      today,
-      reason: 'today must be selectable, or it could not be pre-filled',
-    );
+    expect(panel.today, today, reason: 'today must be selectable, or it could not be pre-filled');
     expect(find.byType(DateRangePickerDialog), findsNothing);
   });
 
@@ -696,9 +682,7 @@ void main() {
   /// has LEFT the screen (so the page really moved), and the header must still
   /// be on screen and hittable. A header that scrolled away with the rows would
   /// pass every other test in this file.
-  testWidgets('the campaign header stays pinned while the rows scroll', (
-    tester,
-  ) async {
+  testWidgets('the campaign header stays pinned while the rows scroll', (tester) async {
     final many = report();
     many['campaigns'] = [
       for (var i = 0; i < 60; i++)
@@ -706,11 +690,8 @@ void main() {
           'id': '${1000 + i}',
           'name': 'Campaign ${i.toString().padLeft(2, '0')}',
           'status': 'ENABLED',
-          'clicks': 60 - i,
-          'impressions': 100,
-          'conversions': 1,
-          'all_conversions': 1,
-          'cost': 1000 - i,
+          'clicks': 60 - i, 'impressions': 100, 'conversions': 1,
+          'all_conversions': 1, 'cost': 1000 - i,
         },
     ];
     await pump(tester, accounts: twoAccounts(), report: many);
@@ -725,16 +706,8 @@ void main() {
 
     // hitTestable: the rows are built whether on screen or not, so "not
     // found" would be false; "not on screen" is the fact that proves a scroll.
-    expect(
-      find.text('Campaign 00').hitTestable(),
-      findsNothing,
-      reason: 'the page really scrolled',
-    );
-    expect(
-      header.hitTestable(),
-      findsOneWidget,
-      reason: 'and the header is still on screen',
-    );
+    expect(find.text('Campaign 00').hitTestable(), findsNothing, reason: 'the page really scrolled');
+    expect(header.hitTestable(), findsOneWidget, reason: 'and the header is still on screen');
     expect(
       tester.getTopLeft(header).dy,
       lessThan(tester.getTopLeft(find.text('Campaign 30')).dy),
@@ -753,9 +726,7 @@ void main() {
 
     ScrollController controllerIn(Finder of) => tester
         .widget<SingleChildScrollView>(
-          find
-              .descendant(of: of, matching: find.byType(SingleChildScrollView))
-              .first,
+          find.descendant(of: of, matching: find.byType(SingleChildScrollView)).first,
         )
         .controller!;
 
@@ -763,38 +734,23 @@ void main() {
     // Grab the rows just under their top edge, not at their centre: the
     // table is wider AND taller than the window, so its centre can sit below
     // the visible part and the drag would land on nothing.
-    await tester.dragFrom(
-      tester.getTopLeft(body) + const Offset(100, 20),
-      const Offset(-250, 0),
-    );
+    await tester.dragFrom(tester.getTopLeft(body) + const Offset(100, 20), const Offset(-250, 0));
     await tester.pumpAndSettle();
 
-    final moved = controllerIn(
-      find.ancestor(of: body, matching: find.byType(Material)).first,
-    ).offset;
+    final moved = controllerIn(find.ancestor(of: body, matching: find.byType(Material)).first).offset;
     expect(moved, greaterThan(0), reason: 'the rows really scrolled sideways');
-    expect(
-      controllerIn(find.byKey(const ValueKey('ads-campaigns'))).offset,
-      moved,
-    );
+    expect(controllerIn(find.byKey(const ValueKey('ads-campaigns'))).offset, moved);
   });
 
   /// Sorting by an optional column, then opening a manager, must not break the
   /// roll-up. The roll-up table used to borrow the campaign table's sort
   /// index, which counts Status and the optional columns the roll-up does not
   /// have - so a sort on CTR pointed past its last column and DataTable threw.
-  testWidgets('a sort on an optional column does not break the roll-up', (
-    tester,
-  ) async {
+  testWidgets('a sort on an optional column does not break the roll-up', (tester) async {
     await pump(
       tester,
       accounts: [
-        {
-          'connection_id': 'm1',
-          'customer_id': '9998887776',
-          'name': 'A1 Chimney - Ads Manager',
-          'is_manager': true,
-        },
+        {'connection_id': 'm1', 'customer_id': '9998887776', 'name': 'A1 Chimney - Ads Manager', 'is_manager': true},
         ...twoAccounts(),
       ],
       report: report(),
@@ -802,17 +758,8 @@ void main() {
         'children_total': 1,
         'not_connected': 0,
         'data': [
-          {
-            'connection_id': 'c1',
-            'id': '4051729356',
-            'name': 'A1 Chimney - Cleveland',
-            'clicks': 412,
-            'impressions': 10500,
-            'conversions': 31.5,
-            'all_conversions': 44.25,
-            'cost': 1234.56,
-            'currency': 'USD',
-          },
+          {'connection_id': 'c1', 'id': '4051729356', 'name': 'A1 Chimney - Cleveland', 'clicks': 412,
+           'impressions': 10500, 'conversions': 31.5, 'all_conversions': 44.25, 'cost': 1234.56, 'currency': 'USD'},
         ],
       },
     );
@@ -825,10 +772,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Sort the campaign table by the optional column.
-    final ctr = find.descendant(
-      of: find.byKey(const ValueKey('ads-campaigns')),
-      matching: find.text('CTR'),
-    );
+    final ctr = find.descendant(of: find.byKey(const ValueKey('ads-campaigns')), matching: find.text('CTR'));
     await tester.ensureVisible(ctr);
     await tester.pumpAndSettle();
     await tester.tap(ctr);
@@ -842,11 +786,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey('ads-rollup')),
-      findsOneWidget,
-      reason: 'the control: the roll-up is drawn',
-    );
+    expect(find.byKey(const ValueKey('ads-rollup')), findsOneWidget, reason: 'the control: the roll-up is drawn');
   });
 
   testWidgets('a manager rolls up instead of reporting on itself', (
@@ -904,8 +844,7 @@ void main() {
     expect(
       find.textContaining('reads every account beneath it'),
       findsOneWidget,
-      reason:
-          'a manager row that looks like any other row makes the fan-out a '
+      reason: 'a manager row that looks like any other row makes the fan-out a '
           'surprise rather than a choice',
     );
 
@@ -916,8 +855,7 @@ void main() {
     expect(
       calls.where((c) => c.contains('/ads/performance')),
       isEmpty,
-      reason:
-          'a manager holds no spend of its own, so the per-account report on '
+      reason: 'a manager holds no spend of its own, so the per-account report on '
           'one is a screen of zeroes',
     );
 
@@ -944,8 +882,7 @@ void main() {
       expect(
         find.descendant(of: figures, matching: find.text(label)),
         findsOneWidget,
-        reason:
-            'R.10 applies to every account level displayed, roll-up included',
+        reason: 'R.10 applies to every account level displayed, roll-up included',
       );
     }
 
@@ -954,68 +891,42 @@ void main() {
     expect(
       find.textContaining('could not be read'),
       findsOneWidget,
-      reason:
-          'the reader cannot ask about an omission nothing tells them about',
+      reason: 'the reader cannot ask about an omission nothing tells them about',
     );
   });
 
   // Jose, 2026-11-16: "On top ... a Everything" combining A-1 Chimney and Angi Sweep.
-  testWidgets(
-    'Everything sits on top and rolls up every account in one request',
-    (tester) async {
-      await pump(
-        tester,
-        accounts: twoAccounts(),
-        rollup: {
-          'children_total': 2,
-          'not_connected': 0,
-          'data': [
-            {
-              'connection_id': 'c1',
-              'account': 'A1 Chimney - Cleveland',
-              'id': '4051729356',
-              'name': 'A1 Chimney - Cleveland',
-              'clicks': 412,
-              'impressions': 10500,
-              'conversions': 31.5,
-              'all_conversions': 44.25,
-              'cost': 1234.56,
-              'currency': 'USD',
-            },
-            {
-              'connection_id': 'c3',
-              'account': 'Angi Sweep - Bucks',
-              'id': '1726694743',
-              'name': 'Angi Sweep - Bucks',
-              'clicks': 88,
-              'impressions': 900,
-              'conversions': 4,
-              'all_conversions': 6,
-              'cost': 65.44,
-              'currency': 'USD',
-            },
-          ],
-        },
-      );
+  testWidgets('Everything sits on top and rolls up every account in one request', (tester) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      rollup: {
+        'children_total': 2,
+        'not_connected': 0,
+        'data': [
+          {'connection_id': 'c1', 'account': 'A1 Chimney - Cleveland', 'id': '4051729356', 'name': 'A1 Chimney - Cleveland',
+            'clicks': 412, 'impressions': 10500, 'conversions': 31.5, 'all_conversions': 44.25, 'cost': 1234.56, 'currency': 'USD'},
+          {'connection_id': 'c3', 'account': 'Angi Sweep - Bucks', 'id': '1726694743', 'name': 'Angi Sweep - Bucks',
+            'clicks': 88, 'impressions': 900, 'conversions': 4, 'all_conversions': 6, 'cost': 65.44, 'currency': 'USD'},
+        ],
+      },
+    );
 
-      final everything = find.byKey(const ValueKey('ads-account-*everything*'));
-      expect(everything, findsOneWidget);
-      expect(
-        tester.getTopLeft(everything).dy,
-        lessThan(
-          tester.getTopLeft(find.byKey(const ValueKey('ads-account-c1'))).dy,
-        ),
-        reason: 'above every account and manager',
-      );
+    final everything = find.byKey(const ValueKey('ads-account-*everything*'));
+    expect(everything, findsOneWidget);
+    expect(
+      tester.getTopLeft(everything).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('ads-account-c1'))).dy),
+      reason: 'above every account and manager',
+    );
 
-      await tester.tap(everything);
-      await tester.pumpAndSettle();
+    await tester.tap(everything);
+    await tester.pumpAndSettle();
 
-      final asked = urls.where((u) => u.path.contains('/ads/rollup')).single;
-      expect(asked.queryParameters['everything'], '1');
-      expect(asked.queryParameters.containsKey('connection_id'), isFalse);
-      expect(calls.where((c) => c.contains('/ads/performance')), isEmpty);
-      expect(find.text('Angi Sweep - Bucks'), findsWidgets);
-    },
-  );
+    final asked = urls.where((u) => u.path.contains('/ads/rollup')).single;
+    expect(asked.queryParameters['everything'], '1');
+    expect(asked.queryParameters.containsKey('connection_id'), isFalse);
+    expect(calls.where((c) => c.contains('/ads/performance')), isEmpty);
+    expect(find.text('Angi Sweep - Bucks'), findsWidgets);
+  });
 }
