@@ -12,11 +12,13 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
+use App\Support\Newsletter\HtmlImportConverter;
 use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Newsletter\NewsletterBrandSettings;
-use App\Support\Newsletter\NewsletterSections;
+use App\Support\Newsletter\NewsletterDelivery;
 use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterImages;
+use App\Support\Newsletter\NewsletterSections;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Scoping\OwnedScope;
@@ -295,6 +297,7 @@ class NewslettersController extends Controller
             'at' => $r->created_at?->toIso8601String(),
             'summary' => $this->summaryOf($r),
             'restore_point' => $r->restore_point,
+            'label' => $r->label,
             'restored_from' => $r->restored_from,
             'current' => $r->revision === (int) $row->revision,
         ])->values()->all(), 'revision' => (int) $row->revision]);
@@ -361,6 +364,37 @@ class NewslettersController extends Controller
             $this->audit->log('newsletter.restored', $row, ['from_revision' => $saved->revision], actor: $user);
 
             return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+        });
+    }
+
+    /**
+     * POST /newsletters/{id}/checkpoint (P1c): keeps the saved version as a
+     * named restore point ("Before import") before something replaces the
+     * content, so the replacement can be undone from history. Changes no
+     * content and no revision number.
+     */
+    public function checkpoint(Request $request, string $newsletter): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $newsletter) {
+            $user = $request->user();
+            abort_unless($user->hasPermission('newsletter.edit'), Status::HTTP_FORBIDDEN,
+                Refusal::permission('edit a newsletter')->message());
+            $label = trim((string) $request->validate(['label' => ['required', 'string', 'max:60']])['label']);
+
+            $row = $this->findInView($user, $newsletter, lock: true);
+            $this->assertMayWrite($user, $row);
+            $this->assertCurrentRevision($request, $row);
+            if ($row->status !== Newsletter::STATUS_DRAFT && $row->status !== Newsletter::STATUS_FAILED) {
+                throw ValidationException::withMessages([
+                    'revision' => 'This newsletter is scheduled, sending, or already sent, so it cannot be changed.',
+                ]);
+            }
+
+            $this->recordRevision($row, null, onlyIfMissing: true);
+            NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+                ->where('revision', (int) $row->revision)->update(['restore_point' => true, 'label' => $label]);
+
+            return response()->json(['data' => ['revision' => (int) $row->revision, 'label' => $label]]);
         });
     }
 
@@ -1023,12 +1057,8 @@ class NewslettersController extends Controller
 
         // Imported HTML is refused, not cleaned: a mailing that silently lost its
         // script would differ from what the author previewed. Nothing saves.
-        if (is_string($data['html_override'] ?? null)
-            && preg_match('/<\s*script\b|<[^>]*\son[a-z]+\s*=|javascript\s*:/i', $data['html_override'])) {
-            throw ValidationException::withMessages([
-                'html_override' => 'This HTML contains scripts, which email cannot run and Mailchimp refuses. '
-                    .'Remove them and import it again.',
-            ]);
+        if (is_string($data['html_override'] ?? null) && HtmlImportConverter::unsafe($data['html_override'])) {
+            throw ValidationException::withMessages(['html_override' => HtmlImportConverter::UNSAFE_MESSAGE]);
         }
 
         return $data;
@@ -1121,7 +1151,25 @@ class NewslettersController extends Controller
             'updated_at' => $n->updated_at?->toIso8601String(),
             'revision' => (int) ($n->revision ?? 1),
             'last_test' => $this->lastTest($n),
+            'delivery' => NewsletterDelivery::of($n),
+            'next_step' => $this->nextStep($n),
         ];
+    }
+
+    /** A draft's next unresolved step, cheaply (P1c dashboard); null otherwise. */
+    private function nextStep(Newsletter $n): ?string
+    {
+        if ($n->status !== Newsletter::STATUS_DRAFT && $n->status !== Newsletter::STATUS_FAILED) {
+            return null;
+        }
+        $hasContent = (is_string($n->html_override) && trim($n->html_override) !== '') || ((array) ($n->blocks ?? [])) !== [];
+
+        return match (true) {
+            ! $hasContent => 'Add content',
+            $n->audience === null => 'Choose an audience',
+            $n->status === Newsletter::STATUS_FAILED => 'Review the failure and send again',
+            default => 'Review and schedule',
+        };
     }
 
     /** @return array{revision: int, to: string, at: ?string, result: string}|null */

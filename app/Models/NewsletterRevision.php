@@ -24,7 +24,7 @@ class NewsletterRevision extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'newsletter_id', 'revision', 'blocks', 'html_override', 'subject', 'name',
-        'preheader', 'author_id', 'restore_point', 'restored_from',
+        'preheader', 'author_id', 'restore_point', 'label', 'restored_from',
     ];
 
     protected function casts(): array

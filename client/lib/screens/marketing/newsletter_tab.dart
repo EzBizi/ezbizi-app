@@ -310,6 +310,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
             (q.isEmpty ||
                 [
                   n.row.subject,
+                  n.row.name,
                   n.row.audienceName,
                   n.row.status,
                 ].whereType<String>().join(' ').toLowerCase().contains(q)))
@@ -799,7 +800,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
           key: const Key('newsletters-search'),
           controller: _search,
           onChanged: _searched,
-          hint: 'Subject or mailing list',
+          hint: 'Name, subject or mailing list',
         ),
         onNew: _create,
         scheduled: [

@@ -2,13 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Newsletter;
+use App\Models\NewsletterImport;
+use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\SocialLibraryItem;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
+use App\Support\Newsletter\BlockRenderer;
+use App\Support\Newsletter\HtmlImportConverter;
 use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\SvgImporter;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
@@ -42,16 +48,135 @@ class NewsletterImportController extends Controller
         private readonly SvgImporter $importer,
         private readonly FileStore $files,
         private readonly AuditLogger $audit,
+        private readonly HtmlImportConverter $converter,
+        private readonly BlockRenderer $renderer,
     ) {}
+
+    /**
+     * POST /newsletter/import/html (P1c): what an HTML document becomes, in
+     * the mode chosen, WITHOUT changing any newsletter. `keep` answers the
+     * HTML as custom HTML; `convert` answers editable blocks, with what was
+     * kept as HTML and what was lost. Both answer concrete issues and the
+     * rendered email. The original is kept (newsletter_imports) so it can be
+     * compared and imported again; applying is the normal save.
+     */
+    public function html(Request $request): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $data = $request->validate([
+            'html' => ['required', 'string', 'max:'.HtmlImportConverter::MAX_BYTES],
+            'mode' => ['required', 'string', 'in:keep,convert'],
+            'newsletter_id' => ['nullable', 'string'],
+        ], [
+            'html.required' => 'Paste HTML or choose an .html file first.',
+            'html.max' => 'That HTML is larger than 1 MB, more than any inbox shows. Make it smaller and try again.',
+        ]);
+        $html = (string) $data['html'];
+
+        if (HtmlImportConverter::unsafe($html)) {
+            throw ValidationException::withMessages(['html' => HtmlImportConverter::UNSAFE_MESSAGE]);
+        }
+
+        $newsletter = null;
+        if (is_string($data['newsletter_id'] ?? null) && $data['newsletter_id'] !== '') {
+            $newsletter = NewsletterAccess::visible(Newsletter::query(), $user)->find($data['newsletter_id'])
+                ?? abort(Status::HTTP_NOT_FOUND);
+        }
+
+        if ($data['mode'] === 'keep') {
+            $result = ['blocks' => null, 'html_override' => $html, 'issues' => $this->converter->keepIssues($html), 'lost' => [], 'preserved' => 0];
+        } else {
+            $result = ['html_override' => null] + $this->converter->convert($html);
+        }
+        if (! str_contains($html, '*|UNSUB|*')) {
+            $result['issues'][] = ['kind' => 'note', 'message' => 'EzBizi adds the company address and unsubscribe footer at the end.'];
+        }
+
+        $footer = ($newsletter !== null ? NewsletterIdentity::footer($newsletter) : $this->orgFooter($user))
+            + ['unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview'];
+        $preview = $this->renderer->document($result['blocks'] ?? [], $result['html_override'], null, $footer, $newsletter?->brand);
+
+        $import = $this->keepOriginal($user, NewsletterImport::KIND_HTML, (string) $data['mode'], $html, $newsletter, [
+            'blocks' => is_array($result['blocks']) ? count($result['blocks']) : 0,
+            'issues' => count($result['issues']),
+            'lost' => $result['lost'],
+            'preserved' => $result['preserved'],
+        ]);
+
+        return response()->json(['data' => [
+            'import_id' => $import->getKey(),
+            'mode' => $data['mode'],
+            'blocks' => $result['blocks'],
+            'html_override' => $result['html_override'],
+            'issues' => array_values($result['issues']),
+            'lost' => $result['lost'],
+            'preserved' => $result['preserved'],
+            'preview_html' => $preview,
+        ]]);
+    }
+
+    /** GET /newsletter/imports/{import}: an import's original, in this view only. */
+    public function original(Request $request, string $import): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $row = NewsletterAccess::visible(NewsletterImport::query(), $user)->find($import) ?? abort(Status::HTTP_NOT_FOUND);
+
+        return response()->json(['data' => [
+            'id' => $row->getKey(),
+            'kind' => $row->kind,
+            'mode' => $row->mode,
+            'newsletter_id' => $row->newsletter_id,
+            'original' => $row->original,
+            'summary' => $row->summary,
+            'created_at' => $row->created_at?->toIso8601String(),
+        ]]);
+    }
+
+    /** @param array<string, mixed> $summary */
+    private function keepOriginal(User $user, string $kind, ?string $mode, string $original, ?Newsletter $newsletter, array $summary): NewsletterImport
+    {
+        $view = ViewScope::forUser($user);
+        [$scopeType, $scopeId] = $newsletter !== null
+            ? [$newsletter->scope_type, (string) $newsletter->scope_id]
+            : ($view->isOrganization()
+                ? [SocialConnection::SCOPE_ORGANIZATION, (string) $user->organization_id]
+                : [$view->type, (string) $view->id]);
+
+        return NewsletterImport::create([
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
+            'newsletter_id' => $newsletter?->getKey(),
+            'kind' => $kind,
+            'mode' => $mode,
+            'original' => $original,
+            'summary' => $summary,
+            'created_by' => $user->getKey(),
+        ]);
+    }
+
+    /** @return array{company: string, address: string} */
+    private function orgFooter(User $user): array
+    {
+        $org = Organization::query()->withoutGlobalScopes()->find($user->organization_id);
+
+        return ['company' => (string) ($org?->name ?? 'EzBizi'), 'address' => (string) ($org?->formattedAddress() ?? '')];
+    }
 
     public function svg(Request $request): JsonResponse
     {
-        $this->mayWrite($request);
+        $user = $this->mayWrite($request);
         $data = $request->validate(['svg' => ['required', 'string']], [
             'svg.required' => 'Choose or paste an SVG first.',
         ]);
 
-        return response()->json(['data' => $this->importer->import((string) $data['svg'])]);
+        $result = $this->importer->import((string) $data['svg']);
+        // The original is kept (P1c) only once it has been read as an SVG.
+        $import = $this->keepOriginal($user, NewsletterImport::KIND_SVG, 'artwork', (string) $data['svg'], null, [
+            'blocks' => count($result['blocks']),
+            'warnings' => count($result['warnings']),
+        ]);
+
+        return response()->json(['data' => $result + ['import_id' => $import->getKey()]]);
     }
 
     public function artwork(Request $request): JsonResponse
