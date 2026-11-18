@@ -537,6 +537,51 @@ class LeadConversationsTest extends TestCase
         $this->assertCount(2, $detail['conversations']);
     }
 
+    /**
+     * Desk, 2026-11-18: Google accepted Ara's reply without naming it; the next
+     * sync stored Google's copy as a second, "Sent outside EzBizi" row (40 in 7
+     * days). Our row takes Google's id instead.
+     */
+    public function test_a_reply_google_did_not_name_takes_its_id_from_the_next_sync_not_a_second_row(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:30:16', 'UTC'));   // 09:30:16 in New York
+
+        $this->fakeGoogle([$this->leadRow('111')], array_slice($this->threadRows('111'), 1, 2), append: Http::response(['responses' => [[]]], 200));
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $connection->id,
+            'source' => 'local_services', 'remote_id' => '111', 'lead_type' => 'MESSAGE', 'received_at' => now()->subDay(),
+        ]));
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Yes, 10am works.'])->assertCreated();
+        $ours = fn () => $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->where('participant', 'ADVERTISER')->get());
+        $this->assertStringStartsWith('sent-', $ours()->sole()->remote_id, 'the control: Google named nothing');
+
+        $this->sync($t, $connection);
+
+        $this->assertSame('c-msg-out-111', $ours()->sole()->remote_id, 'one row, with Google\'s id');
+    }
+
+    /** Measured 2026-11-18: every unnamed send repeated words Google already held. Its row is the message. */
+    public function test_an_unnamed_send_of_words_google_already_holds_adds_no_second_row(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->fakeGoogle([$this->leadRow('111')], array_slice($this->threadRows('111'), 1, 2), append: Http::response(['responses' => [[]]], 200));
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:20:00', 'UTC'));
+        $this->sync($t, $connection);   // Google's copy, 09:30 New York
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->firstOrFail());
+
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:40:00', 'UTC'));
+        $sent = $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Yes, 10am works.'])
+            ->assertCreated()->json('data');
+
+        $ours = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->where('participant', 'ADVERTISER')->get());
+        $this->assertSame(['c-msg-out-111'], $ours->pluck('remote_id')->all());
+        $this->assertSame($ours->sole()->id, $sent['id']);
+    }
+
     public function test_a_call_lead_cannot_be_replied_to_and_nothing_is_sent(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
