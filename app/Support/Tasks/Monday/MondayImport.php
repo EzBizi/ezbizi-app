@@ -333,6 +333,16 @@ final class MondayImport
         if ($existing === null && in_array($item['state'] ?? 'active', ['archived', 'deleted'], true)) {
             return null; // never brought in only to be trashed
         }
+        if ($existing !== null && ! $existing->trashed() && $existing->board_id !== $board->id
+            && $existing->external_synced_at !== null && ! $existing->updated_at->greaterThan($existing->external_synced_at)) {
+            // Nothing changed here since the last sync, so the board change is Monday's (desk 11-18: a
+            // Georgia task moved to Texas on Monday stayed on Georgia here). Follow it, its old board's values dropped.
+            $this->writer->move($existing, $this->group($board, $item['group'] ?? null), null, $as);
+            TaskColumnValue::query()->where('task_id', $existing->id)
+                ->whereNotIn('column_id', TaskColumn::query()->where('board_id', $board->id)->select('id'))->delete();
+            $existing->refresh();
+            $this->counts['moved here (moved on Monday)'] = ($this->counts['moved here (moved on Monday)'] ?? 0) + 1;
+        }
         if ($existing !== null && ! $existing->trashed() && $existing->board_id !== $board->id) {
             // Moved to another board here: EzBizi's place wins; Monday's notes still arrive,
             // but its columns, group and status belong to the board it left (desk 11-18).
