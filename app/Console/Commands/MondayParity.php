@@ -64,7 +64,8 @@ class MondayParity extends Command
                     $meta = $reader->board($mondayId);
                     $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $meta['groups']);
                     $renamed = trim($meta['name']) !== trim($board->name) ? 1 : 0;
-                    $people = PushBoardMembers::diff($board, $reader, $connection);
+                    // The 30-minute (groups-only) run spends nothing on members.
+                    $people = $this->option('groups-only') ? null : PushBoardMembers::diff($board, $reader, $connection);
                     $members = $people === null ? 0 : count($people['add']) + count($people['remove']);
                     $groupsHere = TaskGroup::query()->where('board_id', $board->id)->whereIn('id', Task::query()->where('board_id', $board->id)->select('group_id'))->pluck('name')
                         ->filter(fn ($n) => ! in_array(mb_strtolower(trim($n)), $mondayGroups, true))->values()->all();
