@@ -114,6 +114,10 @@ class SeoTab extends StatefulWidget {
   final ApiClient api;
   final Session session;
 
+  /// Tests start from an empty site search.
+  @visibleForTesting
+  static void forgetSearch() => _SeoTabState._lastQuery = '';
+
   @override
   State<SeoTab> createState() => _SeoTabState();
 }
@@ -125,7 +129,13 @@ class _SeoTabState extends State<SeoTab> {
 
   /// What the search bar over the site list holds; matched against what each
   /// tile shows.
-  String _query = '';
+  String _query = _lastQuery;
+
+  /// The search survives leaving Web Management and coming back (audit
+  /// 01a1ef57: returning keeps the filtered site list).
+  static String _lastQuery = '';
+  late final TextEditingController _search =
+      TextEditingController(text: _lastQuery);
 
   List<Map<String, dynamic>> get _shownSites {
     final needle = _query.trim().toLowerCase();
@@ -177,6 +187,7 @@ class _SeoTabState extends State<SeoTab> {
   @override
   void dispose() {
     _live?.cancel();
+    _search.dispose();
     super.dispose();
   }
 
@@ -444,7 +455,8 @@ class _SeoTabState extends State<SeoTab> {
                 child: ListSearch(
                   key: const Key('web-seo-sites-search'),
                   hint: 'Find a website',
-                  onChanged: (v) => setState(() => _query = v),
+                  controller: _search,
+                  onChanged: (v) => setState(() => _query = _lastQuery = v),
                 ),
               ),
               if (_canEdit && !_adding)
@@ -675,9 +687,7 @@ class _SiteTile extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        connected
-                            ? 'Connected'
-                            : 'Waiting for the plugin',
+                        siteReadLine(site),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.outline,
                         ),
@@ -922,6 +932,22 @@ class _SiteDetailState extends State<_SiteDetail> {
   List<Map<String, dynamic>> _fields = [];
   final Map<String, TextEditingController> _controllers = {};
 
+  /// The values as last read or saved, so Save can show what it will change
+  /// before it writes (audit 01a1ef57: a preview before applying).
+  final Map<String, String> _savedValues = {};
+  bool _reviewing = false;
+
+  List<({String label, String before, String after})> get _changes => [
+        for (final field in _fields)
+          if ((_controllers[field['key']]?.text ?? '') !=
+              (_savedValues[field['key']] ?? ''))
+            (
+              label: '${field['label'] ?? field['key']}',
+              before: _savedValues[field['key']] ?? '',
+              after: _controllers[field['key']]?.text ?? '',
+            ),
+      ];
+
   /// General fields this site marked "Not needed for this site": greyed, never
   /// amber, never counted (Jose, 2026-11-09).
   final Set<String> _notNeeded = {};
@@ -1017,6 +1043,7 @@ class _SiteDetailState extends State<_SiteDetail> {
         final key = field['key'] as String;
         _controllers.putIfAbsent(key, TextEditingController.new).text =
             (values[key] as String?) ?? '';
+        _savedValues[key] = (values[key] as String?) ?? '';
       }
     } catch (_) {
       _error = 'This site\'s details could not be read.';
@@ -1052,8 +1079,10 @@ class _SiteDetailState extends State<_SiteDetail> {
     if (!mounted) return;
 
     setState(() {
+      _reviewing = false;
       if (response.ok) {
-        _saved = 'Saved. The website shows it within a few seconds.';
+        _saved = 'Saved to $_host. The website picks it up on its next read.';
+        widget.site['values_saved_at'] = DateTime.now().toUtc().toIso8601String();
         if (_hoursZone != null) {
           // Now in the site's own time: show what was stored, and stop converting.
           final values = _asMap(_asMap(response.body['data'])['values']);
@@ -1064,6 +1093,12 @@ class _SiteDetailState extends State<_SiteDetail> {
         _error = firstApiError(response);
       }
     });
+
+    if (response.ok) {
+      for (final entry in _controllers.entries) {
+        _savedValues[entry.key] = entry.value.text;
+      }
+    }
 
     // The count beside each website in the list.
     if (response.ok) await widget.onChanged();
@@ -1275,6 +1310,13 @@ class _SiteDetailState extends State<_SiteDetail> {
                         color: theme.colorScheme.outline,
                       ),
                     ),
+                    Text(
+                      '${siteReadLine(widget.site)} · ${sitePublishLine(widget.site)}',
+                      key: const Key('web-site-publish-line'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1365,6 +1407,8 @@ class _SiteDetailState extends State<_SiteDetail> {
                         if (widget.canEdit)
                           if (_confirming != null)
                             _confirmRow(theme)
+                          else if (_reviewing)
+                            _reviewBlock(theme)
                           else
                             Wrap(
                               spacing: 8,
@@ -1388,7 +1432,14 @@ class _SiteDetailState extends State<_SiteDetail> {
                                 ),
                                 FilledButton(
                                   key: const ValueKey('tour-seo-save'),
-                                  onPressed: _save,
+                                  // Changed text is reviewed first; a save
+                                  // with only "Not needed" ticks goes straight.
+                                  onPressed: () => _changes.isEmpty
+                                      ? _save()
+                                      : setState(() {
+                                          _saved = null;
+                                          _reviewing = true;
+                                        }),
                                   child: const Text('Save'),
                                 ),
                               ],
@@ -1672,6 +1723,69 @@ class _SiteDetailState extends State<_SiteDetail> {
         if (value is String) _controllers[key]?.text = value;
       });
     });
+  }
+
+  /// What Save is about to write, on which site, before it writes.
+  Widget _reviewBlock(ThemeData theme) {
+    final changes = _changes;
+    return Container(
+      key: const Key('web-site-save-review'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${changes.length} ${changes.length == 1 ? 'change' : 'changes'} to '
+            '$_host · ${widget.site['company']?['name'] ?? ''}',
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          for (final c in changes)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: '${c.label}: ',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(
+                    text: c.before.isEmpty ? '(empty)' : c.before,
+                    style: TextStyle(
+                      color: theme.colorScheme.outline,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  const TextSpan(text: '  →  '),
+                  TextSpan(text: c.after.isEmpty ? '(empty)' : c.after),
+                ]),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => setState(() => _reviewing = false),
+                child: const Text('Back to editing'),
+              ),
+              FilledButton(
+                key: const Key('web-site-save-confirm'),
+                onPressed: _save,
+                child: const Text('Save these changes'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _confirmRow(ThemeData theme) {
@@ -1961,3 +2075,41 @@ class _SiteDetailState extends State<_SiteDetail> {
   }
 }
 
+
+/// How long ago [iso] was, in words: "5 min ago", "3 days ago".
+String agoText(String? iso, {DateTime? now}) {
+  final at = iso == null ? null : DateTime.tryParse(iso);
+  if (at == null) return 'never';
+  final d = (now ?? DateTime.now()).difference(at);
+  if (d.inMinutes < 1) return 'just now';
+  if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+  if (d.inHours < 24) return '${d.inHours} h ago';
+  return '${d.inDays} ${d.inDays == 1 ? 'day' : 'days'} ago';
+}
+
+/// The connection line under a site: when its plugin last read EzBizi.
+/// Silent for 24 hours is "Quiet", the same line WebQuietSweep alerts on, so
+/// a lost connection never reads like a site with empty fields.
+String siteReadLine(Map<String, dynamic> site, {DateTime? now}) {
+  if (site['connected_at'] == null) return 'Waiting for the plugin';
+  final seen = DateTime.tryParse('${site['last_seen_at'] ?? ''}');
+  final ago = agoText(site['last_seen_at'] as String?, now: now);
+  if (seen != null && (now ?? DateTime.now()).difference(seen).inHours >= 24) {
+    return 'Quiet · last read $ago';
+  }
+  return 'Read $ago';
+}
+
+/// Whether the website has read what was last saved here.
+String sitePublishLine(Map<String, dynamic> site, {DateTime? now}) {
+  if (site['connected_at'] == null) {
+    return 'Saved details go live once the plugin connects.';
+  }
+  final saved = DateTime.tryParse('${site['values_saved_at'] ?? ''}');
+  final seen = DateTime.tryParse('${site['last_seen_at'] ?? ''}');
+  if (saved != null && (seen == null || saved.isAfter(seen))) {
+    return 'Saved ${agoText(site['values_saved_at'] as String?, now: now)}, '
+        'not on the website yet: it picks it up on its next read.';
+  }
+  return 'On the website · last read ${agoText(site['last_seen_at'] as String?, now: now)}';
+}
