@@ -297,12 +297,14 @@ final class MondayBoardReader
      */
     public function writeMeta(string $boardId): array
     {
-        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } groups { id title } } }', ['b' => [$boardId]])['boards'][0] ?? null;
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } groups { id title position } } }', ['b' => [$boardId]])['boards'][0] ?? null;
         if ($b === null) {
             throw new MondayRefused("Monday shows no board {$boardId} to this connection.");
         }
         $this->remember($boardId, $b['columns']);
         $meta = $this->columns[$boardId];
+        // In board order: a new group is placed after the right one (desk 11-18).
+        usort($b['groups'], fn ($x, $y) => (float) ($x['position'] ?? 0) <=> (float) ($y['position'] ?? 0));
         $due = array_key_first(array_filter($meta, fn ($m) => $m['type'] === 'date' && mb_strtolower(trim($m['title'])) === 'due date'));
         $groups = [];
         foreach ($b['groups'] as $g) {

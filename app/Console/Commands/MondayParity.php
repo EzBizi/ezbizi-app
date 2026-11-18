@@ -50,7 +50,9 @@ class MondayParity extends Command
                 $queue = [];
                 foreach ($boards as $board) {
                     $mondayId = substr((string) $board->external_ref, 7);
-                    $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $reader->board($mondayId)['groups']);
+                    $meta = $reader->board($mondayId);
+                    $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $meta['groups']);
+                    $renamed = trim($meta['name']) !== trim($board->name) ? 1 : 0;
                     $groupsHere = TaskGroup::query()->where('board_id', $board->id)->whereIn('id', Task::query()->where('board_id', $board->id)->select('group_id'))->pluck('name')
                         ->filter(fn ($n) => ! in_array(mb_strtolower(trim($n)), $mondayGroups, true))->values()->all();
 
@@ -68,11 +70,11 @@ class MondayParity extends Command
                     $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]))->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
-                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count();
+                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed;
                     $drift += $n;
-                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d',
-                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count()));
-                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup];
+                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d',
+                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed));
+                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null];
                 }
 
                 return $queue;
@@ -81,6 +83,9 @@ class MondayParity extends Command
             if ($this->option('fix')) {
                 foreach ($missingThere as $mondayId => $gap) {
                     $tenant->run($org, function () use ($gap) {
+                        if ($gap['name'] !== null) { // Monday's name wins (desk 11-18)
+                            TaskBoard::query()->whereKey($gap['board'])->update(['name' => mb_substr($gap['name'], 0, 255)]);
+                        }
                         // Parents first, so a subtask finds its parent's item.
                         foreach ($gap['here']->sortBy(fn (Task $t) => $t->parent_task_id === null ? 0 : 1) as $task) {
                             app(MondayOutbox::class)->record($task, ['create']);

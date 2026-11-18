@@ -215,6 +215,11 @@ final class MondayImport
             // The sync: someone who joined since the last read gets the boards Monday shares with them.
             $board = TaskBoard::query()->findOrFail($b['target_board_id']);
             $this->members($board, $b['members'] ?? []);
+            // Monday's board name, as Monday's users know it (Jose 11-18: no differences between them).
+            if (($name = mb_substr(trim((string) ($b['name'] ?? '')), 0, 255)) !== '' && $board->name !== $name) {
+                $board->forceFill(['name' => $name])->saveQuietly();
+                $this->counts['boards renamed'] = ($this->counts['boards renamed'] ?? 0) + 1;
+            }
 
             return $board;
         }

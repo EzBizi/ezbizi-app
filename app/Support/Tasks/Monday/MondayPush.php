@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
+use App\Models\TaskGroup;
 use App\Models\User;
 use App\Support\Tasks\ColumnConverter;
 use App\Support\Tenancy\TenantContext;
@@ -183,7 +184,7 @@ final class MondayPush
             }
             if (in_array('group', $kinds, true) && $task->parent_task_id === null) {
                 $group = $this->groupOn($itemBoard, $task);
-                if ($group !== null && $group !== $item['group']) {
+                if ($group !== $item['group']) {
                     $this->writer->moveToGroup($itemId, $group);
                 }
             }
@@ -330,17 +331,33 @@ final class MondayPush
         return 'deferred';
     }
 
-    /** The Monday group of the task's group name; made there when Monday has none (full mirror, Jose 11-18). */
-    private function groupOn(string $boardId, Task $task): ?string
+    /**
+     * The Monday group of the task's group name; made there when Monday has none
+     * (full mirror, Jose 11-18), right after the Monday group of the EzBizi group
+     * before it, else after Monday's last group. Never null: Monday files an item
+     * with no group in its FIRST group (Company Info, desk 11-18), so a task with
+     * no group is refused, not sent.
+     */
+    private function groupOn(string $boardId, Task $task): string
     {
         $name = trim((string) $task->group?->name);
         if ($name === '') {
-            return null;
+            throw new \RuntimeException('The task has no group; it is not sent to Monday until it has one.');
         }
+        $groups = $this->meta($boardId)['groups'];
+        if (isset($groups[mb_strtolower($name)])) {
+            return $groups[mb_strtolower($name)];
+        }
+        $after = null;
+        foreach (TaskGroup::query()->where('board_id', $task->board_id)->where('position', '<', (int) $task->group->position)->orderByDesc('position')->pluck('name') as $before) {
+            if (isset($groups[mb_strtolower(trim($before))])) {
+                $after = $groups[mb_strtolower(trim($before))];
+                break;
+            }
+        }
+        $after ??= array_values($groups)[count($groups) - 1] ?? throw new \RuntimeException('Monday shows no group on that board to place a new one after.');
 
-        $this->meta($boardId);
-
-        return $this->meta[$boardId]['groups'][mb_strtolower($name)] ??= $this->writer->createGroup($boardId, $name);
+        return $this->meta[$boardId]['groups'][mb_strtolower($name)] = $this->writer->createGroup($boardId, $name, $after);
     }
 
     private function meta(string $boardId): array

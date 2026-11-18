@@ -98,7 +98,7 @@ class MondayPushTest extends TestCase
             return Http::response(['data' => match (true) {
                 str_contains($q, 'users(') => ['users' => [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']]],
                 str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
-                str_contains($q, 'groups { id title }') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
+                str_contains($q, 'groups { id title') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
                     'columns' => [
                         ['id' => 'name', 'title' => 'Name', 'type' => 'name', 'settings_str' => '{}'],
                         ['id' => 'person', 'title' => 'Person', 'type' => 'people', 'settings_str' => '{}'],
@@ -114,6 +114,18 @@ class MondayPushTest extends TestCase
     private function values(int $i = 0): array
     {
         return json_decode((string) ($this->mutations[$i]['vars']['v'] ?? '{}'), true);
+    }
+
+    /** Desk 11-18: Monday files an item with no group in its FIRST group; a task with no group is never sent. */
+    public function test_a_task_in_a_blank_named_group_is_held_not_dropped_in_mondays_first_group(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $g = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => ' ', 'position' => 9]);
+            app(TaskWriter::class)->create($this->board, ['title' => 'Blank group', 'group_id' => $g->id], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertCount(0, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item(')));
     }
 
     /** Desk 11-18: a task moved to another board here moves on Monday too. */
@@ -195,6 +207,9 @@ class MondayPushTest extends TestCase
         $groups = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_group('));
         $this->assertCount(1, $groups);
         $this->assertSame('Customer Experience', $groups->first()['vars']['n']);
+        // Placed after the group before it, never at the top (Monday's default): desk 11-18.
+        $this->assertSame('done', $groups->first()['vars']['r']);
+        $this->assertStringContainsString('position_relative_method:after_at', $groups->first()['query']);
         $this->assertSame(['g_new', 'g_new'], collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.g')->values()->all());
     }
 

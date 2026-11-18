@@ -47,17 +47,22 @@ final class MondayWriter
         $this->mutate('mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g) { id } }', ['i' => $itemId, 'g' => $groupId]);
     }
 
-    public function createGroup(string $boardId, string $name): string
+    /**
+     * A group placed right after $afterGroupId. Never without one: Monday puts an
+     * unplaced group at the TOP of the board (desk 11-18, Monday's create_group docs).
+     */
+    public function createGroup(string $boardId, string $name, string $afterGroupId): string
     {
-        $data = $this->mutate('mutation($b:ID!,$n:String!){ create_group(board_id:$b, group_name:$n) { id } }', ['b' => $boardId, 'n' => $name]);
+        $data = $this->mutate('mutation($b:ID!,$n:String!,$r:String!){ create_group(board_id:$b, group_name:$n, relative_to:$r, position_relative_method:after_at) { id } }',
+            ['b' => $boardId, 'n' => $name, 'r' => $afterGroupId]);
 
         return (string) ($data['create_group']['id'] ?? throw new RuntimeException('Monday made no group.'));
     }
 
     /** Monday matches columns by id/title when no mapping is given. */
-    public function moveToBoard(string $itemId, string $boardId, ?string $groupId): void
+    public function moveToBoard(string $itemId, string $boardId, string $groupId): void
     {
-        $this->mutate('mutation($i:ID!,$b:ID!,$g:ID!){ move_item_to_board(item_id:$i, board_id:$b, group_id:$g) { id } }', ['i' => $itemId, 'b' => $boardId, 'g' => $groupId ?? 'topics']);
+        $this->mutate('mutation($i:ID!,$b:ID!,$g:ID!){ move_item_to_board(item_id:$i, board_id:$b, group_id:$g) { id } }', ['i' => $itemId, 'b' => $boardId, 'g' => $groupId]);
     }
 
     public function archiveItem(string $itemId): void
