@@ -104,7 +104,7 @@ class MondayParity extends Command
                         });
                     });
                     if ($gap['monday'] !== [] || $gap['pull'] !== []) {
-                        $sync->run($connection, only: [(string) $mondayId], items: [...$gap['monday'], ...$gap['pull']]);
+                        $sync->run($connection, only: [(string) $mondayId], items: [...$gap['monday'], ...$gap['pull']], reapply: true);
                     }
                 }
             }
