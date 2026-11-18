@@ -262,6 +262,24 @@ class MondaySyncTest extends TestCase
         $this->assertNull($this->task('78'), 'deleted on Monday: trashed here');
     }
 
+    /** Desk 11-18: the 30-minute run also trashes what Monday deleted, and skips boards above --max-items. */
+    public function test_the_thirty_minute_run_trashes_monday_deletions_and_skips_big_boards(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose)->forceFill(['external_ref' => 'monday:78'])->saveQuietly();
+        }));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z')])];
+        $this->monday['states'] = ['78' => 'deleted'];
+
+        // Two Monday items here: above a max of 1, the board is left to the nightly run.
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--gone' => true, '--max-items' => 1])->assertSuccessful();
+        $this->assertNotNull($this->task('78'));
+
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--gone' => true, '--max-items' => 2000])->assertSuccessful();
+        $this->assertNull($this->task('78'));
+    }
+
     /** Desk 11-18: the 30-minute run settles groups only: Monday's move arrives, nothing else is queued or trashed. */
     public function test_groups_only_parity_pulls_mondays_move_and_queues_nothing_else(): void
     {
