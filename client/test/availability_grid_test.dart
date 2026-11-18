@@ -39,6 +39,7 @@ void main() {
       {
         'date': '2030-01-04', // a Friday: the afternoon is after the last start
         'closed': null,
+        'late_reason': 'No start after 12 PM this day',
         'windows': [
           w('08:00', '11:00', 4, 1),
           w('14:00', '17:00', 4, 0, late: true),
@@ -103,6 +104,11 @@ void main() {
     expect(picks, isEmpty, reason: 'Full and Blocked refuse a tap.');
     expect(find.text('Blocked'), findsOneWidget);
     expect(
+      find.text('No start after 12 PM this day'),
+      findsOneWidget,
+      reason: "Scheduling's reason, said once per day",
+    );
+    expect(
       find.text('Closed'),
       findsNWidgets(3),
       reason: 'Sunday is closed in every row.',
@@ -136,5 +142,29 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('grid-2030-01-04-08:00')));
     await tester.pump();
     expect(picks.single.date, '2030-01-04');
+  });
+
+  testWidgets('a ZIP no area covers (404) says so, not an error', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({'message': 'No service area covers 99999.'}),
+          404,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AvailabilityGrid(api: api, zip: '99999', onPick: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('grid-no-area')), findsOneWidget);
+    expect(find.byKey(const ValueKey('grid-error')), findsNothing);
   });
 }

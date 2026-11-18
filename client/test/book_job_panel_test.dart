@@ -301,6 +301,59 @@ void main() {
     expect(_optionsAsked.first['franchise_id'], 'fr-1');
   });
 
+  // Design 197: the grid on the right, the form on the left.
+  testWidgets('a window picked on the grid fills start and end and is booked', (
+    tester,
+  ) async {
+    await _pump(tester, prefill: _fromLead());
+    expect(find.byKey(const ValueKey('book-two-columns')), findsOneWidget);
+
+    await _tapKey(tester, 'grid-2030-01-02-08:00'); // Full: nothing happens
+    expect(_controllerText(tester, 'book-start'), isNot('2030-01-02 08:00'));
+
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    expect(find.text('Picked'), findsOneWidget);
+    await _tapKey(tester, 'book-submit');
+    expect(_bookings.single['start'], '2030-01-02 11:00');
+    expect(_bookings.single['end'], '2030-01-02 14:00');
+  });
+
+  testWidgets('a refused window shows the rule and the next ones; no reason '
+      'field without scheduling.overbook', (tester) async {
+    await _pump(tester, prefill: _fromLead(), gate: 'refuse');
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    await _tapKey(tester, 'book-submit');
+
+    expect(find.byKey(const ValueKey('book-refusal')), findsOneWidget);
+    expect(find.text(_fridayRule), findsOneWidget);
+    expect(find.byKey(const ValueKey('book-override-reason')), findsNothing);
+
+    await _tapKey(tester, 'book-next-0');
+    expect(find.byKey(const ValueKey('book-refusal')), findsNothing);
+    expect(_controllerText(tester, 'book-start'), '2030-01-03 08:00');
+  });
+
+  testWidgets('with the override: a reason, then Book anyway sends it', (
+    tester,
+  ) async {
+    await _pump(tester, prefill: _fromLead(), gate: 'override');
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    await _tapKey(tester, 'book-submit');
+
+    expect(_enabled(tester, 'book-override'), isFalse, reason: 'no reason yet');
+    await tester.enterText(
+      find.byKey(const ValueKey('book-override-reason')),
+      'Customer leaves the country on Saturday',
+    );
+    await tester.pumpAndSettle();
+    await _tapKey(tester, 'book-override');
+    expect(
+      _bookings.last['override_reason'],
+      'Customer leaves the country on Saturday',
+    );
+    expect(find.byKey(const ValueKey('book-result')), findsOneWidget);
+  });
+
   testWidgets('on a 390x844 phone: stacked section cards, nothing overflows', (
     tester,
   ) async {
@@ -316,7 +369,7 @@ void main() {
     await tester.tap(find.text('Job details'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('book-title')), findsOneWidget);
-    await tester.tap(find.text('Scheduled').first);
+    await tester.tap(find.text('When'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('book-unscheduled')), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -349,6 +402,20 @@ const _lead = {
 };
 
 final _bookings = <Map<String, dynamic>>[];
+
+const _fridayRule =
+    'Friday jobs must be in the 12–3 window or earlier; confirm with the '
+    'field manager or move it.';
+
+String _controllerText(WidgetTester tester, String key) => tester
+    .widget<TextField>(
+      find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byType(TextField),
+      ),
+    )
+    .controller!
+    .text;
 final _retries = <Map<String, dynamic>>[];
 final _optionsAsked = <Map<String, String>>[];
 
@@ -395,6 +462,7 @@ Future<void> _pump(
   bool workiz = false,
   String answer = 'no_workiz',
   Size size = const Size(1200, 1600),
+  String? gate,
 }) async {
   _bookings.clear();
   _retries.clear();
@@ -477,10 +545,51 @@ Future<void> _pump(
           },
         });
       }
+      if (path.endsWith('/scheduling/availability/days')) {
+        Map<String, dynamic> w(String s, String e, int cap, int taken) => {
+          'start_time': s,
+          'end_time': e,
+          'capacity': cap,
+          'taken': taken,
+          'remaining': cap - taken,
+          'late': false,
+        };
+        return _json({
+          'data': {
+            'area_id': q['area_id'] ?? 'a-north',
+            'area_name': 'North',
+            'configured': true,
+            'days': [
+              {
+                'date': '2030-01-02',
+                'closed': null,
+                'windows': [w('08:00', '11:00', 4, 4), w('11:00', '14:00', 4, 2)],
+              },
+            ],
+          },
+        });
+      }
       if (request.method == 'POST' && path.endsWith('/jobs/book')) {
-        _bookings.add(
-          (jsonDecode(request.body) as Map).cast<String, dynamic>(),
-        );
+        final body = (jsonDecode(request.body) as Map).cast<String, dynamic>();
+        _bookings.add(body);
+        // Jobs' BookingGate: the window filled, or it is after the Friday cut.
+        if (gate != null && body['override_reason'] == null) {
+          return _json({
+            'message': 'That window cannot take this job.',
+            'errors': {
+              'scheduled_for': [_fridayRule],
+            },
+            'next_windows': [
+              {
+                'date': '2030-01-03',
+                'start_time': '08:00:00',
+                'end_time': '11:00:00',
+                'remaining': 2,
+              },
+            ],
+            'can_override': gate == 'override',
+          }, 422);
+        }
         return _json({
           'data': {
             'job': {'id': 'job-1', 'number': 'J-0142'},

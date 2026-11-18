@@ -9,6 +9,7 @@ import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../screens/scheduling/schedule_pane.dart';
 import 'address_fields.dart';
+import 'availability_grid.dart';
 import 'calendar_day_field.dart';
 import 'franchise_field.dart';
 import 'lead_thread.dart' show humaniseService;
@@ -136,6 +137,7 @@ Future<Map<String, dynamic>?> showBookJobPanel(
   ValueChanged<Map<String, dynamic>>? onBooked,
 }) => showSidePanel<Map<String, dynamic>>(
   context,
+  // Wide enough for design 197's two columns; a narrow window gets one.
   builder: (_) => BookJobPanel(
     api: api,
     session: session,
@@ -159,11 +161,19 @@ class BookJobPanel extends StatefulWidget {
     required this.session,
     this.prefill = const BookPrefill(),
     this.onBooked,
+    this.page = false,
+    this.onDone,
   });
 
   final ApiClient api;
   final Session session;
   final BookPrefill prefill;
+
+  /// Jobs › Book (design 197): the same flow as a page, not a panel, with
+  /// Create in a bar along the bottom; Done becomes "Book another" and calls
+  /// [onDone] instead of closing anything.
+  final bool page;
+  final VoidCallback? onDone;
 
   /// Called with the booking's answer as soon as EzBizi has the job
   /// (`job`, `workiz`, `ezbizi_only`), before anybody presses Done.
@@ -228,6 +238,13 @@ class _BookJobPanelState extends State<BookJobPanel> {
   final _until = TextEditingController();
   final Set<String> _team = {};
   Map<String, dynamic>? _suggestion;
+  PickedWindow? _picked;
+  final _gridKey = GlobalKey<AvailabilityGridState>();
+
+  /// A 422 from the booking gate (Jobs' BookingGate): the rule's words, the
+  /// next windows with room, and whether this person may book it anyway.
+  Map<String, dynamic>? _refusal;
+  final _overrideReason = TextEditingController();
 
   Map<String, dynamic>? _options;
   String _optionsKey = '';
@@ -280,6 +297,7 @@ class _BookJobPanelState extends State<BookJobPanel> {
       _start,
       _end,
       _until,
+      _overrideReason,
       ..._morePhones,
     ]) {
       c.dispose();
@@ -490,23 +508,32 @@ class _BookJobPanelState extends State<BookJobPanel> {
     };
   }
 
-  Future<void> _book({required bool scheduled}) async {
+  Future<void> _book({required bool scheduled, String? overrideReason}) async {
     setState(() {
       _busy = true;
       _error = null;
     });
-    final response = await widget.api.post(
-      '/jobs/book',
-      _body(scheduled: scheduled),
-    );
+    final response = await widget.api.post('/jobs/book', {
+      ..._body(scheduled: scheduled),
+      'override_reason': ?overrideReason,
+    });
     if (!mounted) return;
     if (!response.ok) {
+      // The window is full or after the Friday cut: say why, offer the next
+      // ones with room, and redraw the grid, which is now out of date.
+      final gate =
+          response.statusCode == 422 &&
+          (response.body['next_windows'] is List ||
+              response.body.containsKey('can_override'));
       setState(() {
         _busy = false;
-        _error = response.message;
+        _refusal = gate ? response.body : null;
+        _error = gate ? null : response.message;
       });
+      if (gate) _gridKey.currentState?.reload();
       return;
     }
+    _refusal = null;
     final data =
         (response.data is Map
             ? (response.data as Map).cast<String, dynamic>()
@@ -558,6 +585,18 @@ class _BookJobPanelState extends State<BookJobPanel> {
     });
   }
 
+  /// A window picked on the grid (or offered by a refusal) fills the times.
+  void _pick(PickedWindow w) => setState(() {
+    _picked = w;
+    _refusal = null;
+    _scheduled = true;
+    _start.text = '${w.date} ${w.start}';
+    _end.text = '${w.date} ${w.end}';
+  });
+
+  void _finish() =>
+      widget.page ? widget.onDone?.call() : Navigator.of(context).pop(_result);
+
   static String _hm(Object? t) {
     final s = '${t ?? '09:00'}';
     return s.length >= 5 ? s.substring(0, 5) : s;
@@ -573,105 +612,262 @@ class _BookJobPanelState extends State<BookJobPanel> {
     final needs = _scheduled ? needsBook : needsSave;
     final theme = Theme.of(context);
 
-    return SidePanel(
-      title: 'Book a job',
-      subtitle: _p.leadId != null ? 'From this lead' : null,
-      width: 560,
-      actions: result != null
-          ? [
+    final actions = result != null
+        ? [
+            FilledButton(
+              key: const ValueKey('book-done'),
+              onPressed: _busy ? null : _finish,
+              child: Text(widget.page ? 'Book another' : 'Done'),
+            ),
+          ]
+        : [
+            if (needs.isNotEmpty)
+              Text(
+                'Needs: ${needs.join(', ')}',
+                key: const ValueKey('book-needs'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            OutlinedButton(
+              key: const ValueKey('book-unscheduled'),
+              onPressed: !_busy && needsSave.isEmpty
+                  ? () => _book(scheduled: false)
+                  : null,
+              child: const Text('Save unscheduled'),
+            ),
+            if (_scheduled)
               FilledButton(
-                key: const ValueKey('book-done'),
-                onPressed: _busy
-                    ? null
-                    : () => Navigator.of(context).pop(result),
-                child: const Text('Done'),
-              ),
-            ]
-          : [
-              if (needs.isNotEmpty)
-                Text(
-                  'Needs: ${needs.join(', ')}',
-                  key: const ValueKey('book-needs'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-              OutlinedButton(
-                key: const ValueKey('book-unscheduled'),
-                onPressed: !_busy && needsSave.isEmpty
-                    ? () => _book(scheduled: false)
+                key: const ValueKey('book-submit'),
+                onPressed: !_busy && needsBook.isEmpty
+                    ? () => _book(scheduled: true)
                     : null,
-                child: const Text('Save unscheduled'),
+                child: Text(_busy ? 'Booking…' : 'Book job'),
               ),
-              if (_scheduled)
-                FilledButton(
-                  key: const ValueKey('book-submit'),
-                  onPressed: !_busy && needsBook.isEmpty
-                      ? () => _book(scheduled: true)
-                      : null,
-                  child: Text(_busy ? 'Booking…' : 'Book job'),
-                ),
-            ],
-      child: Builder(
-        builder: (context) {
-          // A phone (option 4): the panel fills the window, sections are cards.
-          final phone = MediaQuery.sizeOf(context).width < 600;
+          ];
+
+    final body = LayoutBuilder(
+      builder: (context, box) {
+        // A phone (option 4): sections are cards that open in place.
+        final phone = MediaQuery.sizeOf(context).width < 600;
+        Widget section(
+          String id,
+          String title,
+          bool done,
+          String summary,
+          Widget child,
+        ) => _section(
+          theme,
+          phone: phone,
+          id: id,
+          title: title,
+          done: done,
+          summary: summary,
+          child: child,
+        );
+        final top = [
+          if (result != null) ...[
+            _resultBox(theme, result),
+            const SizedBox(height: 12),
+          ],
+          if (_error != null) ...[
+            Text(
+              _error!,
+              key: const ValueKey('book-error'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_refusal != null) ...[
+            _refusalBox(theme),
+            const SizedBox(height: 12),
+          ],
+        ];
+        final form = [
+          section(
+            'client',
+            'Client',
+            _clientDone,
+            _clientSummary(),
+            _client(theme),
+          ),
+          section(
+            'location',
+            'Service location',
+            _locationDone,
+            _locationSummary(),
+            _location(theme),
+          ),
+          section(
+            'details',
+            'Job details',
+            _detailsDone,
+            _title.text.trim(),
+            _details(theme),
+          ),
+        ];
+        final when = section(
+          'schedule',
+          'When',
+          _scheduled ? _scheduleDone : true,
+          _scheduled ? _start.text : 'Unscheduled',
+          _schedule(theme),
+        );
+        // Design 197 option 1: the form on the left, the grid on the right.
+        if (box.maxWidth < 960) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (result != null) ...[
-                _resultBox(theme, result),
-                const SizedBox(height: 12),
-              ],
-              if (_error != null) ...[
-                Text(
-                  _error!,
-                  key: const ValueKey('book-error'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
+            children: [...top, ...form, when],
+          );
+        }
+        return Column(
+          key: const ValueKey('book-two-columns'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...top,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: form,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(width: 16),
+                Expanded(flex: 6, child: when),
               ],
-              _section(
-                theme,
-                phone: phone,
-                id: 'client',
-                title: 'Client',
-                done: _clientDone,
-                summary: _clientSummary(),
-                child: _client(theme),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!widget.page) {
+      return SidePanel(
+        title: 'Book a job',
+        subtitle: _p.leadId != null ? 'From this lead' : null,
+        width: 1120,
+        actions: actions,
+        child: body,
+      );
+    }
+    // Jobs › Book: the page scrolls, Create stays in the bar at the bottom.
+    return Column(
+      key: const ValueKey('book-page'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: body,
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
+              children: actions,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The booking gate's refusal: its rule, the next windows with room, and
+  /// for whoever holds scheduling.overbook, a reason and Book anyway.
+  Widget _refusalBox(ThemeData theme) {
+    final r = _refusal!;
+    final rules = [
+      for (final m
+          in ((r['errors'] as Map?)?['scheduled_for'] as List? ?? const []))
+        '$m',
+    ];
+    final next = _maps(r['next_windows']);
+    final colours = ToneColours.of(context, Tone.caution);
+    final ink = theme.textTheme.bodySmall?.copyWith(color: colours.ink);
+    return Container(
+      key: const ValueKey('book-refusal'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${r['message'] ?? 'That window cannot take this job.'}',
+            style: theme.textTheme.titleSmall?.copyWith(color: colours.ink),
+          ),
+          for (final rule in rules) Text(rule, style: ink),
+          if (next.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Next with room:', style: ink),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (i, n) in next.indexed)
+                  ActionChip(
+                    key: ValueKey('book-next-$i'),
+                    label: Text(
+                      '${n['date']} ${_hm(n['start_time'])}–${_hm(n['end_time'])}'
+                      '${n['remaining'] != null ? ' · ${n['remaining']} left' : ''}',
+                    ),
+                    onPressed: _busy
+                        ? null
+                        : () => _pick((
+                            date: '${n['date']}',
+                            start: _hm(n['start_time']),
+                            end: _hm(n['end_time']),
+                          )),
+                  ),
+              ],
+            ),
+          ],
+          if (r['can_override'] == true) ...[
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('book-override-reason'),
+              controller: _overrideReason,
+              maxLength: 500,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Why it has to go in this window',
+                border: OutlineInputBorder(),
               ),
-              _section(
-                theme,
-                phone: phone,
-                id: 'location',
-                title: 'Service location',
-                done: _locationDone,
-                summary: _locationSummary(),
-                child: _location(theme),
+              onChanged: (_) => setState(() {}),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton(
+                key: const ValueKey('book-override'),
+                onPressed: _busy || _overrideReason.text.trim().isEmpty
+                    ? null
+                    : () => _book(
+                        scheduled: true,
+                        overrideReason: _overrideReason.text.trim(),
+                      ),
+                child: const Text('Book anyway'),
               ),
-              _section(
-                theme,
-                phone: phone,
-                id: 'details',
-                title: 'Job details',
-                done: _detailsDone,
-                summary: _title.text.trim(),
-                child: _details(theme),
-              ),
-              _section(
-                theme,
-                phone: phone,
-                id: 'schedule',
-                title: 'Scheduled',
-                done: _scheduled ? _scheduleDone : true,
-                summary: _scheduled ? _start.text : 'Unscheduled',
-                child: _schedule(theme),
-              ),
-            ],
-          );
-        },
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1214,6 +1410,20 @@ class _BookJobPanelState extends State<BookJobPanel> {
                 ),
               ],
             ),
+          // Design 197: the area's days × windows; only one with room can be
+          // picked. The fields below show the pick and still take a time by
+          // hand (an unconfigured area, or a job outside every window).
+          if (_zip.isNotEmpty) ...[
+            AvailabilityGrid(
+              key: _gridKey,
+              api: widget.api,
+              zip: _zip,
+              areaId: _areaId,
+              picked: _picked,
+              onPick: _pick,
+            ),
+            const SizedBox(height: 10),
+          ],
           CalendarDayField(
             key: const ValueKey('book-start'),
             controller: _start,
@@ -1221,7 +1431,7 @@ class _BookJobPanelState extends State<BookJobPanel> {
             formats: me.display,
             withTime: true,
             enabled: !_busy,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(() => _picked = null),
           ),
           const SizedBox(height: 8),
           CalendarDayField(

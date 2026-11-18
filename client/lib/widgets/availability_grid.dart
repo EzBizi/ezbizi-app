@@ -77,11 +77,15 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
       if (_from != null) 'from': _ymd(_from!),
     });
     if (!mounted || key != _key) return;
+    // 404: no area covers the ZIP, which is an answer, not a failure.
+    final none = response.statusCode == 404;
     setState(() {
       _data = response.ok && response.data is Map
           ? (response.data as Map).cast<String, dynamic>()
+          : none
+          ? const {'area_id': null}
           : null;
-      _error = response.ok ? null : response.message;
+      _error = response.ok || none ? null : response.message;
     });
   }
 
@@ -241,10 +245,13 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
     final taken = (w['taken'] as num?)?.toInt() ?? 0;
     final capacity = (w['capacity'] as num?)?.toInt() ?? 0;
     final left = (w['remaining'] as num?)?.toInt() ?? 0;
+    // A start after the day's cut (a setting per company, branch and area;
+    // A-1's Fridays end with 12–3). Only the server knows where it applies.
     if (w['late'] == true) {
       return (
         label: 'Blocked',
-        sub: (w['late_reason'] as String?) ?? 'After the last start',
+        // Scheduling's /days says why once per day.
+        sub: (day['late_reason'] as String?) ?? 'After the last start',
         tone: null,
         open: false,
         striped: true,
