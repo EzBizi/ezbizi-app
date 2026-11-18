@@ -145,6 +145,7 @@ class JobBookingController extends Controller
             'recurrence.until' => ['nullable', 'date_format:Y-m-d'],
             'technician_ids' => ['nullable', 'array', 'max:10'],
             'technician_ids.*' => ['uuid'],
+            'override_reason' => ['nullable', 'string', 'max:500'],
         ]);
         $franchise = Franchise::query()->findOrFail($input['franchise_id']);
         $this->authorize('create', [Job::class, $franchise]);
@@ -155,6 +156,8 @@ class JobBookingController extends Controller
         if (isset($input['status']) && ! in_array($input['status'], Job::allowedStatuses($franchise), true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['status' => 'Not one of this organization\'s job statuses.']);
         }
+        $override = \App\Support\Jobs\BookingGate::check($area, $input['scheduled'] && filled($input['start'] ?? null) ? $input['start'] : null,
+            $request->user(), $input['override_reason'] ?? null);
         $lead = isset($input['lead_id']) ? Lead::query()->findOrFail($input['lead_id']) : null;
         if ($lead) {
             $this->authorize('update', $lead);
@@ -228,6 +231,9 @@ class JobBookingController extends Controller
 
             return $job;
         });
+        if ($override !== null) {
+            \App\Support\Jobs\BookingGate::record($job, $override);
+        }
         foreach ($techs as $tech) {
             JobTechnicians::assign($job, $tech);
         }

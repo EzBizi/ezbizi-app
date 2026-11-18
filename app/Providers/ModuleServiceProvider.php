@@ -1589,7 +1589,8 @@ class ModuleServiceProvider extends ServiceProvider
                         subjects: [Organization::class],
                     ),
                 ],
-                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // overbook: book past a full window or the Friday cutoff, with a reason (desk, 2026-11-17; App\Support\Jobs\BookingGate).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'overbook'],
             ),
 
             /*
