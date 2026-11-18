@@ -300,6 +300,39 @@ final class MondayImport
     }
 
     /**
+     * After a board move, each value goes to the new board's column of the same
+     * name and type, as Monday does on its own move (desk 11-18); a status or
+     * dropdown keeps its label. Only a value with no such column is dropped.
+     */
+    public static function carryValues(Task $task, TaskBoard $board): void
+    {
+        $there = TaskColumn::query()->where('board_id', $board->id)->get();
+        $label = fn (TaskColumn $c, ?string $id) => collect($c->settings['options'] ?? [])->firstWhere('id', $id)['label'] ?? null;
+        foreach (TaskColumnValue::query()->with('column')->where('task_id', $task->id)
+            ->whereNotIn('column_id', $there->pluck('id'))->get() as $v) {
+            $from = $v->column;
+            $to = $from ? $there->first(fn (TaskColumn $c) => $c->type === $from->type && mb_strtolower(trim($c->name)) === mb_strtolower(trim($from->name))) : null;
+            if ($to === null || TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $to->id)->exists()) {
+                $v->delete();
+
+                continue;
+            }
+            if (in_array($from->type, ['status', 'dropdown'], true) && $v->value_text !== null) {
+                $name = $label($from, $v->value_text);
+                $opt = collect($to->settings['options'] ?? [])->first(fn ($o) => mb_strtolower((string) ($o['label'] ?? '')) === mb_strtolower((string) $name));
+                if ($opt === null) {
+                    $v->delete();
+
+                    continue;
+                }
+                $v->value_text = (string) $opt['id'];
+            }
+            $v->column_id = $to->id;
+            $v->save();
+        }
+    }
+
+    /**
      * A personal board answers for its monday board from now on, so the sync
      * finds it. A DELETED board holding the key (the 11-03 run's custom board)
      * gives it up; a live one keeps it.
@@ -338,8 +371,7 @@ final class MondayImport
             // Nothing changed here since the last sync, so the board change is Monday's (desk 11-18: a
             // Georgia task moved to Texas on Monday stayed on Georgia here). Follow it, its old board's values dropped.
             $this->writer->move($existing, $this->group($board, $item['group'] ?? null), null, $as);
-            TaskColumnValue::query()->where('task_id', $existing->id)
-                ->whereNotIn('column_id', TaskColumn::query()->where('board_id', $board->id)->select('id'))->delete();
+            self::carryValues($existing, $board);
             $existing->refresh();
             $this->counts['moved here (moved on Monday)'] = ($this->counts['moved here (moved on Monday)'] ?? 0) + 1;
         }
@@ -558,9 +590,7 @@ final class MondayImport
             $task->forceFill(['parent_task_id' => null])->saveQuietly();
             $this->writer->move($task, $this->group($board, $input['group']), null, $as);
         }
-        // Values on the old board's columns mean nothing here.
-        TaskColumnValue::query()->where('task_id', $task->id)
-            ->whereNotIn('column_id', TaskColumn::query()->where('board_id', $task->board_id)->select('id'))->delete();
+        self::carryValues($task, $task->board()->first());
         // A status from the old board would not resolve; the import's status (or the board default) replaces it.
         $input['status'] ??= $board->statuses()->where('key', Task::STATUS_NOT_STARTED)->value('name') ?? $board->statuses()->value('name');
         $task->load('board');
