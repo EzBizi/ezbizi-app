@@ -4115,7 +4115,7 @@ class ActionRunner
     private function assignTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.assign', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
 
         $stored = (string) ($action['user_field'] ?? '');
@@ -4145,7 +4145,7 @@ class ActionRunner
     private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.move_group', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $groupId = (string) ($action['group_id'] ?? '');
         if ($subject->group_id === $groupId) {
@@ -4168,7 +4168,7 @@ class ActionRunner
     {
         $type = 'task.shift_date';
         if (! $subject instanceof Task) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $column = (string) ($action['column_id'] ?? 'due');
         $amount = (int) ($action['amount'] ?? 0);
@@ -4206,7 +4206,7 @@ class ActionRunner
     {
         $type = 'task.set_value';
         if (! $subject instanceof Task) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $columnId = (string) ($action['column_id'] ?? '');
         $raw = $action['value'] ?? null;

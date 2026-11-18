@@ -343,6 +343,20 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Desk, 2026-11-18: a task deleted before its "assign creator" rule ran counted as a failure. */
+    public function test_a_step_on_a_task_deleted_before_it_ran_is_skipped(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $done = app(ActionRunner::class)->run(['type' => 'task.assign', 'user_field' => 'created_by_user_id'],
+                new AutomationEvent(['event_key' => 'task.created', 'subject_type' => (new Task)->getMorphClass(), 'subject_id' => (string) \Illuminate\Support\Str::uuid(), 'payload' => []]),
+                null, automation: $rule);
+            $this->assertTrue($done['ok']);
+            $this->assertTrue($done['skipped'] ?? false);
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');
