@@ -7,6 +7,7 @@ use App\Models\Job;
 use App\Models\Notification;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
+use App\Models\Task;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Settings\SettingsResolver;
@@ -80,5 +81,13 @@ class FullWindowFlagsTest extends TestCase
         $this->inTenant($alpha['org'], fn () => $this->assertSame(
             'Job #203: 8-11 AM already had 2 of 1 when it was moved there. Next open that day: 2-5 PM.',
             Notification::query()->where('user_id', $booker->id)->latest('id')->value('title')));
+
+        // Jose 11-18: in its own "Overbooked" group, naming who booked it (title and a Booked by column).
+        $this->inTenant($alpha['org'], function () {
+            $task = Task::query()->with('group')->where('title', 'like', 'Job #203:%')->firstOrFail();
+            $this->assertSame('Overbooked', $task->group->name);
+            $this->assertStringEndsWith(' · booked by Ana Ruiz', $task->title);
+            $this->assertSame('Ana Ruiz', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Booked by'))->value('value_text'));
+        });
     }
 }

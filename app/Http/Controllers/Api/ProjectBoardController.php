@@ -70,6 +70,19 @@ class ProjectBoardController extends Controller
         return $this->settingsAt($place);
     }
 
+    /** The board tab [job] sits in for [user]: the first whose rule takes it, or null. */
+    public function stageOf(Job $job, User $user): ?string
+    {
+        $rules = (array) app(SettingsResolver::class)->get('project_board.tabs', $this->settingsFor($user));
+        foreach (self::TABS as $t) {
+            if ($this->tab(Job::query()->whereKey($job->getKey()), $rules[$t] ?? [])->exists()) {
+                return $t;
+            }
+        }
+
+        return null;
+    }
+
     /** The same, read at [place] (a company or the organization). */
     private function settingsAt(Model $place): Model
     {

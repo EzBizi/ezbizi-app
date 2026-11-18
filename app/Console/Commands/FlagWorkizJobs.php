@@ -5,6 +5,9 @@ namespace App\Console\Commands;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Organization;
+use App\Models\TaskBoard;
+use App\Models\TaskColumn;
+use App\Models\TaskGroup;
 use App\Models\User;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
@@ -89,14 +92,7 @@ class FlagWorkizJobs extends Command
                             $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: [$booker->getKey()]);
                         }
 
-                        $franchise = Franchise::query()->find($w->franchise_id);
-                        if ($franchise && TaskBoards::hasPlaceBoard($franchise)) {
-                            $tasks->create($boards->ensureFor($franchise), array_filter([
-                                'title' => $title,
-                                'about_type' => $job ? 'job' : null,
-                                'about_id' => $job?->id,
-                            ]), null);
-                        }
+                        self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
                     }
                 }
             });
@@ -105,6 +101,88 @@ class FlagWorkizJobs extends Command
         $this->info($flagged.' flag'.($flagged === 1 ? '' : 's').($dry ? ' would be raised.' : ' raised.'));
 
         return self::SUCCESS;
+    }
+
+    /** The one line that says what the flag asks for (desk 11-18: "what the point to them is"). */
+    public const WHY = [
+        'address' => 'Fix the address in Workiz so the tech can find it',
+    ];
+
+    /**
+     * The flag on the branch's board, owned by the people its alert reaches (those the
+     * board can take), made by EzBizi (desk 11-18: they had no owner and no maker).
+     *
+     * @param  list<?string>  $userIds
+     */
+    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds, ?string $group = null, ?string $bookedBy = null): void
+    {
+        if ($franchise === null || ! TaskBoards::hasPlaceBoard($franchise)) {
+            return;
+        }
+        $board = $boards->ensureFor($franchise);
+        $can = $boards->assignable($board)->pluck('id')->map(fn ($id) => (string) $id)->all();
+        // Quiet: the alert above is the bell; the task must not ring a second one.
+        $quiet = $tasks->quiet;
+        $tasks->quiet = true;
+        $bookedBy = trim((string) $bookedBy) ?: null;
+        $tasks->create($board, array_filter([
+            'title' => mb_substr(implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null])), 0, 255),
+            // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
+            'group_id' => $group ? self::groupOn($board, $group)->id : null,
+            // Who booked it, also when they have no EzBizi account (Jose 11-18).
+            'values' => $bookedBy ? [self::bookedByColumn($board)->id => $bookedBy] : null,
+            'about_type' => $job ? 'job' : null,
+            'about_id' => $job?->id,
+            'source' => 'flags',
+            'assignee_user_ids' => self::owners($board, $franchise, $userIds, $can) ?: null,
+        ]), null);
+        $tasks->quiet = $quiet;
+    }
+
+    public static function groupOn(TaskBoard $board, string $name): TaskGroup
+    {
+        return TaskGroup::query()->firstOrCreate(['board_id' => $board->id, 'name' => $name], [
+            'organization_id' => $board->organization_id, 'colour' => '#E2445C',
+            'position' => (int) TaskGroup::query()->where('board_id', $board->id)->max('position') + 1,
+        ]);
+    }
+
+    public static function bookedByColumn(TaskBoard $board): TaskColumn
+    {
+        return TaskColumn::query()->firstOrCreate(['board_id' => $board->id, 'name' => 'Booked by'], [
+            'organization_id' => $board->organization_id, 'type' => 'text',
+            'position' => (int) TaskColumn::query()->where('board_id', $board->id)->max('position') + 1,
+        ]);
+    }
+
+    /**
+     * Never no owner (desk 11-18): those alerted whom the board can take, else the
+     * branch's listed field managers, else its General Manager (the board's
+     * "General Manager - <name>" group).
+     *
+     * @param  list<?string>  $userIds
+     * @param  list<string>  $can
+     * @return list<string>
+     */
+    public static function owners(TaskBoard $board, Franchise $franchise, array $userIds, array $can): array
+    {
+        $pick = fn (array $ids) => array_values(array_unique(array_intersect(array_map('strval', array_filter($ids)), $can)));
+        if ($out = $pick($userIds)) {
+            return $out;
+        }
+        $emails = preg_split('/[\s,;]+/', mb_strtolower((string) app(SettingsResolver::class)->get(SchedulingFlagFullWindows::RECIPIENTS, $franchise)), -1, PREG_SPLIT_NO_EMPTY);
+        if ($out = $pick(User::query()->where('is_active', true)->whereIn(DB::raw('LOWER(email)'), $emails ?: ['-'])->pluck('id')->all())) {
+            return $out;
+        }
+        foreach (TaskGroup::query()->where('board_id', $board->id)->where('name', 'like', '%General Manager%')->pluck('name') as $group) {
+            $first = trim((string) preg_replace('/^.*General Manager\s*[-–]\s*/iu', '', $group));
+            $first = preg_split('/[\s(]+/', $first)[0] ?? '';
+            if ($first !== '' && ($out = $pick(User::query()->where('is_active', true)->where('name', 'like', $first.'%')->pluck('id')->all()))) {
+                return array_slice($out, 0, 1);
+            }
+        }
+
+        return [];
     }
 
     /** Workiz CreatedBy → the team member's linked user, else a user of that name. */

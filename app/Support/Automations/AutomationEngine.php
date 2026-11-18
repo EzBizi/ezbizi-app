@@ -215,6 +215,18 @@ class AutomationEngine
                 $this->record($automation, $version, $event, AutomationRun::SKIPPED, $started, trace: $verdict['trace']);
                 return false;
             }
+            // A status change undone before the rule ran is not acted on (desk
+            // for Jose, 2026-11-18: Done then back to Working on it 16 seconds
+            // later, and the rule still moved the task to Done a minute after).
+            if (str_ends_with($event->event_key, '.status_changed') && $subject instanceof \Illuminate\Database\Eloquent\Model
+                && ($now = $subject->fresh()) !== null
+                && (array_key_exists('status_id', $after = (array) ($event->payload['after'] ?? [])) && $after['status_id'] !== null
+                    ? (string) $now->getAttribute('status_id') !== (string) $after['status_id']
+                    : array_key_exists('status_key', $after) && (string) $now->getAttribute('status') !== (string) $after['status_key'])) {
+                $this->record($automation, $version, $event, AutomationRun::SKIPPED, $started,
+                    trace: [['reason' => 'The status changed again before this ran.']]);
+                return false;
+            }
             $run = AutomationRun::create([
                 'organization_id' => $event->organization_id,
                 'automation_id' => $automation->id, 'automation_version_id' => $version->id,
