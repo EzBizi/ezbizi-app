@@ -47,14 +47,28 @@ class SchedulingFlagFullWindows extends Command
             }
             $tenant->run($organization, function () use ($jobs, $settings, $notify, $boards, $tasks, $openings, &$flagged) {
                 foreach ($jobs as $w) {
-                    $sentence = $this->check($w, $openings);
-                    if ($sentence === null
-                        || DB::table('workiz_job_flags')->insertOrIgnore(['workiz_job_id' => $w->id, 'issue' => 'full_window', 'created_at' => now()]) === 0) {
+                    // One ledger row per slot the job has held: a new slot is a new booking
+                    // or a move (desk, 2026-11-17: moves alert too, once per move).
+                    $job = Job::query()->find($w->job_id);
+                    if ($job === null || $job->scheduled_for === null) {
+                        continue;
+                    }
+                    $slot = 'slot:'.substr((string) $job->scheduled_for, 0, 16);
+                    $seen = DB::table('workiz_job_flags')->where('workiz_job_id', $w->id)->where('issue', 'like', 'slot:%')->exists();
+                    if (DB::table('workiz_job_flags')->insertOrIgnore(['workiz_job_id' => $w->id, 'issue' => $slot, 'created_at' => now()]) === 0) {
+                        continue; // this slot already checked
+                    }
+                    // An old job seen for the first time (the nightly resync) only sets its baseline.
+                    $moved = $seen;
+                    if (! $moved && $job->created_at < now()->subDay()) {
+                        continue;
+                    }
+                    $sentence = $this->check($w, $job, $openings, $moved);
+                    if ($sentence === null) {
                         continue;
                     }
                     $flagged++;
                     $title = 'Job #'.($w->serial_id ?? $w->remote_id).': '.$sentence;
-                    $job = Job::query()->find($w->job_id);
                     $franchise = Franchise::query()->find($w->franchise_id);
 
                     $emails = $franchise ? preg_split('/[\s,;]+/', mb_strtolower((string) $settings->get(self::RECIPIENTS, $franchise)), -1, PREG_SPLIT_NO_EMPTY) : [];
@@ -78,14 +92,10 @@ class SchedulingFlagFullWindows extends Command
     }
 
     /** "8-11 AM already had 4 of 4 when it was booked. Next open that day: 2-5 PM." or null when it fit. */
-    private function check(WorkizJob $w, Openings $openings): ?string
+    private function check(WorkizJob $w, Job $job, Openings $openings, bool $moved): ?string
     {
-        $job = Job::query()->find($w->job_id);
-        $area = $job?->service_area_id ? ServiceArea::query()->find($job->service_area_id) : null;
-        // New bookings only: Workiz's nightly resync touches every row, and the
-        // backlog is Overbooking's list, not a burst of alerts.
-        // ponytail: a job MOVED into a full window is not caught; add a scheduled_for change check if needed.
-        if ($area === null || $job->created_at < now()->subDay()) {
+        $area = $job->service_area_id ? ServiceArea::query()->find($job->service_area_id) : null;
+        if ($area === null) {
             return null;
         }
         $at = (string) $job->scheduled_for;
@@ -99,17 +109,18 @@ class SchedulingFlagFullWindows extends Command
         }
         $created = fn ($j) => (is_string($j->payload) ? json_decode($j->payload, true) : (array) $j->payload)['CreatedDate'] ?? null;
         $mine = $created($w) ?? (string) $w->created_at;
-        $before = $seats->filter(function ($j) use ($window, $created, $mine, $job) {
+        $before = $seats->filter(function ($j) use ($window, $created, $mine, $job, $moved) {
             $t = substr((string) $j->scheduled_for, 11, 5);
 
-            return $j->job_id !== $job->id && $t >= $window['start_time'] && $t < $window['end_time'] && ($created($j) ?? '0') < $mine;
+            // A move lands on everyone already there; a booking only on those booked before it.
+            return $j->job_id !== $job->id && $t >= $window['start_time'] && $t < $window['end_time'] && ($moved || ($created($j) ?? '0') < $mine);
         })->count();
         if ($before < $window['capacity']) {
             return null;
         }
         $next = collect($windows)->first(fn ($x) => $x['remaining'] > 0);
 
-        return RescheduleOffers::window($window['start_time'], $window['end_time'])." already had {$before} of {$window['capacity']} when it was booked. "
+        return RescheduleOffers::window($window['start_time'], $window['end_time'])." already had {$before} of {$window['capacity']} when it was ".($moved ? 'moved there' : 'booked').'. '
             .($next ? 'Next open that day: '.RescheduleOffers::window($next['start_time'], $next['end_time']).'.' : 'That day has no window left.');
     }
 }

@@ -54,5 +54,28 @@ class FullWindowFlagsTest extends TestCase
             $this->assertSame([$title], Notification::query()->where('user_id', $manager->id)->pluck('title')->all());
             $this->assertSame(0, Notification::query()->where('user_id', $bystander->id)->count());
         });
+
+        // Desk, 2026-11-17: a move into a full window alerts too, once per move.
+        // An old job first seen (the nightly resync) only sets its baseline.
+        $old = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $f = $alpha['franchise'];
+            $job = Job::create(['franchise_id' => $f->id, 'customer_id' => Customer::query()->value('id'), 'number' => 'J-203', 'title' => 'J', 'status' => 'Submitted',
+                'currency' => 'USD', 'service_area_id' => Job::query()->value('service_area_id'), 'scheduled_for' => '2026-11-18 14:00:00']);
+            $job->forceFill(['created_at' => now()->subDays(5)])->save();
+            WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => 'OLD', 'status' => 'Submitted', 'serial_id' => 203, 'job_id' => $job->id,
+                'created_by' => 'Ana Ruiz', 'payload' => ['CreatedDate' => '2026-11-01 09:00:00'], 'scheduled_for' => '2026-11-18 14:00:00', 'synced_at' => now()]);
+
+            return $job;
+        });
+        $this->artisan('scheduling:flag-full-windows')->expectsOutputToContain('0 full-window flags raised')->assertSuccessful();
+        $this->inTenant($alpha['org'], function () use ($old) {
+            $old->forceFill(['scheduled_for' => '2026-11-18 09:00:00'])->save();
+            WorkizJob::query()->where('remote_id', 'OLD')->update(['updated_at' => now()]);
+        });
+        $this->artisan('scheduling:flag-full-windows')->expectsOutputToContain('1 full-window flag raised')->assertSuccessful();
+        $this->artisan('scheduling:flag-full-windows')->expectsOutputToContain('0 full-window flags raised')->assertSuccessful();
+        $this->inTenant($alpha['org'], fn () => $this->assertSame(
+            'Job #203: 8-11 AM already had 2 of 1 when it was moved there. Next open that day: 2-5 PM.',
+            Notification::query()->where('user_id', $booker->id)->latest('id')->value('title')));
     }
 }
