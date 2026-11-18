@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0598', date: '18 Nov 2026', items: [
+      'Task Board: complaint and bad-review tasks stay in Customer Relations until a person approves a refund or files a chargeback',
+      'Leads: a Local Services reply no longer shows twice (once as sent outside EzBizi)',
+      'Task Board: people added to or removed from a board here are added or removed on Monday too',
+      'Automations: a missed call from a hidden number makes a task titled Unknown caller (no number) with the line and time',
+      'Social: approving a post with no time set says which accounts it will publish to, and posts only after you confirm',
+      'Leads: missed-call alerts arrive about a minute after the call ends instead of five to seven',
+      'Newsletter: starter templates bring their pictures into the company library, so they show in the web app, and the booking button goes to the market site of the branch',
+    ]),
     VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
       'Task Board: a task moved or closed on Monday moves the same way in EzBizi within minutes',
       'Google Ads: the account picker shows campaign accounts only, each figure says when it was read, missing access says what to do, and budget or bid changes show a before and after review first',
