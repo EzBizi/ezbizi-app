@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0592', date: '18 Nov 2026', items: [
+      'Jobs › Book: book a job in one place, with a live grid of days and time windows where full or late windows cannot be picked; every Book button opens the same panel',
+      'Scheduling: a job booked or moved into a time window that was already full alerts whoever booked it and the branch field manager at once, naming the next open window',
+      'Newsletter import: Save as new draft opens the draft, and the artwork step also takes PNG, JPEG, GIF and WebP pictures',
+    ]),
     VersionRelease(version: '0.0.0591', date: '18 Nov 2026', items: [
       'Newsletter: save your company brand (logo, colors, font, button style, footer note) and apply it to any newsletter',
       'Newsletter: save any block as a reusable section or start from five ready-made ones, inserted as a copy or linked',
