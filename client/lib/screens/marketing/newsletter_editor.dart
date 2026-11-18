@@ -2600,12 +2600,12 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// A starter into the open draft: what is on screen is saved and kept in
   /// history first (as an import is), so Undo or History brings it back.
   /// Subject and preview text are filled only where empty.
-  Future<void> _applyStarter(NewsletterStarter s) async {
+  Future<void> _applyStarter(NewsletterStarter s, List<Map<String, dynamic>> blocks) async {
     if (!await _beforeImport() || !mounted) return;
     final subject = widget.subject.text.trim();
     if (subject.isEmpty || subject == 'Untitled newsletter') widget.subject.text = s.subject;
     if (widget.preheader.text.trim().isEmpty) widget.preheader.text = s.preheader;
-    _useBlocks(s.blocks());
+    _useBlocks(blocks);
     setState(() => _leftTab = 'add');
   }
 
@@ -2782,6 +2782,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         note: widget.blocks.isEmpty && !_htmlActive
             ? null
             : 'Replaces this draft’s content. Undo or Version history brings it back.',
+        api: widget.api,
         onUse: _locked ? null : _applyStarter,
       ),
       'brand' when api != null && widget.onBrand != null =>

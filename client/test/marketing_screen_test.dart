@@ -7112,6 +7112,76 @@ void _templateTests() {
       });
     }
 
+    testWidgets('in a branch view the pictures come from the library and '
+        'the booking button goes to the branch site', (tester) async {
+      final drafts = <Map<String, Object?>>[];
+      final posts = <Map<String, dynamic>>[];
+      final copied = <String>[];
+      final inner = server(drafts, posts);
+      await _pumpNewsletter(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/booking-link')) {
+          return _json({'data': {'url': 'https://hou.a-1chimney.com/booking/', 'site': 'hou.a-1chimney.com'}});
+        }
+        if (path.endsWith('/newsletter/images/copy')) {
+          final url = (jsonDecode(request.body) as Map)['url'] as String;
+          copied.add(url);
+          return _json({'data': {'id': 'lib-${copied.length}', 'url': 'https://app.example/api/v1/newsletter/artwork/o/${copied.length}.png'}}, 201);
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+      await tester.pumpAndSettle();
+      // Each distinct picture is copied once for the whole gallery.
+      expect(copied.toSet(), copied.toSet()..addAll(copied));
+      expect(copied, contains(NewsletterStarters.logo));
+      expect(copied.length, copied.toSet().length);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-fireplace-ready')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-booking')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-template-check'))).data,
+        isNot(contains('booking link')),
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+
+      final blocks = (posts.single['blocks'] as List).cast<Map>();
+      for (final b in blocks.where((b) => b['type'] == 'image')) {
+        expect('${b['src']}', startsWith('https://app.example/api/v1/newsletter/artwork/'));
+      }
+      expect(blocks.firstWhere((b) => b['type'] == 'button')['url'], 'https://hou.a-1chimney.com/booking/');
+    });
+
+    testWidgets('without a branch site the national page stays and the note '
+        'asks to confirm the link', (tester) async {
+      final posts = <Map<String, dynamic>>[];
+      final inner = server([], posts);
+      await _pumpNewsletter(tester, (request) async {
+        if (request.url.path.endsWith('/newsletter/booking-link')) {
+          return _json({'data': {'url': null, 'site': null}});
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+      await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-fireplace-ready')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-booking')), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-template-check'))).data,
+        contains('confirm the location’s booking link'),
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+      final blocks = (posts.single['blocks'] as List).cast<Map>();
+      expect(blocks.firstWhere((b) => b['type'] == 'button')['url'], NewsletterStarters.contact);
+    });
+
     testWidgets('Design › Templates replaces the open draft after a checkpoint', (tester) async {
       final drafts = <Map<String, Object?>>[
         {..._draft},
