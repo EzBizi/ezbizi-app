@@ -55,6 +55,11 @@ class MondayPushTest extends TestCase
     /** Who the item's Person column holds on Monday now. */
     private array $mondayPeople = [];
 
+    /** An item's column values as Monday holds them (id => text), and a board's extra columns. */
+    private array $itemValues = [];
+
+    private array $extraColumns = [];
+
     private string $mondayUpdatedAt = '2026-11-13T10:00:00Z';
 
     protected function setUp(): void
@@ -104,6 +109,7 @@ class MondayPushTest extends TestCase
             }
 
             return Http::response(['data' => match (true) {
+                str_contains($q, 'column_values { id text value }') => ['items' => [['column_values' => array_map(fn ($id, $t) => ['id' => $id, 'text' => $t, 'value' => '{}'], array_keys($this->itemValues), $this->itemValues)]]],
                 str_contains($q, 'PeopleValue') => ['items' => [['column_values' => [['persons_and_teams' => $this->mondayPeople]]]]],
                 str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
                 str_contains($q, 'users(') => ['users' => [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']]],
@@ -115,6 +121,7 @@ class MondayPushTest extends TestCase
                         ['id' => 'status', 'title' => 'Status', 'type' => 'status', 'settings_str' => '{"labels":{"0":"Working on it","1":"Done"}}'],
                         ['id' => 'date4', 'title' => 'Due Date', 'type' => 'date', 'settings_str' => '{}'],
                         ['id' => 'color_area', 'title' => 'Area', 'type' => 'status', 'settings_str' => '{}'],
+                        ...($this->extraColumns[(string) ($vars['b'][0] ?? '')] ?? []),
                     ]]]],
                 default => [],
             }]);
@@ -167,6 +174,31 @@ class MondayPushTest extends TestCase
         $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board('));
         $this->assertNotNull($move, 'moved on Monday');
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
+    }
+
+    /** Desk 11-18: Monday drops a value whose column the target board lacks; such a move is refused and said on the task. */
+    public function test_a_move_whose_values_have_no_column_there_is_refused_and_a_missing_text_column_is_made(): void
+    {
+        $this->extraColumns = ['100' => [['id' => 'phone_1', 'title' => 'Phone', 'type' => 'phone', 'settings_str' => '{}'], ['id' => 'text_9', 'title' => 'Notes', 'type' => 'text', 'settings_str' => '{}']]];
+        $this->itemValues = ['phone_1' => '+1 732 555 0101', 'text_9' => 'gate code 12'];
+        $this->inTenant($this->tenant['org'], function () {
+            $other = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $other->forceFill(['external_ref' => 'monday:200'])->saveQuietly();
+            $group = $other->groups()->create(['organization_id' => $other->organization_id, 'name' => 'Open Tasks', 'position' => 99]);
+            app(TaskWriter::class)->move($this->task->fresh(), $group, null, $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertNull(collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board(')), 'not moved: Phone would be lost');
+        $this->assertStringContainsString('no "Phone" (phone) column', $this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task->id)->where('field', 'monday_sync')->value('to')));
+
+        // With a Phone column there too, the missing text column (Notes) is made, then it moves.
+        $this->extraColumns['200'] = [['id' => 'phone_2', 'title' => 'Phone', 'type' => 'phone', 'settings_str' => '{}']];
+        $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->update(['available_at' => now()]));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_column('));
+        $this->assertSame(['b' => '200', 't' => 'Notes'], $made['vars']);
+        $this->assertNotNull(collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board(')));
     }
 
     public function test_a_change_here_is_written_to_its_monday_item_once(): void

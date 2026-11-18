@@ -164,8 +164,39 @@ final class MondayPush
         }
         $itemBoard = $item['board'];
         if ($itemBoard !== $boardId && $task->parent_task_id === null && $entry->task_update_id === null) {
-            // Moved to another board here: moved there too (full mirror, desk 11-18).
+            // Moved to another board here: moved there too (full mirror, desk 11-18), but only when
+            // every column holding a value has its twin there: Monday matches columns by title and
+            // type and DROPS a value with no match. A missing text column is made; any other stops it.
+            $before = $this->reader->valuesOf($itemId);
+            $source = $this->meta($itemBoard)['columns'];
+            foreach ($before as $col => $text) {
+                $m = $source[$col] ?? null;
+                // Monday's own (computed) columns, and the status, which each board keeps as its own.
+                if ($m === null || in_array($col, ['name', 'subitems'], true) || $col === $this->meta($itemBoard)['status']
+                    || in_array($m['type'], ['subtasks', 'creation_log', 'last_updated', 'item_id', 'formula', 'mirror', 'board_relation', 'auto_number'], true)) {
+                    continue;
+                }
+                $twin = MondayBoardReader::columnFor($this->meta($boardId), (string) $m['title']);
+                $twinType = $twin !== null ? ($this->meta($boardId)['columns'][$twin]['type'] ?? null) : null;
+                if ($twin !== null && $twinType === $m['type']) {
+                    continue;
+                }
+                if ($twin === null && in_array($m['type'], ['text', 'long_text'], true)) {
+                    $this->writer->createTextColumn($boardId, (string) $m['title']);
+                    unset($this->meta[$boardId]);
+
+                    continue;
+                }
+                $why = 'Not moved on Monday: the board it moved to has no "'.$m['title'].'" ('.$m['type'].') column, so Monday would drop its value.';
+                $this->activity($task, $why);
+                throw new \RuntimeException($why);
+            }
             $this->writer->moveToBoard($itemId, $boardId, $this->groupOn($boardId, $task));
+            $lost = array_diff_key($before, $this->reader->valuesOf($itemId));
+            if ($lost !== []) {
+                $this->activity($task, 'Moved on Monday, but '.count($lost).' value(s) did not arrive: '.implode(', ', array_map(fn ($c) => $source[$c]['title'] ?? $c, array_keys($lost))));
+                report(new \RuntimeException('Monday move dropped values on item '.$itemId));
+            }
             $itemBoard = $boardId;
             $item['group'] = null;
         }
