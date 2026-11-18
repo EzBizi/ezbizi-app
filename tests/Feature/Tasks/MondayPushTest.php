@@ -93,6 +93,9 @@ class MondayPushTest extends TestCase
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
+                if ($this->archived && str_contains($q, 'change_multiple_column_values')) {
+                    return Http::response(['errors' => [['message' => 'Cannot change column value for inactive item', 'path' => ['change_multiple_column_values']]]]);
+                }
                 if ($this->archived && str_contains($q, 'create_update(')) {
                     return Http::response(['errors' => [['message' => 'User unauthorized to perform action', 'path' => ['create_update'],
                         'extensions' => ['status_code' => 403, 'code' => 'USER_UNAUTHORIZED', 'error_data' => ['failure_reason' => 'Access denied']]]]]);
@@ -300,6 +303,17 @@ class MondayPushTest extends TestCase
         $this->assertSame('done', $groups->first()['vars']['r']);
         $this->assertStringContainsString('position_relative_method:after_at', $groups->first()['query']);
         $this->assertSame(['g_new', 'g_new'], collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.g')->values()->all());
+    }
+
+    /** Prod 11-18: a value change on an item archived on Monday ("inactive item") fails once, never retried. */
+    public function test_a_change_on_an_inactive_monday_item_fails_once_with_the_reason(): void
+    {
+        $this->archived = true;
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->latest('changed_at')->first());
+        $this->assertSame(MondayOutboxEntry::FAILED, $row->state);
+        $this->assertStringStartsWith('The item is archived on Monday', $row->error);
     }
 
     /** Desk 11-18: an update on an item archived on Monday was retried 5 times on a 403. */
