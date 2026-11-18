@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Log;
  */
 class MondayParity extends Command
 {
-    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated}';
+    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated} {--gone : with --groups-only, also trash what Monday says is archived or deleted} {--max-items= : skip boards holding more Monday items than this (by our own count)}';
 
     protected $description = 'Compare every Monday-mirrored board with Monday: what exists on one side only';
 
@@ -46,7 +46,9 @@ class MondayParity extends Command
                             str_contains($n, '%') ? $w->orWhere('name', 'like', $n) : $w->orWhere('name', $n);
                         }
                     }))
-                    ->orderBy('name')->get();
+                    ->orderBy('name')->get()
+                    // The 30-minute run leaves the big boards (NW, ~24k) to the nightly one.
+                    ->when($this->option('max-items'), fn ($c, $max) => $c->filter(fn ($b) => Task::query()->where('board_id', $b->id)->where('external_ref', 'like', 'monday:%')->count() <= (int) $max));
                 // Every live Monday item, by board: an item here on another board was moved here, one on no board is gone there.
                 $where = [];
                 $groupOf = [];
@@ -102,7 +104,7 @@ class MondayParity extends Command
                 foreach ($missingThere as $mondayId => $gap) {
                     if ($this->option('groups-only')) {
                         // Every 30 minutes (desk 11-18): which group, nothing else; Monday's moves first.
-                        $gap = ['here' => collect(), 'monday' => [], 'gone' => [], 'name' => null] + $gap;
+                        $gap = ['here' => collect(), 'monday' => [], 'name' => null] + ($this->option('gone') ? [] : ['gone' => []]) + $gap;
                     }
                     if (($gap['members'] ?? 0) > 0 && ! $this->option('groups-only')) {
                         PushBoardMembers::dispatch((string) $gap['board']);
