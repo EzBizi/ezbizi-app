@@ -376,6 +376,15 @@ final class MondayBoardReader
         return $out;
     }
 
+    /** @return array{owners: array<string, true>, subscribers: array<string, true>} a board's people on Monday, by Monday user id */
+    public function boardPeople(string $boardId): array
+    {
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b) { owners { id } subscribers { id } } }', ['b' => [$boardId]])['boards'][0] ?? [];
+
+        return ['owners' => array_fill_keys(array_map(fn ($u) => (string) $u['id'], $b['owners'] ?? []), true),
+            'subscribers' => array_fill_keys(array_map(fn ($u) => (string) $u['id'], $b['subscribers'] ?? []), true)];
+    }
+
     /** @return list<array{id: int, kind: string}> who an item's People column holds now */
     public function peopleOn(string $itemId, string $columnId): array
     {
