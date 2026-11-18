@@ -441,7 +441,7 @@ final class MondayImport
                     unset($input['values'][$f]);
                 }
             }
-            if ($mine === [] || array_diff(array_keys($input), ['values']) === [] && empty($input['values'])) {
+            if (array_diff(array_keys($input), ['values']) === [] && empty($input['values'])) {
                 $this->counts['kept (changed here later)']++;
                 $this->quietly($task, ['external_updated_at' => $mondayAt]);
 
