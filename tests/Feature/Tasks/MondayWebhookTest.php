@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Jobs\SyncMondayItem;
 use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
 use App\Models\Task;
@@ -9,6 +10,7 @@ use App\Models\User;
 use App\Support\Tasks\Monday\MondayWebhookSignature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\FakesMonday;
 use Tests\TestCase;
@@ -90,6 +92,24 @@ class MondayWebhookTest extends TestCase
 
         $this->assertTrue($this->done());
         $this->assertNotEmpty($this->mondayQueries, 'the item was read from Monday');
+    }
+
+    /** Desk 11-18: our own push coming back is dropped at the door, not queued; a later change still is. */
+    public function test_an_event_no_later_than_our_last_write_is_our_echo_and_is_not_queued(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['external_synced_at' => '2026-11-12 10:30:30']));
+        $echo = $this->event();
+        $echo['event']['triggerTime'] = '2026-11-12T10:30:20.000Z';
+        Queue::fake();
+
+        $this->postJson(self::URL, $echo, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 0, 'echo' => true]);
+        Queue::assertNothingPushed();
+
+        $later = $this->event();
+        $later['event']['triggerTime'] = '2026-11-12T10:30:50.000Z';
+        $this->postJson(self::URL, $later, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+        Queue::assertPushedOn('monday', SyncMondayItem::class);
     }
 
     /** Loop guard (Jose 11-16, tasks made here go to Monday): an item born on Monday is not made back on Monday. */
