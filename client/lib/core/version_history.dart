@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
+      'Google Ads: every figure and column explains itself (Conversions vs All conversions, Leads, Cost per lead, Missed calls, First reply, Revenue)',
+      'Google Ads: cost per lead and revenue per cost use Local Services spend only, so Search spend no longer inflates them',
+      'Alerts: a question can be sent with context and answer buttons, and the answer comes back to the sender',
+      'Task Board: boards can be put in any order in the sidebar, by dragging or with Move up and Move down, and the company board comes first',
+      'Task Board: changes sent to Monday no longer come back as extra work, so automations and phone callbacks are never held up by the Monday sync',
+      'Marketing: Social opens on a calendar (month, week, agenda); click a post for a full preview with its actions, New Post opens a composer window, and Comments, Connections and QR open as panels',
+      'Task Board: changes reach Monday several times faster (four senders in parallel, half the calls per change)',
+      'Google Ads: Leads now include the PPC jobs of the market, on the account that pays for PPC, with cost per Local Services lead and per PPC job',
+      'Task Board: when a task changes in EzBizi and on Monday at the same time, each side keeps its own change instead of one overwriting the other',
+      'Project Management: Settings is split into Columns, Stages, Team, Parts and suppliers, and Client texts',
+      'Project Management: the Inbox opens on All, remembers your filter, and its rows look like the Leads inbox',
+      'Social: every post shows one of six states (Needs approval, Ready to schedule, Scheduled, Past due, Published, Failed); approving keeps its planned time, and a passed time asks for a new one instead of posting now',
       'Task Board: a task moved to another board here moves on Monday too, only when every filled column has a match there, and nothing is lost',
       'Task Board: bulk fixes to tasks no longer set off automations or alerts',
       'Suggestions: pictures attached to a suggestion show as thumbnails, and open full screen with zoom, previous and next, and Download',

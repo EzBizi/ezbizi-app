@@ -54,6 +54,9 @@ final class MondayPush
 
     private MondayWriter $writer;
 
+    /** Set by `ezbizi:monday-push --pause[=minutes]`, cleared by `--resume`: every sender checks it. */
+    public const PAUSED = 'monday-push:paused';
+
     /** @var array<string, ?array> lastWriter's read of an item, reused by send() */
     private array $seen = [];
 
@@ -77,6 +80,9 @@ final class MondayPush
         }
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
         $counts = ['sent' => 0, 'superseded' => 0, 'deferred' => 0, 'failed' => 0];
+        if (Cache::has(self::PAUSED)) {
+            return $counts + ['paused' => 1]; // ezbizi:monday-push --pause; rows wait in the outbox
+        }
 
         try {
             // One sender per shard; the token's own lock (MondayToken) guards only its refresh.
