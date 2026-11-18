@@ -218,8 +218,8 @@ foreach (range(0, 3) as $shard) {
 }
 // Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
 // Every 30 minutes, group moves only (desk 11-18: a missed call closed on Monday must close here soon,
-// and a Monday move may not bump the item's clock): the open-task boards.
-Schedule::command("ezbizi:monday-parity --fix --groups-only --boards='Outgoing Calls'")->everyThirtyMinutes()->withoutOverlapping(25);
+// and a Monday move may not bump the item's clock): Outgoing Calls and every Project Management board.
+Schedule::command("ezbizi:monday-parity --fix --groups-only --boards='Outgoing Calls,%Project Management%'")->everyThirtyMinutes()->withoutOverlapping(25);
 Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
