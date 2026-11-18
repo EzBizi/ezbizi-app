@@ -215,7 +215,7 @@ class MondaySyncTest extends TestCase
             $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z', ['group' => 'Completed Tasks']),
         ])];
 
-        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--boards' => $board->name])->assertSuccessful();
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--boards' => 'Nothing,%'.substr($board->name, 1, 3).'%'])->assertSuccessful();
 
         $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $this->task('11')->group->name), 'same clock, still pulled');
         $this->assertFalse($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->exists()), 'no create queued');

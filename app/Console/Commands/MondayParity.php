@@ -39,7 +39,12 @@ class MondayParity extends Command
             $reader = new MondayBoardReader(MondayClient::for($connection));
             $missingThere = $tenant->run($org, function () use ($reader, &$drift) {
                 $boards = TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')
-                    ->when($this->option('boards'), fn ($q, $names) => $q->whereIn('name', array_map('trim', explode(',', $names))))
+                    // Names, comma separated; a name with % is a LIKE pattern ("%Project Management%").
+                    ->when($this->option('boards'), fn ($q, $names) => $q->where(function ($w) use ($names) {
+                        foreach (array_map('trim', explode(',', $names)) as $n) {
+                            str_contains($n, '%') ? $w->orWhere('name', 'like', $n) : $w->orWhere('name', $n);
+                        }
+                    }))
                     ->orderBy('name')->get();
                 // Every live Monday item, by board: an item here on another board was moved here, one on no board is gone there.
                 $where = [];
