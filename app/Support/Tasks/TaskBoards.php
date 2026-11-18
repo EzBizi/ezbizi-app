@@ -301,6 +301,11 @@ class TaskBoards
         if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return 'everyone';
         }
+        // A company board the person reaches by role sits with their team boards, first by
+        // position (Jose 11-18: A-1 Chimney at the top), with no membership row to widen anything.
+        if ($board->kind === TaskBoard::KIND_COMPANY) {
+            return 'shared';
+        }
 
         return 'place';
     }
