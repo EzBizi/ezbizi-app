@@ -82,7 +82,7 @@ final class MondayPush
                     } catch (MondayRefused $e) {
                         throw $e; // the connection is broken: stop, retry next run
                     } catch (\Throwable $e) {
-                        if (str_contains($e->getMessage(), 'USER_UNAUTHORIZED')) {
+                        if (str_contains($e->getMessage(), 'USER_UNAUTHORIZED') || str_contains($e->getMessage(), 'inactive item')) {
                             // Monday's 403 on one item does not change on a retry (desk 11-18: an archived item).
                             $counts[$this->refused($entry, $e)]++;
 
