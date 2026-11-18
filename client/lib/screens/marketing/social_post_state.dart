@@ -75,4 +75,4 @@ bool socialNeedsPublishNowConfirm(int statusCode, Map<String, dynamic> body) =>
 Map<String, dynamic> socialApproveBody({
   String? body,
   bool publishNow = false,
-}) => {if (body != null) 'body': body, if (publishNow) 'publish_now': true};
+}) => {'body': ?body, if (publishNow) 'publish_now': true};

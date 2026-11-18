@@ -106,7 +106,7 @@ class SocialPosterQueueSafetyTest extends TestCase
 
         try {
             $this->inTenant($t['org'], fn () => app(BusinessProfilePostQueueController::class)
-                ->approve(Request::create('/', 'POST'), $stale));
+                ->approve(Request::create('/', 'POST', ['publish_now' => true]), $stale));
             $this->fail('A second approve went through.');
         } catch (HttpException $e) {
             $this->assertSame(409, $e->getStatusCode());
