@@ -378,6 +378,26 @@ class PreferenceRegistry
                 'help' => 'Click a column heading in Project Management to change it.',
             ],
 
+            // Project Management > Inbox: which threads it opens on (Shoval,
+            // 2026-11-18: "should default to all").
+            'project_board.inbox_filter' => [
+                'label' => 'Project Management inbox filter',
+                'type' => 'enum',
+                'default' => 'all',
+                'options' => ['all', 'waiting', 'replied'],
+                'help' => 'Pick All, Waiting or Replied above the inbox.',
+            ],
+
+            // Project Management > Settings: the sub-tab open (Shoval,
+            // 2026-11-18: sub tabs "instead of all the settings in one place").
+            'project_board.settings_tab' => [
+                'label' => 'Project Management settings tab',
+                'type' => 'enum',
+                'default' => 'columns',
+                'options' => ['columns', 'stages', 'team', 'parts', 'texts'],
+                'help' => 'Pick a tab at the top of Project Management settings.',
+            ],
+
             // One-time "New: …" tips this person dismissed with "Got it"
             // (monday port, desk 2026-11-09). Slugs, e.g. list_toolbar.
             'callouts.seen' => [

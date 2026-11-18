@@ -118,6 +118,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Settings').first);
     await tester.pumpAndSettle();
+    // Settings' Team sub-tab (Shoval, 2026-11-18).
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('project-board-settings-tabs')),
+        matching: find.text('Team'),
+      ),
+    );
+    await tester.pumpAndSettle();
 
     // The teams already there are listed before anyone adds one.
     for (final t in ['CONTRACTOR: OMER', 'REPAIR TEAM: ISRAEL']) {

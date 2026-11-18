@@ -1193,6 +1193,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               else if (_tab == 'settings')
                 _BoardSettings(
                   api: widget.api,
+                  session: widget.session,
                   scope: _scope,
                   columns: _columns,
                   labels: _labels,
@@ -1380,6 +1381,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 class _BoardSettings extends StatefulWidget {
   const _BoardSettings({
     required this.api,
+    required this.session,
     required this.scope,
     required this.columns,
     required this.labels,
@@ -1387,6 +1389,7 @@ class _BoardSettings extends StatefulWidget {
   });
 
   final ApiClient api;
+  final Session session;
   final Map<String, String> scope;
   final List<Map<String, dynamic>> columns;
   final Map<String, dynamic> labels;
@@ -1397,6 +1400,13 @@ class _BoardSettings extends StatefulWidget {
 }
 
 class _BoardSettingsState extends State<_BoardSettings> {
+  /// The sub-tab open, kept for this person.
+  late String _sub = switch (widget.session.me
+      ?.preferences['project_board.settings_tab']) {
+    final String saved when _settingsTabs.any((t) => t.$1 == saved) => saved,
+    _ => 'columns',
+  };
+
   late final List<Map<String, dynamic>> _columns = [
     for (final c in widget.columns) {...c},
   ];
@@ -2174,6 +2184,23 @@ class _BoardSettingsState extends State<_BoardSettings> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_error != null) Text(_error!),
+        // Five sub-tabs instead of one long page (Shoval, 2026-11-18): the
+        // same cards and the same saves, grouped by what they are about.
+        TabBarLike(
+          key: const Key('project-board-settings-tabs'),
+          level: TabLevel.secondary,
+          labels: [for (final t in _settingsTabs) (t.$2, t.$3)],
+          selected: _settingsTabs.indexWhere((t) => t.$1 == _sub),
+          onSelected: (i) {
+            setState(() => _sub = _settingsTabs[i].$1);
+            widget.session.setPreference(
+              'project_board.settings_tab',
+              _settingsTabs[i].$1,
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        if (_sub == 'columns') ...[
         _card(
           'columns',
           'Columns',
@@ -2226,6 +2253,44 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           _labelValues,
         ),
+        _card(
+          'status_days',
+          'Status Time colours',
+          'Green below the first number of days, yellow from it, red from the second.',
+          [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final (c, label, key) in [
+                  (_warnDays, 'Yellow from (days)', 'project-board-warn-days'),
+                  (_badDays, 'Red from (days)', 'project-board-bad-days'),
+                ])
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      key: Key(key),
+                      controller: c,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: label,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          () => {
+            'project_board.status_days': {
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+            },
+          },
+        ),
+        ],
+        if (_sub == 'stages') ...[
         // One card per sub-tab (Jose, 2026-11-16: "separated in their own
         // boxes"); each Save writes every sub-tab's rules, as before.
         for (final (key, name, _) in _tabs)
@@ -2340,6 +2405,34 @@ class _BoardSettingsState extends State<_BoardSettings> {
             ),
           ),
         _card(
+          'ready',
+          'Ready to schedule',
+          'What a job needs before "Ready to schedule" can move it on.',
+          [
+            for (final (k, label) in const [
+              ('service_area', 'Service Area'),
+              ('technician', 'Technician'),
+              ('repair_team', 'Repair Team / Contractor'),
+              ('attachment', 'At least one attachment'),
+              ('note', 'At least one note'),
+            ])
+              CheckboxListTile(
+                key: ValueKey('project-board-ready-needs:$k'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(label),
+                value: _readyNeeds.contains(k),
+                onChanged: (on) => setState(
+                  () => on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
+                ),
+              ),
+          ],
+          () => {'project_board.ready_requires': _readyNeeds.toList()},
+        ),
+        ],
+        if (_sub == 'team') ...[
+        _card(
           'tech_roles',
           'Roles that can be picked as Technician',
           'The technician picker lists only active users holding one of these roles.',
@@ -2368,6 +2461,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {'project_board.technician_roles': _techRoles},
         ),
+        _repairCard(),
+        ],
+        if (_sub == 'parts') ...[
         _card(
           'parts',
           'Part status',
@@ -2380,75 +2476,24 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {'project_board.part_tags': _partTags},
         ),
-        _repairCard(),
         _suppliersCard(),
+        ],
+        if (_sub == 'texts') ...[
         _clientTextsCard(),
-        _card(
-          'ready',
-          'Ready to schedule',
-          'What a job needs before "Ready to schedule" can move it on.',
-          [
-            for (final (k, label) in const [
-              ('service_area', 'Service Area'),
-              ('technician', 'Technician'),
-              ('repair_team', 'Repair Team / Contractor'),
-              ('attachment', 'At least one attachment'),
-              ('note', 'At least one note'),
-            ])
-              CheckboxListTile(
-                key: ValueKey('project-board-ready-needs:$k'),
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(label),
-                value: _readyNeeds.contains(k),
-                onChanged: (on) => setState(
-                  () => on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
-                ),
-              ),
-          ],
-          () => {'project_board.ready_requires': _readyNeeds.toList()},
-        ),
-        _card(
-          'status_days',
-          'Status Time colours',
-          'Green below the first number of days, yellow from it, red from the second.',
-          [
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                for (final (c, label, key) in [
-                  (_warnDays, 'Yellow from (days)', 'project-board-warn-days'),
-                  (_badDays, 'Red from (days)', 'project-board-bad-days'),
-                ])
-                  SizedBox(
-                    width: 180,
-                    child: TextField(
-                      key: Key(key),
-                      controller: c,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        labelText: label,
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          () => {
-            'project_board.status_days': {
-              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
-              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
-            },
-          },
-        ),
+        ],
       ],
     );
   }
 }
+
+/// Settings' sub-tabs (Shoval, 2026-11-18): key, label, icon.
+const _settingsTabs = [
+  ('columns', 'Columns', Icons.view_column_outlined),
+  ('stages', 'Stages', Icons.view_kanban_outlined),
+  ('team', 'Team', Icons.groups_outlined),
+  ('parts', 'Parts & suppliers', Icons.inventory_2_outlined),
+  ('texts', 'Client texts', Icons.sms_outlined),
+];
 
 /// The label colours, named as a person sees them.
 const _swatches = [
@@ -3427,11 +3472,12 @@ class _ProjectInbox extends StatefulWidget {
   State<_ProjectInbox> createState() => _ProjectInboxState();
 }
 
-/// Waiting first: the client spoke last and nobody has answered.
+/// All first, the one it opens on (Shoval, 2026-11-18); Waiting is a client
+/// who spoke last with nobody answering yet.
 const _inboxFilters = [
-  ('waiting', 'Waiting'),
-  ('replied', 'Replied by us'),
-  ('all', 'All'),
+  ('all', 'All', Icons.inbox_outlined),
+  ('waiting', 'Waiting', Icons.mark_chat_unread_outlined),
+  ('replied', 'Replied', Icons.reply),
 ];
 
 class _ProjectInboxState extends State<_ProjectInbox> {
@@ -3441,7 +3487,11 @@ class _ProjectInboxState extends State<_ProjectInbox> {
   String? _open;
   String? _error;
   String _q = '';
-  String _filter = 'waiting';
+  late String _filter = switch (widget.session.me
+      ?.preferences['project_board.inbox_filter']) {
+    final String saved when _inboxFilters.any((f) => f.$1 == saved) => saved,
+    _ => 'all',
+  };
   bool _sending = false;
   final _draft = TextEditingController();
 
@@ -3539,32 +3589,46 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ListSearch(
-          key: const Key('project-inbox-search'),
-          hint: 'Client, job number or words',
-          width: double.infinity,
-          onChanged: (v) {
-            _q = v.trim();
-            _load();
-          },
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: ListSearch(
+            key: const Key('project-inbox-search'),
+            hint: 'Client, job number or words',
+            width: double.infinity,
+            onChanged: (v) {
+              _q = v.trim();
+              _load();
+            },
+          ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final (key, label) in _inboxFilters)
-              ChoiceChip(
-                key: ValueKey('project-inbox-filter-$key'),
-                label: Text(
-                  '$label · ${all.where((t) => _shows(t, key)).length}',
+        // As Leads (design 162): one row of compact chips that scrolls
+        // sideways, never a second line (Shoval, 2026-11-18).
+        SingleChildScrollView(
+          key: const Key('project-inbox-filters'),
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              for (final (i, (key, label, icon)) in _inboxFilters.indexed) ...[
+                if (i > 0) const SizedBox(width: 6),
+                FilterChip(
+                  key: ValueKey('project-inbox-filter-$key'),
+                  avatar: Icon(icon, size: 16, color: theme.colorScheme.primary),
+                  label: Text(
+                    '$label · ${all.where((t) => _shows(t, key)).length}',
+                  ),
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  selected: _filter == key,
+                  onSelected: (_) => _pickFilter(key),
                 ),
-                selected: _filter == key,
-                onSelected: (_) => setState(() => _filter = key),
-              ),
-          ],
+              ],
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
+        const Divider(height: 1),
         Expanded(
           child: threads.isEmpty
               ? Padding(
@@ -3578,9 +3642,10 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                     style: muted,
                   ),
                 )
-              : ListView.builder(
+              : ListView.separated(
                   key: const Key('project-inbox-list'),
                   itemCount: threads.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, i) => _row(theme, threads[i], muted),
                 ),
         ),
@@ -3588,85 +3653,114 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     );
   }
 
-  /// Name and job number on one line with the time at the right, the last
-  /// text under it, and a dot while the client waits for us.
+  /// The filter, kept for this person (Shoval, 2026-11-18: opens on All).
+  void _pickFilter(String key) {
+    setState(() => _filter = key);
+    widget.session.setPreference('project_board.inbox_filter', key);
+  }
+
+  /// A row as a lead's in Leads: the dot, the client's avatar, the name with
+  /// the time at the right, the last text, then what it is waiting on and the
+  /// job (Shoval, 2026-11-18: "resemble leads more").
   Widget _row(ThemeData theme, Map<String, dynamic> t, TextStyle? muted) {
     final selected = _open == t['job_id'];
     final waiting = t['waiting'] == true;
+    final replied = t['client_spoke'] == true && !waiting;
     final number = '${t['job_number'] ?? ''}';
     final ours = t['last_direction'] == 'outbound';
-    return Material(
-      color: selected
-          ? theme.colorScheme.secondaryContainer
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-      child: InkWell(
-        key: ValueKey('project-inbox-thread-${t['job_id']}'),
-        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-        onTap: () => _openThread('${t['job_id']}'),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 6, right: 8),
-                child: Container(
-                  key: waiting
-                      ? ValueKey('project-inbox-waiting-${t['job_id']}')
-                      : null,
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: waiting
-                        ? ToneColours.of(context, Tone.caution).ink
-                        : Colors.transparent,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: '${t['customer'] ?? 'Client'}',
-                                  style: TextStyle(
-                                    fontWeight: waiting
-                                        ? FontWeight.w700
-                                        : FontWeight.w600,
-                                  ),
-                                ),
-                                if (number.isNotEmpty)
-                                  TextSpan(text: '  $number', style: muted),
-                              ],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+    final name = '${t['customer'] ?? 'Client'}';
+    return InkWell(
+      key: ValueKey('project-inbox-thread-${t['job_id']}'),
+      onTap: () => _openThread('${t['job_id']}'),
+      child: Container(
+        color: selected ? theme.colorScheme.primaryContainer : null,
+        padding: const EdgeInsets.fromLTRB(12, 6, 10, 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 8,
+              height: 8,
+              child: waiting
+                  ? DecoratedBox(
+                      key: ValueKey('project-inbox-waiting-${t['job_id']}'),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            LeadAvatar(name: name),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: waiting ? FontWeight.w700 : null,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(_time(t['last_at']), style: muted),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        width: 62,
+                        child: Text(
+                          _time(t['last_at']),
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${ours ? 'Us: ' : ''}${t['last_body'] ?? ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted?.copyWith(
+                      color: waiting ? theme.colorScheme.onSurface : null,
+                      fontWeight: waiting ? FontWeight.w700 : null,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      if (waiting || replied) ...[
+                        StatusPill(
+                          waiting ? 'Awaiting reply' : 'Replied',
+                          key: ValueKey('project-inbox-state-${t['job_id']}'),
+                          tone: waiting ? Tone.caution : Tone.ok,
+                          dense: true,
+                        ),
+                        const SizedBox(width: 6),
                       ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${ours ? 'Us: ' : ''}${t['last_body'] ?? ''}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: muted,
-                    ),
-                  ],
-                ),
+                      if (number.isNotEmpty)
+                        Flexible(
+                          child: Text(
+                            number,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
