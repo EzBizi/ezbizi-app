@@ -50,6 +50,17 @@ class DispatchAutomationEvents extends Command
             ->get();
 
         foreach ($due as $event) {
+            // One record's events in the order they happened: while an earlier
+            // one for the same subject is still undelivered, this one waits,
+            // so parallel workers never run them out of order (desk, 11-18).
+            if ($event->subject_id !== null && AutomationEvent::withoutGlobalScopes()
+                ->where('subject_type', $event->subject_type)->where('subject_id', $event->subject_id)
+                ->whereNull('delivered_at')->whereNull('failed_at')
+                ->where(fn ($q) => $q->where('occurred_at', '<', $event->occurred_at)
+                    ->orWhere(fn ($q) => $q->where('occurred_at', $event->occurred_at)->where('id', '<', $event->getKey())))
+                ->exists()) {
+                continue;
+            }
             // Claimed before dispatch, so two overlapping sweeps cannot both
             // queue the same event.
             $claimed = AutomationEvent::withoutGlobalScopes()
@@ -58,7 +69,7 @@ class DispatchAutomationEvents extends Command
                 ->update(['queued_at' => now()]);
 
             if ($claimed === 1) {
-                DeliverAutomationEvent::dispatch($event->getKey());
+                DeliverAutomationEvent::queueFor($event);
             }
         }
 
