@@ -327,6 +327,74 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame(1.5, (float) $account['return_on_spend'], '450 over the Local Services 300.00');
     }
 
+    /**
+     * Jose, 2026-11-18: "What needs to be shown in the leads is all the created
+     * jobs basically everything from those jobs sources". The account's branch's
+     * PPC jobs join its Local Services leads, each priced on its own spend,
+     * counted as Reports' Marketing tab counts them (job source).
+     */
+    public function test_leads_include_the_branchs_ppc_jobs_each_priced_on_its_own_spend(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+            ['campaign' => ['id' => '2', 'name' => 'Search', 'status' => 'ENABLED', 'advertisingChannelType' => 'SEARCH'],
+                'metrics' => ['costMicros' => '934560000']],
+        ]);
+
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $row->forceFill(['leads_franchise_id' => $t['franchise']->id])->save();
+            Lead::create(['organization_id' => $t['org']->id, 'connection_id' => $row->getKey(), 'source' => 'local_services',
+                'remote_id' => 'l1', 'lead_type' => 'PHONE_CALL', 'received_at' => Carbon::parse('2026-09-01T15:00:00Z')]);
+            $job = fn (string $source, string $at) => \App\Models\WorkizJob::query()->create([
+                'franchise_id' => $t['franchise']->id, 'remote_id' => 'JOB-'.bin2hex(random_bytes(4)),
+                'job_source' => $source, 'booked_at' => $at, 'payload' => [], 'synced_at' => now(),
+            ]);
+            $job('PPC', '2026-09-01 09:00:00');
+            $job('PPC', '2026-09-01 17:30:00');
+            $job('PPC', '2026-09-02 09:00:00');     // another day
+            $job('LS Ads', '2026-09-01 10:00:00');  // Local Services' jobs are its leads, not counted twice
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(2, $account['ppc_jobs']);
+        $this->assertSame(1, $account['lsa_leads']);
+        $this->assertSame(3, $account['leads']);
+        $this->assertSame(467.28, (float) $account['cost_per_ppc_job'], '934.56 Search over two PPC jobs');
+        $this->assertSame(300.0, (float) $account['cost_per_lsa_lead']);
+        $this->assertSame(411.52, (float) $account['cost_per_lead'], 'all 1234.56 over all three');
+    }
+
+    /** Desk, 2026-11-18: NJ's three accounts share a branch; only Mt Laurel pays for PPC, so only it takes the jobs. */
+    public function test_an_account_with_no_ppc_spend_takes_none_of_its_branchs_ppc_jobs(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+        ]);
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $row->forceFill(['leads_franchise_id' => $t['franchise']->id])->save();
+            \App\Models\WorkizJob::query()->create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'JOB-1',
+                'job_source' => 'PPC', 'booked_at' => '2026-09-01 09:00:00', 'payload' => [], 'synced_at' => now()]);
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(0, $account['ppc_jobs']);
+        $this->assertSame(0, $account['leads']);
+    }
+
     public function test_a_ratio_with_no_denominator_is_null(): void
     {
         $t = $this->provisionTenant('A1-Group');

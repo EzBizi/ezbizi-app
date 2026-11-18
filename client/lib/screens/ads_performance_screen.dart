@@ -1003,9 +1003,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     'Leads',
                     _number(account['leads']),
                     hint:
-                        '$leadsHint ${_number(account['charged_leads'])} '
+                        '$leadsHint Here ${_number(account['lsa_leads'])} '
+                        'Local Services (${_number(account['charged_leads'])} '
                         'charged, ${_number(account['credited_leads'])} '
-                        'credited back.',
+                        'credited back)'
+                        '${account['ppc_jobs'] == null ? '' : ' and ${_number(account['ppc_jobs'])} PPC jobs'}.',
                   ),
                   _figure(
                     theme,
@@ -1013,11 +1015,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     account['cost_per_lead'] == null
                         ? '—'
                         : _money(account['cost_per_lead'], currency),
-                    hint: account['lsa_cost'] == null
+                    hint: account['lead_cost'] == null
                         ? costPerLeadHint
                         : '$costPerLeadHint Here '
-                              '${_money(account['lsa_cost'], currency)} ÷ '
-                              '${_number(account['leads'])}.',
+                              '${_money(account['lead_cost'], currency)} ÷ '
+                              '${_number(account['leads'])}.'
+                              '${account['cost_per_ppc_job'] == null ? '' : ' Local Services ${_money(account['cost_per_lsa_lead'], currency)} a lead, PPC ${_money(account['cost_per_ppc_job'], currency)} a job.'}',
                   ),
                   _figure(
                     theme,
@@ -1872,7 +1875,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   'Cost / lead',
                   total('leads') == 0
                       ? '—'
-                      : _money(total('lsa_cost') / total('leads'), currency),
+                      : _money(total('lead_cost') / total('leads'), currency),
                   hint: costPerLeadHint,
                 ),
               ],
@@ -2006,11 +2009,12 @@ String allConversionsHint(Object? conversions, Object? all) {
 /// this coming from or how its being calculated").
 const leadsHint =
     'Local Services leads (calls, messages, bookings) EzBizi received from '
-    "this account in these dates, on the account's time zone.";
+    "this account in these dates, on the account's time zone, plus the "
+    "PPC jobs created in its branch (job source PPC, as Reports' Marketing "
+    'tab counts them).';
 const costPerLeadHint =
-    "This account's Local Services spend in these dates ÷ its Leads. "
-    'Search and other campaigns are left out: they bring no Local Services '
-    'leads.';
+    "This account's spend in these dates ÷ its Leads: Local Services spend, "
+    'plus Search (PPC) spend when its PPC jobs can be counted.';
 const missedCallsHint =
     'Customer calls on these leads that rang out (Google recorded no talk '
     'time), out of all their calls.';
