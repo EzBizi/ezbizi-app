@@ -571,6 +571,10 @@ class ProjectBoardTest extends TestCase
                     'from_e164' => $dir === 'inbound' ? $phone : $line->e164, 'to_e164' => $dir === 'inbound' ? $line->e164 : $phone, 'body' => $body]);
                 $this->travel(1)->minutes();
             }
+            // Newest, and matched only by the client's number.
+            \App\Models\PhoneMessage::query()->create(['connection_id' => $connection->id, 'number_id' => $line->id,
+                'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => 'inbound', 'customer_id' => null,
+                'from_e164' => '+15125550101', 'to_e164' => $line->e164, 'body' => 'NO, Thursday']);
 
             return [$board, $other];
         });
@@ -578,7 +582,7 @@ class ProjectBoardTest extends TestCase
 
         $threads = $api->getJson('/api/v1/project-board/inbox')->assertOk()->json('data');
         $this->assertSame([$board], array_column($threads, 'job_id'), 'Only the board job; J-2 is not on the board.');
-        $this->assertSame('NO', $threads[0]['last_body']);
+        $this->assertSame('NO, Thursday', $threads[0]['last_body'], 'The newest text, linked by number alone.');
         $this->assertTrue($threads[0]['waiting'], 'The client spoke last.');
 
         $api->getJson("/api/v1/project-board/inbox/{$board}")->assertOk()
