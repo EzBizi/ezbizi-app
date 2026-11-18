@@ -21,6 +21,11 @@ class VersionHistory {
       'Automations: a rule started by a status change does nothing when the status was changed again before it ran (a task set to Done and straight back no longer moves to Done)',
       'Task Board: the A-1 Chimney All markets board opens again (it loads the first rows of each group instead of all 31,000 tasks at once)',
       'Task Board: the Monday sync keeps running when one item fails, and a task moved to another board here keeps its place',
+      'Task Board: boards here mirror Monday exactly: the same groups in the same order, groups renamed on Monday renamed here, and items archived on Monday moved to the trash here (restorable)',
+      'Task Board: a change made here is sent to Monday field by field, so a later change on Monday to another field no longer cancels it, and people without a Monday account never clear Monday Person column',
+      'Task Board: board names show as they are on Monday, with the owner in a tooltip instead of after the name',
+      'Task Board: Workiz Job ID and EzBizi Job number columns on every task about a job',
+      'Task Board: address, Friday and full-window tasks show EzBizi as the maker, belong to the booker (or the field managers, or the General Manager), and say what to do',
     ]),
     VersionRelease(version: '0.0.0594', date: '18 Nov 2026', items: [
       'Jobs › Book: a priced services list with a total, tags sent to Workiz, and a duplicate-customer check that offers Use this customer or Create anyway',
