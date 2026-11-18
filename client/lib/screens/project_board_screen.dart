@@ -17,7 +17,7 @@ import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/error_note.dart';
 import '../widgets/lead_source_details.dart' show LeadAvatar;
-import '../widgets/lead_thread.dart' show messageWhen, threadDay;
+import '../widgets/lead_thread.dart' show leadWhen, messageWhen, threadDay;
 import '../widgets/list_search.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/list_table.dart';
@@ -3713,7 +3713,8 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                       SizedBox(
                         width: 62,
                         child: Text(
-                          _time(t['last_at']),
+                          // As Leads: 62 px fits the age only.
+                          leadWhen(t['last_at'] as String?),
                           textAlign: TextAlign.end,
                           maxLines: 1,
                           style: theme.textTheme.labelSmall?.copyWith(

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/project_board_screen.dart';
+import 'package:ezbizi_client/widgets/lead_thread.dart' show leadWhen;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -39,6 +40,14 @@ void main() {
     // All is the default (Shoval, 2026-11-18); the filters are one row.
     expect(find.text('All · 2'), findsOneWidget);
     expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsOneWidget);
+    // A recent row reads its age alone: "2:26 PM · 2h" was cut at 62 px.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('project-inbox-thread-j-2')),
+        matching: find.text(leadWhen(_recent)),
+      ),
+      findsOneWidget,
+    );
     final filters = [
       for (final k in ['all', 'waiting', 'replied'])
         tester.getRect(find.byKey(ValueKey('project-inbox-filter-$k'))).top,
@@ -220,7 +229,8 @@ ApiClient _api(List<Map<String, dynamic>> posts) => ApiClient(
               'job_number': 'J-1002',
               'customer': 'Omar Diaz',
               'last_body': 'Thank you for working with us!',
-              'last_at': '2026-11-17T12:00:00Z',
+              // Within the day: the row reads its age, as Leads does.
+              'last_at': _recent,
               'last_direction': 'outbound',
               'waiting': false,
               'client_spoke': false,
@@ -242,6 +252,11 @@ ApiClient _api(List<Map<String, dynamic>> posts) => ApiClient(
       });
     }),
   );
+
+final _recent = DateTime.now()
+    .subtract(const Duration(hours: 2))
+    .toUtc()
+    .toIso8601String();
 
 http.Response _json(Object body) => http.Response(
   jsonEncode(body),
