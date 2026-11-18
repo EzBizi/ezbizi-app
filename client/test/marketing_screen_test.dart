@@ -22,7 +22,6 @@ import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -116,24 +115,26 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      // UI queue 76 (Jose's pick 2): one row of tabs, opening on Dashboard,
-      // where the Accounts card says what is connected.
-      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsNothing);
-      expect(find.widgetWithText(ChoiceChip, 'Dashboard'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
-      expect(find.text('No pages connected in Everdoors yet'), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Connect'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      // UI queue 199 (Rodrigo 01a1ef71): no row of six tabs; it opens on
+      // the calendar, with the tools beside it.
+      for (final old in ['Dashboard', 'Compose', 'Calendar', 'Accounts']) {
+        expect(find.widgetWithText(ChoiceChip, old), findsNothing);
+      }
+      expect(find.byKey(const Key('tour-marketing-month')), findsOneWidget);
+      expect(find.text(_monthTitle(DateTime.now())), findsOneWidget);
+      expect(find.byKey(const Key('social-connections')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsOneWidget);
       expect(find.text('Publish now'), findsNothing);
 
       await _openCompose(tester);
       expect(find.text('How it will look'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
-      expect(find.text('Weekly Calendar'), findsNothing);
 
-      await _openCalendar(tester);
-      expect(find.text('Weekly Calendar'), findsOneWidget);
-      expect(find.text('Monthly Calendar'), findsOneWidget);
+      // Closing keeps the calendar where it was.
+      await tester.tap(find.byKey(const Key('social-composer-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('Publish now'), findsNothing);
+      expect(find.byKey(const Key('tour-marketing-month')), findsOneWidget);
     });
 
     testWidgets('the month calendar can be moved back and forth', (
@@ -152,32 +153,38 @@ void main() {
 
       expect(find.text(thisMonth), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.byTooltip('Next'));
       await tester.pumpAndSettle();
       expect(find.text(nextMonth), findsOneWidget);
       expect(find.text(thisMonth), findsNothing);
 
-      await tester.tap(find.byTooltip('Previous month'));
+      await tester.tap(find.byTooltip('Previous'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Previous month'));
+      await tester.tap(find.byTooltip('Previous'));
       await tester.pumpAndSettle();
       expect(find.text(previousMonth), findsOneWidget);
     });
 
-    testWidgets('the week calendar stays on this week', (tester) async {
+    testWidgets('Week shows this week, and Next moves it by a week', (
+      tester,
+    ) async {
       await _pumpScreen(tester, _handler());
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await _openCalendar(tester);
-
-      expect(find.byTooltip('Previous week'), findsNothing);
-      expect(find.byTooltip('Next week'), findsNothing);
-      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.text('Week'));
       await tester.pumpAndSettle();
-      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
+
+      final monday = _mondayOf(DateTime.now());
+      String title(DateTime d) =>
+          'Week of ${_shortWeekday(d)}, ${_shortMonths[d.month - 1]} ${d.day}';
+      expect(find.byKey(const Key('tour-marketing-week')), findsOneWidget);
+      expect(find.text(title(monday)), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next'));
+      await tester.pumpAndSettle();
+      final next = DateTime(monday.year, monday.month, monday.day + 7);
+      expect(find.text(title(next)), findsOneWidget);
     });
 
     testWidgets('Publish now is disabled until this view has a page', (
@@ -210,7 +217,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       expect(find.text('Pinterest'), findsOneWidget);
@@ -230,7 +237,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       // The page itself, in the card that owns it.
@@ -284,12 +291,9 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      expect(
-        urlOf(find.byKey(const ValueKey('tour-marketing-social-accounts-card'))),
-        avatar,
-      );
-
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      // UI queue 199: the dashboard's accounts card went with the dashboard;
+      // Connections is where the accounts are.
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
       final card = find.widgetWithText(DashboardCard, 'Accounts in Everdoors');
       expect(urlOf(card), avatar);
@@ -324,8 +328,10 @@ void main() {
 
       // At phone width the chip strips scroll sideways, so a chip can be off
       // screen and a bare tap() misses it with only a warning.
-      for (final chip in ['Social Media Management', 'Accounts']) {
-        final target = find.widgetWithText(ChoiceChip, chip);
+      for (final target in [
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        find.byKey(const Key('social-connections')),
+      ]) {
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
         await tester.tap(target);
@@ -357,7 +363,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
@@ -398,7 +404,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
@@ -449,7 +455,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
       await tester.pumpAndSettle();
@@ -470,7 +476,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
       await tester.pumpAndSettle();
@@ -564,15 +570,16 @@ void main() {
       await _openCompose(tester);
 
       expect(tester.takeException(), isNull);
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsOneWidget);
       expect(find.text('How it will look'), findsOneWidget);
 
-      // A month grid does not fit a phone: the calendar is an agenda there
-      // (design 27, Jose's pick 4).
-      await _openCalendar(tester);
+      // A month grid does not fit a phone: a week strip and the day's posts
+      // (UI queue 199, phone 4).
+      await tester.tap(find.byKey(const Key('social-composer-close')));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('Your posts'), findsOneWidget);
-      expect(find.text('Monthly Calendar'), findsNothing);
+      expect(find.byKey(const Key('tour-marketing-agenda')), findsOneWidget);
+      expect(find.byKey(const Key('month-grid')), findsNothing);
     });
 
     testWidgets(
@@ -599,23 +606,9 @@ void main() {
         expect(tester.getRect(first).top, greaterThanOrEqualTo(0));
         expect(tester.getRect(last).bottom, lessThanOrEqualTo(900));
 
-        final card = tester.getRect(
-          find.ancestor(
-            of: find.text('Monthly Calendar'),
-            matching: find.byType(DashboardCard),
-          ),
-        );
+        // The grid takes the stage: nearly the whole width of the pane.
         final grid = tester.getRect(find.byKey(const Key('month-grid')));
-        expect(
-          grid.left,
-          closeTo(card.left + DashboardCard.padding, 2),
-          reason: 'The month grid should start at the card’s left padding.',
-        );
-        expect(
-          grid.right,
-          closeTo(card.right - DashboardCard.padding, 2),
-          reason: 'The month grid should use the full card width, like the week.',
-        );
+        expect(grid.width, greaterThan(1400 - 80));
       },
     );
 
@@ -801,12 +794,13 @@ void main() {
         _handler(
           canEdit: true,
           connections: const [_pinterestBoard],
-          posts: const [
+          posts: [
             {
               'id': 'post-1',
               'body': 'Chimney sweeping season is here.',
               'has_media': true,
               'author': 'Jose Silva',
+              'created_at': DateTime.now().toUtc().toIso8601String(),
               'targets': [
                 {
                   'account': 'Everdoors Boards',
@@ -826,7 +820,9 @@ void main() {
       expect(find.widgetWithText(StatusPill, 'Failed'), findsOneWidget);
       expect(find.text('Chimney sweeping season is here.'), findsOneWidget);
 
-      // The whole sentence, not the word "failed".
+      // The whole sentence, not the word "failed", where the post opens.
+      await tester.tap(find.text('Chimney sweeping season is here.'));
+      await tester.pumpAndSettle();
       expect(find.textContaining('has no boards'), findsOneWidget);
     });
   });
@@ -862,13 +858,11 @@ void main() {
     );
     await _openPosts(tester);
 
-    expect(find.byKey(const ValueKey('social-broken-banner')), findsOneWidget);
-    expect(
-      find.textContaining('Everdoors Boards needs reconnecting'),
-      findsOneWidget,
-    );
+    // UI queue 199: the banner above the dashboard became a mark on
+    // Connections, which says how many.
+    expect(find.textContaining('1 need attention'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.tap(find.byKey(const Key('social-connections')));
     await tester.pumpAndSettle();
     expect(
       find.textContaining(
@@ -882,7 +876,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('social-reconnect-conn-2')));
     await tester.pumpAndSettle();
-    expect(find.byType(SidePanel), findsOneWidget);
+    // The reconnect form, over Connections' own panel.
+    expect(find.byType(SidePanel), findsNWidgets(2));
   });
 
   testWidgets('a healthy account reads Healthy and offers no Reconnect', (
@@ -893,8 +888,8 @@ void main() {
       _handler(canEdit: true, connections: const [_pinterestBoard]),
     );
     await _openPosts(tester);
-    expect(find.byKey(const ValueKey('social-broken-banner')), findsNothing);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    expect(find.textContaining('need attention'), findsNothing);
+    await tester.tap(find.byKey(const Key('social-connections')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Healthy'), findsOneWidget);
     expect(find.byKey(const ValueKey('social-reconnect-conn-2')), findsNothing);
@@ -910,14 +905,15 @@ void main() {
       find.widgetWithText(ChoiceChip, 'Social Media Management'),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.tap(find.byKey(const Key('social-connections')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
     await tester.pumpAndSettle();
 
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byType(SidePanel), findsOneWidget);
+    // Connections' own panel, and the question over it.
+    expect(find.byType(SidePanel), findsNWidgets(2));
     expect(find.text('Disconnect Everdoors Boards?'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Keep it'), findsOneWidget);
   });
@@ -1040,8 +1036,8 @@ void main() {
       expect(patches.last['scheduled_for'], '2099-03-05 10:00');
     });
 
-    testWidgets('what is coming sits above today, and a refusal is said with '
-        'its Retry', (tester) async {
+    testWidgets('a post sits on its day, one with no time under Needs '
+        'attention, and a refusal opens with its reason', (tester) async {
       await _pumpSocial(
         tester,
         _handler(
@@ -1072,42 +1068,34 @@ void main() {
         ),
       );
 
-      final today = tester.getRect(find.text('TODAY')).top;
-      expect(tester.getRect(find.text('COMING UP')).top, lessThan(today));
-      expect(
-        tester.getRect(find.text('Free inspection week')).top,
-        lessThan(today),
-      );
-      expect(
-        tester.getRect(find.text('Chimney season is here')).top,
-        greaterThan(today),
-      );
+      // UI queue 199 (Rodrigo 01a1ef57): the Agenda lists posts on the days
+      // they sit, from this month on (2099 included); one held for approval
+      // with no time sits on no day but under Needs attention.
+      expect(find.text('A look inside a flue camera inspection'), findsOneWidget);
+      expect(find.text('Chimney season is here'), findsOneWidget);
+      expect(find.text('Free inspection week'), findsOneWidget);
       expect(find.textContaining('Goes out 2099-03-04 09:00'), findsOneWidget);
-
-      // The network's sentence and a Retry on the refused post only.
-      expect(find.textContaining('That account has no boards.'), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
-      // A sent post opens where it went out, from the timeline itself.
-      expect(
-        find.byKey(const ValueKey('social-open-s1-target-1')),
-        findsOneWidget,
-      );
-      expect(find.byTooltip('Open post on Pinterest'), findsOneWidget);
-      expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
-
-      // A post waiting for approval has not gone out: never "Sent".
-      expect(
-        find.widgetWithText(StatusPill, 'Waiting for approval'),
-        findsOneWidget,
-      );
+      expect(find.text('Weekly Google post'), findsNothing);
+      expect(find.widgetWithText(StatusPill, 'Failed'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Sent'), findsOneWidget);
 
-      // A fact beside the filters, and the composer one tab away.
-      expect(find.text('it can post'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'New post'));
+      await tester.tap(find.byKey(const Key('plan-attention')));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(FilledButton, 'Publish now'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('plan-attention-panel')),
+          matching: find.widgetWithText(StatusPill, 'Needs approval'),
+        ),
+        findsOneWidget,
+      );
+
+      // The refused post opens beside the list with its reason and a Retry.
+      await tester.tap(find.text('Weekly Google post'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A look inside a flue camera inspection'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('plan-inspector')), findsOneWidget);
+      expect(find.textContaining('That account has no boards.'), findsWidgets);
     });
   });
 
@@ -1148,7 +1136,8 @@ void main() {
       // hand, which is also a fair model of what the user does: waits.
       await _tick(tester);
 
-      // It polled, saw the truth, and said so.
+      // It polled, saw the truth, and said so where the post opens.
+      await _openPostRow(tester, 'Chimney sweeping season is here.');
       expect(find.textContaining('has no boards'), findsOneWidget);
       expect(find.textContaining('waiting to send'), findsNothing);
       expect(call, greaterThan(1), reason: 'It never re-read the Sent list.');
@@ -1394,13 +1383,12 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pumpAndSettle();
 
-      // Landed ON the agenda, not merely somewhere below: built lazily, it
-      // had no context to scroll to, and Done left the page at the top.
-      final agenda = tester.getRect(find.text('Your posts'));
-      expect(agenda.top, inInclusiveRange(0, 900 - agenda.height));
-      expect(find.text('Today'), findsOneWidget);
+      // Landed on today's day in the week strip, the new post outlined.
+      final post = find.byKey(const ValueKey('plan-row-post-1'));
+      expect(post, findsOneWidget);
+      expect(tester.getRect(post).bottom, lessThanOrEqualTo(900));
       final row = tester.widget<Material>(
-        find.byKey(const ValueKey('agenda-post-1')),
+        find.ancestor(of: post, matching: find.byType(Material)).first,
       );
       expect((row.shape! as RoundedRectangleBorder).side.width, 2);
       expect(tester.takeException(), isNull);
@@ -1416,7 +1404,8 @@ void main() {
       );
       await _openCalendar(tester);
       final now = DateTime.now();
-      await tester.tap(find.byKey(Key('month-day-${now.day}')));
+      // UI queue 199: each day from today has its own Add post.
+      await tester.tap(find.byKey(Key('plan-add-${now.month}-${now.day}')));
       await tester.pumpAndSettle();
 
       String two(int n) => n.toString().padLeft(2, '0');
@@ -1465,7 +1454,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.byTooltip('Next'));
       await tester.pumpAndSettle();
       expect(ranges.length, greaterThan(1));
     });
@@ -1508,7 +1497,6 @@ void main() {
         'Google · 5 listings ✓4 ✗1',
       );
       expect(find.text('Listing 0'), findsNothing);
-      expect(find.text('ACCOUNTS'), findsOneWidget);
     });
 
     // Review 2026-11-09 C9 (B5): every failed account again, in one action.
@@ -1594,15 +1582,9 @@ void main() {
         return inner(request);
       });
 
-      expect(find.text('NEEDS APPROVAL'), findsOneWidget);
-      await _openCalendar(tester);
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(Key('month-day-${DateTime.now().day}')),
-          matching: find.textContaining('New flue liner'),
-        ),
-      );
-      await tester.pumpAndSettle();
+      // Held for approval with no time: on no day, under Needs attention.
+      expect(find.byKey(const Key('plan-attention')), findsOneWidget);
+      await _openPostRow(tester, 'New flue liner, same day.');
       expect(find.text('Waiting for approval'), findsOneWidget);
       await tester.tap(find.byKey(const Key('social-approve-target-1')));
       await tester.pumpAndSettle();
@@ -2718,8 +2700,8 @@ void main() {
       expect(find.textContaining('A close likeness'), findsOneWidget);
     });
 
-    testWidgets('the tiles carry the server’s counts, and a tile asks the '
-        'server for its posts', (tester) async {
+    testWidgets('the legend counts what is drawn, and the status filter '
+        'narrows it', (tester) async {
       final asked = <String?>[];
       Map<String, Object?> post(String id, String status) => {
         ..._landed(status, failure: status == 'failed' ? 'No boards.' : null),
@@ -2755,41 +2737,28 @@ void main() {
         return inner(request);
       });
 
-      String count(String key) => tester
-          .widget<Text>(
-            find.descendant(
-              of: find.byKey(Key('social-posts-tile-$key')),
-              matching: find.byWidgetPredicate(
-                (w) => w is Text && RegExp(r'^\d+$').hasMatch(w.data ?? ''),
-              ),
-            ),
-          )
-          .data!;
+      // UI queue 199: the tiles became the planner's legend and its status
+      // filter, both reading the one list the calendar draws.
+      expect(find.byKey(const ValueKey('plan-row-s1')), findsOneWidget);
+      expect(find.text('Sent 2'), findsOneWidget);
+      expect(find.text('Failed 1'), findsOneWidget);
 
-      expect(count('sent'), '37');
-      expect(count('failed'), '1');
-      expect(count('scheduled'), '1');
-      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
+      await tester.tap(find.byKey(const Key('plan-state')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Failed').last);
       await tester.pumpAndSettle();
 
-      expect(asked.last, 'failed');
-      expect(find.byKey(const ValueKey('social-post-f1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-post-s1')), findsNothing);
-      expect(find.byKey(const ValueKey('social-post-c1')), findsNothing);
-      expect(find.textContaining('No boards.'), findsOneWidget);
-
-      // Tapping it again shows everything.
-      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-row-f1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-row-s1')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-row-c1')), findsNothing);
+      expect(find.text('Sent 2'), findsNothing);
     });
 
     // UI queue 100: an All tile, and a post some accounts took and one
     // refused says so rather than reading as a plain failure.
-    testWidgets('All counts every tile, and a part-sent post is Partly '
-        'posted', (tester) async {
+    testWidgets('a part-sent post is Partly posted, not Failed', (
+      tester,
+    ) async {
       final sent = _landed('sent');
       final failed = _landed('failed', failure: 'No boards.');
       final partly = {
@@ -2818,24 +2787,10 @@ void main() {
       });
 
       expect(
-        find.descendant(
-          of: find.byKey(const Key('social-posts-tile-all')),
-          matching: find.text('39'),
-        ),
+        find.widgetWithText(StatusPill, 'Partly posted · 1 of 2'),
         findsOneWidget,
       );
-      expect(find.text('Partly posted · 1 of 2'), findsOneWidget);
-
-      // Board puts it under Posted, not Failed.
-      await tester.tap(find.text('Board'));
-      await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('social-board-posted')),
-          matching: find.byKey(const ValueKey('social-post-p1')),
-        ),
-        findsOneWidget,
-      );
+      expect(find.widgetWithText(StatusPill, 'Failed'), findsNothing);
     });
 
     testWidgets('Retry on a failed row sends that account again', (
@@ -2859,7 +2814,8 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const ValueKey('social-retry-post-1')));
+      await _openPostRow(tester, 'New flue liner, same day.');
+      await tester.tap(find.widgetWithText(TextButton, 'Try again'));
       await tester.pumpAndSettle();
 
       expect(retried, isTrue);
@@ -2909,7 +2865,7 @@ void main() {
         return inner(request);
       });
 
-      await tester.tap(find.byKey(const ValueKey('social-post-post-1')));
+      await tester.tap(find.byKey(const ValueKey('plan-row-post-1')));
       await tester.pumpAndSettle();
 
       expect(
@@ -2936,7 +2892,7 @@ void main() {
         endsWith('/social/posts/post-1/targets/target-1/remote'),
       ]);
 
-      await tester.tap(find.byKey(const ValueKey('social-post-post-2')));
+      await tester.tap(find.byKey(const ValueKey('plan-row-post-2')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('social-post-edit')), findsOneWidget);
       await tester.tap(find.byKey(const Key('social-post-cancel')));
@@ -2969,7 +2925,7 @@ void main() {
         recording(_handler(tabs: const ['marketing.accounts.view']), paths),
       );
 
-      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
+      expect(find.byKey(const Key('social-connections')), findsOneWidget);
       // The three that were Posts (UI queue 76).
       for (final pane in ['Dashboard', 'Compose', 'Calendar']) {
         expect(find.widgetWithText(ChoiceChip, pane), findsNothing);
@@ -2998,8 +2954,8 @@ void main() {
         recording(_handler(tabs: const ['marketing.dashboard.view']), paths),
       );
 
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsNothing);
-      expect(find.text('Timeline'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsNothing);
+      expect(find.byKey(const Key('plan-view')), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'New post'), findsNothing);
       expect(paths.where((p) => p.endsWith('/social/posts')), isNotEmpty);
     });
@@ -5417,7 +5373,7 @@ Future<void> _pumpSocial(
           session: session,
           pickMedia: pickMedia ?? () async => null,
           videoPlayer: videoPlayer ?? (_) => null,
-        ));
+        )).then((_) => _toAgenda(tester));
 
 /// A player with no platform behind it: 16:9, 42 seconds, or a refusal.
 class _FakeVideo extends VideoPlayerController {
@@ -5453,23 +5409,58 @@ class _FakeVideo extends VideoPlayerController {
   }
 }
 
-/// Marketing → Social Media Management → Posts, which is where compose lives.
+/// Marketing → Social Media Management, on the planner's Agenda: the list of
+/// this month's posts, each with its pill (UI queue 199).
 Future<void> _openPosts(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+  await tester.pumpAndSettle();
+  await _toAgenda(tester);
+}
+
+/// Open a post from the planner: its row if it sits on a day this month,
+/// else from Needs attention (a post with no time sits on no day).
+Future<void> _openPostRow(WidgetTester tester, String text) async {
+  if (find.text(text).evaluate().isEmpty) {
+    await tester.tap(find.byKey(const Key('plan-attention')));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text(text).last);
+  await tester.pumpAndSettle();
+}
+
+/// The planner's Agenda view, where there is one (a phone has none).
+Future<void> _toAgenda(WidgetTester tester) async {
+  final agenda = find.descendant(
+    of: find.byKey(const Key('plan-view')),
+    matching: find.text('Agenda'),
+  );
+  if (agenda.evaluate().isEmpty) return;
+  await tester.tap(agenda);
   await tester.pumpAndSettle();
 }
 
 /// Social → Compose. Social opens on its Dashboard since UI queue 76, so a
 /// test about writing a post walks there the way a person would.
 Future<void> _openCompose(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Compose'));
+  await tester.tap(find.byKey(const ValueKey('tour-marketing-new-post')));
   await tester.pumpAndSettle();
 }
 
 /// Posts → Calendar, where the week and month calendars (or the phone's
 /// agenda) live since layout A (Mia, 2026-10-02).
 Future<void> _openCalendar(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Calendar'));
+  // UI queue 199: the calendar is the page. Put the composer away and show
+  // the month.
+  final close = find.byKey(const Key('social-composer-close'));
+  if (close.evaluate().isNotEmpty) {
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+  }
+  final month = find.descendant(
+    of: find.byKey(const Key('plan-view')),
+    matching: find.text('Month'),
+  );
+  if (month.evaluate().isNotEmpty) await tester.tap(month);
   await tester.pumpAndSettle();
 }
 
@@ -5505,7 +5496,7 @@ MockClientHandler _refusingHandler(String because) {
 Future<void> _openConnectPanel(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+  await tester.tap(find.byKey(const Key('social-connections')));
   await tester.pumpAndSettle();
   await tester.tap(
     find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
@@ -6067,14 +6058,8 @@ DateTime _mondayOf(DateTime d) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
-String _weekRange(DateTime monday) {
-  final sunday = monday.add(const Duration(days: 7 - 1));
-  if (monday.month == sunday.month) {
-    return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
-  }
-  return '${monday.day} ${_shortMonths[monday.month - 1]} – '
-      '${sunday.day} ${_shortMonths[sunday.month - 1]}';
-}
+String _shortWeekday(DateTime d) =>
+    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1];
 
 // Jose 2026-11-16: the post panel edits in place; the calendar days answer the
 // mouse and open their list; Comments is a tab of its own.
@@ -6118,15 +6103,10 @@ void _jose1116Tests() {
         return inner(request);
       });
 
-      await _openCalendar(tester);
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byKey(Key('month-day-${DateTime.now().day}')),
-              matching: find.textContaining('Fall is here'),
-            )
-            .first,
-      );
+      // Held for approval with no time: it opens from Needs attention.
+      await tester.tap(find.byKey(const Key('plan-attention')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Fall is here').last);
       await tester.pumpAndSettle();
 
       final field = find.byKey(const Key('social-post-text'));
@@ -6190,15 +6170,10 @@ void _jose1116Tests() {
         pickMedia: () async => PickedBytes('tiny.gif', List.filled(50, 1)),
       );
 
-      await _openCalendar(tester);
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byKey(Key('month-day-${DateTime.now().day}')),
-              matching: find.textContaining('Fall is here'),
-            )
-            .first,
-      );
+      // Held for approval with no time: it opens from Needs attention.
+      await tester.tap(find.byKey(const Key('plan-attention')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Fall is here').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('social-post-upload')));
       await tester.pumpAndSettle();
@@ -6211,45 +6186,36 @@ void _jose1116Tests() {
       expect(uploads, isEmpty);
     });
 
-    testWidgets('a calendar day tints under the mouse and shows the pointer', (
-      tester,
-    ) async {
+    testWidgets('each day from today has its own Add post; a past day has '
+        'none', (tester) async {
       await _pumpSocial(
         tester,
         _handler(canEdit: true, connections: const [_pinterestBoard]),
       );
       await _openCalendar(tester);
-      final day = find.byKey(Key('month-day-${DateTime.now().day}'));
-
-      Color? fill() => (tester
-                  .widget<Container>(
-                    find
-                        .descendant(of: day, matching: find.byType(Container))
-                        .first,
-                  )
-                  .decoration!
-              as BoxDecoration)
-          .color;
-
-      final region = tester.widget<MouseRegion>(
-        find.descendant(of: day, matching: find.byType(MouseRegion)).first,
+      final now = DateTime.now();
+      expect(
+        find.byKey(Key('plan-add-${now.month}-${now.day}')),
+        findsOneWidget,
       );
-      expect(region.cursor, SystemMouseCursors.click);
-
-      final before = fill();
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: Offset.zero);
-      addTearDown(mouse.removePointer);
-      await mouse.moveTo(tester.getCenter(day));
-      await tester.pump();
-      expect(fill(), isNot(before));
-      await mouse.moveTo(Offset.zero);
-      await tester.pump();
-      expect(fill(), before);
+      if (now.day > 1) {
+        expect(
+          find.byKey(Key('plan-add-${now.month}-${now.day - 1}')),
+          findsNothing,
+        );
+      }
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(Key('plan-add-${now.month}-${now.day}')),
+            )
+            .tooltip,
+        startsWith('Add post on '),
+      );
     });
 
-    testWidgets('a day with more than fits opens its whole list, searchable, '
-        'and a row opens the post', (tester) async {
+    testWidgets('a day with more than fits opens its whole list, and a row '
+        'opens the post', (tester) async {
       final now = DateTime.now();
       String two(int n) => n.toString().padLeft(2, '0');
       final busy = [
@@ -6280,31 +6246,29 @@ void _jose1116Tests() {
       });
       await _openCalendar(tester);
 
-      final more = find.byKey(Key('day-more-${now.month}-${now.day}'));
-      expect(find.text('+10 more'), findsWidgets);
-      await tester.tap(more.last);
+      // Every post of the day is in the range the month asked for.
+      expect(ranges, isNotEmpty);
+      final more = find.byKey(Key('plan-more-${now.month}-${now.day}'));
+      expect(more, findsOneWidget);
+      expect(find.textContaining(' more'), findsWidgets);
+      await tester.tap(more);
       await tester.pumpAndSettle();
 
-      final day = formatCalendarDayForTest(now);
-      expect(ranges.last, {'from': day, 'to': day});
-      expect(find.byKey(const Key('social-day-list')), findsOneWidget);
-      expect(find.textContaining('12 posts'), findsOneWidget);
-      expect(find.byKey(const Key('social-day-search')), findsOneWidget);
-
-      await tester.enterText(
-        find.descendant(
-          of: find.byKey(const Key('social-day-search')),
-          matching: find.byType(TextField),
-        ),
-        'number 11',
+      final panel = find.byKey(const Key('plan-day-panel'));
+      expect(panel, findsOneWidget);
+      expect(
+        find.descendant(of: panel, matching: find.text('12 posts')),
+        findsOneWidget,
       );
-      await tester.pump();
-      expect(find.byKey(const Key('social-day-post-busy-11')), findsOneWidget);
-      expect(find.byKey(const Key('social-day-post-busy-1')), findsNothing);
-
-      await tester.tap(find.byKey(const Key('social-day-post-busy-11')));
+      final last = find.byKey(const ValueKey('plan-row-busy-11'));
+      await tester.ensureVisible(last);
       await tester.pumpAndSettle();
-      expect(find.byType(SidePanel), findsOneWidget);
+      await tester.tap(last);
+      await tester.pumpAndSettle();
+
+      // The list closes and the post opens beside the calendar.
+      expect(panel, findsNothing);
+      expect(find.byKey(const Key('plan-inspector')), findsOneWidget);
       expect(
         tester
             .widget<TextField>(find.byKey(const Key('social-post-text')))
@@ -6314,8 +6278,8 @@ void _jose1116Tests() {
       );
     });
 
-    testWidgets('Comments is a tab: one inbox, a badge, filters, reply in '
-        'place', (tester) async {
+    testWidgets('Comments opens beside the calendar: one inbox, a badge, '
+        'filters, reply in place', (tester) async {
       final replies = <String>[];
       final inner = _handler(
         canEdit: true,
@@ -6377,8 +6341,8 @@ void _jose1116Tests() {
         return inner(request);
       });
 
-      // The badge: one unreplied comment, beside the tab's name.
-      final tab = find.widgetWithText(ChoiceChip, 'Comments');
+      // The badge: one unreplied comment, on the Comments button.
+      final tab = find.byKey(const Key('social-comments'));
       expect(tab, findsOneWidget);
       expect(
         find.descendant(of: tab, matching: find.text('1')),
@@ -6484,7 +6448,7 @@ void _jose1116Tests() {
         return inner(request);
       });
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Comments'));
+      await tester.tap(find.byKey(const Key('social-comments')));
       await tester.pumpAndSettle();
 
       for (final n in ['facebook', 'instagram', 'youtube', 'x']) {
