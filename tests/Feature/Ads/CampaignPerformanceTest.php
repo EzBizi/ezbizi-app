@@ -245,7 +245,14 @@ class CampaignPerformanceTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $row = $this->connected($t);
-        $this->fakeGoogle($this->customerRow(), []);
+        // The leads are Local Services': priced on its 300.00, never on the
+        // Search 934.56 beside it (Bar, 2026-11-18).
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+            ['campaign' => ['id' => '2', 'name' => 'Search', 'status' => 'ENABLED', 'advertisingChannelType' => 'SEARCH'],
+                'metrics' => ['costMicros' => '934560000']],
+        ]);
 
         $this->inTenant($t['org'], function () use ($t, $row) {
             $leads = [];
@@ -309,14 +316,15 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame(3, $account['leads']);
         $this->assertSame(2, $account['charged_leads']);
         $this->assertSame(1, $account['credited_leads']);
-        $this->assertSame(411.52, $account['cost_per_lead'], '1234.56 over three leads');
+        $this->assertSame(300.0, (float) $account['lsa_cost']);
+        $this->assertSame(100.0, (float) $account['cost_per_lead'], 'Local Services 300.00 over three leads, not 1234.56');
         $this->assertSame(3, $account['calls']);
         $this->assertSame(1, $account['missed_calls']);
         $this->assertSame(45, $account['median_first_reply_minutes'], 'the FIRST answer, not the last');
         $this->assertSame(0, $account['unanswered_messages']);
         $this->assertSame(1, $account['jobs']);
         $this->assertSame(450.0, (float) $account['revenue']);
-        $this->assertSame(0.36, $account['return_on_spend'], '450 over 1234.56');
+        $this->assertSame(1.5, (float) $account['return_on_spend'], '450 over the Local Services 300.00');
     }
 
     public function test_a_ratio_with_no_denominator_is_null(): void

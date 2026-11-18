@@ -551,9 +551,9 @@ class CampaignPerformance
      *
      * @throws RuntimeException
      */
-    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to, bool $activeOnly = false): array
+    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to, bool $activeOnly = false, ?string $token = null): array
     {
-        $rows = $this->search($connection, GoogleToken::forConnection($connection, 'google_ads'), sprintf(
+        $rows = $this->search($connection, $token ?? GoogleToken::forConnection($connection, 'google_ads'), sprintf(
             'SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, '
             ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'%s",
             $from->format('Y-m-d'),
