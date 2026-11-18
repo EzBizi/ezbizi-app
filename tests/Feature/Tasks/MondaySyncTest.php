@@ -5,11 +5,14 @@ namespace Tests\Feature\Tasks;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\FakesMonday;
 use Tests\TestCase;
@@ -120,6 +123,64 @@ class MondaySyncTest extends TestCase
         $this->assertSame(3, $this->inTenant($this->tenant['org'], fn () => Task::query()->whereNotNull('external_ref')->count()));
     }
 
+    /** Desk 11-18: a task moved to another board here stopped 29 syncs ("no column called <Area id>"). */
+    public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
+    {
+        $elsewhere = $this->inTenant($this->tenant['org'], function () {
+            $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id]);
+
+            return $b;
+        });
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $board = $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer again', '2026-11-12T12:00:00Z', ['status' => 'Done']),
+            $this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z'),
+        ]);
+        $board['columns'][] = ['id' => 'area', 'title' => 'Area', 'type' => 'status', 'settings_str' => json_encode(['labels' => ['0' => 'North']])];
+        foreach ($board['items'] as &$i) {
+            $i['column_values'][] = ['id' => 'area', 'type' => 'status', 'text' => 'North', 'label' => 'North', 'index' => 0, 'value' => json_encode(['index' => 0])];
+        }
+        unset($i);
+        $this->monday['boards'] = ['100' => $board];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertSame($elsewhere->id, $this->task('11')->board_id);
+        $this->assertNotNull($this->task('12'), 'the next item still arrived');
+    }
+
+    /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */
+    public function test_someone_who_joins_later_gets_the_branch_boards_monday_shares_with_them(): void
+    {
+        $branch = $this->inTenant($this->tenant['org'], function () {
+            $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $b->forceFill(['external_ref' => 'monday:200'])->saveQuietly();
+
+            return $b;
+        });
+        $nehorai = $this->userWithRole($this->tenant, 'Member', ['tasks.view', 'tasks.edit'], 'nehorai@ezbizi.test');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Nehorai Maamari', 'email' => 'nehorai@ezbizi.test'];
+        $this->monday['boards'] = ['200' => $this->mondayBoard('200', 'Connecticut', [$this->mondayItem('21', 'Call back', '2026-11-12T12:00:00Z', ['people' => ['2']])])
+            + ['subscribers' => [['id' => '2']]]];
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertSame('member', $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()
+            ->where('board_id', $branch->id)->where('user_id', $nehorai->id)->value('role')));
+        $this->assertSame([$nehorai->id], $this->task('21')->owners->pluck('user_id')->all());
+
+        // Removed here by an admin: the next pass does not put him back, and Monday's silence removes nobody.
+        $row = $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->where('board_id', $branch->id)->where('user_id', $nehorai->id)->value('id'));
+        $this->signedInAs($this->tenant['admin'])->deleteJson("/api/v1/task-boards/{$branch->id}/members/{$row}")->assertNoContent();
+        $other = $this->userWithRole($this->tenant, 'Kept', ['tasks.view'], 'kept@ezbizi.test');
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $branch->id, 'user_id' => $other->id, 'role' => 'member']));
+        Carbon::setTestNow('2026-11-12 12:20:00');
+        $this->artisan('ezbizi:monday-sync', ['--full' => true])->assertSuccessful();
+        $roles = $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->where('board_id', $branch->id)->pluck('role', 'user_id')->all());
+        $this->assertArrayNotHasKey($nehorai->id, $roles);
+        $this->assertArrayHasKey($other->id, $roles);
+    }
+
     /**
      * 2026-11-16: the poll listed every item of 39 boards (88k) every ten
      * minutes, ~4 min, and a 5-min scheduler slot timed out. A pass with
@@ -171,7 +232,7 @@ class MondaySyncTest extends TestCase
             $task = $this->task('11');
             $task->board->members()->create(['organization_id' => $this->tenant['org']->id, 'user_id' => $ana->id, 'role' => 'member']);
             app(TaskWriter::class)->update($task, ['assignee_user_ids' => [$ana->id]], $this->jose);
-            $task->forceFill(['created_by_automation_id' => (string) \Illuminate\Support\Str::uuid()])->saveQuietly();
+            $task->forceFill(['created_by_automation_id' => (string) Str::uuid()])->saveQuietly();
         });
 
         Carbon::setTestNow('2026-11-12 12:05:00');

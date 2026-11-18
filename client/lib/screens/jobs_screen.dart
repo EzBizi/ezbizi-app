@@ -88,7 +88,21 @@ class _JobsScreenState extends State<JobsScreen> {
   /// looks, and then kept, as the Jobs tab is.
   final Set<String> _opened = {'jobs'};
 
-  List<String> get _tabs => ['jobs', if (_seesEstimates) 'estimates'];
+  List<String> get _tabs => [
+    'jobs',
+    if (_canBook) 'book',
+    if (_seesEstimates) 'estimates',
+  ];
+
+  /// Jobs › Book (Jose, 2026-11-17, design 197): the booking flow as its own
+  /// tab, for whoever may add a job somewhere.
+  bool get _canBook {
+    final me = widget.session.me;
+    return me != null && me.can('jobs.create') && me.franchises.isNotEmpty;
+  }
+
+  /// Bumped by "Book another", so the page starts empty again.
+  int _bookRun = 0;
 
   bool get _seesEstimates =>
       _seesMoney && (widget.session.me?.can('estimates.view') ?? false);
@@ -360,6 +374,7 @@ class _JobsScreenState extends State<JobsScreen> {
               for (final t in tabs)
                 switch (t) {
                   'estimates' => ('Estimates', Icons.request_quote_outlined),
+                  'book' => ('Book', Icons.event_available_outlined),
                   _ => ('Jobs', Icons.construction_outlined),
                 },
             ],
@@ -390,6 +405,23 @@ class _JobsScreenState extends State<JobsScreen> {
                   child: _jobsTab(context),
                 ),
               ),
+              if (_canBook)
+                Offstage(
+                  offstage: _tab != 'book',
+                  child: ModuleActionGate(
+                    active: _tab == 'book',
+                    child: _opened.contains('book')
+                        ? BookJobPanel(
+                            key: ValueKey('jobs-book-$_bookRun'),
+                            api: widget.api,
+                            session: widget.session,
+                            page: true,
+                            onBooked: (_) => _load(),
+                            onDone: () => setState(() => _bookRun++),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
               if (_seesEstimates)
                 Offstage(
                   offstage: _tab != 'estimates',

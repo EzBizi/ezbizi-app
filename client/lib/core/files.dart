@@ -44,8 +44,14 @@ class Files {
   ///
   /// Papers on a period, visit or payment are PDFs as often as pictures, and
   /// reading them as text would corrupt them the same way a photo would.
-  static Future<PickedBytes?> pickBytes({String accept = ''}) =>
-      impl.pickBytes(accept: accept);
+  static Future<PickedBytes?> pickBytes({String accept = ''}) {
+    final hook = debugPickBytes;
+    if (hook != null) return hook(accept);
+    return impl.pickBytes(accept: accept);
+  }
+
+  /// Tests set this to answer [pickBytes] with a file, given its `accept`.
+  static Future<PickedBytes?> Function(String accept)? debugPickBytes;
 
   /// A URL the browser can play or show, for bytes we already hold.
   ///

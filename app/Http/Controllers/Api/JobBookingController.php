@@ -97,7 +97,7 @@ class JobBookingController extends Controller
      * address, times, type and source; assign a technician). They are kept in
      * EzBizi and the panel tags them "EzBizi only" (UI/UX, 2026-10-27).
      */
-    public const EZBIZI_ONLY = ['company', 'phone_ext', 'more_phones', 'country', 'description', 'external_company', 'custom_fields', 'all_day', 'recurrence'];
+    public const EZBIZI_ONLY = ['company', 'phone_ext', 'more_phones', 'country', 'external_company', 'custom_fields', 'all_day', 'recurrence'];
 
     /**
      * POST /api/v1/jobs/book
@@ -145,6 +145,16 @@ class JobBookingController extends Controller
             'recurrence.until' => ['nullable', 'date_format:Y-m-d'],
             'technician_ids' => ['nullable', 'array', 'max:10'],
             'technician_ids.*' => ['uuid'],
+            'override_reason' => ['nullable', 'string', 'max:500'],
+            // Jobs › Book (desk, 2026-11-18): priced services, tags, and "yes, a new person" after a duplicate warning.
+            'line_items' => ['nullable', 'array', 'max:30'],
+            'line_items.*.service_id' => ['nullable', 'uuid'],
+            'line_items.*.name' => ['required', 'string', 'max:200'],
+            'line_items.*.price_minor' => ['required', 'integer', 'min:0', 'max:100000000'],
+            'line_items.*.qty' => ['required', 'integer', 'min:1', 'max:1000'],
+            'tags' => ['nullable', 'array', 'max:20'],
+            'tags.*' => ['string', 'max:100'],
+            'new_customer_confirmed' => ['nullable', 'boolean'],
         ]);
         $franchise = Franchise::query()->findOrFail($input['franchise_id']);
         $this->authorize('create', [Job::class, $franchise]);
@@ -155,6 +165,13 @@ class JobBookingController extends Controller
         if (isset($input['status']) && ! in_array($input['status'], Job::allowedStatuses($franchise), true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['status' => 'Not one of this organization\'s job statuses.']);
         }
+        if (! isset($input['customer_id']) && ! ($input['new_customer_confirmed'] ?? false)
+            && ($matches = self::sameCustomers($franchise, $input['customer']['phone'] ?? null, $input['customer']['email'] ?? null)) !== []) {
+            return response()->json(['message' => 'This phone or email is already a customer. Pick them, or confirm this is someone new.',
+                'matches' => $matches], 409);
+        }
+        $override = \App\Support\Jobs\BookingGate::check($area, $input['scheduled'] && filled($input['start'] ?? null) ? $input['start'] : null,
+            $request->user(), $input['override_reason'] ?? null);
         $lead = isset($input['lead_id']) ? Lead::query()->findOrFail($input['lead_id']) : null;
         if ($lead) {
             $this->authorize('update', $lead);
@@ -213,6 +230,18 @@ class JobBookingController extends Controller
                 'recurrence' => $input['recurrence'] ?? null,
             ], fn ($v) => $v !== null));
 
+            foreach (array_values($input['line_items'] ?? []) as $i => $item) {
+                $job->lines()->create(['organization_id' => $job->organization_id, 'service_id' => $item['service_id'] ?? null,
+                    'name' => $item['name'], 'unit_price_minor' => $item['price_minor'], 'qty' => $item['qty'],
+                    'amount_minor' => $item['price_minor'] * $item['qty'], 'position' => $i + 1]);
+            }
+            if (! empty($input['line_items'])) {
+                $job->recomputeTotal();
+            }
+            if (! empty($input['tags'])) {
+                $job->forceFill(['tags' => $input['tags']])->saveQuietly();
+            }
+
             if ($lead) {
                 // Booked from a lead: what LeadsController::book does, so conversion rules still fire (UI/UX, 2026-10-27).
                 $before = $lead->status;
@@ -228,6 +257,9 @@ class JobBookingController extends Controller
 
             return $job;
         });
+        if ($override !== null) {
+            \App\Support\Jobs\BookingGate::record($job, $override);
+        }
         foreach ($techs as $tech) {
             JobTechnicians::assign($job, $tech);
         }
@@ -260,7 +292,10 @@ class JobBookingController extends Controller
     private function toWorkiz(Job $job, $members): array
     {
         $writer = app(WorkizJobWriter::class);
-        $made = $writer->create($job->fresh(['customer']), $job->job_type, $job->job_source);
+        // The services ride in the Workiz description (no line-item write is measured on either API).
+        $sent = $job->fresh(['customer', 'lines']);
+        $sent->description = trim(implode("\n", array_filter([(string) $sent->description, self::servicesText($sent)])));
+        $made = $writer->create($sent, $job->job_type, $job->job_source);
         if ($made['job'] === null && $made['refused'] === null) {
             return ['status' => 'no_workiz'];
         }
@@ -287,6 +322,48 @@ class JobBookingController extends Controller
             $assigned[] = $m->name;
         }
 
-        return ['status' => 'created', 'serial_id' => $made['job']->serial_id, 'assigned' => $assigned];
+        $tags = null;
+        if (! empty($job->tags)) {
+            try {
+                $writer->setTags($made['job'], $job->tags);
+            } catch (\Throwable $e) {
+                $tags = 'Tags not set in Workiz: '.$e->getMessage();
+            }
+        }
+
+        return ['status' => 'created', 'serial_id' => $made['job']->serial_id, 'assigned' => $assigned, 'tags_refused' => $tags];
+    }
+
+    /** "Services:\n2 x Chimney sweep @ $199.00 = $398.00\nTotal: $398.00", or null with no lines. */
+    private static function servicesText(Job $job): ?string
+    {
+        if ($job->lines->isEmpty()) {
+            return null;
+        }
+        $money = fn (int $minor) => '$'.number_format($minor / 100, 2);
+
+        return "Services:\n".$job->lines->sortBy('position')->map(fn ($l) => $l->qty.' x '.$l->name.' @ '.$money($l->unit_price_minor).' = '.$money($l->amount_minor))
+            ->implode("\n")."\nTotal: ".$money((int) $job->lines->sum('amount_minor'));
+    }
+
+    /**
+     * Customers of this organization already holding the phone (last ten digits) or email: the duplicate check
+     * before a new customer is made (desk, 2026-11-18).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function sameCustomers(Franchise $franchise, ?string $phone, ?string $email): array
+    {
+        $digits = substr(preg_replace('/\D/', '', (string) $phone) ?? '', -10);
+        $email = mb_strtolower(trim((string) $email));
+        if (strlen($digits) < 10 && $email === '') {
+            return [];
+        }
+
+        return Customer::query()->where(fn ($q) => $q
+            ->when(strlen($digits) === 10, fn ($q) => $q->orWhereRaw("RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = ?", [$digits]))
+            ->when($email !== '', fn ($q) => $q->orWhereRaw('LOWER(email) = ?', [$email])))
+            ->limit(5)->get(['id', 'number', 'name', 'phone', 'email', 'address_line1', 'city', 'owning_franchise_id'])
+            ->map(fn (Customer $c) => $c->only(['id', 'number', 'name', 'phone', 'email', 'address_line1', 'city', 'owning_franchise_id']))->all();
     }
 }

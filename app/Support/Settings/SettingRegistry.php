@@ -1052,6 +1052,22 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-17: Project Management's client texts, each its
+            // own switch and wording, all OFF until he approves the wording.
+            // {client_first}, {company}, {date}, {link}. `since`: when it was
+            // switched on; only later jobs get it (ProjectBoardClientMessages).
+            new SettingDefinition(
+                key: 'project_board.client_messages', label: 'Project Management: texts to the client',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'project_link' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, thank you for choosing {company}. Your project is underway, and you can see where it stands any time here: {link}'],
+                    'scheduled' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, your project with {company} is scheduled for {date}. See it here: {link}'],
+                    'day_before' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, happy to remind you about your appointment tomorrow, {date}, to complete your project. Our repair crews are booked 7 to 14 days ahead, so moving it may take 1 to 2 weeks.'],
+                    'complete' => ['on' => false, 'since' => null, 'text' => 'Thank you for your business, {client_first}. It was a pleasure working on your project with {company}.'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Each text to the client, its switch and its wording. Replies land in Project Management > Inbox.',
+            ),
             // Jose, 2026-11-17: "we need to set up list of supplier". Each
             // {id, name, address, phone, kind: order|pickup}: a supplier parts
             // are ordered from, or a same-day pickup store.
@@ -1591,6 +1607,12 @@ class SettingRegistry
                 key: 'scheduling.offer_today', label: 'Offer today in online booking',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',
+            ),
+            // Jose / desk, 2026-11-17: a job booked into a full window alerts at once.
+            new SettingDefinition(
+                key: 'scheduling.full_window_alert_to', label: 'Full-window alert: also tell (emails)',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                help: 'When a Workiz job is booked into a window that was already full, whoever booked it is alerted at once and it goes on the branch board. These people (the branch\'s field managers: emails separated by commas) are alerted too. Set it per branch.',
             ),
             // Dispatchers, via Jose 2026-11-17: "Friday appointments must be scheduled
             // no later than the 12-3 PM time window." Weekday (0 Sun .. 6 Sat) => the

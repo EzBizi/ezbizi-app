@@ -127,6 +127,7 @@ use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScree
 use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
 use App\Http\Controllers\Api\NewsletterImportController;
+use App\Http\Controllers\Api\NewsletterBrandSectionsController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\NoteActivityController;
@@ -170,6 +171,7 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ProjectBoardController;
+use App\Http\Controllers\Api\ProjectInboxController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\PtoRequestsController;
@@ -734,6 +736,15 @@ Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'
     ->middleware('signed')
     ->name('web.chat.avatar');
 
+// Project Management (Jose, 2026-11-17): a crew's work order and a client's
+// project page, by signed links that lapse; no login.
+Route::get('v1/work-order/{job}', [ProjectBoardController::class, 'sharedWorkOrder'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('work-order.shared');
+Route::get('v1/project/{job}', [\App\Http\Controllers\Api\ProjectTimelineController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('project.timeline');
+
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
@@ -1035,6 +1046,9 @@ Route::prefix('v1')
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
         Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
+        Route::get('project-board/inbox', [ProjectInboxController::class, 'index']);
+        Route::get('project-board/inbox/{job}', [ProjectInboxController::class, 'show']);
+        Route::post('project-board/inbox/{job}', [ProjectInboxController::class, 'reply']);
         Route::patch('project-board/parts/{part}/reminder', [ProjectBoardController::class, 'partReminder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
@@ -1860,6 +1874,7 @@ Route::prefix('v1')
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
                 ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
+            Route::get('scheduling/availability/days', [SchedulingAvailabilityController::class, 'days']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
@@ -2560,8 +2575,30 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // P1c: HTML read for keep/convert without saving, and the kept original.
+            Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
+            Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
+            Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // P1a: the picker's library list for newsletter-only roles, and a
+            // non-destructive crop (the original is kept).
+            Route::get('newsletter/images', [NewsletterImportController::class, 'images']);
+            Route::get('newsletter/images/{item}/file', [NewsletterImportController::class, 'imageFile']);
+            Route::post('newsletter/images/crop', [NewsletterImportController::class, 'crop']);
+            // P1a: durable revision history; a restore is a new revision.
+            Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
+            Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
+            Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
+
+            // P1b: the company brand and saved sections (linked uses pin a version).
+            Route::get('newsletter/brand', [NewsletterBrandSectionsController::class, 'brand']);
+            Route::put('newsletter/brand', [NewsletterBrandSectionsController::class, 'saveBrand']);
+            Route::get('newsletter/sections', [NewsletterBrandSectionsController::class, 'sections']);
+            Route::post('newsletter/sections', [NewsletterBrandSectionsController::class, 'store']);
+            Route::get('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'section']);
+            Route::put('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'update']);
+            Route::delete('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'destroy']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);

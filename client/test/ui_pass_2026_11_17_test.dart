@@ -164,12 +164,10 @@ void main() {
       const Key('newsletters-fact-reached'),
       const Key('newsletters-fact-last'),
     ];
-    final tops = {for (final k in keys) tester.getTopLeft(find.byKey(k)).dy};
-    expect(tops, hasLength(1), reason: 'every tile on one row');
-    final widths = {
-      for (final k in keys) tester.getSize(find.byKey(k)).width.round(),
-    };
-    expect(widths, hasLength(1), reason: 'every tile the same width');
+    // Newsletter P1c: the tiles became one compact strip of filter chips and
+    // two facts, which still share one line at a computer's width.
+    final centres = {for (final k in keys) tester.getCenter(find.byKey(k)).dy.round()};
+    expect(centres, hasLength(1), reason: 'every filter and fact on one line');
   });
 
   // Financials › Home: a card's figure is a sentence and was cut to one line

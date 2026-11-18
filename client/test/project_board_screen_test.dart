@@ -321,6 +321,9 @@ void main() {
     expect(requests.last.url.queryParameters['q'], 'lena');
     expect(requests.last.url.queryParameters['franchise_id'], 'f-1');
 
+    // The ninth tab since Dashboard and Inbox (2026-11-17): scrolled to first.
+    await tester.ensureVisible(find.text('Settings'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     // Each sub-tab's rules in its own card (Jose, 2026-11-16), and the

@@ -1,0 +1,235 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jobs › Book</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). Every name, address and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+/* window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:640px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.bk-page{flex:1;min-width:0;overflow:hidden;padding:16px 22px;display:flex;flex-direction:column;gap:10px}
+.bk-title{font-size:20px;font-weight:800;line-height:1.2}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card h3{margin:0;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.card h3 .k{width:20px;height:20px;border-radius:50%;background:var(--pric);color:var(--prid);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.card h3 .k.ok{background:var(--okc);color:var(--ok)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.sm{height:26px;font-size:11.5px;padding:0 9px}
+.btn.big{height:40px;font-size:13.5px;padding:0 20px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.row{display:flex;gap:8px;align-items:center;min-width:0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:32px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 9px;display:flex;align-items:center;gap:6px;background:var(--paper);font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden}
+.in .ph{color:#8a969e}
+.in.q::before{content:"⌕";color:var(--muted);font-size:14px}
+.in.ta{min-height:52px;align-items:flex-start;white-space:normal}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.chip.off{background:var(--paper);color:var(--neu);border:1px solid var(--line)}
+.av{width:22px;height:22px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:10px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.match{border:1px solid var(--pri);background:#f1f8fb;border-radius:8px;padding:7px 9px;display:flex;align-items:center;gap:8px;font-size:12px}
+/* the availability grid: a full window cannot be picked */
+.bk-grid{display:grid;grid-template-columns:62px repeat(7,minmax(0,1fr));gap:4px;font-size:11px}
+.bk-grid .h{font-weight:700;color:var(--neu);text-align:center;padding:2px 0;line-height:1.2}
+.bk-grid .h small{display:block;font-weight:500;color:var(--muted)}
+.bk-grid .w{font-weight:700;color:var(--neu);display:flex;align-items:center}
+.c{border-radius:7px;padding:6px 4px;text-align:center;font-weight:700;border:1px solid transparent;line-height:1.2}
+.c small{display:block;font-weight:500;font-size:10px}
+.c.o{background:var(--okc);color:var(--ok)}
+.c.l{background:var(--cauc);color:var(--cau)}
+.c.x{background:repeating-linear-gradient(135deg,#eef1f3 0 6px,#e3e8eb 6px 12px);color:#8a969e;cursor:not-allowed}
+.c.z{background:transparent;color:#a3adb4;border:1px dashed #cfd8dc;font-weight:500}
+.c.s{background:var(--pri);color:#fff;border-color:var(--prid);box-shadow:0 0 0 2px var(--pric)}
+.c.near{outline:2px solid #6fb5c9;outline-offset:-2px}
+.legend{display:flex;gap:12px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.tech{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px}
+.tech.on{border-color:var(--pri);background:#f1f8fb}
+.tech .ld{margin-left:auto;font-size:10.5px;color:var(--muted)}
+.sum{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.sum .r{display:flex;gap:8px}.sum .r span:first-child{width:78px;color:var(--muted);flex:0 0 auto}
+.steps{display:flex;gap:6px;align-items:center;font-size:12px}
+.steps span{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-weight:600}
+.steps span i{width:22px;height:22px;border-radius:50%;background:var(--neuc);color:var(--neu);font-style:normal;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.steps span.d i{background:var(--okc);color:var(--ok)} .steps span.on{color:var(--ink)} .steps span.on i{background:var(--pri);color:#fff}
+.steps b{width:24px;height:1px;background:#c9d4d9}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:430px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.drawer .hd{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.drawer .bd{padding:12px 16px;display:flex;flex-direction:column;gap:10px;flex:1;overflow:hidden}
+.drawer .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.stick{background:var(--paper);border-top:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:10px}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:26px;background:var(--paper)}
+.phn .ab{height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .bk-pt{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:9px;padding:10px}
+.phn .card{padding:10px 11px}
+.days{display:flex;gap:5px;overflow:hidden}
+.days span{flex:0 0 auto;width:44px;border-radius:8px;padding:5px 0;text-align:center;font-size:11px;font-weight:700;background:var(--paper);border:1px solid var(--line);line-height:1.2}
+.days span small{display:block;font-weight:500;font-size:9.5px;color:var(--muted)}
+.days span.on{background:var(--pri);color:#fff;border-color:var(--pri)} .days span.on small{color:#d6edf5}
+.days span.full{color:#a3adb4;background:#eef1f3}
+.wl{display:flex;flex-direction:column;gap:5px}
+.wl .c{display:flex;justify-content:space-between;padding:8px 10px;font-size:12px;text-align:left}
+</style>
+<div class="wrap">
+<h1>197 · Jobs › Book: book the whole job in EzBizi</h1>
+<p class="sub">Jose: <i>"perhaps we ought to have a fully dedicated booking sub tab in jobs, and review every place that booking buttons are"</i>. One Book flow on its own Jobs tab: the customer (found or new), the address, services, a live availability grid that will not let a window go over its limit, the technician, the source and notes, then Create in one step. Every other Book button (Leads, Customers, Communication, Jobs list, Scheduling) opens this same flow with what it already knows filled in. The grid reads the area's real windows (<code>scheduling/availability</code>: capacity, taken, remaining); a full window is striped and cannot be picked, and the server refuses it too. Saving stays EzBizi first, then Workiz, as now.</p>
+
+<!-- ============ 1 ============ -->
+<h2><span class="n">1</span> One page: the form on the left, the grid on the right <span class="rec">Recommended</span></h2>
+<p class="cap">Everything on one screen, no steps. The left column is filled top to bottom: <b>customer</b> (search; a match shows its card, or New customer), <b>address</b> (the customer's own addresses as chips, or a new one), <b>services</b>, <b>source</b>, <b>notes</b>. The right column is the area's <b>next 7 days × windows</b>, each cell showing spots left; it appears once the address gives a zip. Picking a cell lists the technicians covering that area with their load that day. The summary and <b>Create job</b> sit under the grid; Create lights only when customer, address and either a window or "Unscheduled" are set. Opened from another Book button, it is this page in a wide side panel.</p>
+<div class="win" style="height:800px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="bk-page">
+ <div class="row"><div class="bk-title">Jobs</div><span class="sp"></span><div class="in" style="width:220px">A-1 Chimney · Fort Lauderdale ▾</div></div>
+ <div class="tabs"><span>All jobs</span><span>Unscheduled</span><span class="on">Book</span><span>Estimates</span><span>Board</span></div>
+ <div style="display:grid;grid-template-columns:430px minmax(0,1fr);gap:12px;min-height:0;flex:1">
+  <div style="display:flex;flex-direction:column;gap:9px;min-height:0">
+   <div class="card"><h3><span class="k ok">✓</span>Customer</h3>
+    <div class="in q"><span>Maria Ortega</span></div>
+    <div class="match"><span class="av">MO</span><div><b>Maria Ortega</b> · (954) 555-0148<div class="tiny">2 past jobs · last Jun 3 · Chimney sweep</div></div><span class="sp"></span><span class="pill p-ok">Chosen</span></div>
+   </div>
+   <div class="card"><h3><span class="k ok">✓</span>Address</h3>
+    <div class="row" style="flex-wrap:wrap"><span class="chip">● 1420 SE 12th St, Fort Lauderdale 33316</span><span class="chip off">2290 NE 8th Ave</span><span class="chip off">+ New address</span></div>
+    <div class="tiny">Area: <b>Fort Lauderdale East</b> · zip 33316 · ✓ house number</div>
+   </div>
+   <div class="card"><h3><span class="k">3</span>Services <span class="sp"></span><span class="b">$420.00</span></h3>
+    <div class="sum"><div class="r"><span style="width:auto;flex:1;color:var(--ink)">Chimney sweep × 1</span><b>$249.00</b></div><div class="r"><span style="width:auto;flex:1;color:var(--ink)">Cap install × 1</span><b>$171.00</b></div></div>
+    <div class="in q"><span class="ph">Add a service…</span></div>
+    <div class="g2"><div class="fld"><label>Job type</label><div class="in">Service ▾</div></div><div class="fld"><label>Source · ad group</label><div class="in">Google LSA · Sweep ▾</div></div></div>
+    <div class="in"><span class="chip">VIP</span><span class="ph">Tags…</span></div>
+   </div>
+   <div class="card"><h3><span class="k">4</span>Notes <span class="tiny">also saved to Workiz</span></h3><div class="in ta"><span class="ph">For the technician: gate code, pets, what the customer said…</span></div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+   <div class="card"><h3><span class="k">5</span>When · Fort Lauderdale East <span class="sp"></span><span class="btn sm">‹</span><span class="tiny">Nov 18 – 24</span><span class="btn sm">›</span><span class="btn sm">Unscheduled</span></h3>
+    <div class="bk-grid">
+     <span></span><span class="h">Wed<small>18</small></span><span class="h">Thu<small>19</small></span><span class="h">Fri<small>20</small></span><span class="h">Sat<small>21</small></span><span class="h">Sun<small>22</small></span><span class="h">Mon<small>23</small></span><span class="h">Tue<small>24</small></span>
+     <span class="w">8–11</span><span class="c x">Full<small>4/4</small></span><span class="c l">1 left<small>3/4</small></span><span class="c o near">3 left<small>2 nearby</small></span><span class="c o">2 left</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">4 left</span>
+     <span class="w">11–2</span><span class="c x">Full<small>4/4</small></span><span class="c x">Full<small>4/4</small></span><span class="c s">Picked<small>2 left after</small></span><span class="c l">1 left</span><span class="c z">Closed</span><span class="c o">3 left</span><span class="c o">4 left</span>
+     <span class="w">2–5</span><span class="c l">1 left<small>3/4</small></span><span class="c x">Full<small>4/4</small></span><span class="c x">Blocked<small>Fri after 12</small></span><span class="c z">—</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">3 left</span>
+    </div>
+    <div class="legend"><span><i style="background:var(--okc)"></i>Open</span><span><i style="background:var(--cauc)"></i>Last spot</span><span><i style="background:#e3e8eb"></i>Full: cannot be picked</span><span><i style="outline:2px solid #6fb5c9;background:#fff"></i>Jobs nearby that day</span><span>Fri 2–5: "No jobs on Friday after 12 pm"</span></div>
+   </div>
+   <div class="card"><h3><span class="k">6</span>Technician · Fri 20, 11–2</h3>
+    <div class="g2"><div class="tech on"><span class="av">DR</span>Danny R.<span class="ld">2 of 6 · 1 nearby</span></div><div class="tech"><span class="av">LK</span>Luis K.<span class="ld">4 of 6</span></div><div class="tech"><span class="av">?</span>Leave unassigned<span class="ld"></span></div></div>
+   </div>
+   <div class="card" style="flex-direction:row;align-items:center"><div class="sum" style="flex:1"><div class="r"><span>Booking</span><b>Maria Ortega · Chimney sweep, Cap install</b></div><div class="r"><span>When</span><b>Fri Nov 20, 11 am – 2 pm · Danny R.</b></div><div class="tiny">Saves in EzBizi, then Workiz. The customer text follows Scheduling's settings.</div></div><span class="btn big f">Create job</span></div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ============ 2 ============ -->
+<h2><span class="n">2</span> Four steps, one at a time</h2>
+<p class="cap">The same fields split into <b>Who · Where · What · When</b>, with Back and Next. Each step is short and hard to get wrong, but you can't see the grid while typing the services, and editing step 1 means going back. Step 4 (shown) is the grid with the technician beside it; Create is on the last step.</p>
+<div class="win"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="bk-page">
+ <div class="row"><div class="bk-title">Jobs</div><span class="sp"></span><div class="in" style="width:220px">A-1 Chimney · Fort Lauderdale ▾</div></div>
+ <div class="tabs"><span>All jobs</span><span>Unscheduled</span><span class="on">Book</span><span>Estimates</span><span>Board</span></div>
+ <div class="steps"><span class="d"><i>✓</i>Who · Maria Ortega</span><b></b><span class="d"><i>✓</i>Where · 1420 SE 12th St</span><b></b><span class="d"><i>✓</i>What · 2 services</span><b></b><span class="on"><i>4</i>When</span></div>
+ <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px">
+  <div class="card"><h3>Pick a window · Fort Lauderdale East <span class="sp"></span><span class="tiny">Nov 18 – 24</span></h3>
+   <div class="bk-grid">
+    <span></span><span class="h">Wed<small>18</small></span><span class="h">Thu<small>19</small></span><span class="h">Fri<small>20</small></span><span class="h">Sat<small>21</small></span><span class="h">Sun<small>22</small></span><span class="h">Mon<small>23</small></span><span class="h">Tue<small>24</small></span>
+    <span class="w">8–11</span><span class="c x">Full</span><span class="c l">1 left</span><span class="c o">3 left</span><span class="c o">2 left</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">4 left</span>
+    <span class="w">11–2</span><span class="c x">Full</span><span class="c x">Full</span><span class="c s">Picked</span><span class="c l">1 left</span><span class="c z">Closed</span><span class="c o">3 left</span><span class="c o">4 left</span>
+    <span class="w">2–5</span><span class="c l">1 left</span><span class="c x">Full</span><span class="c x">Blocked<small>Fri after 12</small></span><span class="c z">—</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">3 left</span>
+   </div>
+  </div>
+  <div class="card"><h3>Technician</h3><div class="tech on"><span class="av">DR</span>Danny R.<span class="ld">2 of 6</span></div><div class="tech"><span class="av">LK</span>Luis K.<span class="ld">4 of 6</span></div><div class="tech"><span class="av">?</span>Unassigned</div></div>
+ </div>
+ <div class="sp"></div>
+ <div class="row"><span class="btn">Back</span><span class="sp"></span><span class="tiny">Fri Nov 20, 11–2 · Danny R.</span><span class="btn big f">Create job</span></div>
+</div></div></div>
+
+<!-- ============ 3 ============ -->
+<h2><span class="n">3</span> Availability first, the form in a drawer</h2>
+<p class="cap">The tab opens on a <b>zip or address</b> box and the full grid for every area that branch serves; you pick the window first, then a drawer asks for the customer, services, source and notes. Best when the caller's first question is "when can you come?", weaker when you start from a known customer.</p>
+<div class="win" style="position:relative"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell" style="position:relative"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="bk-page">
+ <div class="row"><div class="bk-title">Jobs</div><span class="sp"></span><div class="in" style="width:220px">A-1 Chimney · Fort Lauderdale ▾</div></div>
+ <div class="tabs"><span>All jobs</span><span>Unscheduled</span><span class="on">Book</span><span>Estimates</span><span>Board</span></div>
+ <div class="row"><div class="in q" style="width:360px"><span>33316</span></div><span class="chip">Fort Lauderdale East</span><span class="tiny">7 days</span></div>
+ <div class="card" style="width:680px"><div class="bk-grid">
+  <span></span><span class="h">Wed<small>18</small></span><span class="h">Thu<small>19</small></span><span class="h">Fri<small>20</small></span><span class="h">Sat<small>21</small></span><span class="h">Sun<small>22</small></span><span class="h">Mon<small>23</small></span><span class="h">Tue<small>24</small></span>
+  <span class="w">8–11</span><span class="c x">Full</span><span class="c l">1 left</span><span class="c o">3 left</span><span class="c o">2 left</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">4 left</span>
+  <span class="w">11–2</span><span class="c x">Full</span><span class="c x">Full</span><span class="c s">Picked</span><span class="c l">1 left</span><span class="c z">Closed</span><span class="c o">3 left</span><span class="c o">4 left</span>
+  <span class="w">2–5</span><span class="c l">1 left</span><span class="c x">Full</span><span class="c x">Blocked<small>Fri after 12</small></span><span class="c z">—</span><span class="c z">Closed</span><span class="c o">4 left</span><span class="c o">3 left</span>
+ </div></div>
+</div>
+<div class="drawer"><div class="hd"><b>Fri Nov 20 · 11 am – 2 pm</b><span class="sp"></span>✕</div><div class="bd">
+ <div class="fld"><label>Customer</label><div class="in q"><span class="ph">Name, phone or email</span></div></div>
+ <div class="fld"><label>Address</label><div class="in"><span class="ph">Street, city 33316</span></div></div>
+ <div class="fld"><label>Services</label><div class="in"><span class="chip">Chimney sweep</span><span class="ph">Add…</span></div></div>
+ <div class="g2"><div class="fld"><label>Technician</label><div class="in">Danny R. ▾</div></div><div class="fld"><label>Source</label><div class="in">Phone ▾</div></div></div>
+ <div class="fld"><label>Notes</label><div class="in ta"><span class="ph">For the technician…</span></div></div>
+</div><div class="ft"><span class="sp"></span><span class="btn">Cancel</span><span class="btn f">Create job</span></div></div>
+</div></div>
+
+<!-- ============ phones ============ -->
+<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
+<p class="cap"><b>4</b> (recommended, goes with 1): one scroll in the same order; the grid becomes a strip of days (full days greyed) and that day's windows as rows with spots left; <b>Create job</b> stays pinned at the bottom and lights when ready. <b>5</b> (goes with 2): the four steps, one per screen. <b>6</b> (goes with 3): zip and the windows first, then the form slides up.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · one scroll, pinned Create <span class="rec">Recommended</span></span><div class="phn"><div class="sb"></div><div class="ab"><span class="bk-pt">Book a job</span><span class="sp"></span><span class="tiny">A-1 · Ft Laud ▾</span></div>
+  <div class="pb">
+   <div class="card"><div class="row"><span class="av">MO</span><div><b>Maria Ortega</b><div class="tiny">(954) 555-0148 · 2 past jobs</div></div><span class="sp"></span><span class="btn sm">Change</span></div></div>
+   <div class="card"><div class="tiny b">Address</div><div class="row" style="flex-wrap:wrap"><span class="chip">● 1420 SE 12th St 33316</span><span class="chip off">+ New</span></div></div>
+   <div class="card"><div class="tiny b">Services · Source</div><div class="in"><span class="chip">Chimney sweep</span><span class="chip">Cap</span></div><div class="in">Google LSA ▾</div></div>
+   <div class="card"><div class="row"><span class="tiny b">When · Ft Lauderdale East</span><span class="sp"></span><span class="tiny">Unscheduled</span></div>
+    <div class="days"><span class="full">Wed<small>18</small></span><span>Thu<small>19</small></span><span class="on">Fri<small>20</small></span><span>Sat<small>21</small></span><span class="full">Sun<small>22</small></span><span>Mon<small>23</small></span></div>
+    <div class="wl"><div class="c o"><span>8 – 11 am</span><span>3 left</span></div><div class="c s"><span>11 am – 2 pm</span><span>Picked · 2 left</span></div><div class="c x"><span>2 – 5 pm</span><span>No Friday afternoons</span></div></div>
+    <div class="row"><span class="tiny">Technician</span><span class="sp"></span><span class="chip">Danny R. · 2 of 6</span></div>
+   </div>
+   <div class="card"><div class="in ta"><span class="ph">Notes for the technician…</span></div></div>
+  </div>
+  <div class="stick"><div class="tiny" style="flex:1">Fri Nov 20 · 11–2<br>Danny R.</div><span class="btn big f">Create job</span></div>
+ </div></div>
+ <div class="pcol"><span class="pl">5 · steps</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="bk-pt">When · 4 of 4</span></div>
+  <div class="pb">
+   <div class="steps" style="font-size:10.5px"><span class="d"><i>✓</i></span><b></b><span class="d"><i>✓</i></span><b></b><span class="d"><i>✓</i></span><b></b><span class="on"><i>4</i>When</span></div>
+   <div class="days"><span class="full">Wed<small>18</small></span><span>Thu<small>19</small></span><span class="on">Fri<small>20</small></span><span>Sat<small>21</small></span><span class="full">Sun<small>22</small></span><span>Mon<small>23</small></span></div>
+   <div class="wl"><div class="c o"><span>8 – 11 am</span><span>3 left</span></div><div class="c s"><span>11 am – 2 pm</span><span>Picked</span></div><div class="c x"><span>2 – 5 pm</span><span>No Friday afternoons</span></div></div>
+   <div class="tiny b">Technician</div><div class="tech on"><span class="av">DR</span>Danny R.<span class="ld">2 of 6</span></div><div class="tech"><span class="av">LK</span>Luis K.<span class="ld">4 of 6</span></div>
+  </div>
+  <div class="stick"><span class="btn">Back</span><span class="sp"></span><span class="btn big f">Create job</span></div>
+ </div></div>
+ <div class="pcol"><span class="pl">6 · windows first</span><div class="phn"><div class="sb"></div><div class="ab"><span class="bk-pt">Book a job</span></div>
+  <div class="pb">
+   <div class="in q"><span>33316</span></div><div class="tiny">Fort Lauderdale East</div>
+   <div class="days"><span class="full">Wed<small>18</small></span><span>Thu<small>19</small></span><span class="on">Fri<small>20</small></span><span>Sat<small>21</small></span><span class="full">Sun<small>22</small></span><span>Mon<small>23</small></span></div>
+   <div class="wl"><div class="c o"><span>8 – 11 am</span><span>3 left</span></div><div class="c s"><span>11 am – 2 pm</span><span>Picked</span></div><div class="c x"><span>2 – 5 pm</span><span>No Friday afternoons</span></div></div>
+  </div>
+  <div class="card" style="position:absolute;left:0;right:0;bottom:0;border-radius:16px 16px 0 0;padding:14px;gap:8px;box-shadow:0 -8px 20px rgba(0,0,0,.12)"><b>Fri 20 · 11–2</b><div class="in q"><span class="ph">Customer: name or phone</span></div><div class="in"><span class="ph">Address</span></div><div class="in"><span class="ph">Services</span></div><span class="btn f">Create job</span></div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:18px"><b>Same in every option:</b> a new customer is checked against existing ones (phone, then name and address) before one is created; the address needs a house number; services are priced line items with a total; job type, source and ad group, and tags; notes also go to Workiz; Create books EzBizi and Workiz in one step. A window that is blocked by a rule (Friday after 12) shows the rule's wording. A window at its limit is striped and can't be tapped, and if it fills while you're on the page the cell turns Full and Create asks you to pick again. The server checks the limit again on Create. "Unscheduled" stays available. Leads, Customers, Communication, the Jobs list and Scheduling open this flow with the customer, address, source and notes already filled in.</p>
+</div>

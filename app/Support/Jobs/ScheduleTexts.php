@@ -134,7 +134,8 @@ final class ScheduleTexts
     }
 
     /** The franchise's cleared line, then the company's, then the organization's. */
-    private function line(Job $job): ?PhoneNumber
+    /** The texting line cleared for the job: its branch's, else its company's, else the organization's. */
+    public function line(Job $job): ?PhoneNumber
     {
         $cleared = PhoneNumber::query()->where('sms_outbound_allowed', true)->get();
         $companyId = $job->franchise?->company_id;

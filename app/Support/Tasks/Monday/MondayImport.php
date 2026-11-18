@@ -3,13 +3,16 @@
 namespace App\Support\Tasks\Monday;
 
 use App\Jobs\MakeVideoPoster;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
-use App\Models\TaskColumn;
 use App\Models\TaskBoardFolder;
+use App\Models\TaskBoardMember;
 use App\Models\TaskBoardView;
+use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -134,7 +137,8 @@ final class MondayImport
 
             public function emitAfterCommit(string $eventKey, ?Model $subject = null, array $payload = []): void {}
         });
-        $this->writer = app()->make(TaskWriter::class); $this->writer->quiet = true;
+        $this->writer = app()->make(TaskWriter::class);
+        $this->writer->quiet = true;
 
         DB::beginTransaction();
         try {
@@ -148,9 +152,17 @@ final class MondayImport
                     $this->layout($board, $b);
                     $this->folder($board, $b['folder'] ?? null);
                     foreach ($b['items'] as $item) {
-                        $parent = $this->task($board, $item, null, $actor);
-                        foreach ($item['subitems'] ?? [] as $sub) {
-                            $this->task($board, $sub + ['group' => $item['group']], $parent, $actor);
+                        // One bad item never stops the rest (desk 11-18: one item stopped 29 syncs).
+                        try {
+                            DB::transaction(function () use ($board, $item, $actor) {
+                                $parent = $this->task($board, $item, null, $actor);
+                                foreach ($item['subitems'] ?? [] as $sub) {
+                                    $this->task($board, $sub + ['group' => $item['group']], $parent, $actor);
+                                }
+                            });
+                        } catch (\Throwable $e) {
+                            report($e);
+                            $this->counts['items failed'] = ($this->counts['items failed'] ?? 0) + 1;
                         }
                     }
                 }
@@ -200,7 +212,11 @@ final class MondayImport
     {
         $ref = 'monday:'.$b['monday_id'];
         if (! empty($b['target_board_id'])) {
-            return TaskBoard::query()->findOrFail($b['target_board_id']);
+            // The sync: someone who joined since the last read gets the boards Monday shares with them.
+            $board = TaskBoard::query()->findOrFail($b['target_board_id']);
+            $this->members($board, $b['members'] ?? []);
+
+            return $board;
         }
         if ($owner = $this->person($b['owner_email'] ?? null)) {
             $board = $this->boards->ensureFor($owner);
@@ -234,7 +250,7 @@ final class MondayImport
      * ({company: "A-1 Chimney", franchise: "Illinois"}). A name that names
      * nothing here stops the import: a board must not land on the wrong place.
      *
-     * @return array{0: ?\App\Models\Company, 1: ?\App\Models\Franchise}
+     * @return array{0: ?Company, 1: ?Franchise}
      */
     private function place(array $scope): array
     {
@@ -245,30 +261,33 @@ final class MondayImport
             return $rows->count() === 1 ? $rows->first()
                 : throw new \RuntimeException(sprintf('The map names %s "%s", which is %s here.', class_basename($model), $name, $rows->isEmpty() ? 'nothing' : 'more than one place'));
         };
-        $company = ! empty($scope['company']) ? $find(\App\Models\Company::class, (string) $scope['company']) : null;
-        $franchise = ! empty($scope['franchise']) ? $find(\App\Models\Franchise::class, (string) $scope['franchise'], $company?->id) : null;
+        $company = ! empty($scope['company']) ? $find(Company::class, (string) $scope['company']) : null;
+        $franchise = ! empty($scope['franchise']) ? $find(Franchise::class, (string) $scope['franchise'], $company?->id) : null;
 
         return [$company, $franchise];
     }
 
     /**
-     * Monday's owners and subscribers become the board's owners and members
-     * (a custom board only: a personal board is its person's). Added, never
-     * removed; somebody with no account here is counted, not invented.
+     * Monday's owners and subscribers become the board's owners and members,
+     * on a branch or company board too (Nehorai, CT GM, 11-17: his branch
+     * board refused his tasks). Not a personal board: that is its person's.
+     * Added, never removed; somebody with no account here is counted, not invented.
      */
     private function members(TaskBoard $board, array $members): void
     {
-        if ($board->kind !== TaskBoard::KIND_CUSTOM || $members === []) {
+        if ($board->kind === TaskBoard::KIND_USER || $members === []) {
             return;
         }
-        $have = \App\Models\TaskBoardMember::query()->where('board_id', $board->id)->pluck('role', 'user_id')->all();
+        $have = TaskBoardMember::query()->where('board_id', $board->id)->pluck('role', 'user_id')->all();
         foreach ($members as $m) {
             $user = $this->person($m['email'] ?? null);
-            if ($user === null || ! $user->is_active || isset($have[$user->id])) {
+            // Add-only, and never someone an admin took off this board here (desk 11-17).
+            if ($user === null || ! $user->is_active || isset($have[$user->id])
+                || in_array($user->id, (array) ($board->builtin_columns['_removed'] ?? []), true)) {
                 continue;
             }
-            $role = ($m['role'] ?? '') === 'owner' ? \App\Models\TaskBoardMember::OWNER : \App\Models\TaskBoardMember::MEMBER;
-            \App\Models\TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => $user->id, 'role' => $role]);
+            $role = ($m['role'] ?? '') === 'owner' ? TaskBoardMember::OWNER : TaskBoardMember::MEMBER;
+            TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => $user->id, 'role' => $role]);
             $have[$user->id] = $role;
             $this->counts['members added'] = ($this->counts['members added'] ?? 0) + 1;
         }
@@ -297,6 +316,14 @@ final class MondayImport
     {
         $ref = 'monday:'.$item['monday_id'];
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
+        if ($existing !== null && ! $existing->trashed() && $existing->board_id !== $board->id) {
+            // Moved to another board here: EzBizi's place wins; Monday's notes still arrive,
+            // but its columns, group and status belong to the board it left (desk 11-18).
+            $this->updates($existing, $item, $as);
+            $this->counts['kept (moved to another board here)'] = ($this->counts['kept (moved to another board here)'] ?? 0) + 1;
+
+            return $existing;
+        }
         if ($existing !== null && ! $existing->trashed()) {
             $this->refreshed($existing, $board, $item, $parent, $as);
             $this->fillBlanks($existing->refresh(), $board, $item, $as);

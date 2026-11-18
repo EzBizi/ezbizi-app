@@ -243,17 +243,15 @@ class MailboxMessagesApiTest extends TestCase
 
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
+        // Out of her reach, so absent: 404 and never the address (authz sweep,
+        // 2026-11-17, desk ruling — the address is only for a caller who can
+        // list the inbox). Was a 403 explaining the assignment; the grant still
+        // does not open it, which is what this guards.
         $refused = $this->signedInAs($jenny)
             ->getJson("/api/v1/email/mailboxes/{$company->id}/messages")
-            ->assertForbidden();
+            ->assertNotFound();
 
-        $message = $refused->json('message');
-
-        // The sentence is about WHERE, not about the grant — the remedy is an
-        // assignment, and sending her to ask for access she already has would
-        // baffle everybody involved.
-        $this->assertStringContainsString('assigned', $message);
-        $this->assertStringNotContainsString('has not been given', $message);
+        $this->assertStringNotContainsString('info@a-1chimney.com', $refused->getContent());
 
         // THE CONTROL.
         $this->signedInAs($jenny)
@@ -1704,7 +1702,9 @@ class MailboxMessagesApiTest extends TestCase
             ->assertOk();
 
         $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$company->id}/messages")->assertOk();
-        $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$other->id}/messages")->assertForbidden();
+        // The grant opens only the inbox she was given; another one out of her
+        // reach is absent to her (404 since the authz sweep, 2026-11-17).
+        $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$other->id}/messages")->assertNotFound();
     }
 
     /**

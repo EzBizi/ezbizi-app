@@ -13,6 +13,45 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0595', date: '18 Nov 2026', items: [
+      'Task Board: the A-1 Chimney All markets board opens again (it loads the first rows of each group instead of all 31,000 tasks at once)',
+    ]),
+    VersionRelease(version: '0.0.0594', date: '18 Nov 2026', items: [
+      'Jobs › Book: a priced services list with a total, tags sent to Workiz, and a duplicate-customer check that offers Use this customer or Create anyway',
+    ]),
+    VersionRelease(version: '0.0.0593', date: '18 Nov 2026', items: [
+      'Scheduling: the full-window alert works on days that also hold a Workiz job not yet linked or a web booking',
+    ]),
+    VersionRelease(version: '0.0.0592', date: '18 Nov 2026', items: [
+      'Jobs: booking refuses a full or late time window and offers the next 3 open ones; an admin can override with a reason, which goes to the field managers; approving an online booking re-checks the window and assigns a technician',
+      'Jobs › Book: book a job in one place, with a live grid of days and time windows where full or late windows cannot be picked; every Book button opens the same panel',
+      'Scheduling: a job booked or moved into a time window that was already full alerts whoever booked it and the branch field manager at once, naming the next open window',
+      'Newsletter import: Save as new draft opens the draft, and the artwork step also takes PNG, JPEG, GIF and WebP pictures',
+    ]),
+    VersionRelease(version: '0.0.0591', date: '18 Nov 2026', items: [
+      'Newsletter: save your company brand (logo, colors, font, button style, footer note) and apply it to any newsletter',
+      'Newsletter: save any block as a reusable section or start from five ready-made ones, inserted as a copy or linked',
+      'Newsletter: a Mobile design mode with phone-only text size, spacing, alignment, button width, hiding and column stacking',
+      'Newsletter: a guided import wizard (keep the HTML or convert it to editable blocks, compare desktop and phone, a Before import restore point, the original kept)',
+      'Newsletter: the dashboard leads with a campaign list and Draft, Scheduled and Sent filters; sent mailings say Accepted by Mailchimp',
+      'Project Management: the Inbox opens quickly',
+      'Task Board: a change Monday refuses (an archived or deleted item) is noted once on the task instead of retried',
+    ]),
+    VersionRelease(version: '0.0.0590', date: '18 Nov 2026', items: [
+      'Newsletter: the editor centres on the email; click a block to type and format it, with its settings beside it, a small toolbar, drag or keyboard moves, and undo and redo',
+      'Newsletter: every save is kept in Version history and can be restored; an internal name and an inbox preheader; if someone else edits at the same time you can compare, reload or keep your copy; pictures can be cropped without changing the original',
+      'Task Board: people get the boards they belong to in Monday automatically, and someone removed from a board in EzBizi stays off it',
+    ]),
+    VersionRelease(version: '0.0.0589', date: '17 Nov 2026', items: [
+      'Project Management: a Dashboard tab with jobs and items waiting for parts, parts 3+ days late in red, and reminders per part; alerts for late parts and due reminders',
+      'Project Management: an Inbox with one conversation per client, replying from the branch line',
+      'Project Management: four client texts (project link, scheduled with the work order to the crew, day-before reminder, thank-you), each off until switched on in Settings',
+      'Project Management: work orders print the Workiz photos',
+      'Task Board: adding a task for a caller who already has an open one in that group offers to open it instead',
+      'Task Board: missed-call tasks link the caller lead, and Monday never changes the people an automation assigned',
+      'Security: admins are alerted when one person or API key opens an unusual number of customers, leads or jobs in 10 minutes, and busy list screens are rate-limited per person',
+      'Security: an email inbox outside your reach answers as not found, and inspection report photos follow the report access',
+    ]),
     VersionRelease(version: '0.0.0588', date: '17 Nov 2026', items: [
       'Missed-call tasks close themselves when the caller replies to the text or books online',
       'Complaints: a complaint already on the board gets the AI review as a note instead of a second task',

@@ -1517,6 +1517,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     // Jose, 2026-11-17: parts waiting, late, and reminders.
                     new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    // The clients' texts, one thread per job (Jose, 2026-11-17).
+                    new TabDefinition('inbox', 'Inbox', action: 'view'),
                     new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
                     new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
                     new TabDefinition('scheduled', 'Scheduled', action: 'view'),
@@ -1623,7 +1625,8 @@ class ModuleServiceProvider extends ServiceProvider
                         subjects: [Organization::class],
                     ),
                 ],
-                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // overbook: book past a full window or the Friday cutoff, with a reason (desk, 2026-11-17; App\Support\Jobs\BookingGate).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'overbook'],
             ),
 
             /*
