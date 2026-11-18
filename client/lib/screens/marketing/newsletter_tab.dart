@@ -22,6 +22,7 @@ import 'newsletter_local_copy.dart';
 import 'newsletter_versions.dart';
 import 'newsletter_preflight.dart';
 import 'newsletter_settings.dart';
+import 'newsletter_templates.dart';
 
 /// Marketing › Newsletter — the dashboard, the composer and the settings.
 ///
@@ -713,6 +714,37 @@ class _NewsletterTabState extends State<NewsletterTab> {
     }
   }
 
+  /// Start from template: the starter's blocks, subject and preview text
+  /// cloned into one new draft. Audience and schedule stay unset.
+  Future<void> _startFromTemplate() async {
+    final made = await showSidePanel<String>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Start from template',
+        subtitle: 'Branded starters for $_viewName',
+        width: 720,
+        child: NewsletterTemplateGallery(
+          company: _viewName,
+          onUse: (s) async {
+            final response = await widget.api.post('/newsletters', {
+              'subject': s.subject,
+              'name': s.title,
+              'preheader': s.preheader,
+              'blocks': s.blocks(),
+            });
+            final data = response.ok ? response.body['data'] : null;
+            if (data is Map && data['id'] is String) {
+              if (panel.mounted) Navigator.of(panel).pop(data['id'] as String);
+            } else if (panel.mounted) {
+              ScaffoldMessenger.maybeOf(panel)?.showSnackBar(SnackBar(content: Text(response.reason)));
+            }
+          },
+        ),
+      ),
+    );
+    if (made != null && mounted) await _openCreated(made);
+  }
+
   /// A draft just made (New, Duplicate, or the import wizard's "Save as new
   /// draft"): reload the list and open it in the composer.
   Future<void> _openCreated(String id) async {
@@ -811,6 +843,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
           hint: 'Name, subject or mailing list',
         ),
         onNew: _create,
+        onTemplate: NewsletterStarters.forCompany(_viewName).isEmpty ? null : _startFromTemplate,
         scheduled: [
           for (final n in _all)
             if (n.status == 'scheduled' && n.scheduledFor != null)

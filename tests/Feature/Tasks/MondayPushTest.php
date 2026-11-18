@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Jobs\PushBoardMembers;
 use App\Jobs\PushMondayShard;
 use App\Models\AuditEvent;
 use App\Models\MondayOutboxEntry;
@@ -19,6 +20,7 @@ use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\Monday\MondayPush;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -61,6 +63,11 @@ class MondayPushTest extends TestCase
     private array $itemValues = [];
 
     private array $extraColumns = [];
+
+    /** The board's people on Monday. */
+    private array $boardPeople = ['owners' => [], 'subscribers' => []];
+
+    private array $mondayUsers = [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']];
 
     private string $mondayUpdatedAt = '2026-11-13T10:00:00Z';
 
@@ -116,8 +123,9 @@ class MondayPushTest extends TestCase
             return Http::response(['data' => match (true) {
                 str_contains($q, 'column_values { id text value }') => ['items' => [['column_values' => array_map(fn ($id, $t) => ['id' => $id, 'text' => $t, 'value' => '{}'], array_keys($this->itemValues), $this->itemValues)]]],
                 str_contains($q, 'PeopleValue') => ['items' => [['column_values' => [['persons_and_teams' => $this->mondayPeople]]]]],
+                str_contains($q, 'owners { id } subscribers { id }') => ['boards' => [$this->boardPeople]],
                 str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
-                str_contains($q, 'users(') => ['users' => [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']]],
+                str_contains($q, 'users(') => ['users' => $this->mondayUsers],
                 str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
                 str_contains($q, 'groups { id title') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
                     'columns' => [
@@ -148,7 +156,7 @@ class MondayPushTest extends TestCase
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
 
         $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_column('));
-        $this->assertSame(['b' => '100', 't' => 'Workiz Job ID'], $made['vars']);
+        $this->assertSame(['b' => '100', 't' => 'Workiz Job ID', 'a' => 'name'], $made['vars'], 'right after Name');
         $values = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'change_multiple_column_values'));
         $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
     }
@@ -193,6 +201,28 @@ class MondayPushTest extends TestCase
         $this->artisan('ezbizi:monday-push', ['--resume' => true])->assertSuccessful();
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
         $this->assertSame(['status' => ['label' => 'Stuck']], $this->values());
+    }
+
+    /** Desk 11-18: a board's people reach Monday: added here → added there; removed here → unsubscribed there; Monday owners stay. */
+    public function test_board_members_added_and_removed_here_reach_monday(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view'], 'ana@a-1chimney.com');
+        $gone = $this->userWithRole($this->tenant, 'Gone', ['tasks.view'], 'gone@a-1chimney.com');
+        $this->mondayUsers = [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com'], ['id' => '6', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'], ['id' => '7', 'name' => 'Gone', 'email' => 'gone@a-1chimney.com']];
+        $this->boardPeople = ['owners' => [['id' => '5']], 'subscribers' => [['id' => '7']]];
+        $this->inTenant($this->tenant['org'], function () use ($ana, $gone) {
+            TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'user_id' => $ana->id, 'role' => 'member']);
+            $this->board->forceFill(['builtin_columns' => ['_removed' => [$gone->id]]])->save();
+        });
+
+        (new PushBoardMembers($this->board->id))->handle(app(TenantContext::class));
+
+        $add = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'add_users_to_board('));
+        $this->assertStringContainsString('kind:subscriber', $add['query']);
+        $this->assertSame(['b' => '100', 'u' => ['6']], $add['vars']);
+        $del = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'delete_subscribers_from_board('));
+        $this->assertSame(['b' => '100', 'u' => ['7']], $del['vars']);
+        $this->assertCount(2, $this->mutations, 'Jose, a Monday owner, untouched');
     }
 
     /** Desk 11-18: parallel senders share the outbox by task; together they send every row once. */

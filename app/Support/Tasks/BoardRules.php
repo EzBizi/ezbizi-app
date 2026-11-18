@@ -117,6 +117,12 @@ class BoardRules
         $text = $task->title.' '.TaskColumnValue::query()->where('task_id', $task->id)->whereNotNull('value_text')->pluck('value_text')->implode(' ');
         $kind = self::kindOf($text);
         $approved = mb_strtolower(trim((string) $task->statusRow?->name)) === 'approved';
+        // A complaint or bad-review rule's task in Customer Relations stays there while it is as the
+        // rule made it (desk 11-18: every refund starts in Customer Relations; 17 were moved off on
+        // 11-18). Once a person marks it Approved, the Accounting move runs as usual.
+        if ($task->created_by_automation_id !== null && in_array('cr', $here, true) && ! $approved) {
+            return null;
+        }
 
         $target = match ($kind) {
             'dispute' => 'gm',

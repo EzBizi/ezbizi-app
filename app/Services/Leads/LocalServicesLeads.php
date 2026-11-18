@@ -492,7 +492,26 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         // last segment, and it is the same id the next sync will bring back,
         // which is what stops the sync storing this message a second time.
         $name = (string) ($response->json('responses.0.localServicesLeadConversation') ?? '');
-        $remoteId = trim((string) substr(strrchr($name, '/') ?: '', 1)) ?: ('sent-'.now()->format('YmdHisv'));
+        $remoteId = trim((string) substr(strrchr($name, '/') ?: '', 1));
+        if ($remoteId === '') {
+            // Sent, but Google named no conversation: a placeholder the next
+            // sync swaps for Google's id (storeConversation). What Google did
+            // answer, to learn why (desk, 2026-11-18: 40 in 7 days).
+            Log::warning('Google accepted a Local Services reply without naming it.', [
+                'lead_id' => $lead->getKey(),
+                'answer' => mb_substr((string) $response->body(), 0, 500),
+            ]);
+            // Measured 2026-11-18: all 69 such sends repeated words Google
+            // already held on the lead. Its copy is the message: hand that
+            // back, so the sender is named on it, rather than a second row.
+            $copy = self::sameWords($lead, $text, now());
+            if ($copy !== null && ! str_starts_with((string) $copy->remote_id, self::PLACEHOLDER)) {
+                $this->refreshLastContact($lead);
+
+                return $copy;
+            }
+            $remoteId = self::PLACEHOLDER.now()->format('YmdHisv');
+        }
 
         $row = LeadConversation::create([
             'organization_id' => $lead->organization_id,
@@ -629,6 +648,10 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
      */
     private function storeConversation(Lead $lead, array $raw): bool
     {
+        if ($this->adoptOwnReply($lead, $raw)) {
+            return false;
+        }
+
         return $this->threads->store($lead, $raw['id'], [
             'channel' => $raw['channel'],
             'participant' => $raw['participant'],
@@ -640,6 +663,51 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             'text' => $raw['text'],
             'attachments' => $raw['attachments'],
         ]);
+    }
+
+    /** Our own reply's id until Google's arrives (reply() when Google names none). */
+    public const PLACEHOLDER = 'sent-';
+
+    /**
+     * Google's copy of a reply we sent but could not name: the same words, by
+     * us, on this lead, within ten minutes. Our row keeps its sender and takes
+     * Google's id, instead of a second "Sent outside EzBizi" row beside it
+     * (desk, 2026-11-18: Ara's reply showed twice; 40 in 7 days).
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function adoptOwnReply(Lead $lead, array $raw): bool
+    {
+        if ($raw['participant'] !== LeadConversation::FROM_ADVERTISER || $raw['text'] === null
+            || LeadConversation::query()->where('organization_id', $lead->organization_id)->where('remote_id', $raw['id'])->exists()) {
+            return false;
+        }
+        $at = $raw['occurredAt'] !== null ? self::whenGoogleSaid((string) $raw['occurredAt'], $raw['timeZone'] ?? null) : now();
+        $mine = self::sameWords($lead, (string) $raw['text'], $at, placeholder: true);
+        if ($mine === null) {
+            return false;
+        }
+        $mine->forceFill(['remote_id' => $raw['id']])->save();
+
+        return true;
+    }
+
+    /**
+     * Our side's message on this lead with these words within an hour of $at:
+     * a placeholder of ours, or (placeholder: false) any reply.
+     */
+    private static function sameWords(Lead $lead, string $text, \DateTimeInterface $at, bool $placeholder = false): ?LeadConversation
+    {
+        $at = Carbon::instance($at);
+
+        return LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->where('participant', LeadConversation::FROM_ADVERTISER)
+            ->when($placeholder, fn ($q) => $q->where('remote_id', 'like', self::PLACEHOLDER.'%'))
+            ->whereBetween('occurred_at', [$at->copy()->subHour(), $at->copy()->addHour()])
+            ->get()
+            ->sortBy(fn (LeadConversation $c) => abs($c->occurred_at->getTimestamp() - $at->getTimestamp()))
+            ->first(fn (LeadConversation $c) => trim((string) $c->text) === trim($text));
     }
 
     private function refreshLastContact(Lead $lead): void

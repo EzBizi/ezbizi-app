@@ -37,6 +37,7 @@ class NewsletterDashboard extends StatefulWidget {
     required this.onStatus,
     required this.onOpen,
     required this.onNew,
+    this.onTemplate,
     this.search,
     this.query = '',
   });
@@ -64,6 +65,9 @@ class NewsletterDashboard extends StatefulWidget {
   /// Null when this role cannot open the Composer: the rows are then to read.
   final ValueChanged<String>? onOpen;
   final VoidCallback onNew;
+
+  /// Start from template (branded starters); null hides it.
+  final VoidCallback? onTemplate;
 
   @override
   State<NewsletterDashboard> createState() => _NewsletterDashboardState();
@@ -131,6 +135,17 @@ class _NewsletterDashboardState extends State<NewsletterDashboard> {
         label: const Text('New newsletter'),
       ),
     );
+    final template = w.onTemplate == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: OutlinedButton.icon(
+              key: const ValueKey('newsletter-start-template'),
+              onPressed: can ? w.onTemplate : null,
+              icon: const Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
+              label: const Text('Start from template'),
+            ),
+          );
     final title = Text(
       'Mailings in ${w.viewName}',
       style: Theme.of(context).textTheme.titleLarge,
@@ -141,6 +156,10 @@ class _NewsletterDashboardState extends State<NewsletterDashboard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [Expanded(child: title), newButton]),
+          if (template != null) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: template),
+          ],
           if (w.search case final search?) ...[
             const SizedBox(height: 8),
             search,
@@ -161,6 +180,7 @@ class _NewsletterDashboardState extends State<NewsletterDashboard> {
           ),
           const SizedBox(width: 8),
         ],
+        ?template,
         newButton,
       ],
     );

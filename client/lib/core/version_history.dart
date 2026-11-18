@@ -14,6 +14,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
+      'Task Board: a task moved or closed on Monday moves the same way in EzBizi within minutes',
+      'Google Ads: the account picker shows campaign accounts only, each figure says when it was read, missing access says what to do, and budget or bid changes show a before and after review first',
+      'Social: the planner shows the real state of each post, Approve says whether it posts at the planned time or now, and each account shows its company and a reconnect note when needed',
+      'QR Codes: every code has a large preview with its destination, Copy link, and Scan history; an empty list offers Create QR code',
+      'Automations: a task made from a long review or summary gets a short title, with the full text as its first update, so it is never lost',
+      'Web Management: each site shows when it was last read and whether the last save is on the website yet; a save shows old and new values before it is written; the search is kept when you come back',
+      'Social: approving a post with no time first warns that it publishes now, with Post now or Set a time',
+      'Search: the top search shows leads by the name of the person, with phone, branch and date, under their own Leads heading',
+      'Leads: a website review that names no market takes it from its ZIP code, else from the area code of the phone, so it reaches the right manager',
+      'Newsletter: Composer Studio, with Setup and Review beside a live inbox and email proof, and Design as a library, canvas and inspector with Desktop, Phone and Fit views and image upload in place',
+      'Newsletter: A1 Chimney gets three branded starter newsletters (Seasonal booking, The Chimney Check-In, Service spotlight), each opening as a new draft',
+      'Task Board: EzBizi Job # and Workiz Job ID sit right after the task name on every board, here and on Monday',
+      'Task Board: a task moved to another board on Monday moves the same way in EzBizi',
       'Google Ads: every figure and column explains itself (Conversions vs All conversions, Leads, Cost per lead, Missed calls, First reply, Revenue)',
       'Google Ads: cost per lead and revenue per cost use Local Services spend only, so Search spend no longer inflates them',
       'Alerts: a question can be sent with context and answer buttons, and the answer comes back to the sender',

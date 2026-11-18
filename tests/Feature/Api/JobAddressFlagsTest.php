@@ -2,16 +2,20 @@
 
 namespace Tests\Feature\Api;
 
+use App\Console\Commands\FlagWorkizJobs;
+use App\Console\Commands\SchedulingFlagFullWindows;
 use App\Http\Controllers\Api\TasksController;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Notification;
 use App\Models\Task;
 use App\Models\TaskColumnValue;
+use App\Models\TaskGroup;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Jobs\JobAddress;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tasks\TaskBoards;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -80,15 +84,18 @@ class JobAddressFlagsTest extends TestCase
                 'Job #102: Friday jobs must be in the 12–3 window or earlier; confirm with the field manager or move it.',
                 'Job #104: Friday jobs must be in the 12–3 window or earlier; confirm with the field manager or move it.',
             ], $titles);
-            $task = Task::query()->where('title', 'like', 'Job #101:%')->firstOrFail();
+            $task = Task::query()->where('title', 'like', 'Address needs fixing%')->firstOrFail();
             $this->assertSame(['job', true], [$task->about_type, $task->about_id !== null]);
-            $this->assertSame(3, Task::query()->where('title', 'like', 'Job #%')->count());
+            $this->assertSame(3, Task::query()->whereNull('created_by_user_id')->count());
             // Desk 11-18: owned by the booker it alerts, made by EzBizi, and says what to do.
             $this->assertSame([$booker->id], $task->owners()->pluck('user_id')->all());
             $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', $task->title);
             // Jose 11-18: a job's task carries both job ids as columns.
             $ids = TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->mapWithKeys(fn ($v) => [$v->column->name => $v->value_text])->all();
             $this->assertSame(['Workiz Job ID' => '101', 'EzBizi Job #' => 'J-1'], array_intersect_key($ids, array_flip(['Workiz Job ID', 'EzBizi Job #'])));
+            // No EzBizi job: the Workiz number still lands in its column, not the title (Jose 11-18).
+            $late = Task::query()->where('title', 'like', 'Friday jobs%')->get()->map(fn ($t) => $t->values()->with('column')->get()->firstWhere('column.name', 'Workiz Job ID')?->value_text)->sort()->values()->all();
+            $this->assertSame(['102', '104'], $late);
             $this->assertSame(['type' => 'automation', 'label' => 'EzBizi'], TasksController::present($task)['created_by']);
         });
     }
@@ -101,13 +108,13 @@ class JobAddressFlagsTest extends TestCase
         $fm = $this->userWithRole($alpha, 'FM', ['tasks.view'], 'fm@ezbizi.test');
         $this->inTenant($alpha['org'], function () use ($alpha, $gm, $fm) {
             $gm->forceFill(['name' => 'Shneor Cohen'])->save();
-            $board = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($alpha['franchise']);
-            \App\Models\TaskGroup::create(['organization_id' => $alpha['org']->id, 'board_id' => $board->id, 'name' => 'General Manager - Shneor', 'position' => 9]);
+            $board = app(TaskBoards::class)->ensureFor($alpha['franchise']);
+            TaskGroup::create(['organization_id' => $alpha['org']->id, 'board_id' => $board->id, 'name' => 'General Manager - Shneor', 'position' => 9]);
             $can = [(string) $gm->id, (string) $fm->id];
 
-            $this->assertSame([(string) $gm->id], \App\Console\Commands\FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'no field managers listed: the GM');
-            app(SettingsResolver::class)->set(\App\Console\Commands\SchedulingFlagFullWindows::RECIPIENTS, $alpha['franchise'], 'fm@ezbizi.test');
-            $this->assertSame([(string) $fm->id], \App\Console\Commands\FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'the listed field manager');
+            $this->assertSame([(string) $gm->id], FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'no field managers listed: the GM');
+            app(SettingsResolver::class)->set(SchedulingFlagFullWindows::RECIPIENTS, $alpha['franchise'], 'fm@ezbizi.test');
+            $this->assertSame([(string) $fm->id], FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'the listed field manager');
         });
     }
 

@@ -61,7 +61,11 @@ void main() {
         't1',
         due: formatCalendarDay(today),
         values: {
-          'c-cost': 1200, 'c-notes': 'Left a voicemail about the chimney liner quote', 'c-long': 'Line one\nLine two',
+          'c-wz': '800021103',
+          'c-ez': 'JOB-60857',
+          'c-cost': 1200,
+          'c-notes': 'Left a voicemail about the chimney liner quote',
+          'c-long': 'Line one\nLine two',
           'c-mat': 340,
           'c-time': {
             'from': formatCalendarDay(today),
@@ -175,6 +179,20 @@ void main() {
                   'settings': null,
                 },
                 {
+                  'id': 'c-wz',
+                  'name': 'Workiz Job ID',
+                  'type': 'text',
+                  'position': 8,
+                  'settings': null,
+                },
+                {
+                  'id': 'c-ez',
+                  'name': 'EzBizi Job #',
+                  'type': 'text',
+                  'position': 9,
+                  'settings': null,
+                },
+                {
                   'id': 'c-time',
                   'name': 'Timeline',
                   'type': 'timeline',
@@ -227,9 +245,26 @@ void main() {
   Rect card(WidgetTester tester) =>
       tester.getRect(find.byKey(const Key('cell-card')));
 
-  testWidgets('a date cell opens a month, not a sheet to the bottom', (tester) async {
+  testWidgets('Jose 11-18: Name | EzBizi Job # | Workiz Job ID | the rest', (
+    tester,
+  ) async {
     await pumpBoard(tester);
-    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c-date')).first);
+    double x(String t) => tester.getTopLeft(find.text(t).first).dx;
+    expect(x('Task t1'), lessThan(x('JOB-60857')));
+    expect(x('JOB-60857'), lessThan(x('800021103')));
+    expect(
+      x('800021103'),
+      lessThan(x('Left a voicemail about the chimney liner quote')),
+    );
+  });
+
+  testWidgets('a date cell opens a month, not a sheet to the bottom', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('column-cell-edit-c-date')).first,
+    );
     await tester.pumpAndSettle();
     final cal = find.byKey(const Key('cell-date-calendar'));
     expect(cal, findsOneWidget);
@@ -242,13 +277,19 @@ void main() {
     final now = DateTime.now();
     expect(
       patches.last,
-      contains('${now.year}-${'${now.month}'.padLeft(2, '0')}-${'${now.day}'.padLeft(2, '0')}'),
+      contains(
+        '${now.year}-${'${now.month}'.padLeft(2, '0')}-${'${now.day}'.padLeft(2, '0')}',
+      ),
     );
   });
 
-  testWidgets('notes edit in a card wide and tall enough to read', (tester) async {
+  testWidgets('notes edit in a card wide and tall enough to read', (
+    tester,
+  ) async {
     await pumpBoard(tester);
-    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c-notes')).first);
+    await tester.tap(
+      find.byKey(const ValueKey('column-cell-edit-c-notes')).first,
+    );
     await tester.pumpAndSettle();
     expect(card(tester).width, greaterThanOrEqualTo(320));
     expect(
@@ -258,7 +299,9 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c-long')).first);
+    await tester.tap(
+      find.byKey(const ValueKey('column-cell-edit-c-long')).first,
+    );
     await tester.pumpAndSettle();
     expect(card(tester).height, greaterThanOrEqualTo(140));
     await tester.enterText(find.byType(EditableText).last, 'One\nTwo');
@@ -273,12 +316,17 @@ void main() {
     tester,
   ) async {
     await pumpBoard(tester);
-    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c-notes')).first);
+    await tester.tap(
+      find.byKey(const ValueKey('column-cell-edit-c-notes')).first,
+    );
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(EditableText).last, '(732) 555-0101');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(find.textContaining('An open task for this caller already exists'), findsOneWidget);
+    expect(
+      find.textContaining('An open task for this caller already exists'),
+      findsOneWidget,
+    );
     expect(find.textContaining('Complaint: late tech'), findsOneWidget);
     expect(find.text('Open it'), findsOneWidget);
   });
