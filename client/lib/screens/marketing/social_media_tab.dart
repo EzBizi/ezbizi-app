@@ -432,17 +432,46 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           }
         : null,
     onDecide: _canPost
-        ? (target, approve) {
+        ? (target, approve) async {
+            // Jose's ruling (via Marketing, 2026-11-18): with no time set,
+            // approving publishes at once, so it is said first, with the
+            // way to set a time instead.
+            var publishNow = false;
+            if (approve && post.scheduledFor == null) {
+              final choice = await _confirmPostNow(post);
+              if (choice == null || !mounted) return;
+              if (choice == 'time') {
+                close();
+                await _editPost(post);
+                return;
+              }
+              publishNow = true;
+            }
             close();
             // Literal paths: ClientCallsRealRoutesTest reads them.
-            _act(
-              widget.api.post(
-                approve
-                    ? '/business-profile/post-queue/${target.id}/approve'
-                    : '/business-profile/post-queue/${target.id}/disapprove',
-                const {},
-              ),
-            );
+            final path = approve
+                ? '/business-profile/post-queue/${target.id}/approve'
+                : '/business-profile/post-queue/${target.id}/disapprove';
+            final response = await widget.api.post(path, {
+              if (publishNow) 'publish_now': true,
+            });
+            if (!mounted) return;
+            // The server's own check (Marketing stage C): no time on its side,
+            // whatever this copy of the post said. Asked the same way.
+            if (approve &&
+                !publishNow &&
+                response.statusCode == 422 &&
+                response.body['code'] == 'needs_publish_now_confirm') {
+              final again = await _confirmPostNow(post);
+              if (!mounted) return;
+              if (again == 'now') {
+                await _act(widget.api.post(path, {'publish_now': true}));
+              } else if (again == 'time') {
+                await _editPost(post);
+              }
+              return;
+            }
+            await _act(Future.value(response));
           }
         : null,
     onDeleteRemote: _canPost
@@ -465,6 +494,39 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           }
         : null,
   );
+
+  /// "Post now" or "Set a time", before an approval that would publish at
+  /// once: a panel, as every question here (no modals).
+  Future<String?> _confirmPostNow(_SentPost post) {
+    final accounts = [
+      for (final t in post.targets)
+        if (t.status == 'awaiting_approval')
+          t.account.isEmpty ? t.providerLabel : t.account,
+    ];
+    return showSidePanel<String>(
+      context,
+      builder: (panel) => SidePanel(
+        key: const Key('social-post-now-confirm'),
+        title: 'Post it now?',
+        actions: [
+          OutlinedButton(
+            key: const Key('social-post-now-set-time'),
+            onPressed: () => Navigator.of(panel).pop('time'),
+            child: const Text('Set a time'),
+          ),
+          FilledButton(
+            key: const Key('social-post-now-yes'),
+            onPressed: () => Navigator.of(panel).pop('now'),
+            child: const Text('Post now'),
+          ),
+        ],
+        child: Text(
+          'This post has no time set — approving publishes it now to '
+          '${accounts.length < 2 ? accounts.join() : '${accounts.sublist(0, accounts.length - 1).join(', ')} and ${accounts.last}'}.',
+        ),
+      ),
+    );
+  }
 
   /// Asks before something that cannot be taken back, in a side panel as
   /// every other question here.
