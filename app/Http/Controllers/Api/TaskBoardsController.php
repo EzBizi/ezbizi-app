@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\PurgeDeletedTaskBoards;
+use App\Jobs\PushBoardMembers;
 use App\Models\Assignment;
 use App\Models\Automation;
 use App\Models\Company;
@@ -646,6 +647,8 @@ class TaskBoardsController extends Controller
             'role' => $input['role'],
         ]);
 
+        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+
         return response()->json(['data' => self::presentMember($member->load('user:id,name'))], 201);
     }
 
@@ -661,6 +664,8 @@ class TaskBoardsController extends Controller
             }
             $member->update(['role' => $input['role']]);
         });
+
+        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
 
         return response()->json(['data' => self::presentMember($member->load('user:id,name'))]);
     }
@@ -678,6 +683,8 @@ class TaskBoardsController extends Controller
             $cols['_removed'] = array_values(array_unique([...(array) ($cols['_removed'] ?? []), $member->user_id]));
             $taskBoard->forceFill(['builtin_columns' => $cols])->save();
         });
+
+        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
 
         return response()->noContent();
     }

@@ -7,6 +7,8 @@ use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
+use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
@@ -15,6 +17,7 @@ use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\FakesMonday;
@@ -127,11 +130,43 @@ class MondaySyncTest extends TestCase
     }
 
     /** Desk 11-18: a task moved to another board here stopped 29 syncs ("no column called <Area id>"). */
+    /** Desk 11-18: an item moved to another board ON MONDAY (nothing changed here) follows it here. */
+    public function test_an_item_moved_to_another_board_on_monday_follows_it_here(): void
+    {
+        $home = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $col = fn ($board, $name, $type, $settings = null) => TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $board->id, 'name' => $name, 'type' => $type, 'position' => 50, 'settings' => $settings]);
+        [$notes, $area] = $this->inTenant($this->tenant['org'], function () use ($home, $col) {
+            $other = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $task = Task::query()->where('external_ref', 'monday:11')->first();
+            $values = [
+                $col($other, 'Notes', 'text')->id => 'gate code 12',
+                $col($other, 'Area', 'status', ['options' => [['id' => 'o1', 'label' => 'Texas', 'colour' => '#000']]])->id => 'o1',
+                $col($other, 'Only there', 'text')->id => 'gone',
+            ];
+            foreach ($values as $c => $v) {
+                TaskColumnValue::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'column_id' => $c, 'value_text' => $v]);
+            }
+            // As if it had been on the other board and Monday moved it to board 100: no change here since the sync.
+            DB::table('tasks')->where('external_ref', 'monday:11')->update(['board_id' => $other->id, 'external_synced_at' => now()->addMinute(), 'updated_at' => now()]);
+
+            return [$col($home, 'Notes', 'text'), $col($home, 'Area', 'status', ['options' => [['id' => 'x9', 'label' => 'Texas', 'colour' => '#000']]])];
+        });
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
+
+        $this->assertSame($home->id, $this->task('11')->board_id);
+        // Carried as Monday carries them: same name and type; a status by its label; the rest dropped.
+        $now = $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::query()->where('task_id', $this->task('11')->id)->pluck('value_text', 'column_id')->all());
+        $this->assertSame('gate code 12', $now[$notes->id] ?? null);
+        $this->assertSame('x9', $now[$area->id] ?? null);
+        $this->assertNotContains('gone', $now);
+    }
+
     public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
     {
         $elsewhere = $this->inTenant($this->tenant['org'], function () {
             $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
-            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id]);
+            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id, 'updated_at' => now()->addMinutes(5)]); // moved here, after the last sync
 
             return $b;
         });

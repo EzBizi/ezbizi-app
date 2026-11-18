@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\PushBoardMembers;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\Task;
@@ -37,7 +38,7 @@ class MondayParity extends Command
         foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->get() as $connection) {
             $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
             $reader = new MondayBoardReader(MondayClient::for($connection));
-            $missingThere = $tenant->run($org, function () use ($reader, &$drift) {
+            $missingThere = $tenant->run($org, function () use ($reader, $connection, &$drift) {
                 $boards = TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')
                     // Names, comma separated; a name with % is a LIKE pattern ("%Project Management%").
                     ->when($this->option('boards'), fn ($q, $names) => $q->where(function ($w) use ($names) {
@@ -61,6 +62,8 @@ class MondayParity extends Command
                     $meta = $reader->board($mondayId);
                     $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $meta['groups']);
                     $renamed = trim($meta['name']) !== trim($board->name) ? 1 : 0;
+                    $people = PushBoardMembers::diff($board, $reader, $connection);
+                    $members = $people === null ? 0 : count($people['add']) + count($people['remove']);
                     $groupsHere = TaskGroup::query()->where('board_id', $board->id)->whereIn('id', Task::query()->where('board_id', $board->id)->select('group_id'))->pluck('name')
                         ->filter(fn ($n) => ! in_array(mb_strtolower(trim($n)), $mondayGroups, true))->values()->all();
 
@@ -78,11 +81,11 @@ class MondayParity extends Command
                     $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]))->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
-                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed;
+                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed + $members;
                     $drift += $n;
-                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d',
-                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed));
-                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => $this->option('groups-only') ? $pushGroup : [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null];
+                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d, members differ %d',
+                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed, $members));
+                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => $this->option('groups-only') ? $pushGroup : [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null, 'members' => $members];
                 }
 
                 return $queue;
@@ -93,6 +96,9 @@ class MondayParity extends Command
                     if ($this->option('groups-only')) {
                         // Every 30 minutes (desk 11-18): which group, nothing else; Monday's moves first.
                         $gap = ['here' => collect(), 'monday' => [], 'gone' => [], 'name' => null] + $gap;
+                    }
+                    if (($gap['members'] ?? 0) > 0 && ! $this->option('groups-only')) {
+                        PushBoardMembers::dispatch((string) $gap['board']);
                     }
                     $tenant->run($org, function () use ($gap) {
                         if ($gap['name'] !== null) { // Monday's name wins (desk 11-18)
