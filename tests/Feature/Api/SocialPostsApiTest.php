@@ -519,7 +519,7 @@ class SocialPostsApiTest extends TestCase
             ->getJson(self::ENDPOINT)
             ->assertOk()
             ->assertJsonCount(20, 'data')
-            ->assertJsonPath('meta.tiles', ['scheduled' => 1, 'sent' => 23, 'failed' => 1, 'awaiting' => 2]);
+            ->assertJsonPath('meta.tiles', ['awaiting' => 2, 'ready' => 0, 'scheduled' => 1, 'past_due' => 0, 'sent' => 23, 'failed' => 1]);
 
         $failed = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=failed')
@@ -772,7 +772,7 @@ class SocialPostsApiTest extends TestCase
         // The exact target row: a new key is a decision, not a drift.
         $this->assertSame([
             'id', 'connection_id', 'account', 'provider', 'provider_label', 'status', 'status_label',
-            'failure', 'sent_at', 'url', 'can_delete',
+            'failure', 'company', 'cta_type', 'cta_url', 'connection_status', 'sent_at', 'url', 'can_delete',
         ], array_keys($data['targets'][0]));
         $this->assertNull($data['targets'][0]['status_label']);
 
