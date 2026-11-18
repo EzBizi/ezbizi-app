@@ -321,6 +321,18 @@ final class MondayImport
     {
         $ref = 'monday:'.$item['monday_id'];
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
+        if ($existing !== null && ! $existing->trashed() && in_array($item['state'] ?? 'active', ['archived', 'deleted'], true)) {
+            // Archived or deleted on Monday: deleted here too, restorable (never a hard delete), and logged.
+            $this->writer->delete($existing, null);
+            TaskActivity::query()->create(['organization_id' => $existing->organization_id, 'task_id' => $existing->id, 'user_id' => null,
+                'field' => 'monday_sync', 'label' => 'Monday sync', 'from' => null, 'to' => 'Moved to trash: '.$item['state'].' on Monday.']);
+            $this->counts['trashed (gone on Monday)'] = ($this->counts['trashed (gone on Monday)'] ?? 0) + 1;
+
+            return $existing;
+        }
+        if ($existing === null && in_array($item['state'] ?? 'active', ['archived', 'deleted'], true)) {
+            return null; // never brought in only to be trashed
+        }
         if ($existing !== null && ! $existing->trashed() && $existing->board_id !== $board->id) {
             // Moved to another board here: EzBizi's place wins; Monday's notes still arrive,
             // but its columns, group and status belong to the board it left (desk 11-18).
@@ -783,26 +795,37 @@ final class MondayImport
      */
     private function layout(TaskBoard $board, array $b): void
     {
-        // A branch or company board a Monday board was merged into (Jose, 2026-11-16) keeps its own
-        // order, colours, groups and statuses: Monday's are only added where missing.
+        // Groups mirror Monday's on every board, branch and company ones too (Jose 11-18: "the exact
+        // same groups"): Monday's names, colours and order. A group is found by the Monday group it
+        // mirrors first, so a rename on Monday renames it here (same group, its tasks stay).
+        // Statuses keep the 11-16 rule: a merged branch or company board keeps its own.
         $mirror = in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true);
-        $groups = $b['groups'] ?? [];
-        foreach (array_values($groups) as $i => $g) {
-            $group = $this->group($board, $g['name'], $g['colour'] ?? null);
-            if ($mirror) {
-                $group->forceFill(array_filter(['colour' => $g['colour'] ?? null, 'position' => $i + 1], fn ($v) => $v !== null))->save();
+        $groups = array_values($b['groups'] ?? []);
+        $mine = $board->groups()->get();
+        foreach ($groups as $i => $g) {
+            $ref = isset($g['monday_id']) ? 'monday:'.$g['monday_id'] : null;
+            $group = ($ref ? $mine->firstWhere('external_ref', $ref) : null)
+                ?? $mine->first(fn (TaskGroup $x) => $x->external_ref === null && mb_strtolower(trim($x->name)) === mb_strtolower(trim($g['name'])))
+                ?? $this->group($board, $g['name'], $g['colour'] ?? null);
+            if ($group->name !== trim($g['name'])) {
+                $this->counts['groups renamed'] = ($this->counts['groups renamed'] ?? 0) + 1;
             }
+            $group->forceFill(array_filter(['name' => trim($g['name']) ?: null, 'colour' => $g['colour'] ?? null, 'position' => $i + 1, 'external_ref' => $ref], fn ($v) => $v !== null))->save();
         }
-        if ($groups !== [] && $mirror) {
+        if ($groups !== []) {
+            $refs = array_map(fn ($g) => 'monday:'.$g['monday_id'], array_filter($groups, fn ($g) => isset($g['monday_id'])));
             $names = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $groups);
-            foreach ($board->groups()->get() as $i => $group) {
-                if (! in_array(mb_strtolower($group->name), $names, true)) {
-                    if (in_array($group->name, array_column(TaskBoards::DEFAULT_GROUPS, 0), true) && ! Task::query()->withTrashed()->where('group_id', $group->id)->exists()) {
-                        $group->delete();
-                        $this->counts['starter groups removed'] = ($this->counts['starter groups removed'] ?? 0) + 1;
-                    } else {
-                        $group->forceFill(['position' => count($groups) + 1 + $i])->save();
-                    }
+            foreach ($board->groups()->orderBy('position')->get() as $i => $group) {
+                if (in_array($group->external_ref, $refs, true) || in_array(mb_strtolower(trim($group->name)), $names, true)) {
+                    continue;
+                }
+                // Not on Monday: an EMPTY starter group goes; one holding tasks stays (after Monday's)
+                // and the push makes it on Monday. Nothing with tasks is ever removed.
+                if (in_array($group->name, array_column(TaskBoards::DEFAULT_GROUPS, 0), true) && ! Task::query()->withTrashed()->where('group_id', $group->id)->exists()) {
+                    $group->delete();
+                    $this->counts['starter groups removed'] = ($this->counts['starter groups removed'] ?? 0) + 1;
+                } else {
+                    $group->forceFill(['position' => count($groups) + 1 + $i])->save();
                 }
             }
         }

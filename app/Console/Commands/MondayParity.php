@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskGroup;
 use App\Support\Tasks\Monday\MondayBoardReader;
@@ -97,6 +98,8 @@ class MondayParity extends Command
                         MondayOutbox::suppress(function () use ($gap) {
                             foreach (Task::query()->whereIn('id', $gap['gone'])->get() as $task) {
                                 app(TaskWriter::class)->delete($task, null);
+                                TaskActivity::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => null,
+                                    'field' => 'monday_sync', 'label' => 'Monday sync', 'from' => null, 'to' => 'Moved to trash: no longer on Monday (parity check).']);
                             }
                         });
                     });

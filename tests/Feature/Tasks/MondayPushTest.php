@@ -9,6 +9,7 @@ use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
@@ -47,6 +48,12 @@ class MondayPushTest extends TestCase
     private array $mutations = [];
 
     private bool $archived = false;
+
+    /** Column ids Monday's activity log shows changed since our change. */
+    private array $mondayChanged = [];
+
+    /** Who the item's Person column holds on Monday now. */
+    private array $mondayPeople = [];
 
     private string $mondayUpdatedAt = '2026-11-13T10:00:00Z';
 
@@ -91,11 +98,14 @@ class MondayPushTest extends TestCase
                     str_contains($q, 'create_item(') => ['create_item' => ['id' => '77']],
                     str_contains($q, 'create_update(') => ['create_update' => ['id' => '901']],
                     str_contains($q, 'create_group(') => ['create_group' => ['id' => 'g_new']],
+                    str_contains($q, 'create_column(') => ['create_column' => ['id' => 'text_new']],
                     default => ['ok' => ['id' => '1']],
                 }]);
             }
 
             return Http::response(['data' => match (true) {
+                str_contains($q, 'PeopleValue') => ['items' => [['column_values' => [['persons_and_teams' => $this->mondayPeople]]]]],
+                str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
                 str_contains($q, 'users(') => ['users' => [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']]],
                 str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
                 str_contains($q, 'groups { id title') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
@@ -116,11 +126,26 @@ class MondayPushTest extends TestCase
         return json_decode((string) ($this->mutations[$i]['vars']['v'] ?? '{}'), true);
     }
 
+    /** Jose 11-18: the job-id columns (any text column made here) are made on Monday too, then filled. */
+    public function test_a_text_column_monday_lacks_is_made_there_and_filled(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $col = TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Workiz Job ID', 'type' => 'text', 'position' => 20]);
+            app(TaskWriter::class)->update($this->task, ['values' => [$col->id => '800021103']], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_column('));
+        $this->assertSame(['b' => '100', 't' => 'Workiz Job ID'], $made['vars']);
+        $values = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'change_multiple_column_values'));
+        $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
+    }
+
     /** Desk 11-18: Monday files an item with no group in its FIRST group; a task with no group is never sent. */
     public function test_a_task_in_a_blank_named_group_is_held_not_dropped_in_mondays_first_group(): void
     {
         $this->inTenant($this->tenant['org'], function () {
-            $g = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => ' ', 'position' => 9]);
+            $g = TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => ' ', 'position' => 9]);
             app(TaskWriter::class)->create($this->board, ['title' => 'Blank group', 'group_id' => $g->id], $this->jose);
         });
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
@@ -172,24 +197,56 @@ class MondayPushTest extends TestCase
         $this->assertCount(2, $this->mutations, 'sent once');
     }
 
-    public function test_last_writer_wins_and_the_loser_is_on_the_activity(): void
+    /** Desk 11-18: Monday's Person column never shrinks because someone here has no Monday account. */
+    public function test_owners_keep_mondays_people_we_cannot_name_and_never_clear_the_column(): void
     {
-        // Monday changed the item at 10:45; the change here is at 11:00: here wins, Monday's change is the loser.
+        $this->mondayPeople = [['id' => '5', 'kind' => 'person'], ['id' => '77', 'kind' => 'person']];
+        $nobody = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'nobody@ezbizi.test');
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'user_id' => $nobody->id, 'role' => 'member']));
+
+        // Jose taken off, only someone Monday cannot name left: Jose goes, Monday's own #77 stays.
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['assignee_user_ids' => [$nobody->id]], $this->jose));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertSame([['id' => 77, 'kind' => 'person']], $this->values(count($this->mutations) - 1)['person']['personsAndTeams']);
+        $this->assertStringContainsString('no Monday account', $this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task->id)->where('field', 'monday_sync')->value('to')));
+
+        // Jose and him: Jose by his Monday id, Monday's own #77 kept.
+        Carbon::setTestNow(now()->addMinute());
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task->fresh(), ['assignee_user_ids' => [$this->jose->id, $nobody->id]], $this->jose));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertSame([['id' => 5, 'kind' => 'person'], ['id' => 77, 'kind' => 'person']], $this->values(count($this->mutations) - 1)['person']['personsAndTeams']);
+    }
+
+    /** Desk 11-18: last writer wins per field; Monday touching another field never drops ours. */
+    public function test_last_writer_wins_per_field_and_the_loser_is_on_the_activity(): void
+    {
+        $said = fn () => $this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task->id)->where('field', 'monday_sync')->pluck('to')->all());
+
+        // Monday changed the item before our change: ours is sent.
         $this->mondayUpdatedAt = '2026-11-13T10:45:00Z';
         $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
         $this->assertSame(['status' => ['label' => 'Stuck']], $this->values());
-        $said = fn () => $this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task->id)->where('field', 'monday_sync')->pluck('to')->all());
-        $this->assertStringContainsString('replaced it on Monday', $said()[0]);
 
-        // Here at 11:10, Monday at 11:20 (before the push ran): Monday wins, nothing is sent.
+        // Monday changed the DUE DATE after our status change: our status still goes.
         Carbon::setTestNow('2026-11-13 11:10:00');
         $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task->fresh(), ['status' => 'Working on it'], $this->jose));
         $this->mondayUpdatedAt = '2026-11-13T11:20:00Z';
+        $this->mondayChanged = ['date4'];
         Carbon::setTestNow('2026-11-13 11:21:00');
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
-        $this->assertCount(1, $this->mutations);
-        $this->assertStringContainsString('Monday\'s is kept', $said()[1]);
+        $this->assertSame(['status' => ['label' => 'Working on it']], $this->values(count($this->mutations) - 1));
+
+        // Monday changed the STATUS after ours: Monday's is kept, nothing sent.
+        $sent = count($this->mutations);
+        Carbon::setTestNow('2026-11-13 11:30:00');
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task->fresh(), ['status' => 'Done'], $this->jose));
+        $this->mondayUpdatedAt = '2026-11-13T11:40:00Z';
+        $this->mondayChanged = ['status'];
+        Carbon::setTestNow('2026-11-13 11:41:00');
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertCount($sent, $this->mutations);
+        $this->assertStringContainsString('Monday changed status', collect($said())->last());
         $this->assertSame(MondayOutboxEntry::SUPERSEDED, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->latest('changed_at')->first()->state));
     }
 

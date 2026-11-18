@@ -59,6 +59,14 @@ final class MondayWriter
         return (string) ($data['create_group']['id'] ?? throw new RuntimeException('Monday made no group.'));
     }
 
+    /** A text column, for a text column made here (the job-id columns, Jose 11-18). */
+    public function createTextColumn(string $boardId, string $title): string
+    {
+        $data = $this->mutate('mutation($b:ID!,$t:String!){ create_column(board_id:$b, title:$t, column_type:text) { id } }', ['b' => $boardId, 't' => $title]);
+
+        return (string) ($data['create_column']['id'] ?? throw new RuntimeException('Monday made no column.'));
+    }
+
     /** Monday matches columns by id/title when no mapping is given. */
     public function moveToBoard(string $itemId, string $boardId, string $groupId): void
     {
