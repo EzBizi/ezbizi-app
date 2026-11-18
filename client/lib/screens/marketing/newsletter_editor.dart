@@ -20,6 +20,7 @@ import 'newsletter_blocks.dart';
 import 'newsletter_brand_saved.dart';
 import 'newsletter_import_panel.dart';
 import 'newsletter_preflight.dart';
+import 'newsletter_studio.dart';
 
 /// The three steps of the composer, in the order a campaign is built.
 enum NewsletterStep {
@@ -114,7 +115,15 @@ class NewsletterEditor extends StatefulWidget {
     this.onDiscardLocal,
     this.brand,
     this.onBrand,
+    this.initialStep,
+    this.initialSelected,
   });
+
+  /// The stage it opens on (a link into Design or Review); null: Setup.
+  final NewsletterStep? initialStep;
+
+  /// The block selected when it opens on Design.
+  final int? initialSelected;
 
   /// The brand applied to this newsletter (P1b), or null.
   final Map<String, dynamic>? brand;
@@ -280,8 +289,18 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   NewsletterReadiness? _readiness;
   bool _resolving = false;
 
-  /// The Add content panel is open (it collapses to a rail).
-  bool _paletteOpen = true;
+  /// The library is open (it collapses to a labelled rail); null follows
+  /// the width: open when the library and inspector both fit.
+  bool? _paletteOpen;
+
+  /// The proof in Setup and Review: drawn at a phone's width.
+  bool _proofPhone = false;
+
+  /// Design canvas: the email scaled to the canvas width (Fit).
+  bool _fit = false;
+
+  /// One column (narrow): Setup and Review show the proof instead of the form.
+  bool _narrowPreview = false;
 
   /// Keyboard: Ctrl+Z/Y, and arrows, Delete and Ctrl+D on a selected block.
   final FocusNode _keys = FocusNode(debugLabel: 'newsletter-editor');
@@ -384,6 +403,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     super.initState();
     // Scheduled or sent: nothing to set up, so it opens where its time,
     // audience and checks are read.
+    if (widget.initialStep != null) _step = widget.initialStep!;
+    final pick = widget.initialSelected;
+    if (pick != null && pick >= 0 && pick < widget.blocks.length) _selected = pick;
     if (widget.readOnlyBecause != null) _step = NewsletterStep.review;
     _scheduling = widget.when.text.trim().isNotEmpty;
     final html = widget.initialHtml ?? '';
@@ -477,6 +499,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   @override
   void dispose() {
     _keys.dispose();
+    _subjectFocus.dispose();
+    _audienceFocus.dispose();
     _inline?.dispose();
     _sectionName.dispose();
     _html.dispose();
@@ -663,40 +687,38 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       onKeyEvent: _onKey,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final narrow = constraints.maxWidth < 900;
+          final narrow = constraints.maxWidth < Studio.stacked;
           final top = [
             _header(context, narrow: narrow),
             ..._banners(context),
-            _stepBar(context),
-            const Divider(height: 1),
+            _stepBar(context, narrow: narrow),
           ];
 
           if (narrow) {
-            return ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                ...top,
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: _stepBody(context, bounded: false),
-                ),
-              ],
+            return ColoredBox(
+              color: Studio.pane(context),
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  ...top,
+                  Padding(
+                    padding: const EdgeInsets.all(Studio.grid * 2),
+                    child: _stepBody(context, bounded: false),
+                  ),
+                ],
+              ),
             );
           }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...top,
-              Expanded(
-                child: Padding(
-                  padding: _step == NewsletterStep.design
-                      ? EdgeInsets.zero
-                      : const EdgeInsets.all(12),
-                  child: _stepBody(context, bounded: true),
-                ),
-              ),
-            ],
+          return ColoredBox(
+            color: Studio.pane(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...top,
+                Expanded(child: _stepBody(context, bounded: true)),
+              ],
+            ),
           );
         },
       ),
@@ -749,28 +771,38 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       NewsletterStep.review => _sendButton(),
     };
 
+    final titleStyle =
+        (narrow ? theme.textTheme.titleLarge : theme.textTheme.headlineSmall)
+            ?.copyWith(fontWeight: FontWeight.w700);
     final name = _locked
         ? Text(
             shown,
             key: const ValueKey('newsletter-title'),
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium,
+            style: titleStyle,
           )
-        : TextField(
-            key: const ValueKey('newsletter-name'),
-            controller: widget.name,
-            style: theme.textTheme.titleMedium,
-            maxLength: 255,
-            decoration: InputDecoration(
-              isDense: true,
-              counterText: '',
-              border: InputBorder.none,
-              hintText: subject.isEmpty ? 'Untitled newsletter' : subject,
+        : Semantics(
+            label: 'Internal name: $shown',
+            textField: true,
+            child: TextField(
+              key: const ValueKey('newsletter-name'),
+              controller: widget.name,
+              style: titleStyle,
+              maxLength: 255,
+              decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                hintText: subject.isEmpty ? 'Untitled newsletter' : subject,
+              ),
+              onChanged: (_) {
+                setState(() {});
+                widget.onChanged();
+              },
             ),
-            onChanged: (_) {
-              setState(() {});
-              widget.onChanged();
-            },
           );
 
     final unscheduleRefusal = widget.session.me?.refusal(
@@ -778,98 +810,139 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       'unschedule a newsletter',
     );
 
-    return Padding(
-      key: const ValueKey('newsletter-header'),
-      padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Row(
+    final dot = switch (widget.status) {
+      'scheduled' || 'sending' => theme.colorScheme.primary,
+      'sent' => theme.colorScheme.tertiary,
+      'failed' => theme.colorScheme.error,
+      _ => theme.colorScheme.outline,
+    };
+
+    final title = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.onBack != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: IconButton(
+              key: const ValueKey('newsletter-back'),
+              tooltip: 'All newsletters',
+              onPressed: widget.onBack,
+              icon: const Icon(Icons.arrow_back),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (widget.onBack != null)
-                IconButton(
-                  key: const ValueKey('newsletter-back'),
-                  tooltip: 'All newsletters',
-                  onPressed: widget.onBack,
-                  icon: const Icon(Icons.arrow_back),
-                ),
-              if (!narrow) ...[
-                Text(
-                  'Newsletter /',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              SizedBox(
+              Tooltip(
                 key: const ValueKey('tour-newsletter-pick'),
-                width: narrow ? 150 : 280,
-                child: Tooltip(
-                  message: 'Internal name: only your team sees it',
-                  child: name,
-                ),
+                message: 'Internal name: only your team sees it',
+                child: name,
               ),
-              const SizedBox(width: 8),
-              Chip(
-                key: const ValueKey('newsletter-status'),
-                label: Text(_statusWord),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 4,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _saveStateView(context),
-              IconButton(
-                key: const ValueKey('newsletter-undo-edit'),
-                tooltip: 'Undo (Ctrl+Z)',
-                onPressed: widget.canUndo && !_locked ? widget.onUndo : null,
-                icon: const Icon(Icons.undo),
-              ),
-              IconButton(
-                key: const ValueKey('newsletter-redo-edit'),
-                tooltip: 'Redo (Ctrl+Shift+Z)',
-                onPressed: widget.canRedo && !_locked ? widget.onRedo : null,
-                icon: const Icon(Icons.redo),
-              ),
-              if (widget.onUnschedule != null)
-                Refused(
-                  reason: unscheduleRefusal,
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('newsletter-unschedule'),
-                    onPressed: unscheduleRefusal == null ? widget.onUnschedule : null,
-                    icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-                    label: const Text('Unschedule'),
+              Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    key: const ValueKey('newsletter-status'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: dot,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(_statusWord, style: theme.textTheme.bodySmall),
+                    ],
                   ),
-                ),
-              if (widget.api != null && widget.newsletterId != null)
-                OutlinedButton.icon(
-                  key: const ValueKey('newsletter-preview-test'),
-                  onPressed: _openPreviewAndTest,
-                  icon: const Icon(Icons.visibility_outlined, size: 18),
-                  label: const Text('Preview & test'),
-                ),
-              if (widget.confirmingDelete)
-                TextButton(
-                  key: const ValueKey('newsletter-delete-confirm'),
-                  style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
-                  onPressed: widget.onDelete,
-                  child: const Text('Tap again to delete'),
-                ),
-              primary,
-              _overflow(context),
+                  _saveStateView(context),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
+      ],
+    );
+
+    final actions = Wrap(
+      spacing: Studio.grid,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        IconButton.outlined(
+          key: const ValueKey('newsletter-undo-edit'),
+          tooltip: 'Undo (Ctrl+Z)',
+          onPressed: widget.canUndo && !_locked ? widget.onUndo : null,
+          icon: const Icon(Icons.undo, size: 18),
+        ),
+        IconButton.outlined(
+          key: const ValueKey('newsletter-redo-edit'),
+          tooltip: 'Redo (Ctrl+Shift+Z)',
+          onPressed: widget.canRedo && !_locked ? widget.onRedo : null,
+          icon: const Icon(Icons.redo, size: 18),
+        ),
+        if (widget.onUnschedule != null)
+          Refused(
+            reason: unscheduleRefusal,
+            child: OutlinedButton.icon(
+              key: const ValueKey('newsletter-unschedule'),
+              onPressed: unscheduleRefusal == null ? widget.onUnschedule : null,
+              icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+              label: const Text('Unschedule'),
+            ),
+          ),
+        if (widget.api != null && widget.newsletterId != null)
+          OutlinedButton.icon(
+            key: const ValueKey('newsletter-preview-test'),
+            onPressed: _openPreviewAndTest,
+            icon: const Icon(Icons.visibility_outlined, size: 18),
+            label: const Text('Preview & test'),
+          ),
+        if (widget.confirmingDelete)
+          TextButton(
+            key: const ValueKey('newsletter-delete-confirm'),
+            style: TextButton.styleFrom(
+              foregroundColor: theme.colorScheme.error,
+            ),
+            onPressed: widget.onDelete,
+            child: const Text('Tap again to delete'),
+          ),
+        primary,
+        _overflow(context),
+      ],
+    );
+
+    return Container(
+      key: const ValueKey('newsletter-header'),
+      color: theme.colorScheme.surface,
+      padding: EdgeInsets.fromLTRB(
+        narrow ? Studio.grid : Studio.grid * 2,
+        Studio.grid * 1.5,
+        narrow ? Studio.grid : Studio.grid * 2,
+        Studio.grid,
       ),
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                title,
+                const SizedBox(height: Studio.grid),
+                actions,
+              ],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: title),
+                const SizedBox(width: Studio.grid * 2),
+                actions,
+              ],
+            ),
     );
   }
 
@@ -1040,38 +1113,35 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     ];
   }
 
-  Widget _stepBar(BuildContext context) {
+  /// Setup, Design and Review on one quiet strip; the active one is
+  /// underlined in teal.
+  Widget _stepBar(BuildContext context, {required bool narrow}) {
     final theme = Theme.of(context);
-    return Padding(
+    return Container(
       key: const ValueKey('newsletter-steps'),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final step in NewsletterStep.values)
-            ChoiceChip(
-              key: ValueKey(step.key),
-              avatar: CircleAvatar(
-                radius: 10,
-                backgroundColor: step == _step
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.surfaceContainerHighest,
-                child: Text(
-                  '${step.index + 1}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: step == _step
-                        ? theme.colorScheme.onPrimary
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(bottom: BorderSide(color: Studio.line(context))),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: narrow ? Studio.grid : Studio.grid * 2,
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final step in NewsletterStep.values) ...[
+              StudioStepTab(
+                key: ValueKey(step.key),
+                number: step.index + 1,
+                label: step.label,
+                active: step == _step,
+                onTap: () => _go(step),
               ),
-              label: Text(step.label),
-              selected: step == _step,
-              showCheckmark: false,
-              onSelected: (_) => _go(step),
-            ),
-        ],
+              const SizedBox(width: Studio.grid * 3),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1111,79 +1181,201 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   // ── step 1: setup ────────────────────────────────────────────
 
-  Widget _setup(BuildContext context, {required bool bounded}) {
-    final main = [
-      _subjectCard(context),
-      const SizedBox(height: 12),
-      _senderCard(context),
-      const SizedBox(height: 12),
-      _recipientsCard(context),
-    ];
+  /// Fields a Review "Fix" returns focus to.
+  final FocusNode _subjectFocus = FocusNode(debugLabel: 'newsletter-subject');
+  final FocusNode _audienceFocus = FocusNode(debugLabel: 'newsletter-audience');
 
+  /// Form and proof side by side (Composer Studio): the form on the left in
+  /// unboxed rows, the inbox preview over the rendered email on the right.
+  Widget _setup(BuildContext context, {required bool bounded}) {
+    final form = Column(
+      key: const ValueKey('newsletter-setup-form'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _stageTitle(
+          context,
+          'Email setup',
+          'Write the inbox copy and choose the sender and audience.',
+        ),
+        _subjectCard(context),
+        const SizedBox(height: Studio.grid),
+        _senderCard(context),
+        _recipientsCard(context),
+      ],
+    );
+    return _formAndProof(context, bounded: bounded, form: form, inbox: true);
+  }
+
+  /// The two-pane frame Setup and Review share. One column below
+  /// [Studio.stacked], with explicit Edit / Preview.
+  Widget _formAndProof(
+    BuildContext context, {
+    required bool bounded,
+    required Widget form,
+    required bool inbox,
+  }) {
     if (!bounded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [...main, const SizedBox(height: 12), _inboxCard(context)],
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<bool>(
+              key: const ValueKey('newsletter-narrow-view'),
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  label: Text('Edit'),
+                  icon: Icon(Icons.edit_outlined, size: 16),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text('Preview'),
+                  icon: Icon(Icons.visibility_outlined, size: 16),
+                ),
+              ],
+              selected: {_narrowPreview},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) =>
+                  setState(() => _narrowPreview = v.first),
+            ),
+          ),
+          const SizedBox(height: Studio.grid * 2),
+          // The form stays built (Offstage) so draft values and focus survive
+          // switching to the preview.
+          Offstage(offstage: _narrowPreview, child: form),
+          if (_narrowPreview) _proof(context, inbox: inbox),
+          if (!_narrowPreview && inbox) ...[
+            const SizedBox(height: Studio.grid * 2),
+            _inboxCard(context),
+          ],
+        ],
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: main,
+    return LayoutBuilder(
+      builder: (context, c) {
+        final proofWidth = Studio.proofPaneWidth(c.maxWidth);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ColoredBox(
+                color: Studio.pane(context),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(40, 32, 40, 40),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: form,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              key: const ValueKey('newsletter-proof-pane'),
+              width: proofWidth,
+              decoration: BoxDecoration(
+                color: Studio.canvas(context),
+                border: Border(left: BorderSide(color: Studio.line(context))),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(Studio.grid * 3),
+                child: _proof(context, inbox: inbox),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _stageTitle(BuildContext context, String title, String sub) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Studio.grid * 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
+              title,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontFamily: 'serif',
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(width: 320, child: _inboxCard(context)),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            sub,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _subjectCard(BuildContext context) {
-    return DashboardCard(
-      title: 'Subject and preheader',
-      icon: Icons.title,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            key: const ValueKey('newsletter-subject'),
-            controller: widget.subject,
-            readOnly: _locked,
-            maxLength: 255,
-            decoration: const InputDecoration(
-              labelText: 'Subject',
-              hintText: 'What lands in the inbox',
-              helperText: 'Under about 60 characters shows in full on most phones.',
-            ),
-            onChanged: (_) {
-              setState(() {});
-              widget.onChanged();
-            },
+    final theme = Theme.of(context);
+    Widget label(String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(text, style: theme.textTheme.titleSmall),
+    );
+    final subjectFailed =
+        _readiness?.checks.any(
+          (c) => c['key'] == 'subject' && c['ok'] != true,
+        ) ==
+        true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        label('Subject line'),
+        TextField(
+          key: const ValueKey('newsletter-subject'),
+          controller: widget.subject,
+          focusNode: _subjectFocus,
+          readOnly: _locked,
+          maxLength: 255,
+          minLines: 1,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: 'What lands in the inbox',
+            helperText: 'Keep it around 60 characters for phones.',
+            errorText: subjectFailed && widget.subject.text.trim().isEmpty
+                ? 'A subject is needed before it can go out.'
+                : null,
           ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey('newsletter-preheader'),
-            controller: widget.preheader,
-            readOnly: _locked,
-            maxLength: 255,
-            decoration: const InputDecoration(
-              labelText: 'Preheader',
-              hintText: 'The line shown after the subject',
-              helperText: 'Hidden in the email itself. Blank shows its first words instead.',
-            ),
-            onChanged: (_) {
-              setState(() {});
-              widget.onChanged();
-            },
+          onChanged: (_) {
+            setState(() {});
+            widget.onChanged();
+          },
+        ),
+        const SizedBox(height: Studio.grid),
+        label('Preview text'),
+        TextField(
+          key: const ValueKey('newsletter-preheader'),
+          controller: widget.preheader,
+          readOnly: _locked,
+          maxLength: 255,
+          minLines: 2,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'The line shown after the subject',
+            helperText:
+                'Appears after the subject in the inbox. Blank shows the first words of the email.',
           ),
-        ],
-      ),
+          onChanged: (_) {
+            setState(() {});
+            widget.onChanged();
+          },
+        ),
+      ],
     );
   }
 
@@ -1191,48 +1383,60 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     final r = _readiness;
     final theme = Theme.of(context);
     final missing = r != null && (r.fromName == null || r.fromAddress == null);
-
-    Widget row(String label, String? value) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 150,
-            child: Text(label, style: theme.textTheme.labelMedium),
-          ),
-          Expanded(child: Text(value ?? '—')),
-        ],
-      ),
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
     );
 
-    return DashboardCard(
+    return StudioRow(
       key: const ValueKey('newsletter-sender'),
-      title: 'Sender',
-      icon: Icons.person_outline,
+      label: 'Sender',
+      attention: missing ? 'Not set up' : null,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (r == null)
             const LinearProgressIndicator()
           else ...[
-            row('From name', r.fromName),
-            row('From / reply address', r.fromAddress),
-            const DashboardNote(
-              'Mailchimp sends from one verified address, which is also where '
-              'replies go. Change it in your Mailchimp account, where it is '
-              'verified.',
+            Text(
+              r.fromName ?? 'No From name yet',
+              style: theme.textTheme.titleSmall,
             ),
+            const SizedBox(height: 2),
+            // Mailchimp's one verified address: From and reply-to together.
+            Text(
+              r.fromAddress == null
+                  ? 'No verified address'
+                  : '${r.fromAddress} · From and reply-to',
+              key: const ValueKey('newsletter-from-address'),
+              style: muted,
+            ),
+            if (r.account != null)
+              Text('Verified in Mailchimp · ${r.account}', style: muted),
           ],
           if (missing && widget.onOpenSettings != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: widget.onOpenSettings,
-                icon: const Icon(Icons.tune_outlined, size: 18),
-                label: const Text('Set up sending in Settings'),
-              ),
+            TextButton.icon(
+              key: const ValueKey('newsletter-sender-settings'),
+              onPressed: widget.onOpenSettings,
+              icon: const Icon(Icons.tune_outlined, size: 18),
+              label: const Text('Set up sending in Settings'),
             ),
+          StudioDetails(
+            key: const ValueKey('newsletter-sender-details'),
+            children: [
+              Text(
+                'Company: ${widget.viewName}',
+                key: const ValueKey('newsletter-company'),
+                style: muted,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Mailchimp sends from one verified address, which is also where '
+                'replies go. Change it in your Mailchimp account, where it is '
+                'verified.',
+                style: muted,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1277,100 +1481,107 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       }
     }
 
-    Widget label(String text) => Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Text(
-        text.toUpperCase(),
-        style: theme.textTheme.labelSmall?.copyWith(
-          letterSpacing: 0.8,
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
     );
+    final audienceFailed =
+        r?.checks.any((c) => c['key'] == 'audience' && c['ok'] != true) == true;
 
-    return DashboardCard(
+    return StudioRow(
       key: const ValueKey('tour-newsletter-details'),
-      title: 'Who should receive it?',
-      icon: Icons.groups_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          label('Company'),
-          Text(widget.viewName, key: const ValueKey('newsletter-company')),
-          label('Sending provider'),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  lists == null
-                      ? 'Checking…'
-                      : connected
-                      ? 'Mailchimp${r?.account == null ? '' : ' · ${r!.account}'}'
-                      : 'Not connected',
-                  key: const ValueKey('newsletter-provider'),
-                ),
+      label: 'Audience',
+      attention: audienceFailed ? 'Choose one' : null,
+      // A Review "Fix" lands here; the picker inside takes it from there.
+      child: Focus(
+        focusNode: _audienceFocus,
+        skipTraversal: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (lists != null && !connected)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Mailchimp: not connected',
+                      key: const ValueKey('newsletter-provider'),
+                      style: muted,
+                    ),
+                  ),
+                  if (widget.onOpenSettings != null)
+                    TextButton(
+                      onPressed: widget.onOpenSettings,
+                      child: const Text('Connect Mailchimp'),
+                    ),
+                ],
               ),
-              if (lists != null && !connected && widget.onOpenSettings != null)
-                TextButton(
-                  onPressed: widget.onOpenSettings,
-                  child: const Text('Connect Mailchimp'),
-                ),
+            if (options.isEmpty)
+              DashboardNote(
+                'No mailing list in ${widget.viewName} yet. Connect Mailchimp, or '
+                'select EzBizi customers.',
+              )
+            else
+              SearchPickerField<String>(
+                key: const ValueKey('newsletter-audience-picker'),
+                value: widget.audienceId,
+                label: 'Audience',
+                isDense: true,
+                options: options,
+                onChanged: _locked ? null : _pickAudience,
+              ),
+            if (widget.audienceId != null) ...[
+              const SizedBox(height: Studio.grid),
+              _counts(context, members),
             ],
-          ),
-          label('Audience'),
-          const DashboardNote(
-            'A Mailchimp list is who the email actually goes to. EzBizi '
-            'customers are added to a Mailchimp list just before sending.',
-            key: ValueKey('newsletter-audience-explainer'),
-          ),
-          const SizedBox(height: 8),
-          if (options.isEmpty)
-            DashboardNote(
-              'No mailing list in ${widget.viewName} yet. Connect Mailchimp, or '
-              'select EzBizi customers.',
-            )
-          else
-            SearchPickerField<String>(
-              key: const ValueKey('newsletter-audience-picker'),
-              value: widget.audienceId,
-              label: 'Audience',
-              isDense: true,
-              options: options,
-              onChanged: _locked ? null : _pickAudience,
+            const SizedBox(height: 4),
+            Text(
+              'A Mailchimp list is who the email actually goes to. EzBizi '
+              'customers are added to a Mailchimp list just before sending.',
+              key: const ValueKey('newsletter-audience-explainer'),
+              style: muted,
             ),
-          if (chosen != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: DashboardNote(
-                chosen.mailchimpListId == null || chosen.mailchimpListId!.isEmpty
-                    ? '${chosen.name} has no Mailchimp list behind it yet.'
-                    : '${chosen.name} (EzBizi, ${chosen.where}) → Mailchimp list '
-                          '${chosen.mailchimpListId}',
-                key: const ValueKey('newsletter-audience-mapping'),
+            if (widget.onNewList != null && !_locked)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('newsletter-new-list'),
+                  onPressed: widget.onNewList,
+                  icon: const Icon(Icons.person_search_outlined, size: 18),
+                  label: const Text('Select EzBizi customers'),
+                ),
               ),
+            StudioDetails(
+              key: const ValueKey('newsletter-audience-details'),
+              children: [
+                if (lists == null)
+                  Text('Sending provider: checking…', style: muted)
+                else if (connected)
+                  Text(
+                    'Sending provider: Mailchimp${r?.account == null ? '' : ' · ${r!.account}'}',
+                    key: const ValueKey('newsletter-provider'),
+                    style: muted,
+                  ),
+                if (chosen != null)
+                  Text(
+                    chosen.mailchimpListId == null ||
+                            chosen.mailchimpListId!.isEmpty
+                        ? '${chosen.name} has no Mailchimp list behind it yet.'
+                        : '${chosen.name} (EzBizi, ${chosen.where}) → Mailchimp list '
+                              '${chosen.mailchimpListId}',
+                    key: const ValueKey('newsletter-audience-mapping'),
+                    style: muted,
+                  ),
+              ],
             ),
-          if (widget.onNewList != null && !_locked)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                key: const ValueKey('newsletter-new-list'),
-                onPressed: widget.onNewList,
-                icon: const Icon(Icons.person_search_outlined, size: 18),
-                label: const Text('Select EzBizi customers'),
-              ),
-            ),
-          if (widget.audienceId != null) ...[
-            label('Recipients'),
-            _counts(context, members),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  /// Eligible is a number only when the server could count it. A Mailchimp
-  /// list's member total is labelled as what it is, never as recipients.
+  /// List membership and eligible recipients, each labelled as what it is.
+  /// Eligible is a number only when the server could count it; unknown stays
+  /// unknown.
   Widget _counts(BuildContext context, int? members) {
     final r = _readiness;
     final theme = Theme.of(context);
@@ -1386,14 +1597,25 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           'Eligible recipients: unknown — Mailchimp applies its own '
           'subscription rules';
     }
+    final at = r?.resolvedAt;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (members != null)
+          Text(
+            'Members in Mailchimp list: $members',
+            key: const ValueKey('newsletter-members'),
+            style: theme.textTheme.bodySmall,
+          ),
         Row(
           children: [
             Expanded(
-              child: Text(eligible, key: const ValueKey('newsletter-eligible')),
+              child: Text(
+                eligible,
+                key: const ValueKey('newsletter-eligible'),
+                style: theme.textTheme.bodySmall,
+              ),
             ),
             TextButton.icon(
               key: const ValueKey('newsletter-eligible-refresh'),
@@ -1403,11 +1625,15 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             ),
           ],
         ),
-        if (members != null)
+        if (at != null && at.isNotEmpty)
           Text(
-            'Members in Mailchimp list: $members',
-            key: const ValueKey('newsletter-members'),
-            style: theme.textTheme.bodySmall,
+            DateTime.tryParse(at) == null
+                ? 'Counted $at'
+                : 'Counted ${formatAgo(DateTime.parse(at))}',
+            key: const ValueKey('newsletter-eligible-at'),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
       ],
     );
@@ -1460,47 +1686,388 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return '';
   }
 
+  /// A card on the proof pane: a quiet header strip over white content.
+  Widget _proofCard(
+    BuildContext context, {
+    Key? key,
+    required IconData icon,
+    required String title,
+    List<Widget> trailing = const [],
+    required Widget child,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      key: key,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Studio.line(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: theme.colorScheme.surfaceContainerLow,
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Studio.grid * 2,
+              vertical: 6,
+            ),
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final head = [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: Studio.grid),
+                ];
+                if (c.maxWidth >= 400 || trailing.isEmpty) {
+                  return Row(
+                    children: [
+                      ...head,
+                      Expanded(
+                        child: Text(title, style: theme.textTheme.titleSmall),
+                      ),
+                      ...trailing,
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          ...head,
+                          Text(title, style: theme.textTheme.titleSmall),
+                        ],
+                      ),
+                    ),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: trailing,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          Divider(height: 1, color: Studio.line(context)),
+          child,
+        ],
+      ),
+    );
+  }
+
+  /// The inbox as a recipient sees it: sender, subject and preheader in
+  /// context, updated as they are typed. The neighbouring rows are blank
+  /// placeholders, not invented mail.
   Widget _inboxCard(BuildContext context) {
     final theme = Theme.of(context);
     final from = _readiness?.fromName ?? widget.company;
     final subject = widget.subject.text.trim();
     final pre = widget.preheader.text.trim();
     final line = pre.isNotEmpty ? pre : _firstLine;
+    final muted = theme.colorScheme.onSurfaceVariant;
 
-    return DashboardCard(
-      key: const ValueKey('newsletter-inbox-preview'),
-      title: 'In their inbox',
-      icon: Icons.inbox_outlined,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    Widget placeholder() => Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Studio.grid * 2,
+        vertical: 10,
+      ),
+      child: ExcludeSemantics(
+        child: Row(
           children: [
-            Text(from, style: theme.textTheme.titleSmall),
-            const SizedBox(height: 2),
-            Text(
-              subject.isEmpty ? '(no subject)' : subject,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            Icon(
+              Icons.mail_outline,
+              size: 18,
+              color: muted.withValues(alpha: 0.4),
             ),
-            const SizedBox(height: 2),
-            Text(
-              line.isEmpty ? 'The first words of the email show here.' : line,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final w in const [0.35, 0.55, 0.75])
+                    FractionallySizedBox(
+                      widthFactor: w,
+                      child: Container(
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(vertical: 3),
+                        decoration: BoxDecoration(
+                          color: muted.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+
+    final message = Container(
+      key: const ValueKey('newsletter-inbox-message'),
+      margin: const EdgeInsets.all(Studio.grid),
+      padding: const EdgeInsets.all(Studio.grid * 1.5),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.mail_outline, size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        from,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    Text(
+                      'Now',
+                      style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                    ),
+                  ],
+                ),
+                Text(
+                  subject.isEmpty ? '(no subject)' : subject,
+                  key: const ValueKey('newsletter-inbox-subject'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  line.isEmpty
+                      ? 'The first words of the email show here.'
+                      : line,
+                  key: const ValueKey('newsletter-inbox-line'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return _proofCard(
+      context,
+      key: const ValueKey('newsletter-inbox-preview'),
+      icon: Icons.inbox_outlined,
+      title: 'Inbox preview',
+      child: Align(
+        alignment: Alignment.topCenter,
+        // Truncates at the chosen device's width, not the editor's.
+        child: SizedBox(
+          width: _proofPhone ? 375 : double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [message, placeholder(), placeholder()],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The proof Setup and Review share: the inbox (Setup only) over the
+  /// opened email.
+  Widget _proof(BuildContext context, {required bool inbox}) {
+    return Column(
+      key: const ValueKey('newsletter-proof'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (inbox) ...[
+          _inboxCard(context),
+          const SizedBox(height: Studio.grid * 2),
+        ],
+        _openedEmail(context),
+      ],
+    );
+  }
+
+  bool get _emptyContent => widget.blocks.isEmpty && !_htmlActive;
+
+  /// The opened email: subject and sender as the mail client shows them,
+  /// then the email itself. Blocks are drawn by the same renderer layout as
+  /// the canvas; custom HTML shows the server's rendering of the saved
+  /// revision. Its space is held while a save refreshes it.
+  Widget _openedEmail(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = _readiness;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final subject = widget.subject.text.trim();
+    final from = [
+      r?.fromName ?? widget.company,
+      if (r?.fromAddress != null) '<${r!.fromAddress}>',
+    ].join(' ');
+
+    final state = switch (widget.saveState) {
+      NewsletterSaveState.saving => Text(
+        'Updating…',
+        key: const ValueKey('newsletter-proof-state'),
+        style: muted,
+      ),
+      NewsletterSaveState.failed => TextButton(
+        key: const ValueKey('newsletter-proof-retry'),
+        style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+        onPressed: widget.onRetry,
+        child: const Text('Not saved · Retry'),
+      ),
+      NewsletterSaveState.conflict => TextButton(
+        key: const ValueKey('newsletter-proof-reload'),
+        style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+        onPressed: widget.onReload,
+        child: const Text('Stale · Reload'),
+      ),
+      NewsletterSaveState.saved => Text(
+        'Revision ${widget.revision}',
+        key: const ValueKey('newsletter-proof-state'),
+        style: muted,
+      ),
+    };
+
+    final Widget body;
+    if (_emptyContent) {
+      body = Padding(
+        key: const ValueKey('newsletter-proof-empty'),
+        padding: const EdgeInsets.all(Studio.grid * 4),
+        child: Column(
+          children: [
+            Icon(
+              Icons.drafts_outlined,
+              size: 32,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: Studio.grid),
+            Text(
+              'This email has no content yet.',
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: Studio.grid * 2),
+            if (!_locked)
+              Wrap(
+                spacing: Studio.grid,
+                runSpacing: Studio.grid,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    key: const ValueKey('newsletter-proof-add'),
+                    onPressed: () => _go(NewsletterStep.design),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add a block'),
+                  ),
+                  if (widget.api != null)
+                    OutlinedButton.icon(
+                      key: const ValueKey('newsletter-proof-import'),
+                      onPressed: () => setState(() {
+                        _step = NewsletterStep.design;
+                        _importing = true;
+                      }),
+                      icon: const Icon(Icons.upload_file, size: 18),
+                      label: const Text('Import HTML or SVG'),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      );
+    } else if (_htmlActive) {
+      body = widget.previewHtml.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(Studio.grid * 3),
+              child: Text(
+                'The rendering appears once this revision is saved.',
+                style: muted,
+              ),
+            )
+          : Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: _proofPhone ? 375 : double.infinity,
+                height: 720,
+                child: MessageHtmlView(html: widget.previewHtml, ownHtml: true),
+              ),
+            );
+    } else {
+      body = NewsletterEmail(
+        key: const ValueKey('newsletter-proof-email'),
+        blocks: widget.blocks,
+        company: widget.company,
+        phone: _proofPhone,
+        deviceWidth: 375,
+        brand: widget.brand,
+      );
+    }
+
+    return _proofCard(
+      context,
+      key: const ValueKey('newsletter-opened-email'),
+      icon: Icons.mail_outline,
+      title: 'Opened email',
+      trailing: [
+        state,
+        const SizedBox(width: Studio.grid),
+        StudioDeviceToggle(
+          value: _proofPhone ? 'phone' : 'desktop',
+          onChanged: (v) => setState(() => _proofPhone = v == 'phone'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Studio.grid * 2,
+              12,
+              Studio.grid * 2,
+              12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  subject.isEmpty ? '(no subject)' : subject,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(from, style: muted),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: Studio.line(context)),
+          // Held in place while a save refreshes it, so nothing jumps.
+          AnimatedOpacity(
+            duration: Studio.motion(context),
+            opacity: widget.saveState == NewsletterSaveState.saving ? 0.6 : 1,
+            child: body,
+          ),
+        ],
       ),
     );
   }
@@ -1516,7 +2083,19 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _leftPanel(context, wrap: true),
+          // A labelled drawer above the canvas on narrow screens.
+          Card(
+            margin: EdgeInsets.zero,
+            child: ExpansionTile(
+              key: const ValueKey('newsletter-library-drawer'),
+              title: const Text('Library'),
+              leading: const Icon(Icons.widgets_outlined),
+              initiallyExpanded: _paletteOpen ?? false,
+              onExpansionChanged: (v) => _paletteOpen = v,
+              childrenPadding: const EdgeInsets.all(12),
+              children: [_leftPanel(context, wrap: true)],
+            ),
+          ),
           const SizedBox(height: 12),
           _email(context, bounded: false),
           if (inspector != null) ...[const SizedBox(height: 12), inspector],
@@ -1524,42 +2103,94 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_paletteOpen)
-          SizedBox(
-            width: 248,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: _leftPanel(context, wrap: false),
-            ),
-          )
-        else
-          SizedBox(
-            width: 48,
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                IconButton(
-                  key: const ValueKey('newsletter-palette-toggle'),
-                  tooltip: 'Show Add content',
-                  onPressed: () => setState(() => _paletteOpen = true),
-                  icon: const Icon(Icons.add_box_outlined),
+    return LayoutBuilder(
+      builder: (context, c) {
+        final roomy = c.maxWidth >= Studio.roomy;
+        final libraryOpen = _paletteOpen ?? roomy;
+        // When both cannot fit, one of them is a labelled rail: the library
+        // gives way to a selected block unless it was opened on purpose.
+        final squeeze = !roomy && libraryOpen && inspector != null;
+        final showLibrary = libraryOpen && !(squeeze && _paletteOpen != true);
+        final showInspector =
+            inspector != null && !(squeeze && _paletteOpen == true);
+
+        Widget rail(Key key, IconData icon, String label, VoidCallback on) =>
+            Container(
+              width: 64,
+              color: Theme.of(context).colorScheme.surface,
+              padding: const EdgeInsets.only(top: Studio.grid),
+              child: Column(
+                children: [
+                  Tooltip(
+                    message: 'Show $label',
+                    child: InkWell(
+                      key: key,
+                      onTap: on,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 56,
+                        constraints: const BoxConstraints(minHeight: 56),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 20),
+                            const SizedBox(height: 2),
+                            Text(
+                              label,
+                              style: Theme.of(context).textTheme.labelSmall,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showLibrary)
+              Container(
+                key: const ValueKey('newsletter-library'),
+                width: Studio.libraryWidth,
+                color: Theme.of(context).colorScheme.surface,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(Studio.grid * 1.5),
+                  child: _leftPanel(context, wrap: false),
                 ),
-              ],
-            ),
-          ),
-        const VerticalDivider(width: 1),
-        Expanded(child: _email(context, bounded: true)),
-        if (inspector != null) ...[
-          const VerticalDivider(width: 1),
-          SizedBox(
-            width: 320,
-            child: SingleChildScrollView(child: inspector),
-          ),
-        ],
-      ],
+              )
+            else
+              rail(
+                const ValueKey('newsletter-palette-toggle'),
+                Icons.widgets_outlined,
+                'Library',
+                () => setState(() => _paletteOpen = true),
+              ),
+            VerticalDivider(width: 1, color: Studio.line(context)),
+            Expanded(child: _email(context, bounded: true)),
+            if (inspector != null) ...[
+              VerticalDivider(width: 1, color: Studio.line(context)),
+              if (showInspector)
+                Container(
+                  width: Studio.inspectorWidth,
+                  color: Theme.of(context).colorScheme.surface,
+                  child: SingleChildScrollView(child: inspector),
+                )
+              else
+                rail(
+                  const ValueKey('newsletter-inspector-toggle'),
+                  Icons.tune,
+                  'Block settings',
+                  () => setState(() => _paletteOpen = null),
+                ),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -1567,35 +2198,51 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   /// Which step fixes a failed preflight check.
   static NewsletterStep _stepFor(String key) => switch (key) {
-    'links' => NewsletterStep.design,
+    'links' || 'images' => NewsletterStep.design,
     _ => NewsletterStep.setup,
   };
 
+  /// A failed check's Fix: the step that fixes it, with focus on the field.
+  void _fix(Map<String, dynamic> check) {
+    final key = '${check['key']}';
+    if (_stepFor(key) == NewsletterStep.design) {
+      final issues = _issues(check);
+      _jumpTo(issues.isEmpty ? null : _issueIndex(issues.first));
+      return;
+    }
+    _go(NewsletterStep.setup);
+    final focus = switch (key) {
+      'subject' => _subjectFocus,
+      'audience' => _audienceFocus,
+      _ => null,
+    };
+    if (focus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) focus.requestFocus();
+      });
+    }
+  }
+
+  /// The saved proof beside a concise checklist, the facts the send rests
+  /// on, and the send time.
   Widget _review(BuildContext context, {required bool bounded}) {
-    final children = [
-      _summaryCard(context),
-      const SizedBox(height: 12),
-      _checksCard(context),
-      const SizedBox(height: 12),
-      _scheduleCard(context),
-    ];
-
-    final column = Column(
+    final form = Column(
+      key: const ValueKey('newsletter-review-form'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
+      children: [
+        _stageTitle(
+          context,
+          'Review & schedule',
+          'Check the draft, sender and audience before choosing a send time.',
+        ),
+        _checksCard(context),
+        const SizedBox(height: Studio.grid * 2),
+        _summaryCard(context),
+        const SizedBox(height: Studio.grid * 2),
+        _scheduleCard(context),
+      ],
     );
-
-    return bounded
-        ? SingleChildScrollView(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 860),
-                child: column,
-              ),
-            ),
-          )
-        : column;
+    return _formAndProof(context, bounded: bounded, form: form, inbox: false);
   }
 
   Widget _summaryCard(BuildContext context) {
@@ -1612,17 +2259,23 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         : r.eligibleState == 'error'
         ? 'Could not be counted right now'
         : 'Unknown — Mailchimp applies its own subscription rules';
+    final zone = widget.scheduledTimezone ?? r?.timezone;
 
     Widget row(String label, String value) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 150,
-            child: Text(label, style: theme.textTheme.labelMedium),
+            width: 112,
+            child: Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(child: Text(value, style: theme.textTheme.bodySmall)),
         ],
       ),
     );
@@ -1632,22 +2285,21 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       if (r?.fromAddress != null) '<${r!.fromAddress}>',
     ].whereType<String>().join(' ');
 
-    return DashboardCard(
+    return Column(
       key: const ValueKey('newsletter-summary'),
-      title: 'Summary',
-      icon: Icons.summarize_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          row('Company', widget.viewName),
-          row('Subject', widget.subject.text.trim().isEmpty ? '—' : widget.subject.text.trim()),
-          row('From', from.isEmpty ? '—' : from),
-          row('Audience', chosen == null ? 'None chosen' : '${chosen.label} · ${chosen.where}'),
-          row('Recipients', recipients),
-          row('Email format', _htmlActive ? 'Custom HTML' : 'Blocks'),
-          row('Revision', '${widget.revision}'),
-        ],
-      ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row('Company', widget.viewName),
+        row('From', from.isEmpty ? '—' : from),
+        row(
+          'Audience',
+          chosen == null ? 'None chosen' : '${chosen.label} · ${chosen.where}',
+        ),
+        row('Recipients', recipients),
+        if (zone != null) row('Timezone', clockLabel(zone)),
+        row('Email format', _htmlActive ? 'Custom HTML' : 'Blocks'),
+        row('Revision', '${widget.revision}'),
+      ],
     );
   }
 
@@ -1663,11 +2315,87 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   Widget _checksCard(BuildContext context) {
     final theme = Theme.of(context);
     final r = _readiness;
+    final line = BorderSide(color: Studio.line(context));
 
-    return DashboardCard(
+    Widget item(Map<String, dynamic> c) {
+      final ok = c['ok'] == true;
+      final step = _stepFor('${c['key']}');
+      return Container(
+        decoration: BoxDecoration(border: Border(top: line)),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    ok ? Icons.check : Icons.error_outline,
+                    size: 18,
+                    semanticLabel: ok ? 'Passed' : 'Needs attention',
+                    color: ok
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${c['label']}',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        TextSpan(
+                          text: ': ${c['detail']}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (!ok)
+                  OutlinedButton(
+                    key: ValueKey('newsletter-fix-${c['key']}'),
+                    onPressed: () => _fix(c),
+                    child: Text('Fix in ${step.label}'),
+                  ),
+              ],
+            ),
+            if (!ok)
+              for (final (n, issue) in _issues(c).indexed)
+                if (_issueIndex(issue) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 30, top: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${issue['where']}: “${issue['url']}”',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                        TextButton(
+                          key: ValueKey('newsletter-fix-link-$n'),
+                          onPressed: () => _jumpTo(_issueIndex(issue)),
+                          child: Text('Show block ${_issueIndex(issue)! + 1}'),
+                        ),
+                      ],
+                    ),
+                  ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
       key: const ValueKey('newsletter-preflight'),
-      title: 'Before it goes',
-      icon: Icons.fact_check_outlined,
+      decoration: BoxDecoration(border: Border(bottom: line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1676,72 +2404,25 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           else if (r.checks.isEmpty)
             const DashboardNote('The checks could not be read right now.')
           else
-            for (final c in r.checks)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      c['ok'] == true
-                          ? Icons.check_circle_outline
-                          : Icons.error_outline,
-                      size: 18,
-                      color: c['ok'] == true
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.error,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${c['label']}: ${c['detail']}',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                    if (c['ok'] != true)
-                      TextButton(
-                        key: ValueKey('newsletter-fix-${c['key']}'),
-                        onPressed: () => _stepFor('${c['key']}') == NewsletterStep.design
-                            ? _jumpTo(_issues(c).isEmpty ? null : _issueIndex(_issues(c).first))
-                            : _go(_stepFor('${c['key']}')),
-                        child: Text('Fix in ${_stepFor('${c['key']}').label}'),
-                      ),
-                  ],
-                ),
-              ),
-          if (r != null)
-            for (final c in r.checks)
-              if (c['ok'] != true)
-                for (final (n, issue) in _issues(c).indexed)
-                  if (_issueIndex(issue) != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 26, bottom: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${issue['where']}: “${issue['url']}”',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          TextButton(
-                            key: ValueKey('newsletter-fix-link-$n'),
-                            onPressed: () => _jumpTo(_issueIndex(issue)),
-                            child: Text('Show block ${_issueIndex(issue)! + 1}'),
-                          ),
-                        ],
-                      ),
-                    ),
+            // Failed items first: they are what to act on.
+            for (final c in [
+              ...r.checks.where((c) => c['ok'] != true),
+              ...r.checks.where((c) => c['ok'] == true),
+            ])
+              item(c),
           if (r != null && widget.lastTest != null)
-            Text(
-              r.testCurrent
-                  ? widget.lastTest!.sentence
-                  : '${widget.lastTest!.sentence} — stale, content changed since this test.',
-              key: const ValueKey('newsletter-review-last-test'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: r.testCurrent
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.error,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                r.testCurrent
+                    ? widget.lastTest!.sentence
+                    : '${widget.lastTest!.sentence} — stale, content changed since this test.',
+                key: const ValueKey('newsletter-review-last-test'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: r.testCurrent
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.error,
+                ),
               ),
             ),
         ],
@@ -1754,13 +2435,19 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     final refusal = _sendRefusal;
     final zone = widget.scheduledTimezone ?? _readiness?.timezone;
 
-    return DashboardCard(
+    return Container(
       key: const ValueKey('newsletter-schedule'),
-      title: 'When',
-      icon: Icons.schedule,
+      padding: const EdgeInsets.all(Studio.grid * 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Studio.line(context)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text('Send time', style: theme.textTheme.titleSmall),
+          const SizedBox(height: Studio.grid),
           Align(
             alignment: Alignment.centerLeft,
             child: SegmentedButton<bool>(
@@ -1839,54 +2526,45 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   Widget _palette(BuildContext context, {required bool wrap}) {
     final theme = Theme.of(context);
     final adding = !_locked && !_htmlMode;
-    final tiles = [
-      for (final kind in BlockKind.values)
-        _dragNew(
-          kind,
-          adding,
-          SizedBox(
-            width: 90,
-            height: 72,
-            child: OutlinedButton(
-              onPressed: adding ? () => _add(kind) : null,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(kind.icon, size: 20),
-                  const SizedBox(height: 4),
-                  Text(kind.label, style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-          ),
-        ),
-    ];
 
     return Column(
       key: const ValueKey('tour-newsletter-blocks'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: Text('Add content', style: theme.textTheme.titleSmall)),
-            if (!wrap)
-              IconButton(
-                key: const ValueKey('newsletter-palette-toggle'),
-                tooltip: 'Hide Add content',
-                onPressed: () => setState(() => _paletteOpen = false),
-                icon: const Icon(Icons.chevron_left),
-              ),
-          ],
+        Text(
+          _selected == null
+              ? 'Click a block to add it at the end.'
+              : 'Adds a block after your selection.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: tiles),
-        const SizedBox(height: 16),
+        const SizedBox(height: Studio.grid),
+        LayoutBuilder(
+          builder: (context, c) {
+            final per = c.maxWidth >= 300 ? 3 : 2;
+            final w = (c.maxWidth - Studio.grid * (per - 1)) / per;
+            return Wrap(
+              spacing: Studio.grid,
+              runSpacing: Studio.grid,
+              children: [
+                for (final kind in BlockKind.values)
+                  SizedBox(
+                    width: w,
+                    child: _dragNew(
+                      kind,
+                      adding,
+                      StudioBlockTile(
+                        kind: kind,
+                        onTap: adding ? () => _add(kind) : null,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: Studio.grid * 2),
         OutlinedButton.icon(
           onPressed: _locked
               ? null
@@ -1900,7 +2578,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           label: Text(_htmlMode ? 'Back to blocks' : 'Write HTML'),
         ),
         if (widget.api != null) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: Studio.grid),
           OutlinedButton.icon(
             key: const ValueKey('newsletter-import'),
             onPressed: _locked ? null : () => setState(() => _importing = true),
@@ -1908,17 +2586,171 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             label: const Text('Import HTML or SVG'),
           ),
         ],
+        if (!_htmlMode && widget.blocks.isNotEmpty) ...[
+          const SizedBox(height: Studio.grid * 2),
+          Divider(height: 1, color: Studio.line(context)),
+          const SizedBox(height: Studio.grid),
+          _layers(context),
+        ],
       ],
     );
   }
 
-  /// Add content, Brand and Saved (P1b).
+  /// One line of a block for the outline: its words, else its kind.
+  String _layerLabel(Map<String, dynamic> block) {
+    final kind = BlockKind.forType(block['type'] as String? ?? '');
+    final words = '${block['text'] ?? block['alt'] ?? ''}'
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (words.isNotEmpty) return words;
+    if (block['type'] == 'section_ref') return 'Linked section';
+    return kind?.label ?? 'Block';
+  }
+
+  /// Layers: the email's blocks in order; selecting one selects it on the
+  /// canvas and the other way round.
+  Widget _layers(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      key: const ValueKey('newsletter-layers'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text('Layers', style: theme.textTheme.labelLarge),
+        ),
+        for (var i = 0; i < widget.blocks.length; i++)
+          Builder(
+            builder: (context) {
+              final on = i == _selected;
+              final kind = BlockKind.forType(
+                widget.blocks[i]['type'] as String? ?? '',
+              );
+              return Semantics(
+                selected: on,
+                child: Material(
+                  color: on
+                      ? theme.colorScheme.primaryContainer.withValues(
+                          alpha: 0.5,
+                        )
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  child: InkWell(
+                    key: ValueKey('newsletter-layer-$i'),
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: _locked ? null : () => _select(i),
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 36),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Studio.grid,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            kind?.icon ?? Icons.link,
+                            size: 16,
+                            color: on
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: Studio.grid),
+                          Expanded(
+                            child: Text(
+                              _layerLabel(widget.blocks[i]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: on
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  /// Assets: upload or pick a picture. Into the selected image block, or a
+  /// new image block after the selection.
+  Widget _assets(BuildContext context) {
+    final theme = Theme.of(context);
+    final selected = _selected;
+    final target =
+        selected != null &&
+            selected < widget.blocks.length &&
+            widget.blocks[selected]['type'] == 'image'
+        ? widget.blocks[selected]
+        : null;
+    final editable = widget.api != null && !_locked && !_htmlMode;
+
+    Map<String, dynamic> into() {
+      if (target != null) return target;
+      _add(BlockKind.image);
+      return widget.blocks[_selected!];
+    }
+
+    return Column(
+      key: const ValueKey('newsletter-assets'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          target != null
+              ? 'Replaces the picture in the selected image block.'
+              : 'Adds an image block after your selection.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Studio.grid),
+        FilledButton.icon(
+          key: const ValueKey('newsletter-assets-upload'),
+          onPressed: editable
+              ? () => _chooseFromLibrary(context, into(), upload: true)
+              : null,
+          icon: const Icon(Icons.upload, size: 18),
+          label: const Text('Upload image'),
+        ),
+        const SizedBox(height: Studio.grid),
+        OutlinedButton.icon(
+          key: const ValueKey('newsletter-assets-library'),
+          onPressed: editable
+              ? () => _chooseFromLibrary(context, into())
+              : null,
+          icon: const Icon(Icons.photo_library_outlined, size: 18),
+          label: const Text('Browse library'),
+        ),
+        const SizedBox(height: Studio.grid),
+        Text(
+          'Browse, drop or paste a picture in the upload panel. It is stored '
+          'for this company and the email links to its shared address.',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The library: Blocks (with layers), Assets, Brand and Saved.
   Widget _leftPanel(BuildContext context, {required bool wrap}) {
     final api = widget.api;
+    final theme = Theme.of(context);
     final tabs = SegmentedButton<String>(
       key: const ValueKey('newsletter-left-tabs'),
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
       segments: [
-        const ButtonSegment(value: 'add', label: Text('Add')),
+        const ButtonSegment(value: 'add', label: Text('Blocks')),
+        if (api != null)
+          const ButtonSegment(value: 'assets', label: Text('Assets')),
         if (api != null && widget.onBrand != null)
           const ButtonSegment(value: 'brand', label: Text('Brand')),
         if (api != null) const ButtonSegment(value: 'saved', label: Text('Saved')),
@@ -1928,12 +2760,14 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       onSelectionChanged: (s) => setState(() => _leftTab = s.first),
     );
     final Widget body = switch (_leftTab) {
-      'brand' when api != null && widget.onBrand != null => NewsletterBrandPanel(
-        api: api,
-        applied: widget.brand,
-        locked: _locked,
-        onApply: widget.onBrand!,
-      ),
+      'assets' when api != null => _assets(context),
+      'brand' when api != null && widget.onBrand != null =>
+        NewsletterBrandPanel(
+          api: api,
+          applied: widget.brand,
+          locked: _locked,
+          onApply: widget.onBrand!,
+        ),
       'saved' when api != null => NewsletterSavedPanel(
         sections: _sections,
         locked: _locked || _htmlMode,
@@ -1949,9 +2783,23 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!wrap)
+          Row(
+            children: [
+              Expanded(
+                child: Text('Library', style: theme.textTheme.titleMedium),
+              ),
+              IconButton(
+                key: const ValueKey('newsletter-palette-toggle'),
+                tooltip: 'Hide library',
+                onPressed: () => setState(() => _paletteOpen = false),
+                icon: const Icon(Icons.view_sidebar_outlined, size: 18),
+              ),
+            ],
+          ),
         if (api != null) ...[
           FittedBox(fit: BoxFit.scaleDown, child: tabs),
-          const SizedBox(height: 10),
+          const SizedBox(height: Studio.grid * 1.5),
         ],
         body,
       ],
@@ -1996,37 +2844,34 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   Widget _email(BuildContext context, {required bool bounded}) {
     final theme = Theme.of(context);
+    final device = _phone
+        ? 'phone'
+        : _fit
+        ? 'fit'
+        : 'desktop';
     final controls = Wrap(
-      spacing: 8,
+      spacing: Studio.grid,
       runSpacing: 6,
-      alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        // Designing, not previewing (P1b): Mobile edits the phone overrides
+        // Designing, not previewing (P1b): Phone edits the phone overrides
         // the email carries. Preview & test is where the recipient's copy is.
-        SegmentedButton<bool>(
+        StudioDeviceToggle(
           key: const ValueKey('newsletter-device'),
-          segments: const [
-            ButtonSegment(
-              value: false,
-              label: Text('Desktop'),
-              icon: Icon(Icons.desktop_windows_outlined, size: 16),
-            ),
-            ButtonSegment(
-              value: true,
-              label: Text('Mobile'),
-              icon: Icon(Icons.phone_iphone, size: 16),
-            ),
-          ],
-          selected: {_phone},
-          onSelectionChanged: (s) => setState(() => _phone = s.first),
-          showSelectedIcon: false,
+          keyPrefix: 'newsletter-canvas',
+          withFit: true,
+          value: device,
+          onChanged: (v) => setState(() {
+            _phone = v == 'phone';
+            _fit = v == 'fit';
+          }),
         ),
         if (_phone) ...[
           for (final w in const [320.0, 375.0, 414.0])
             ChoiceChip(
               key: ValueKey('newsletter-device-${w.toInt()}'),
               label: Text('${w.toInt()}'),
+              visualDensity: VisualDensity.compact,
               selected: _deviceWidth == w,
               onSelected: (_) => setState(() => _deviceWidth = w),
             ),
@@ -2040,6 +2885,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           FilterChip(
             tooltip: 'Shows the email exactly as the server will send it',
             label: const Text('Server preview'),
+            visualDensity: VisualDensity.compact,
             selected: _serverPreview,
             onSelected: (on) => setState(() {
               _serverPreview = on;
@@ -2057,7 +2903,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           ? Expanded(child: _serverView())
           : SizedBox(height: 520, child: _serverView());
     } else {
-      final email = NewsletterEmail(
+      Widget email = NewsletterEmail(
         blocks: widget.blocks,
         company: widget.company,
         phone: _phone,
@@ -2070,38 +2916,120 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         onReorder: _locked ? null : _move,
         onDropNew: _locked ? null : _add,
       );
+      if (_fit && !_phone) {
+        // The 600px email scaled to the canvas width.
+        email = FittedBox(
+          key: const ValueKey('newsletter-canvas-fitted'),
+          fit: BoxFit.fitWidth,
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: NewsletterEmail.desktopWidth + 36,
+            child: email,
+          ),
+        );
+      }
+      email = Padding(
+        padding: const EdgeInsets.symmetric(vertical: Studio.grid * 2),
+        child: email,
+      );
       body = bounded
           ? Expanded(child: SingleChildScrollView(child: email))
           : email;
     }
 
+    final where = _htmlMode
+        ? 'Custom HTML'
+        : _serverPreview
+        ? 'Server preview'
+        : _phone
+        ? 'Phone · ${_deviceWidth.toInt()}px'
+        : _fit
+        ? 'Fit'
+        : 'Desktop · 600px';
+
+    final toolbar = Container(
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Studio.grid * 1.5,
+        vertical: 6,
+      ),
+      child: Wrap(
+        spacing: Studio.grid * 2,
+        runSpacing: 6,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Email canvas',
+                  style: theme.textTheme.titleSmall,
+                ),
+                TextSpan(
+                  text: '  /  $where',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          controls,
+        ],
+      ),
+    );
+
     return Container(
       key: const ValueKey('tour-newsletter-email'),
-      color: theme.colorScheme.surfaceContainerLowest,
-      padding: EdgeInsets.all(bounded ? 12 : 0),
+      color: Studio.canvas(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          _modeBar(context),
-          const SizedBox(height: 8),
-          controls,
-          const SizedBox(height: 8),
-          if (_importing && !_locked) ...[
-            NewsletterImportPanel(
-              api: widget.api,
-              rasterise: widget.rasterise,
-              onUseHtml: _useHtml,
-              onUseBlocks: _useBlocks,
-              onClose: () => setState(() => _importing = false),
-              newsletterId: widget.newsletterId,
-              subject: widget.subject.text,
-              onBeforeApply: _beforeImport,
-              onSavedAsNew: widget.onImportedAsNew,
+          toolbar,
+          Divider(height: 1, color: Studio.line(context)),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              bounded ? 12 : 0,
+              8,
+              bounded ? 12 : 0,
+              0,
             ),
-            const SizedBox(height: 10),
-          ],
-          body,
+            child: _modeBar(context),
+          ),
+          if (_importing && !_locked)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                bounded ? 12 : 0,
+                8,
+                bounded ? 12 : 0,
+                0,
+              ),
+              child: NewsletterImportPanel(
+                api: widget.api,
+                rasterise: widget.rasterise,
+                onUseHtml: _useHtml,
+                onUseBlocks: _useBlocks,
+                onClose: () => setState(() => _importing = false),
+                newsletterId: widget.newsletterId,
+                subject: widget.subject.text,
+                onBeforeApply: _beforeImport,
+                onSavedAsNew: widget.onImportedAsNew,
+              ),
+            ),
+          if (_htmlMode && bounded)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [body],
+                ),
+              ),
+            )
+          else
+            body,
         ],
       ),
     );
@@ -2424,7 +3352,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Container(
       key: const ValueKey('newsletter-inspector'),
       color: theme.colorScheme.surface,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       child: KeyedSubtree(
         key: ValueKey('inspector-${widget.historyGeneration}-$i-${identityHashCode(block)}'),
         child: Column(
@@ -2432,13 +3360,10 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           children: [
             Row(
               children: [
-                Icon(kind?.icon ?? Icons.help_outline, size: 18),
-                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '${kind?.label ?? (block['type'] == 'section_ref' ? 'Linked section' : block['type'] as String? ?? 'Block')} '
-                    '${_phone ? 'mobile settings' : 'settings'}',
-                    style: theme.textTheme.titleSmall,
+                    _phone ? 'Block settings · phone' : 'Block settings',
+                    style: theme.textTheme.titleMedium,
                   ),
                 ),
                 IconButton(
@@ -2448,6 +3373,36 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                   icon: const Icon(Icons.close, size: 18),
                 ),
               ],
+            ),
+            Container(
+              key: const ValueKey('newsletter-inspector-kind'),
+              margin: const EdgeInsets.only(top: 4, bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer.withValues(
+                  alpha: 0.45,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    kind?.icon ?? Icons.link,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      kind?.label ??
+                          (block['type'] == 'section_ref'
+                              ? 'Linked section'
+                              : block['type'] as String? ?? 'Block'),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              ),
             ),
             if (_namingSection == i) _sectionForm(i),
             if (isHandWritten(block))
@@ -2460,6 +3415,40 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               ..._mobileFields(block, kind)
             else
               ..._fieldsFor(context, block, kind),
+            const SizedBox(height: 16),
+            Divider(height: 1, color: Studio.line(context)),
+            const SizedBox(height: 8),
+            Text('Block controls', style: theme.textTheme.labelMedium),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-inspector-up'),
+                  onPressed: i == 0 ? null : () => _move(i, i - 1),
+                  icon: const Icon(Icons.arrow_upward, size: 16),
+                  label: const Text('Move up'),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-inspector-down'),
+                  onPressed: i >= widget.blocks.length - 1
+                      ? null
+                      : () => _move(i, i + 1),
+                  icon: const Icon(Icons.arrow_downward, size: 16),
+                  label: const Text('Move down'),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-inspector-remove'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: () => _remove(i),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Remove block'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -2999,6 +3988,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// How many pictures were chosen from the library; keys the address field.
   int _picks = 0;
 
+  /// The last upload into this block failed: why, with Retry beside it.
+  ({Map<String, dynamic> block, String reason})? _uploadFailed;
+
   /// The image block's inspector (newsletter P0, 2026-11-17): Upload images
   /// and Browse library at once on an empty block; Replace on a full one
   /// (cancelling keeps the picture); alt text or Decorative; link;
@@ -3029,13 +4021,50 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                   icon: const Icon(Icons.photo_library_outlined, size: 18),
                   label: const Text('Browse library'),
                 ),
-              ] else
+              ] else ...[
                 OutlinedButton.icon(
                   key: const ValueKey('newsletter-image-replace'),
                   onPressed: () => _chooseFromLibrary(context, block),
                   icon: const Icon(Icons.swap_horiz, size: 18),
                   label: const Text('Replace'),
                 ),
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-image-upload-new'),
+                  onPressed: () =>
+                      _chooseFromLibrary(context, block, upload: true),
+                  icon: const Icon(Icons.upload, size: 18),
+                  label: const Text('Upload new'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      if (_uploadFailed != null && identical(_uploadFailed!.block, block))
+        Padding(
+          key: const ValueKey('newsletter-image-failed'),
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 16,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _uploadFailed!.reason.isEmpty
+                      ? 'The upload failed. The picture you had is kept.'
+                      : '${_uploadFailed!.reason} The picture you had is kept.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('newsletter-image-retry'),
+                onPressed: () =>
+                    _chooseFromLibrary(context, block, upload: true),
+                child: const Text('Retry'),
+              ),
             ],
           ),
         ),
@@ -3219,12 +4248,12 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       reason = response.reason;
     }
     if (url == null) {
-      ScaffoldMessenger.maybeOf(
-        this.context,
-      )?.showSnackBar(SnackBar(content: Text(reason)));
+      // The prior picture stays; retry is offered in place.
+      setState(() => _uploadFailed = (block: block, reason: reason));
       return;
     }
     setState(() {
+      _uploadFailed = null;
       block['src'] = url;
       // A new picture starts uncropped.
       block.remove('original_src');
