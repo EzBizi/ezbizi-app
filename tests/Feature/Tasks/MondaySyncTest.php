@@ -123,6 +123,32 @@ class MondaySyncTest extends TestCase
         $this->assertSame(3, $this->inTenant($this->tenant['org'], fn () => Task::query()->whereNotNull('external_ref')->count()));
     }
 
+    /** Desk 11-18: a task moved to another board here stopped 29 syncs ("no column called <Area id>"). */
+    public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
+    {
+        $elsewhere = $this->inTenant($this->tenant['org'], function () {
+            $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id]);
+
+            return $b;
+        });
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $board = $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer again', '2026-11-12T12:00:00Z', ['status' => 'Done']),
+            $this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z'),
+        ]);
+        $board['columns'][] = ['id' => 'area', 'title' => 'Area', 'type' => 'status', 'settings_str' => json_encode(['labels' => ['0' => 'North']])];
+        foreach ($board['items'] as &$i) {
+            $i['column_values'][] = ['id' => 'area', 'type' => 'status', 'text' => 'North', 'label' => 'North', 'index' => 0, 'value' => json_encode(['index' => 0])];
+        }
+        unset($i);
+        $this->monday['boards'] = ['100' => $board];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertSame($elsewhere->id, $this->task('11')->board_id);
+        $this->assertNotNull($this->task('12'), 'the next item still arrived');
+    }
+
     /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */
     public function test_someone_who_joins_later_gets_the_branch_boards_monday_shares_with_them(): void
     {
