@@ -1587,7 +1587,7 @@ void main() {
           return _json({
             'data': [_landed('awaiting_approval')],
             'meta': {
-              'tiles': {'scheduled': 1, 'sent': 0, 'failed': 0, 'awaiting': 1},
+              'tiles': {'scheduled': 0, 'sent': 0, 'failed': 0, 'awaiting': 1},
             },
           });
         }
