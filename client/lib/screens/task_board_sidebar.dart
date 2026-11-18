@@ -434,10 +434,11 @@ class _BoardTreeState extends State<BoardTree> {
     store.writeItem('${widget.storeKey}_collapsed', '$to', persist: true);
   }
 
+  // The board's own name, as stored (Monday's, desk 11-18): never the owner's.
   String _name(Map<String, dynamic> b) => b['kind'] != 'user'
       ? '${b['name']}'
       : b['section'] == 'everyone' || b['section'] == 'shared'
-      ? "${_owner(b) ?? 'Someone'}'s board"
+      ? '${b['name'] ?? "${_owner(b) ?? 'Someone'}'s board"}'
       : 'My board';
 
   String? _owner(Map<String, dynamic> b) =>
@@ -634,16 +635,20 @@ class _BoardTreeState extends State<BoardTree> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      from == null ? text : '$text · from $from',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: on
-                          ? TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            )
-                          : null,
+                    // The owner is a tooltip, never part of the name (desk 11-18).
+                    child: Tooltip(
+                      message: from == null ? '' : 'Owner: $from',
+                      child: Text(
+                        text,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: on
+                            ? TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                   if ((b['open_for_me'] ?? 0) != 0)
@@ -904,11 +909,11 @@ class _BoardTreeState extends State<BoardTree> {
 
     final rows = <Widget>[
       if (personal >= 0 && matches(personal))
-        board(personal, label: 'My Board'),
+        board(personal, label: 'Personal Task Board'),
       if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('shared', 'Shared with me', asHeader: true, [
+      ...group('shared', 'Team boards', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),
@@ -918,7 +923,7 @@ class _BoardTreeState extends State<BoardTree> {
         asHeader: true,
         _folderRows(context, null, 0, (i, x) => board(i, indent: x), matches),
       ),
-      ...group('companies', 'Companies', asHeader: true, companyRows),
+      ...group('companies', 'All markets', asHeader: true, companyRows),
       ...group('everyone', "Everyone's boards", asHeader: true, [
         for (final person in names)
           ...group(

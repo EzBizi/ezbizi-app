@@ -583,6 +583,8 @@ class RetentionTest extends TestCase
                 .'the rename migration, which exists so the two can never be confused.',
             'job_batches' => 'queue batch bookkeeping, pruned by queue:prune-batches',
             'failed_jobs' => 'failed queue payloads, pruned by queue:prune-failed',
+            'workiz_job_flags' => 'which Workiz jobs were already flagged, keyed to the mirror row and '
+                .'deleted with it (cascade); no person in it',
 
             'password_reset_tokens' => 'Laravel\'s email-keyed reset table, which this '
                 .'application does not use: an address is not an account here (§4.3), so '

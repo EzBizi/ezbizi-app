@@ -303,6 +303,8 @@
             "label": "Project Management",
             "parent": null,
             "tabs": [
+                "Dashboard",
+                "Inbox",
                 "Unscheduled",
                 "Ready to Schedule",
                 "Scheduled",
@@ -648,6 +650,7 @@
         "scheduling.edit",
         "scheduling.helpers.view",
         "scheduling.locations.view",
+        "scheduling.overbook",
         "scheduling.rescheduling.view",
         "scheduling.routing.view",
         "scheduling.schedule.view",

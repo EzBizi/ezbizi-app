@@ -20,6 +20,9 @@ Artisan::command('inspire', function () {
  * Cheap to run often because it says each one ONCE — `went_quiet_at` is what
  * stops an hourly sweep becoming an hourly alert.
  */
+Schedule::command('ezbizi:flag-workiz-jobs')->everyFifteenMinutes()->withoutOverlapping(14);
+// A Workiz job booked into a full window (Jose / desk, 2026-11-17).
+Schedule::command('scheduling:flag-full-windows')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
@@ -34,6 +37,10 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
 // Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
+// Project Management: parts 3 days late, and part reminders due (Jose, 2026-11-17).
+Schedule::command('ezbizi:project-board-part-alerts')->everyFifteenMinutes()->withoutOverlapping(10);
+// Project Management client texts, each OFF until switched on (Jose, 2026-11-17).
+Schedule::command('ezbizi:project-board-client-messages')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
 // Every RingCentral account's finished days kept for the reports, so a week or
@@ -204,6 +211,8 @@ Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(2
 Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
+// Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
+Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
@@ -502,6 +511,8 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 
 // Task Board: a task past its due date raises task.overdue, once per task.
 Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+// Task Board: the board rules' week, moved and flagged by person, to Administrators (Jose 11-17).
+Schedule::command('ezbizi:tasks-misfiled-report')->weeklyOn(1, '09:00')->timezone('America/New_York');
 // Task Board: a due date or date column that is today/tomorrow raises task.date_arrived, once per date
 // (Monday's "when Date arrives"; the rule's delay picks the hour).
 Schedule::command('ezbizi:tasks-dates-arrived')->hourlyAt(2)->withoutOverlapping(30);
@@ -528,7 +539,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity)(\s|\'|$)/',
         (string) $event->command,
     );
     $event->when(function () use ($slow) {

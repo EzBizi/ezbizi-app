@@ -37,6 +37,20 @@ void main() {
       expect(find.text('Chimney Sweep'), findsNothing);
     });
 
+    // Design 197 (Jose, 2026-11-17): booking as its own Jobs tab.
+    testWidgets('Book is a tab for whoever may add a job, and opens the page', (
+      tester,
+    ) async {
+      await _jobs(tester, _all);
+      expect(find.text('Book'), findsNothing, reason: 'no jobs.create');
+
+      await _jobs(tester, [..._all, 'jobs.create']);
+      await tester.tap(find.text('Book'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('book-page')), findsOneWidget);
+      expect(find.byKey(const ValueKey('book-submit')), findsOneWidget);
+    });
+
     // UI pass 2026-11-17: on Estimates the header still said "Add job"
     // (the Jobs tab, offstage, kept the slot) beside an inline "New
     // estimate". Only the tab in front fills the header.

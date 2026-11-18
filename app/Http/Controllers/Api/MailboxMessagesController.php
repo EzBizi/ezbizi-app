@@ -1024,6 +1024,7 @@ class MailboxMessagesController extends Controller
 
     private function assertMayRead(User $user, Mailbox $mailbox, string $act): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->readRefusal($user, $mailbox, $act);
 
         abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);

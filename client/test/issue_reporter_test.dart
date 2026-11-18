@@ -144,7 +144,9 @@ void main() {
 
     IssueReporter.module = 'scheduling';
     reporter.startWatchdogs();
-    await Future<void>.delayed(const Duration(milliseconds: 7600)); // one ping at 5 s, 2.3 s slow
+    // One ping at 5 s, answered 2.3 s late. ponytail: real timers; 9.5 s leaves 2.2 s for a
+    // loaded release machine (7.6 s left 0.3 s and failed the 0595 cut).
+    await Future<void>.delayed(const Duration(milliseconds: 9500));
     reporter.dispose();
 
     final freezes = reporter.queued.where((q) => q['kind'] == 'freeze').toList();

@@ -150,7 +150,7 @@ void main() {
   testWidgets('the company button is named after the placement, and the '
       'highlight follows the board in view', (tester) async {
     await pumpBoard(tester);
-    expect(inQuick('My Board'), findsOneWidget);
+    expect(inQuick('Personal Task Board'), findsOneWidget);
     expect(inQuick('A-1 Chimney Board'), findsOneWidget);
     expect(inQuick('Northside Chimney Board'), findsNothing);
     expect(opened, ['b-me']);
@@ -167,7 +167,7 @@ void main() {
     expect(opened.last, 'b-other');
     expect(lit(tester), isEmpty);
 
-    await tester.tap(inQuick('My Board'));
+    await tester.tap(inQuick('Personal Task Board'));
     await tester.pumpAndSettle();
     expect(opened.last, 'b-me');
     expect(lit(tester), {0});
@@ -184,7 +184,7 @@ void main() {
   testWidgets('at the organization the button is hidden, or is the '
       'organization board when it keeps one', (tester) async {
     await pumpBoard(tester, scope: 'organization', scopeId: 'org-1');
-    expect(inQuick('My Board'), findsOneWidget);
+    expect(inQuick('Personal Task Board'), findsOneWidget);
     expect(inQuick('A-1 Chimney Board'), findsNothing);
     expect(inQuick('Northside Chimney Board'), findsNothing);
 
@@ -203,7 +203,7 @@ void main() {
 
   testWidgets('a company without a board has no button', (tester) async {
     await pumpBoard(tester, scopeId: 'c-2', boards: [standard[0], standard[1]]);
-    expect(inQuick('My Board'), findsOneWidget);
+    expect(inQuick('Personal Task Board'), findsOneWidget);
     expect(inQuick('Northside Chimney Board'), findsNothing);
     expect(inQuick('A-1 Chimney Board'), findsNothing);
   });
@@ -223,7 +223,7 @@ void main() {
         ),
     ];
     await pumpBoard(tester, boards: many);
-    for (final name in ['My Board', 'A-1 Chimney', 'Boston', 'Branch 5']) {
+    for (final name in ['Personal Task Board', 'A-1 Chimney', 'Boston', 'Branch 5']) {
       expect(find.text(name), findsWidgets, reason: name);
     }
     await tester.enterText(

@@ -122,7 +122,7 @@ final class WebsiteEnquiries
 
         if ($event !== null && AutomationEvent::withoutGlobalScopes()->whereKey($event->getKey())
             ->whereNull('queued_at')->update(['queued_at' => now()]) === 1) {
-            DeliverAutomationEvent::dispatch($event->getKey());
+            DeliverAutomationEvent::queueFor($event);
         }
     }
 

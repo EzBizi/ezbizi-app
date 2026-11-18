@@ -3,6 +3,22 @@
 Jose's name for it (2026-11-13): every mistake the deploy desk made, so it is never made twice.
 Newest first. Each entry: what happened, what it cost, the rule that stops it.
 
+## 2026-11-17 — Changed a status code and checked only the callers, not the tests that pin it
+- **What:** Roles & Permissions turned out-of-reach mailboxes from 403 into 404 (eee9c0ae2). It grepped MailboxAccess callers and ran only its own new test. Two MailboxMessagesApiTest tests still asserted the 403, and main went red under the 0.0.0589 cut.
+- **Rule:** when a change alters a status code or a message, grep tests/ for the route and for the old assertion (`assertForbidden` on that path), and run every test file naming the route before handing over the SHA.
+
+## 2026-11-17 — Told Jose the video "will be sent" and never checked it was
+- **What:** I handed the training video to Meta to send "once the template is approved". Meta left it PENDING for 5.5h and nothing went out. Jose had to ask; neither he nor Eve had it. An already-approved UTILITY template (automation_alert) could have sent it at once.
+- **Rule:** never park a send on a third-party approval. Use an approved path first and treat the new one as optional. If anything is pending for Jose, set a check (Monitor or cron) on its delivered status and report the outcome, not the plan.
+
+## 2026-11-17 — Release script derived two versions back: 0588 ran under 0587's names
+- **What:** I made q0588.sh from q0586.sh with `s/0587/0588; s/0586/0587`. It is two versions back, so every name became 0587. The 0588 cut deleted and re-created the cut-0587 worktree at 0588's SHA while 0587's Windows build was still using it. Windows published 0.0.0588 about an hour before the 0588 server, and 0587's own Windows build never shipped.
+- **Rule:** derive qN only from q(N-1) with `s/(N-1)/N; s/(N-2)/(N-1)`. Then grep the new script: every cut-/rel-/precheck- name must be N. Never edit a running qNNNN.sh in place; bash reads the edited bytes.
+
+## 2026-11-17 — UI/UX: a spinner in a shared widget blocked release 0.0.0592
+- **What:** the Book panel's new availability grid drew an endless LinearProgressIndicator while its data was not a Map. A new test on main (book_job_entry_points_test) stubbed every path with `[]`, so pumpAndSettle hung and the precheck failed. My full gate had run before that test landed.
+- **Rule:** a widget that every screen can open never animates while waiting (use words), and any answer it cannot read is a final state, not "still loading".
+
 ## 2026-11-17 — PPC by number dialed: measured the wrong line and told Jose it was impossible
 - **What:** Jose asked to set source PPC when the number dialed is PPC. Automations measured Workiz `to_number` lines and Google Ads call assets, found every line mixed, and I told Jose it could not work and offered to buy tracking numbers. I also passed on an unmeasured claim ("PPC callers dial the website number"). Our own Reports › Jobs › Number dialed column already shows the RingCentral line names ("NJ - PPC", "CT - PPC").
 - **Rule:** before saying a field can't be derived, open the screen that already shows it. The RingCentral line name decides the dialed source. Only state a cause that someone measured.
@@ -62,3 +78,6 @@ Newest first. Each entry: what happened, what it cost, the rule that stops it.
 - Test job edited only in EzBizi instead of created through the normal path (Jose: "it needs to be as if it was a real job… copy on workiz too").
 - `git add` + commit took a peer's staged deletions (3aaa977c1) → always path-limited commits.
 - A kill on the box matched my own ssh command (pgrep on the SHA) → grep the gate-run path, kill by PID.
+- 2026-11-18 (Automations): asked to recover ONE lost complaint task, replayed every failed run of the complaint rules back to October: 22 stale tasks + 22 bells (Adeline 18, Natalie 4), pushes may have gone out. Undone (TaskWriter delete, bells removed, dumps /tmp/autom-replay-*.json). Rule: a replay names its rows by id first; dry-run the list, then run only those.
+- 2026-11-18 (desk + Task Board): Monday push created items with no group_id when Monday had no group of that name. Monday puts those in "the first active group", so about 110 EzBizi tasks landed in "Company Info" on the 9 branch boards and Eve thought her groups were being merged. Jose: "i don't want you Half Assing stuff… research, investigate". Also, my parity check only compared item ids, not each item's group, and missed it. Rules: read the Monday API reference before any Monday write; create_item always carries group_id; create_group needs relative_to (it otherwise goes to the top); never delete_group or delete_item; parity compares the group of every item and the board names. Push paused via its scheduler mutex until the fix ships.
+- 2026-11-18 (Task Board): the job-id backfill wrote through TaskWriter::update, which emits task.column_changed and records outbox rows per task: 9,282 automation events queued ahead of real missed calls and leads (no missed-call tasks after 15:50) and 5,130 outbox rows, and the dump would only have been written at the end. Killed on the desk's call. Rule: a bulk backfill writes rows directly, with no events and no outbox, in batches with a dump per batch, and its first batch's event and outbox counts are read before the rest runs.

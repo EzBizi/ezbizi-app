@@ -1,0 +1,356 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marketing › Social planner</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). Every post, account and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1080px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1100px}
+.cap b{color:var(--ink)}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:760px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column;position:relative}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.sp-page{flex:1;min-width:0;overflow:hidden;padding:14px 20px;display:flex;flex-direction:column;gap:10px}
+.sp-title{font-size:20px;font-weight:800;line-height:1.2}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.sm{height:26px;font-size:11.5px;padding:0 9px}
+.btn.ic{width:32px;padding:0}
+.badge{background:var(--pric);color:var(--prid);border-radius:999px;font-size:10.5px;padding:0 6px;font-weight:700}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)} .p-pri{background:var(--pric);color:var(--prid)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.row{display:flex;gap:8px;align-items:center;min-width:0}
+.in{min-height:32px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 9px;display:flex;align-items:center;gap:6px;background:var(--paper);font-size:12px;min-width:0;white-space:nowrap;overflow:hidden}
+.in .ph{color:#8a969e}
+.in.q::before{content:"⌕";color:var(--muted);font-size:14px}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:var(--r);overflow:hidden}
+.seg span{padding:0 8px;height:30px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;color:var(--neu)}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--neu);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+/* month grid */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);flex:1;min-height:0;grid-template-rows:auto repeat(5,minmax(0,1fr))}
+.cal .h{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#fafcfd}
+.cal .d{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden;background:var(--paper)}
+.cal .d .n{font-size:11px;font-weight:700}
+.cal .d.o{background:#f7f9fa}.cal .d.o .n{color:#a3adb4}
+.cal .d.t .n{background:var(--pri);color:#fff;border-radius:6px;padding:0 5px;align-self:flex-start}
+.cal .d .more{font-size:10.5px;font-weight:700;color:var(--pri)}
+.ev{border-left:3px solid;border-radius:5px;padding:2px 5px;font-size:10.5px;line-height:1.25;min-width:0}
+.ev b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--ink)}
+.ev i{font-style:normal;font-weight:700;font-size:9.5px}
+.ev.s{background:#eef6f9;border-color:var(--pri)} .ev.s i{color:var(--prid)}
+.ev.p{background:var(--okc);border-color:var(--ok)} .ev.p i{color:var(--ok)}
+.ev.a{background:var(--cauc);border-color:#c48a1a} .ev.a i{color:var(--cau)}
+.ev.x{background:var(--badc);border-color:var(--bad)} .ev.x i{color:var(--bad)}
+.ev.dr{background:var(--neuc);border-color:#7d8a94} .ev.dr i{color:var(--neu)}
+.ev.sel{outline:2px solid var(--pri);outline-offset:1px}
+.foot{display:flex;font-size:11px;color:var(--muted);padding-top:6px}
+/* inspector */
+.insp{width:360px;flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.insp .hd{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.insp .bd{padding:12px 14px;display:flex;flex-direction:column;gap:9px;flex:1;min-height:0;overflow:hidden}
+.insp .ft{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px}
+.ttl{font-size:17px;font-weight:800;line-height:1.25}
+.chtabs{display:flex;gap:6px;flex-wrap:wrap}
+.chtabs span{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--neu);display:inline-flex;gap:5px;align-items:center}
+.chtabs span.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.prev{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:11.5px}
+.prev .ph1{display:flex;gap:8px;align-items:center;padding:8px 10px}
+.prev .ph1 .lg{width:26px;height:26px;border-radius:6px;background:var(--ink);color:#fff;font-weight:800;font-size:10px;display:flex;align-items:center;justify-content:center}
+.img{background:linear-gradient(135deg,#334b55 0,#5e7e89 45%,#e3a548 46%,#e3a548 58%,#2b3a41 59%);height:150px}
+.img.sm{height:96px}
+.prev .tx{padding:8px 10px;color:#2b3a41}
+.prev .ln{padding:0 10px 8px;display:flex;font-weight:700;color:var(--pri);font-size:11px}
+.note{border-radius:8px;padding:8px 10px;font-size:11.5px}
+.note.cau{background:var(--cauc);color:var(--cau)} .note.bad{background:var(--badc);color:var(--bad)}
+.drawer{position:absolute;top:40px;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.14);display:flex;flex-direction:column}
+.drawer .hd{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.drawer .bd{padding:12px 16px;display:flex;flex-direction:column;gap:9px;flex:1;overflow:hidden}
+.drawer .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.scrim{position:absolute;inset:40px 0 0 0;background:rgba(6,8,8,.18)}
+.att{border:1px solid var(--line);border-radius:var(--r);background:var(--paper);display:flex;flex-direction:column}
+.att .r{display:flex;gap:8px;align-items:center;padding:7px 10px;border-top:1px solid var(--line);font-size:11.5px}
+.att .r:first-of-type{border-top:0}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.ta{min-height:86px;align-items:flex-start;white-space:normal}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.agl{display:flex;flex-direction:column;gap:6px}
+.agl .dh{font-size:11px;font-weight:800;color:var(--neu);margin-top:6px}
+.ag{display:flex;gap:8px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:7px 9px;min-width:0}
+.ag .th{width:40px;height:40px;border-radius:7px;flex:0 0 auto}
+.ag .tx2{min-width:0;flex:1}.ag .tx2 b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.ag.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:26px;background:var(--paper);flex:0 0 auto}
+.phn .ab{height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.phn .ab .pt{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:10px}
+.fab{position:absolute;right:16px;bottom:18px;height:48px;padding:0 18px;border-radius:14px;background:var(--pri);color:#fff;font-weight:700;display:flex;align-items:center;gap:6px;box-shadow:0 6px 16px rgba(0,112,143,.35)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wk span{border-radius:8px;padding:4px 0;text-align:center;font-size:11px;font-weight:700;background:var(--paper);border:1px solid var(--line);line-height:1.2;min-height:44px;display:flex;flex-direction:column;justify-content:center}
+.wk span small{display:block;font-weight:500;font-size:9.5px;color:var(--muted)}
+.wk span.on{background:var(--pri);color:#fff;border-color:var(--pri)} .wk span.on small{color:#d6edf5}
+.wk span em{font-style:normal;font-size:8px;color:var(--pri)}
+.wk span.on em{color:#fff}
+.mini{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11px}
+.mini b{font-size:9.5px;color:var(--muted)}
+.mini span{height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-weight:600}
+.mini span i{display:flex;gap:2px;height:5px}
+.mini span i u{width:5px;height:5px;border-radius:50%;display:block}
+.mini span.on{background:var(--pri);color:#fff}
+.mini span.o{color:#b5bec4}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.15);padding:8px 14px 16px;display:flex;flex-direction:column;gap:8px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:#c9d4d9;align-self:center}
+.need{display:flex;gap:6px;align-items:center;background:var(--cauc);color:var(--cau);border-radius:9px;padding:7px 10px;font-size:11.5px;font-weight:600}
+</style>
+<div class="wrap">
+<h1>199 · Marketing › Social: a calendar-first planner</h1>
+<p class="sub">Rodrigo's suggestions 01a1ef71 + 01a1ef57, both approved. Today Social is six nested tabs (Dashboard, Compose, Calendar, Accounts, Comments, QR Codes). They become one workspace that opens on the calendar. <b>New post</b> opens the composer with a live preview beside it. Clicking a post opens its proof, per channel, next to the grid. <b>Comments</b>, <b>Connections</b> and <b>QR codes</b> open as drawers that leave the calendar exactly where it was. A post sits on a day only when it has a real saved send time, a confirmed publish, or a labelled <i>Planned</i> time. A draft with no time goes in <b>Needs attention</b>, never on its created date. The composer is a wide side panel, not a modal (house rule: no modal dialogs). Company · Branch picker and search are on every option.</p>
+
+<!-- ============ 1 ============ -->
+<h2><span class="n">1</span> Calendar + docked inspector <span class="rec">Recommended</span></h2>
+<p class="cap">Rodrigo's own reference, rebuilt in EzBizi's chrome. The <b>month grid gets the stage</b>; the selected post opens in a <b>360 px inspector on the right</b>, and the grid stays visible and clickable. The toolbar has, left to right: ‹ › Today and the range; Month · Week · Agenda; one filter group (channel, status) and search. The page header holds Comments (its count is unreplied comments only), Connections (a dot when one needs attention), QR codes, and <b>New post</b>. The legend counts come from the same filtered list the grid draws, and <b>Needs attention</b> opens the undated drafts and approvals. The footer gives the timezone and the month's total. Under about 1,100 px the inspector overlays the grid instead of docking.</p>
+<div class="win"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="sp-page">
+ <div class="row"><div class="sp-title">Marketing</div><span class="sp"></span><div class="in" style="width:230px">A-1 Chimney · All branches ▾</div></div>
+ <div class="tabs"><span class="on">Social</span><span>Newsletter</span><span>Web Management</span><span>Ads</span></div>
+ <div class="row"><span class="b" style="font-size:15px">Social planner</span><span class="sp"></span><span class="btn">💬 Comments <span class="badge">8</span></span><span class="btn"><span class="dot" style="background:#c48a1a"></span> Connections</span><span class="btn">▦ QR codes</span><span class="btn f">＋ New post</span></div>
+ <div style="display:flex;gap:12px;flex:1;min-height:0">
+  <div class="card" style="flex:1;padding:10px 12px;gap:7px">
+   <div class="row"><span class="btn ic sm">‹</span><span class="btn ic sm">›</span><span class="btn sm">Today</span><span class="b" style="font-size:15px;white-space:nowrap">November 2026</span><span class="sp"></span><div class="in q" style="width:96px"><span class="ph">Search</span></div><div class="in">Filters · 0 ▾</div><div class="seg"><span class="on">Month</span><span>Week</span><span>Agenda</span></div></div>
+   <div class="legend"><span class="pill p-cau">⚑ Needs attention 3</span><span><i class="dot" style="background:var(--pri)"></i>Scheduled 4</span><span><i class="dot" style="background:var(--ok)"></i>Published 7</span><span><i class="dot" style="background:#c48a1a"></i>Planned 2</span><span><i class="dot" style="background:var(--bad)"></i>Failed 1</span></div>
+   <div class="cal">
+    <div class="h">SUN</div><div class="h">MON</div><div class="h">TUE</div><div class="h">WED</div><div class="h">THU</div><div class="h">FRI</div><div class="h">SAT</div>
+    <div class="d"><span class="n">1</span></div><div class="d"><span class="n">2</span></div><div class="d"><span class="n">3</span><div class="ev p"><i>G · 9:00 AM ✓</i><b>Chimney season starts</b></div></div><div class="d"><span class="n">4</span></div><div class="d"><span class="n">5</span><div class="ev p"><i>f · 11:15 AM ✓</i><b>Sweeping before the first fire</b></div></div><div class="d"><span class="n">6</span></div><div class="d"><span class="n">7</span><div class="ev p"><i>◎ · 9:30 AM ✓</i><b>Get to know your flue</b></div></div>
+    <div class="d"><span class="n">8</span></div><div class="d"><span class="n">9</span></div><div class="d"><span class="n">10</span><div class="ev p"><i>G · 10:00 AM ✓</i><b>Dry wood, cleaner fires</b></div></div><div class="d"><span class="n">11</span></div><div class="d"><span class="n">12</span><div class="ev p"><i>G · 12:00 PM ✓</i><b>Plan a home inspection</b></div><div class="ev p"><i>f · 3:00 PM ✓</i><b>Veterans Day thanks</b></div></div><div class="d"><span class="n">13</span></div><div class="d"><span class="n">14</span><div class="ev p"><i>◎ · 10:30 AM ✓</i><b>What a cap protects</b></div></div>
+    <div class="d"><span class="n">15</span></div><div class="d"><span class="n">16</span><div class="ev x"><i>f · 9:15 AM · Failed</i><b>Prep for colder nights</b></div></div><div class="d"><span class="n">17</span></div><div class="d t"><span class="n">18</span></div><div class="d"><span class="n">19</span><div class="ev s"><i>G · 8:00 AM</i><b>Inspection week</b></div><div class="ev s"><i>f · 9:00 AM</i><b>Inspection week</b></div><span class="more">+ 2 more</span></div><div class="d"><span class="n">20</span><div class="ev a sel"><i>G f · Planned 9:00 AM</i><b>Get your fireplace ready</b></div></div><div class="d"><span class="n">21</span></div>
+    <div class="d"><span class="n">22</span><div class="ev s"><i>G · 11:30 AM</i><b>Repair before the freeze</b></div></div><div class="d"><span class="n">23</span></div><div class="d"><span class="n">24</span></div><div class="d"><span class="n">25</span><div class="ev a"><i>◎ · Planned</i><b>Meet your chimney tech</b></div></div><div class="d"><span class="n">26</span></div><div class="d"><span class="n">27</span><div class="ev s"><i>G · 9:30 AM</i><b>Cold weather sweep tips</b></div></div><div class="d"><span class="n">28</span></div>
+    <div class="d"><span class="n">29</span><div class="ev s"><i>f · 11:30 AM</i><b>December booking opens</b></div></div><div class="d"><span class="n">30</span></div><div class="d o"><span class="n">1</span></div><div class="d o"><span class="n">2</span></div><div class="d o"><span class="n">3</span></div><div class="d o"><span class="n">4</span></div><div class="d o"><span class="n">5</span></div>
+   </div>
+   <div class="foot">🕘 Eastern time · America/New_York<span class="sp"></span>17 posts in November</div>
+  </div>
+  <div class="insp">
+   <div class="hd"><span class="tiny b">Post</span><span class="sp"></span><span class="btn ic sm">✕</span></div>
+   <div class="bd">
+    <span class="pill p-cau" style="align-self:flex-start">● Needs approval</span>
+    <div class="ttl">Get your fireplace ready</div>
+    <div class="tiny"><b style="color:var(--ink)">Planned · Fri, Nov 20 · 9:00 AM ET</b><br>A-1 Chimney · Fort Lauderdale</div>
+    <div class="chtabs"><span class="on">G Google Business · Needs approval</span><span>f Facebook · Draft</span></div>
+    <div class="prev"><div class="ph1"><span class="lg">A1</span><div><b>A-1 Chimney · Fort Lauderdale</b><div class="tiny">Google Business Profile · estimate of Google's layout</div></div></div><div class="img"></div><div class="tx">Before your first fire of the season, book a chimney inspection. We'll check the flue and get the fireplace ready for colder nights.</div><div class="ln">Learn more →<span class="sp"></span><span class="muted" style="font-weight:500">a-1chimney.com</span></div></div>
+    <div class="note cau"><b>Approval needed.</b> This time is only planned. Approve this Google target to schedule it.</div>
+   </div>
+   <div class="ft"><span class="btn">✎ Edit</span><span class="btn">Reschedule</span><span class="sp"></span><span class="btn f">Approve Google</span></div>
+  </div>
+ </div>
+</div></div></div>
+
+<p class="cap" style="margin-top:18px"><b>1 · New post:</b> a wide side panel with the editor on the left and the live preview on the right. Each chosen destination gets its own preview tab, and character and media limits follow it. Opened from a day's <b>＋</b>, the date is filled in and the time is left empty. The footer offers Save draft, Ask approval, and Schedule (or Publish now). Schedule names the exact destinations and time before it sends. Nothing closes on an error, and a draft that hasn't been saved asks before it's discarded.</p>
+<div class="win" style="height:600px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="scrim"></div>
+ <div class="drawer" style="width:940px">
+  <div class="hd"><span class="b" style="font-size:15px">New post</span><span class="tiny">Write once, preview each destination</span><span class="sp"></span><span class="btn ic sm">✕</span></div>
+  <div style="display:grid;grid-template-columns:1fr 400px;flex:1;min-height:0">
+   <div class="bd" style="border-right:1px solid var(--line)">
+    <div class="fld"><label>Destinations</label><div class="in"><span class="pill p-pri">G A-1 · Fort Lauderdale ✕</span><span class="pill p-pri">f A-1 Chimney ✕</span><span class="ph">Add account or location…</span></div></div>
+    <div class="fld"><label>Caption <span class="muted" style="font-weight:500">· 142 / 1,500 (Google)</span></label><div class="in ta">A fresh season starts with a clean fireplace. Ask our team about a chimney inspection before your next fire.</div></div>
+    <div class="g2"><div class="fld"><label>Media</label><div class="in">🖼 inspection-crew.jpg · Library · Upload</div></div><div class="fld"><label>Button</label><div class="in">Learn more ▾ · a-1chimney.com</div></div></div>
+    <div class="g2"><div class="fld"><label>Date</label><div class="in">Fri, Nov 20, 2026</div></div><div class="fld"><label>Time · Eastern</label><div class="in"><span class="ph">Not set</span></div></div></div>
+    <div class="tiny">Facebook is connected but needs a permission review; it will be held until it's reconnected. <a style="color:var(--pri);font-weight:700">Open Connections</a></div>
+   </div>
+   <div class="bd" style="background:#f1f6f8">
+    <div class="row"><span class="tiny b">Live preview</span><span class="sp"></span><div class="chtabs"><span class="on">Google</span><span>Facebook</span></div></div>
+    <div class="prev" style="background:var(--paper)"><div class="ph1"><span class="lg">A1</span><div><b>A-1 Chimney · Fort Lauderdale</b><div class="tiny">Google Business Profile</div></div></div><div class="img"></div><div class="tx">A fresh season starts with a clean fireplace. Ask our team about a chimney inspection before your next fire.</div><div class="ln">Learn more →</div></div>
+   </div>
+  </div>
+  <div class="ft"><span class="btn">Cancel</span><span class="sp"></span><span class="btn">Save draft</span><span class="btn">Ask approval</span><span class="btn f">Schedule…</span></div>
+ </div>
+</div>
+
+<p class="cap" style="margin-top:18px"><b>1 · Comments:</b> a drawer from the header. The count covers only comments that can be answered and haven't been. A blocked source (Facebook permission, X credits) gets its own one-line row with the action that fixes it, and the other comments stay usable. Selecting a comment shows its post and a link to the original. Connections and QR codes open as the same kind of drawer.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="scrim"></div>
+ <div class="drawer">
+  <div class="hd"><span class="b" style="font-size:15px">Comments</span><span class="badge">8 to answer</span><span class="sp"></span><span class="btn ic sm">✕</span></div>
+  <div class="bd">
+   <div class="row"><div class="in q" style="flex:1"><span class="ph">Search comments</span></div><div class="seg"><span class="on">To answer</span><span>All</span></div></div>
+   <div class="note bad">f <b>Facebook · A-1 Chimney</b>: comments can't be read until the page permission is approved. <a style="font-weight:700">Review in Connections</a></div>
+   <div class="note bad">𝕏 <b>X · @a1chimney</b>: out of API credits. <a style="font-weight:700">How credits work</a></div>
+   <div class="att">
+    <div class="r"><span class="dot" style="background:var(--pri)"></span><b>Dana P.</b><span class="muted">on “Dry wood, cleaner fires” · ◎</span><span class="sp"></span><span class="tiny">2h</span></div>
+    <div class="r" style="background:#f1f8fb"><span class="dot" style="background:var(--pri)"></span><div style="min-width:0;flex:1"><b>Marcus T.</b> <span class="muted">· G review reply</span><div>Do you also do dryer vents? Ours is…</div></div><span class="tiny">5h</span></div>
+    <div class="r"><span class="dot" style="background:transparent"></span><b>Lena K.</b><span class="muted">· replied by you</span><span class="sp"></span><span class="tiny">1d</span></div>
+   </div>
+  </div>
+  <div class="ft"><div class="in" style="flex:1"><span class="ph">Reply to Marcus…</span></div><span class="btn">Hide</span><span class="btn f">Reply</span></div>
+ </div>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2><span class="n">2</span> Needs-attention rail + full-width calendar, inspector as overlay</h2>
+<p class="cap">A narrow <b>left rail</b> always lists what needs a person: drafts with no time, approvals, failures, and blocked connections. The calendar takes the rest of the width. Opening a post <b>slides a drawer over</b> the right part of the grid, and the selected card stays highlighted under it. More room for the grid, but the drawer covers Thursday to Saturday while it's open.</p>
+<div class="win"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="sp-page">
+ <div class="row"><div class="sp-title">Marketing</div><span class="sp"></span><div class="in" style="width:230px">A-1 Chimney · All branches ▾</div></div>
+ <div class="tabs"><span class="on">Social</span><span>Newsletter</span><span>Web Management</span><span>Ads</span></div>
+ <div style="display:flex;gap:12px;flex:1;min-height:0">
+  <div class="card" style="width:230px;flex:0 0 auto;gap:7px;padding:10px">
+   <span class="btn f">＋ New post</span>
+   <span class="tiny b" style="margin-top:4px">NEEDS ATTENTION · 4</span>
+   <div class="ag"><div class="tx2"><span class="pill p-cau">Approval</span><b>Get your fireplace ready</b><span class="tiny">G · Planned Nov 20</span></div></div>
+   <div class="ag"><div class="tx2"><span class="pill p-neu">Draft · no time</span><b>Winter service checklist</b><span class="tiny">f ◎</span></div></div>
+   <div class="ag"><div class="tx2"><span class="pill p-bad">Failed</span><b>Prep for colder nights</b><span class="tiny">f · Retry Facebook</span></div></div>
+   <div class="ag"><div class="tx2"><span class="pill p-bad">Connection</span><b>X · out of credits</b></div></div>
+   <span class="sp"></span>
+   <span class="btn">💬 Comments <span class="badge">8</span></span><span class="btn">Connections</span><span class="btn">▦ QR codes</span>
+  </div>
+  <div class="card" style="flex:1;padding:10px 12px;gap:7px;position:relative">
+   <div class="row"><span class="btn ic sm">‹</span><span class="btn ic sm">›</span><span class="btn sm">Today</span><span class="b" style="font-size:15px;white-space:nowrap">November 2026</span><span class="sp"></span><div class="in q" style="width:150px"><span class="ph">Search posts</span></div><div class="in" style="width:118px">All channels ▾</div><div class="seg"><span class="on">Month</span><span>Week</span><span>Agenda</span></div></div>
+   <div class="cal">
+    <div class="h">SUN</div><div class="h">MON</div><div class="h">TUE</div><div class="h">WED</div><div class="h">THU</div><div class="h">FRI</div><div class="h">SAT</div>
+    <div class="d"><span class="n">1</span></div><div class="d"><span class="n">2</span></div><div class="d"><span class="n">3</span><div class="ev p"><i>G · 9:00 AM ✓</i><b>Chimney season starts</b></div></div><div class="d"><span class="n">4</span></div><div class="d"><span class="n">5</span></div><div class="d"><span class="n">6</span></div><div class="d"><span class="n">7</span></div>
+    <div class="d"><span class="n">8</span></div><div class="d"><span class="n">9</span></div><div class="d"><span class="n">10</span><div class="ev p"><i>G · 10:00 AM ✓</i><b>Dry wood, cleaner fires</b></div></div><div class="d"><span class="n">11</span></div><div class="d"><span class="n">12</span></div><div class="d"><span class="n">13</span></div><div class="d"><span class="n">14</span></div>
+    <div class="d"><span class="n">15</span></div><div class="d"><span class="n">16</span><div class="ev x"><i>f · Failed</i><b>Prep for colder nights</b></div></div><div class="d"><span class="n">17</span></div><div class="d t"><span class="n">18</span></div><div class="d"><span class="n">19</span></div><div class="d"><span class="n">20</span></div><div class="d"><span class="n">21</span></div>
+    <div class="d"><span class="n">22</span><div class="ev s"><i>G · 11:30 AM</i><b>Repair before the freeze</b></div></div><div class="d"><span class="n">23</span></div><div class="d"><span class="n">24</span></div><div class="d"><span class="n">25</span></div><div class="d"><span class="n">26</span></div><div class="d"><span class="n">27</span></div><div class="d"><span class="n">28</span></div>
+    <div class="d"><span class="n">29</span></div><div class="d"><span class="n">30</span></div><div class="d o"><span class="n">1</span></div><div class="d o"><span class="n">2</span></div><div class="d o"><span class="n">3</span></div><div class="d o"><span class="n">4</span></div><div class="d o"><span class="n">5</span></div>
+   </div>
+   <div style="position:absolute;top:0;right:0;bottom:0;width:340px;background:var(--paper);box-shadow:-8px 0 20px rgba(0,0,0,.12);border-radius:0 var(--r) var(--r) 0;display:flex;flex-direction:column">
+    <div class="row" style="padding:10px 12px;border-bottom:1px solid var(--line)"><span class="pill p-cau">● Needs approval</span><span class="sp"></span><span class="btn ic sm">✕</span></div>
+    <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px"><div class="ttl">Get your fireplace ready</div><div class="tiny">Planned · Fri, Nov 20 · 9:00 AM ET</div><div class="chtabs"><span class="on">Google</span><span>Facebook</span></div><div class="prev"><div class="img sm"></div><div class="tx">Before your first fire of the season, book a chimney inspection…</div></div><div class="row"><span class="btn">✎ Edit</span><span class="sp"></span><span class="btn f">Approve Google</span></div></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ============ 3 ============ -->
+<h2><span class="n">3</span> Agenda list + big proof, with a mini month to jump</h2>
+<p class="cap">A post-first layout. On the left are a <b>mini month</b> (dots for days with posts) and a <b>scrolling agenda</b> grouped by day, each row with its thumbnail, channels and state. The right two-thirds is the <b>selected post's proof</b> at full size, with per-channel tabs and its actions. This reads well for reviewing copy, but you can't see the month at a glance, and that is the calendar-first ask.</p>
+<div class="win"><div class="top"><span class="logo">EzBizi</span><span class="sp"></span>🔔</div><div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="sp-page">
+ <div class="row"><div class="sp-title">Marketing</div><span class="sp"></span><div class="in" style="width:230px">A-1 Chimney · All branches ▾</div></div>
+ <div class="tabs"><span class="on">Social</span><span>Newsletter</span><span>Web Management</span><span>Ads</span></div>
+ <div class="row"><div class="in q" style="width:260px"><span class="ph">Search posts</span></div><div class="in" style="width:118px">All channels ▾</div><span class="sp"></span><span class="btn">💬 Comments <span class="badge">8</span></span><span class="btn">Connections</span><span class="btn">▦ QR codes</span><span class="btn f">＋ New post</span></div>
+ <div style="display:flex;gap:12px;flex:1;min-height:0">
+  <div class="card" style="width:360px;flex:0 0 auto;padding:10px;gap:6px">
+   <div class="row"><span class="btn ic sm">‹</span><span class="b sp" style="text-align:center">November 2026</span><span class="btn ic sm">›</span></div>
+   <div class="mini"><b>S</b><b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b>
+    <span>1</span><span>2</span><span>3<i><u style="background:var(--ok)"></u></i></span><span>4</span><span>5<i><u style="background:var(--ok)"></u></i></span><span>6</span><span>7<i><u style="background:var(--ok)"></u></i></span>
+    <span>8</span><span>9</span><span>10<i><u style="background:var(--ok)"></u></i></span><span>11</span><span>12<i><u style="background:var(--ok)"></u></i></span><span>13</span><span>14</span>
+    <span>15</span><span>16<i><u style="background:var(--bad)"></u></i></span><span>17</span><span>18</span><span>19<i><u style="background:var(--pri)"></u><u style="background:var(--pri)"></u></i></span><span class="on">20<i><u style="background:#fff"></u></i></span><span>21</span></div>
+   <div class="agl">
+    <div class="dh">FRI, NOV 20</div>
+    <div class="ag sel"><div class="th img"></div><div class="tx2"><b>Get your fireplace ready</b><span class="tiny">G f · Planned 9:00 AM</span></div><span class="pill p-cau">Approval</span></div>
+    <div class="dh">SUN, NOV 22</div>
+    <div class="ag"><div class="th img"></div><div class="tx2"><b>Repair before the freeze</b><span class="tiny">G · 11:30 AM</span></div><span class="pill p-pri">Scheduled</span></div>
+    <div class="dh">FRI, NOV 27</div>
+    <div class="ag"><div class="th" style="background:var(--neuc)"></div><div class="tx2"><b>Cold weather sweep tips</b><span class="tiny">G · 9:30 AM · text only</span></div><span class="pill p-pri">Scheduled</span></div>
+   </div>
+  </div>
+  <div class="card" style="flex:1;gap:9px">
+   <div class="row"><span class="pill p-cau">● Needs approval</span><span class="sp"></span><span class="btn">✎ Edit</span><span class="btn">Reschedule</span><span class="btn f">Approve Google</span></div>
+   <div class="ttl" style="font-size:20px">Get your fireplace ready</div>
+   <div class="tiny">Planned · Fri, Nov 20 · 9:00 AM ET · A-1 Chimney · Fort Lauderdale</div>
+   <div class="chtabs"><span class="on">G Google Business</span><span>f Facebook</span></div>
+   <div class="prev" style="max-width:520px"><div class="ph1"><span class="lg">A1</span><b>A-1 Chimney · Fort Lauderdale</b></div><div class="img" style="height:240px"></div><div class="tx">Before your first fire of the season, book a chimney inspection. We'll check the flue and get the fireplace ready for colder nights.</div><div class="ln">Learn more →</div></div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ============ phones ============ -->
+<h2 style="margin-top:56px">Phone</h2>
+<p class="cap">Designed for the phone: no month grid squeezed to 375 px. Each option shows the landing screen and what a tap opens. New post is a full-screen composer with a Preview toggle in every option.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · Week strip + day agenda, full-screen post <span class="rec">Recommended</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="pt">Social</span><span class="sp"></span><span>💬<sup class="badge">8</sup></span><span>⋯</span></div>
+   <div class="pb">
+    <div class="in" style="font-size:12px">A-1 Chimney · All branches ▾</div>
+    <div class="row"><div class="in q" style="flex:1"><span class="ph">Search posts</span></div><div class="in">All ▾</div></div>
+    <div class="row"><span class="btn ic sm">‹</span><span class="b sp" style="text-align:center">Nov 15 – 21</span><span class="btn ic sm">›</span><span class="btn sm">Today</span></div>
+    <div class="wk"><span>S<small>15</small></span><span>M<small>16</small><em>●</em></span><span>T<small>17</small></span><span>W<small>18</small></span><span>T<small>19</small><em>●●</em></span><span class="on">F<small>20</small><em>●</em></span><span>S<small>21</small></span></div>
+    <div class="need">⚑ 3 need attention · drafts & approvals ›</div>
+    <div class="agl"><div class="dh">FRIDAY, NOV 20</div>
+     <div class="ag"><div class="th img"></div><div class="tx2"><b>Get your fireplace ready</b><span class="tiny">G f · Planned 9:00 AM</span></div><span class="pill p-cau">Approval</span></div>
+     <div class="ag"><div class="th" style="background:var(--neuc)"></div><div class="tx2"><b>Weekend hours</b><span class="tiny">f · 4:00 PM · text only</span></div><span class="pill p-pri">Scheduled</span></div>
+    </div>
+    <span class="tiny" style="text-align:center">Eastern time</span>
+   </div><div class="fab">＋ New post</div></div>
+ </div>
+ <div class="pcol"><span class="pl">4 · tapped: the post, full screen</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>←</span><span class="pt">Post</span><span class="sp"></span><span class="pill p-cau">Needs approval</span></div>
+   <div class="pb">
+    <div class="ttl">Get your fireplace ready</div>
+    <div class="tiny"><b style="color:var(--ink)">Planned · Fri, Nov 20 · 9:00 AM ET</b> · A-1 Chimney</div>
+    <div class="chtabs"><span class="on">G Google</span><span>f Facebook</span></div>
+    <div class="prev" style="background:var(--paper)"><div class="ph1"><span class="lg">A1</span><b>A-1 Chimney · Fort Lauderdale</b></div><div class="img"></div><div class="tx">Before your first fire of the season, book a chimney inspection…</div><div class="ln">Learn more →</div></div>
+    <div class="note cau">Approve this Google target to schedule it.</div>
+    <span class="sp"></span>
+    <div class="row"><span class="btn" style="height:44px">✎ Edit</span><span class="btn f" style="flex:1;height:44px">Approve Google</span></div>
+   </div></div>
+ </div>
+ <div class="pcol"><span class="pl">5 · Mini month on top, day list below</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="pt">Social</span><span class="sp"></span><span>💬<sup class="badge">8</sup></span><span>⋯</span></div>
+   <div class="pb">
+    <div class="in" style="font-size:12px">A-1 Chimney · All branches ▾</div>
+    <div class="in q"><span class="ph">Search posts</span></div>
+    <div class="row"><span class="btn ic sm">‹</span><span class="b sp" style="text-align:center">November 2026</span><span class="btn ic sm">›</span></div>
+    <div class="mini"><b>S</b><b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b>
+     <span>1</span><span>2</span><span>3<i><u style="background:var(--ok)"></u></i></span><span>4</span><span>5<i><u style="background:var(--ok)"></u></i></span><span>6</span><span>7<i><u style="background:var(--ok)"></u></i></span>
+     <span>8</span><span>9</span><span>10<i><u style="background:var(--ok)"></u></i></span><span>11</span><span>12<i><u style="background:var(--ok)"></u></i></span><span>13</span><span>14</span>
+     <span>15</span><span>16<i><u style="background:var(--bad)"></u></i></span><span>17</span><span>18</span><span>19<i><u style="background:var(--pri)"></u></i></span><span class="on">20<i><u style="background:#fff"></u></i></span><span>21</span>
+     <span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span></div>
+    <div class="agl"><div class="dh">FRIDAY, NOV 20</div>
+     <div class="ag"><div class="th img"></div><div class="tx2"><b>Get your fireplace ready</b><span class="tiny">G f · Planned 9:00 AM</span></div></div>
+    </div>
+   </div><div class="fab">＋ New post</div></div>
+ </div>
+ <div class="pcol"><span class="pl">6 · Continuous agenda, post in a bottom sheet</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="pt">Social</span><span class="sp"></span><span>💬<sup class="badge">8</sup></span><span>⋯</span></div>
+   <div class="pb">
+    <div class="in" style="font-size:12px">A-1 Chimney · All branches ▾</div>
+    <div class="row"><div class="in q" style="flex:1"><span class="ph">Search posts</span></div><span class="btn sm">Today</span></div>
+    <div class="agl"><div class="dh">THU, NOV 19</div>
+     <div class="ag"><div class="th img"></div><div class="tx2"><b>Inspection week</b><span class="tiny">G f ◎ · 8:00 AM</span></div></div>
+     <div class="dh">FRI, NOV 20</div>
+     <div class="ag sel"><div class="th img"></div><div class="tx2"><b>Get your fireplace ready</b><span class="tiny">Planned 9:00 AM</span></div></div>
+    </div>
+   </div>
+   <div class="sheet"><span class="grab"></span><div class="row"><span class="pill p-cau">Needs approval</span><span class="sp"></span><span>✕</span></div><div class="ttl">Get your fireplace ready</div><div class="chtabs"><span class="on">Google</span><span>Facebook</span></div><div class="prev"><div class="img sm"></div><div class="tx">Before your first fire of the season…</div></div><div class="row"><span class="btn" style="height:44px">✎ Edit</span><span class="btn f" style="flex:1;height:44px">Approve Google</span></div></div>
+  </div>
+ </div>
+ <div class="pcol"><span class="pl">New post on the phone (all options)</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>✕</span><span class="pt">New post</span><span class="sp"></span><div class="seg"><span class="on">Edit</span><span>Preview</span></div></div>
+   <div class="pb">
+    <div class="fld"><label>Destinations</label><div class="in" style="flex-wrap:wrap;white-space:normal"><span class="pill p-pri">G Fort Lauderdale ✕</span><span class="pill p-pri">f A-1 Chimney ✕</span></div></div>
+    <div class="fld"><label>Caption · 142 / 1,500</label><div class="in ta">A fresh season starts with a clean fireplace. Ask our team about a chimney inspection…</div></div>
+    <div class="fld"><label>Media</label><div class="in">🖼 inspection-crew.jpg</div></div>
+    <div class="g2"><div class="fld"><label>Date</label><div class="in">Nov 20</div></div><div class="fld"><label>Time · ET</label><div class="in"><span class="ph">Not set</span></div></div></div>
+    <span class="sp"></span>
+    <div class="row"><span class="btn" style="height:44px">Save draft</span><span class="btn f" style="flex:1;height:44px">Schedule…</span></div>
+   </div></div>
+ </div>
+</div>
+<p class="cap" style="margin-top:22px"><b>Recommendation: 1 + 4.</b> It is Rodrigo's own reference, and it keeps the month in view while a post is open. Option 2's overlay hides a third of the week, and option 3 gives up the calendar-first ask. Under about 1,100 px option 1's inspector overlays the grid, so the grid stays readable. Phone 4 keeps the week visible and opens the post full screen, with Back returning to the same day.</p>
+</div>

@@ -1515,6 +1515,10 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 tabs: [
+                    // Jose, 2026-11-17: parts waiting, late, and reminders.
+                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    // The clients' texts, one thread per job (Jose, 2026-11-17).
+                    new TabDefinition('inbox', 'Inbox', action: 'view'),
                     new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
                     new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
                     new TabDefinition('scheduled', 'Scheduled', action: 'view'),
@@ -1621,7 +1625,8 @@ class ModuleServiceProvider extends ServiceProvider
                         subjects: [Organization::class],
                     ),
                 ],
-                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // overbook: book past a full window or the Friday cutoff, with a reason (desk, 2026-11-17; App\Support\Jobs\BookingGate).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'overbook'],
             ),
 
             /*
@@ -2748,6 +2753,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about the record the rule fired on.',
                         // EXPLICIT: derived, this would be the bare `create`.
                         executionType: 'task.create',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.complete_matching',
+                        label: 'Close the call-back task for this number',
+                        description: 'Marks Done the untouched open tasks a rule made for this phone number, with a note.',
+                        executionType: 'task.complete_matching',
+                        subjectBound: false,
                     ),
                     new ActionDefinition(
                         key: 'task.assign',

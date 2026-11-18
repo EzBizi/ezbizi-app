@@ -322,7 +322,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('tasks-quick-boards')),
-        matching: find.text('My Board'),
+        matching: find.text('Personal Task Board'),
       ),
       findsOneWidget,
     );

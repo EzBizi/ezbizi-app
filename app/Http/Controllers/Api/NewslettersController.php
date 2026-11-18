@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Jobs\SendNewsletter;
 use App\Models\Newsletter;
 use App\Models\NewsletterAudience;
+use App\Models\NewsletterRevision;
 use App\Models\NewsletterSend;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
+use App\Support\Newsletter\HtmlImportConverter;
 use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Newsletter\NewsletterBrandSettings;
+use App\Support\Newsletter\NewsletterDelivery;
 use App\Support\Newsletter\NewsletterIdentity;
+use App\Support\Newsletter\NewsletterImages;
+use App\Support\Newsletter\NewsletterSections;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Scoping\OwnedScope;
@@ -95,6 +101,7 @@ class NewslettersController extends Controller
             ->when($filter !== null, fn ($q) => $q->where('status', $filter))
             // Same reason as `status`: the list is capped, so the search runs here.
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('subject', 'like', $like)
+                ->orWhere('name', 'like', $like)
                 ->orWhereHas('audience', fn ($a) => $a->where('name', 'like', $like))))
             ->with(['audience', 'author:id,name', 'sends'])
             ->latest()
@@ -182,8 +189,11 @@ class NewslettersController extends Controller
 
         $newsletter = new Newsletter([
             'subject' => $data['subject'],
+            'name' => $this->clean($data['name'] ?? null),
+            'preheader' => $this->clean($data['preheader'] ?? null),
             'blocks' => $data['blocks'] ?? [],
             'html_override' => $data['html_override'] ?? null,
+            'brand' => NewsletterBrandSettings::clean($data['brand'] ?? null),
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
             'created_by' => $user->getKey(),
             'scope_type' => $scopeType,
@@ -193,6 +203,7 @@ class NewslettersController extends Controller
 
         $this->applySchedule($request, $newsletter, $data['scheduled_for'] ?? null);
         $newsletter->save();
+        $this->recordRevision($newsletter->fresh(), $user);
 
         $this->audit->log('newsletter.created', $newsletter, [
             'subject' => $newsletter->subject,
@@ -235,22 +246,216 @@ class NewslettersController extends Controller
             ]);
         }
 
+        // A row from before revision history: its saved state becomes the
+        // first version, so the edit about to land can be undone to it.
+        $this->recordRevision($row, null, onlyIfMissing: true);
+
         $row->fill([
             'subject' => $data['subject'],
             'blocks' => $data['blocks'] ?? [],
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
         ]);
+        // Like the HTML: only a request that names them changes them.
+        foreach (['name', 'preheader'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $row->{$field} = $this->clean($data[$field]);
+            }
+        }
         // Only a request that names it changes the custom HTML; a save that
         // leaves it out (an older client, the subject alone) keeps it.
         if (array_key_exists('html_override', $data)) {
             $row->html_override = $data['html_override'];
         }
+        // The applied brand (P1b): a snapshot, changed only when named. Null removes it.
+        if (array_key_exists('brand', $data)) {
+            $row->brand = NewsletterBrandSettings::clean($data['brand']);
+        }
 
         $this->applySchedule($request, $row, $data['scheduled_for'] ?? null);
         $row->revision = (int) $row->revision + 1;
         $row->save();
+        $this->recordRevision($row, $user);
 
         return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+    }
+
+    /**
+     * GET /newsletters/{id}/revisions: the saved versions, newest first, with
+     * who saved each and when (P1a).
+     */
+    public function revisions(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $this->mayView($request);
+        $row = $this->findInView($user, $newsletter);
+
+        $rows = NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+            ->with('author:id,name')->orderByDesc('revision')->get();
+
+        return response()->json(['data' => $rows->map(fn (NewsletterRevision $r) => [
+            'revision' => $r->revision,
+            'author' => $r->author?->name,
+            'at' => $r->created_at?->toIso8601String(),
+            'summary' => $this->summaryOf($r),
+            'restore_point' => $r->restore_point,
+            'label' => $r->label,
+            'restored_from' => $r->restored_from,
+            'current' => $r->revision === (int) $row->revision,
+        ])->values()->all(), 'revision' => (int) $row->revision]);
+    }
+
+    /** GET /newsletters/{id}/revisions/{rev}: one saved version and its rendered email. */
+    public function revision(Request $request, string $newsletter, string $revision): JsonResponse
+    {
+        $user = $this->mayView($request);
+        $row = $this->findInView($user, $newsletter);
+        $saved = $this->savedRevision($row, ctype_digit($revision) ? (int) $revision : -1);
+
+        return response()->json(['data' => [
+            'revision' => $saved->revision,
+            'subject' => $saved->subject,
+            'name' => $saved->name,
+            'preheader' => $saved->preheader,
+            'blocks' => $saved->blocks ?? [],
+            'html_override' => $saved->html_override,
+            'author' => $saved->author?->name,
+            'at' => $saved->created_at?->toIso8601String(),
+            'html' => $this->renderer->document(NewsletterSections::expand((array) ($saved->blocks ?? [])), $saved->html_override, $saved->preheader,
+                NewsletterIdentity::footer($row) + ['unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview'],
+                $row->brand),
+        ]]);
+    }
+
+    /**
+     * POST /newsletters/{id}/revisions/{rev}/restore: that version's content
+     * becomes a NEW revision. The version it replaces is marked as a restore
+     * point and never pruned, so the newer work is still there to go back to.
+     */
+    public function restore(Request $request, string $newsletter, string $revision): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $newsletter, $revision) {
+            $revision = ctype_digit($revision) ? (int) $revision : -1;
+            $user = $request->user();
+            abort_unless($user->hasPermission('newsletter.edit'), Status::HTTP_FORBIDDEN,
+                Refusal::permission('edit a newsletter')->message());
+
+            $row = $this->findInView($user, $newsletter, lock: true);
+            $this->assertMayWrite($user, $row);
+            $this->assertCurrentRevision($request, $row);
+            if ($row->status !== Newsletter::STATUS_DRAFT && $row->status !== Newsletter::STATUS_FAILED) {
+                throw ValidationException::withMessages([
+                    'revision' => 'This newsletter is scheduled, sending, or already sent, so it cannot be changed.',
+                ]);
+            }
+            $saved = $this->savedRevision($row, $revision);
+
+            $this->recordRevision($row, null, onlyIfMissing: true);
+            NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+                ->where('revision', (int) $row->revision)->update(['restore_point' => true]);
+
+            $row->forceFill([
+                'subject' => $saved->subject ?? $row->subject,
+                'name' => $saved->name,
+                'preheader' => $saved->preheader,
+                'blocks' => $saved->blocks ?? [],
+                'html_override' => $saved->html_override,
+                'revision' => (int) $row->revision + 1,
+            ])->save();
+            $this->recordRevision($row, $user, restoredFrom: $saved->revision);
+            $this->audit->log('newsletter.restored', $row, ['from_revision' => $saved->revision], actor: $user);
+
+            return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+        });
+    }
+
+    /**
+     * POST /newsletters/{id}/checkpoint (P1c): keeps the saved version as a
+     * named restore point ("Before import") before something replaces the
+     * content, so the replacement can be undone from history. Changes no
+     * content and no revision number.
+     */
+    public function checkpoint(Request $request, string $newsletter): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $newsletter) {
+            $user = $request->user();
+            abort_unless($user->hasPermission('newsletter.edit'), Status::HTTP_FORBIDDEN,
+                Refusal::permission('edit a newsletter')->message());
+            $label = trim((string) $request->validate(['label' => ['required', 'string', 'max:60']])['label']);
+
+            $row = $this->findInView($user, $newsletter, lock: true);
+            $this->assertMayWrite($user, $row);
+            $this->assertCurrentRevision($request, $row);
+            if ($row->status !== Newsletter::STATUS_DRAFT && $row->status !== Newsletter::STATUS_FAILED) {
+                throw ValidationException::withMessages([
+                    'revision' => 'This newsletter is scheduled, sending, or already sent, so it cannot be changed.',
+                ]);
+            }
+
+            $this->recordRevision($row, null, onlyIfMissing: true);
+            NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+                ->where('revision', (int) $row->revision)->update(['restore_point' => true, 'label' => $label]);
+
+            return response()->json(['data' => ['revision' => (int) $row->revision, 'label' => $label]]);
+        });
+    }
+
+    private function savedRevision(Newsletter $row, int $revision): NewsletterRevision
+    {
+        return NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+            ->where('revision', $revision)->with('author:id,name')->first()
+            ?? abort(Status::HTTP_NOT_FOUND);
+    }
+
+    /**
+     * Keeps the row's current content as its revision, then prunes to the
+     * newest KEEP plus every restore point.
+     */
+    private function recordRevision(Newsletter $row, ?User $user, bool $onlyIfMissing = false, ?int $restoredFrom = null): void
+    {
+        $exists = NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+            ->where('revision', (int) $row->revision)->exists();
+        if ($exists) {
+            return;
+        }
+
+        NewsletterRevision::create([
+            'organization_id' => $row->organization_id,
+            'newsletter_id' => $row->getKey(),
+            'revision' => (int) $row->revision,
+            'blocks' => $row->blocks ?? [],
+            'html_override' => $row->html_override,
+            'subject' => $row->subject,
+            'name' => $row->name,
+            'preheader' => $row->preheader,
+            'author_id' => $user?->getKey() ?? ($onlyIfMissing ? $row->created_by : null),
+            'restored_from' => $restoredFrom,
+        ]);
+
+        $cutoff = NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+            ->orderByDesc('revision')->skip(NewsletterRevision::KEEP)->value('revision');
+        if ($cutoff !== null) {
+            NewsletterRevision::query()->where('newsletter_id', $row->getKey())
+                ->where('revision', '<=', $cutoff)->where('restore_point', false)->delete();
+        }
+    }
+
+    private function summaryOf(NewsletterRevision $r): string
+    {
+        $what = is_string($r->html_override) && $r->html_override !== ''
+            ? 'Custom HTML'
+            : count((array) ($r->blocks ?? [])).' blocks';
+        $parts = [trim((string) $r->subject) ?: '(no subject)', $what];
+        if ($r->restored_from !== null) {
+            $parts[] = 'restored from revision '.$r->restored_from;
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    private function clean(mixed $v): ?string
+    {
+        $v = is_string($v) ? trim($v) : '';
+
+        return $v === '' ? null : mb_substr($v, 0, 255);
     }
 
     /**
@@ -399,8 +604,7 @@ class NewslettersController extends Controller
 
         $connection = $this->sendingConnection($user, $row);
         $sender = NewsletterSenders::for($connection?->providerEnum());
-        $html = $this->renderer->withFooter($this->bodyFor($row),
-            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+        $html = $this->sendHtml($row);
 
         try {
             $sender->sendTest($connection, $row, $html, (string) $data['email']);
@@ -433,9 +637,9 @@ class NewslettersController extends Controller
         $fromName = $connection === null || $sender === null ? '' : trim($sender->fromName($connection, $row));
         $address = trim(NewsletterIdentity::footer($row)['address']);
         $listId = (string) ($row->audience?->mailchimp_list_id ?? '');
-        $sendHtml = $this->renderer->withFooter($this->bodyFor($row),
-            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
-        $badLinks = $this->badLinks($sendHtml);
+        $sendHtml = $this->sendHtml($row);
+        $linkIssues = $this->linkIssues($row, $sendHtml);
+        $badImages = app(NewsletterImages::class)->problems((array) ($row->blocks ?? []), $row->html_override);
 
         $check = fn (string $key, bool $ok, string $label, string $detail) => compact('key', 'ok', 'label', 'detail');
 
@@ -455,21 +659,73 @@ class NewslettersController extends Controller
             $check('footer', $address !== '' && preg_match('/href\s*=\s*["\']\*\|UNSUB\|\*["\']/i', $sendHtml) === 1,
                 'Address and unsubscribe footer',
                 $address !== '' ? $address : 'Add the company postal address in Settings.'),
-            $check('links', $badLinks === [], 'Links',
-                $badLinks === [] ? 'Every link and image is a full web address.'
-                    : 'Fix: '.implode(', ', array_slice($badLinks, 0, 3))),
+            $check('links', $linkIssues === [], 'Links',
+                $linkIssues === [] ? 'Every link and image is a full web address.'
+                    : implode(' ', array_map(fn (array $i) => $i['where'].': “'.$i['url'].'” is not a full web address.',
+                        array_slice($linkIssues, 0, 3))))
+                + ['issues' => $linkIssues],
+            // Every picture loads for the recipient: https, and an EzBizi-hosted
+            // one still exists (newsletter P0). Names the block to fix.
+            $check('images', $badImages === [], 'Pictures',
+                $badImages === [] ? 'Every picture is a public https address a recipient can load.'
+                    : implode(' ', array_slice($badImages, 0, 3))),
         ];
     }
 
-    /** The newsletter body before the footer is ensured. */
-    private function bodyFor(Newsletter $row): string
+    /** The document a send or test carries: footer ensured, preheader in. */
+    private function sendHtml(Newsletter $row): string
     {
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override, $row->preheader,
+            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*'], $row->brand);
+    }
+
+    /**
+     * Links an inbox cannot follow, each naming where it is (P1a): for a
+     * block email the block (and column/child) it sits in, so the Review list
+     * can jump to it; for custom HTML, the document.
+     *
+     * @return list<array{index: ?int, column: ?int, child: ?int, type: string, url: string, where: string}>
+     */
+    private function linkIssues(Newsletter $row, string $sendHtml): array
+    {
+        $issue = fn (?int $i, ?int $c, ?int $j, string $type, string $url, string $where) => [
+            'index' => $i, 'column' => $c, 'child' => $j, 'type' => $type, 'url' => $url, 'where' => $where,
+        ];
+
         if (is_string($row->html_override) && $row->html_override !== '') {
-            return $row->html_override;
+            return array_map(fn (string $u) => $issue(null, null, null, 'html', $u, 'Custom HTML'), $this->badLinks($sendHtml));
         }
 
-        return $this->renderer->render((array) ($row->blocks ?? []),
-            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+        $issues = [];
+        foreach (array_values((array) ($row->blocks ?? [])) as $i => $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+            $type = (string) ($block['type'] ?? '');
+            if ($type === 'columns' && ! isset($block['html'])) {
+                foreach (array_values((array) ($block['columns'] ?? [])) as $c => $column) {
+                    $children = is_array($column) && isset($column['blocks']) && is_array($column['blocks'])
+                        ? $column['blocks'] : (is_array($column) ? $column : []);
+                    foreach (array_values($children) as $j => $child) {
+                        if (! is_array($child)) {
+                            continue;
+                        }
+                        $childType = (string) ($child['type'] ?? '');
+                        foreach ($this->badLinks($this->renderer->fragment($child)) as $url) {
+                            $issues[] = $issue($i, $c, $j, $childType,
+                                $url, 'Block '.($i + 1).' (column '.($c + 1).' '.$childType.')');
+                        }
+                    }
+                }
+
+                continue;
+            }
+            foreach ($this->badLinks($this->renderer->fragment($block)) as $url) {
+                $issues[] = $issue($i, null, null, $type, $url, 'Block '.($i + 1).' ('.$type.')');
+            }
+        }
+
+        return $issues;
     }
 
     /**
@@ -555,8 +811,11 @@ class NewslettersController extends Controller
 
         $copy = new Newsletter([
             'subject' => mb_substr('Copy of '.$source->subject, 0, 255),
+            'name' => $source->name === null ? null : mb_substr('Copy of '.$source->name, 0, 255),
+            'preheader' => $source->preheader,
             'blocks' => $source->blocks ?? [],
             'html_override' => $source->html_override,
+            'brand' => $source->brand,
             'newsletter_audience_id' => $source->newsletter_audience_id,
             'created_by' => $user->getKey(),
             'scope_type' => $scopeType,
@@ -564,6 +823,7 @@ class NewslettersController extends Controller
             'status' => Newsletter::STATUS_DRAFT,
         ]);
         $copy->save();
+        $this->recordRevision($copy->fresh(), $user);
         $this->audit->log('newsletter.created', $copy, ['subject' => $copy->subject, 'duplicated_from' => $source->getKey()], actor: $user);
 
         return response()->json(['data' => $this->present($copy->fresh(['audience', 'sends']))], Status::HTTP_CREATED);
@@ -765,9 +1025,12 @@ class NewslettersController extends Controller
     {
         $data = $request->validate([
             'subject' => ['required', 'string', 'max:255'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'preheader' => ['nullable', 'string', 'max:255'],
             'blocks' => ['nullable', 'array'],
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
             'html_override' => ['nullable', 'string'],
+            'brand' => ['nullable', 'array'],
             'audience_id' => ['nullable', 'string'],
             'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i,Y-m-d H:i:s'],
         ], [
@@ -788,15 +1051,14 @@ class NewslettersController extends Controller
         if (array_key_exists('blocks', $data)) {
             $data['blocks'] = $request->input('blocks');
         }
+        if (array_key_exists('brand', $data)) {
+            $data['brand'] = $request->input('brand');
+        }
 
         // Imported HTML is refused, not cleaned: a mailing that silently lost its
         // script would differ from what the author previewed. Nothing saves.
-        if (is_string($data['html_override'] ?? null)
-            && preg_match('/<\s*script\b|<[^>]*\son[a-z]+\s*=|javascript\s*:/i', $data['html_override'])) {
-            throw ValidationException::withMessages([
-                'html_override' => 'This HTML contains scripts, which email cannot run and Mailchimp refuses. '
-                    .'Remove them and import it again.',
-            ]);
+        if (is_string($data['html_override'] ?? null) && HtmlImportConverter::unsafe($data['html_override'])) {
+            throw ValidationException::withMessages(['html_override' => HtmlImportConverter::UNSAFE_MESSAGE]);
         }
 
         return $data;
@@ -847,11 +1109,8 @@ class NewslettersController extends Controller
             'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
         ];
 
-        if (is_string($row->html_override) && $row->html_override !== '') {
-            return $this->renderer->withFooter($row->html_override, $footer);
-        }
-
-        return $this->renderer->render((array) ($row->blocks ?? []), $footer);
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override,
+            $row->preheader, $footer, $row->brand);
     }
 
     /** @return array<string, mixed> */
@@ -862,6 +1121,10 @@ class NewslettersController extends Controller
         return [
             'id' => $n->getKey(),
             'subject' => $n->subject,
+            // The internal name; null until one is typed, when screens show the subject.
+            'name' => $n->name,
+            'display_name' => trim((string) $n->name) !== '' ? $n->name : $n->subject,
+            'preheader' => $n->preheader,
             'blocks' => $n->blocks ?? [],
             'status' => $n->status,
             'audience' => $n->audience === null ? null : [
@@ -875,6 +1138,8 @@ class NewslettersController extends Controller
             'author' => $n->author?->name,
             'has_html_override' => is_string($n->html_override) && $n->html_override !== '',
             'html_override' => is_string($n->html_override) && $n->html_override !== '' ? $n->html_override : null,
+            // The brand as applied to this newsletter (P1b); null: none.
+            'brand' => $n->brand,
             'last_send' => $send === null ? null : [
                 'status' => $send->status,
                 'recipients' => $send->recipients,
@@ -886,7 +1151,25 @@ class NewslettersController extends Controller
             'updated_at' => $n->updated_at?->toIso8601String(),
             'revision' => (int) ($n->revision ?? 1),
             'last_test' => $this->lastTest($n),
+            'delivery' => NewsletterDelivery::of($n),
+            'next_step' => $this->nextStep($n),
         ];
+    }
+
+    /** A draft's next unresolved step, cheaply (P1c dashboard); null otherwise. */
+    private function nextStep(Newsletter $n): ?string
+    {
+        if ($n->status !== Newsletter::STATUS_DRAFT && $n->status !== Newsletter::STATUS_FAILED) {
+            return null;
+        }
+        $hasContent = (is_string($n->html_override) && trim($n->html_override) !== '') || ((array) ($n->blocks ?? [])) !== [];
+
+        return match (true) {
+            ! $hasContent => 'Add content',
+            $n->audience === null => 'Choose an audience',
+            $n->status === Newsletter::STATUS_FAILED => 'Review the failure and send again',
+            default => 'Review and schedule',
+        };
     }
 
     /** @return array{revision: int, to: string, at: ?string, result: string}|null */

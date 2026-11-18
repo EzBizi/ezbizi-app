@@ -10,6 +10,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\SchedulingTechnician;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
@@ -17,6 +18,7 @@ use App\Models\User;
 use App\Models\WebBooking;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -42,6 +44,8 @@ use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
 use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Jobs\BookingGate;
+use App\Support\Scheduling\JobTechnicians;
 use App\Support\Workiz\WorkizV2;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -895,7 +899,17 @@ class LeadsController extends Controller
         // approvals"): approving books the job, into Workiz too, before the
         // confirmation goes. A refusal leaves it pending, for Book by hand.
         if ($decision === 'approve' && ! $wasApproved && $booking->site_id === null) {
+            // Re-counted at the tap (desk, 2026-11-17): the window may have filled since the hold.
+            $override = BookingGate::check($booking->serviceArea, $booking->date->toDateString().' '.substr((string) $booking->start_time, 0, 5),
+                $request->user(), $request->input('override_reason'), heldHere: true);
             $this->book($this->holdAsBooking($request, $lead, $booking), $lead);
+            $job = Job::query()->find($lead->refresh()->job_id);
+            if ($job !== null) {
+                if ($override !== null) {
+                    BookingGate::record($job, $override);
+                }
+                $this->assignTech($job, $booking->serviceArea);
+            }
         }
 
         $booking->forceFill([
@@ -921,6 +935,33 @@ class LeadsController extends Controller
         }
 
         return response()->json(['data' => $this->presentBooking($booking, $lead)]);
+    }
+
+    /**
+     * An approved hold gets a technician (desk, 2026-11-17): the active field tech
+     * covering the area with the fewest jobs that day, in EzBizi and Workiz.
+     */
+    private function assignTech(Job $job, ?ServiceArea $area): void
+    {
+        if ($area === null) {
+            return;
+        }
+        $day = $job->scheduled_for?->toDateString();
+        $tech = SchedulingTechnician::query()->where('is_active', true)->where('is_field_tech', true)
+            ->whereHas('areas', fn ($q) => $q->whereKey($area->shares_with_id ?? $area->id))
+            ->select('scheduling_technicians.*')->selectSub(fn ($q) => $q->from('job_technicians')
+                ->join('jobs', 'jobs.id', '=', 'job_technicians.job_id')->whereColumn('job_technicians.technician_id', 'scheduling_technicians.id')
+                ->when($day, fn ($q) => $q->whereDate('jobs.scheduled_for', $day))->selectRaw('count(*)'), 'that_day')
+            ->orderBy('that_day')->orderBy('name')->first();
+        if ($tech === null) {
+            return;
+        }
+        JobTechnicians::assign($job, $tech);
+        $mirror = WorkizJob::query()->where('job_id', $job->id)->first();
+        $member = $tech->workiz_member_id ? WorkizTeamMember::query()->find($tech->workiz_member_id) : null;
+        if ($mirror !== null && $member !== null) {
+            app(WorkizJobWriter::class)->assign($mirror, $member);
+        }
     }
 
     /** GET leads/{lead}/booking/days: the open windows of the booking's area, as the website widget offers them. */
@@ -1187,6 +1228,7 @@ class LeadsController extends Controller
                 ]);
             }
 
+            \App\Support\Jobs\JobAddress::assertCustomer($customer);
             $job = Job::create([
                 'franchise_id' => $franchise->getKey(),
                 'customer_id' => $customer->getKey(),

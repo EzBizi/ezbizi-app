@@ -68,7 +68,7 @@ class SocialPostsController extends Controller
     private const MAX_BODY = 5000;
 
     /** The Posts tiles, in the order the screen draws them. */
-    // `awaiting` is also inside Scheduled: it is a work queue, not a share of the total.
+    // `awaiting` is its own state: a post waiting for approval is never counted as Scheduled.
     private const TILES = ['scheduled', 'sent', 'failed', 'awaiting'];
 
     /** Business Profile's call-to-action buttons (v4 localPosts actionType). */
@@ -1016,9 +1016,13 @@ class SocialPostsController extends Controller
             // Needs approval (review 2026-11-09 A13): somebody has to decide it.
             'awaiting' => $query->whereHas('targets', fn ($q) => $targets($q)
                 ->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)),
-            // Waiting for approval has not gone out yet: it reads as Scheduled, never Sent.
-            'scheduled' => $query->whereDoesntHave('targets', fn ($q) => $targets($q)
-                ->whereNotIn('status', [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL])),
+            // Scheduled means a time is set and nothing is still waiting for a
+            // decision (suggestion 01a1ef57): a post awaiting approval, or one
+            // with no time, is not counted here. Needs approval has its own tile.
+            'scheduled' => $query->whereNotNull('scheduled_for')->where('scheduled_for', '!=', '')
+                ->whereHas('targets', $targets)
+                ->whereDoesntHave('targets', fn ($q) => $targets($q)
+                    ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
             'sent' => $query
                 ->whereDoesntHave('targets', fn ($q) => $targets($q)
                     ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED, SocialPostTarget::STATUS_AWAITING_APPROVAL]))

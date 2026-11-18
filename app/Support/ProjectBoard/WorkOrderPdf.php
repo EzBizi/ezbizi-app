@@ -33,6 +33,42 @@ final class WorkOrderPdf
         return HardenedPdf::render(self::html($w), 'letter', 'Page {PAGE_NUM} of {PAGE_COUNT}');
     }
 
+    /** Where Workiz keeps a job's files (measured on prod, 2026-11-17). */
+    public const PHOTO_HOSTS = ['st.sendajob.com'];
+
+    /**
+     * A Workiz photo as a data URI for the page, or null: an allowed host,
+     * an image, under 15 MB, scaled down to 1200 px so nine of them keep the
+     * PDF small. Nothing else is fetched.
+     */
+    public static function fetchPhoto(string $url): ?string
+    {
+        $parts = parse_url($url);
+        if (($parts['scheme'] ?? '') !== 'https' || ! in_array(strtolower($parts['host'] ?? ''), self::PHOTO_HOSTS, true)) {
+            return null;
+        }
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(8)->withOptions(['allow_redirects' => false])->get($url);
+        } catch (\Throwable) {
+            return null;
+        }
+        $bytes = $response->successful() ? $response->body() : '';
+        if ($bytes === '' || strlen($bytes) > 15_000_000 || ! str_starts_with((string) $response->header('Content-Type'), 'image/')) {
+            return null;
+        }
+        $image = function_exists('imagecreatefromstring') ? @imagecreatefromstring($bytes) : false;
+        if ($image === false) {
+            return null;
+        }
+        if (imagesx($image) > 1200) {
+            $image = imagescale($image, 1200);
+        }
+        ob_start();
+        imagejpeg($image, null, 72);
+
+        return 'data:image/jpeg;base64,'.base64_encode((string) ob_get_clean());
+    }
+
     /** @param  array<string, mixed>  $w  see [render] */
     public static function html(array $w): string
     {

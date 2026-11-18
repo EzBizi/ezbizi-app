@@ -16,7 +16,7 @@ class SocialLibraryItem extends Model implements StatesRetention
     use HasUuids;
 
     protected $fillable = [
-        'organization_id', 'scope_type', 'scope_id', 'name', 'disk', 'path', 'size', 'created_by',
+        'organization_id', 'scope_type', 'scope_id', 'name', 'disk', 'path', 'size', 'content_hash', 'public_path', 'created_by',
     ];
 
     public static function retention(): RetentionPolicy

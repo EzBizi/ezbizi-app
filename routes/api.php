@@ -127,6 +127,7 @@ use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScree
 use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
 use App\Http\Controllers\Api\NewsletterImportController;
+use App\Http\Controllers\Api\NewsletterBrandSectionsController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\NoteActivityController;
@@ -170,6 +171,7 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ProjectBoardController;
+use App\Http\Controllers\Api\ProjectInboxController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\PtoRequestsController;
@@ -734,6 +736,15 @@ Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'
     ->middleware('signed')
     ->name('web.chat.avatar');
 
+// Project Management (Jose, 2026-11-17): a crew's work order and a client's
+// project page, by signed links that lapse; no login.
+Route::get('v1/work-order/{job}', [ProjectBoardController::class, 'sharedWorkOrder'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('work-order.shared');
+Route::get('v1/project/{job}', [\App\Http\Controllers\Api\ProjectTimelineController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('project.timeline');
+
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
@@ -981,7 +992,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -1011,9 +1022,11 @@ Route::prefix('v1')
         // is a perfectly good uuid-shaped-nothing to a route that accepts any
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
-        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates'])->middleware('throttle:60,1,customers-duplicates');
         Route::get('customers/tags', [CustomersController::class, 'tags']);
-        Route::apiResource('customers', CustomersController::class);
+        // Lists throttled per user (2026-11-17): the busiest client asked one list 39
+        // times in a minute over 14 days of nginx logs (p99.9 18). See config/bulk_read.php.
+        Route::apiResource('customers', CustomersController::class)->middlewareFor('index', 'throttle:120,1,customers-list');
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
@@ -1022,9 +1035,9 @@ Route::prefix('v1')
         Route::get('jobs/book/options', [JobBookingController::class, 'options']);
         Route::post('jobs/book', [JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/photos', JobPhotosController::class);
+        Route::get('jobs/photos', JobPhotosController::class)->middleware('throttle:120,1,jobs-photos');
         Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
-        Route::apiResource('jobs', JobsController::class);
+        Route::apiResource('jobs', JobsController::class)->middlewareFor('index', 'throttle:120,1,jobs-list');
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
         Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
@@ -1032,6 +1045,11 @@ Route::prefix('v1')
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
+        Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
+        Route::get('project-board/inbox', [ProjectInboxController::class, 'index']);
+        Route::get('project-board/inbox/{job}', [ProjectInboxController::class, 'show']);
+        Route::post('project-board/inbox/{job}', [ProjectInboxController::class, 'reply']);
+        Route::patch('project-board/parts/{part}/reminder', [ProjectBoardController::class, 'partReminder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [ProjectBoardController::class, 'options']);
@@ -1084,13 +1102,14 @@ Route::prefix('v1')
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
-        Route::get('task-search', [TasksController::class, 'search']);
+        Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
+        Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
         Route::post('tasks/{task}/links', [TasksController::class, 'storeLink']);
         Route::delete('tasks/{task}/links/{linked}', [TasksController::class, 'destroyLink']);
 
@@ -1098,6 +1117,9 @@ Route::prefix('v1')
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
         Route::post('jobs/{job}/notes', [JobNotesController::class, 'store']);
+        Route::patch('jobs/{job}/notes/{note}', [JobNotesController::class, 'update']);
+        Route::delete('jobs/{job}/notes/{note}', [JobNotesController::class, 'destroy']);
+        Route::put('jobs/{job}/workiz-notes', [JobNotesController::class, 'workiz']);
         // @mentions and unread notes on jobs, leads and tasks (monday port, 2026-11-09).
         Route::get('mentionable', [NoteActivityController::class, 'mentionable']);
         Route::post('note-reads', [NoteActivityController::class, 'read']);
@@ -1252,7 +1274,7 @@ Route::prefix('v1')
         Route::get('leads/sources', [LeadSourcesController::class, 'index']);
         // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
         Route::middleware('permission:'.Lead::HIDDEN_PERMISSION)->group(function () {
-            Route::get('leads/hidden', [LeadHiddenController::class, 'index']);
+            Route::get('leads/hidden', [LeadHiddenController::class, 'index'])->middleware('throttle:60,1,leads-hidden');
             Route::post('leads/hidden-numbers', [LeadHiddenController::class, 'hideNumberDirectly']);
             Route::delete('leads/hidden-numbers/{number}', [LeadHiddenController::class, 'unhideNumber']);
             Route::post('leads/{lead}/hide', [LeadHiddenController::class, 'hide']);
@@ -1270,12 +1292,12 @@ Route::prefix('v1')
         });
         // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
         Route::middleware('permission:automations.view')->group(function () {
-            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index']);
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index'])->middleware('throttle:60,1,leads-recovery');
             Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
         });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
-        Route::get('leads', [LeadsController::class, 'index']);
+        Route::get('leads', [LeadsController::class, 'index'])->middleware('throttle:120,1,leads-list');
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
@@ -1852,6 +1874,7 @@ Route::prefix('v1')
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
                 ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
+            Route::get('scheduling/availability/days', [SchedulingAvailabilityController::class, 'days']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
@@ -1889,6 +1912,7 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
             Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
+            Route::put('scheduling/areas/{area}/latest-windows', [SchedulingAreasController::class, 'latestWindows']);
             Route::put('scheduling/areas/{area}/shares-with', [SchedulingAreasController::class, 'sharesWith']);
             Route::put('scheduling/areas/{area}/limits', [SchedulingAreasController::class, 'limits']);
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
@@ -2551,6 +2575,30 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // P1c: HTML read for keep/convert without saving, and the kept original.
+            Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
+            Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
+            Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            // A picture uploaded from the composer's image picker (P0, 2026-11-17).
+            Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // P1a: the picker's library list for newsletter-only roles, and a
+            // non-destructive crop (the original is kept).
+            Route::get('newsletter/images', [NewsletterImportController::class, 'images']);
+            Route::get('newsletter/images/{item}/file', [NewsletterImportController::class, 'imageFile']);
+            Route::post('newsletter/images/crop', [NewsletterImportController::class, 'crop']);
+            // P1a: durable revision history; a restore is a new revision.
+            Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
+            Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
+            Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
+
+            // P1b: the company brand and saved sections (linked uses pin a version).
+            Route::get('newsletter/brand', [NewsletterBrandSectionsController::class, 'brand']);
+            Route::put('newsletter/brand', [NewsletterBrandSectionsController::class, 'saveBrand']);
+            Route::get('newsletter/sections', [NewsletterBrandSectionsController::class, 'sections']);
+            Route::post('newsletter/sections', [NewsletterBrandSectionsController::class, 'store']);
+            Route::get('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'section']);
+            Route::put('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'update']);
+            Route::delete('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'destroy']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);

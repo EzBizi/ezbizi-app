@@ -47,7 +47,7 @@ trait FakesMonday
             str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
             str_contains($query, 'items_page') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_values(array_map(
-                fn ($i) => ['id' => $i['id'], 'updated_at' => $i['updated_at'], 'subitems' => array_map(fn ($s) => ['id' => $s['id'], 'updated_at' => $s['updated_at']], $i['subitems'] ?? [])],
+                fn ($i) => ['id' => $i['id'], 'updated_at' => $i['updated_at'], 'group' => ['title' => $i['group']['title'] ?? 'Open Tasks'], 'subitems' => array_map(fn ($s) => ['id' => $s['id'], 'updated_at' => $s['updated_at']], $i['subitems'] ?? [])],
                 // Monday's __last_updated__ filter, by the day (greater_than_or_equals ["EXACT", "Y-m-d"]).
                 array_filter($boards[(string) $vars['b'][0]]['items'] ?? [], fn ($i) => ! isset($vars['d'][1]) || substr((string) $i['updated_at'], 0, 10) >= $vars['d'][1]),
             ))]]]],
@@ -62,6 +62,7 @@ trait FakesMonday
             str_contains($query, '{ id name groups') => ['boards' => array_map(fn ($id) => [
                 'id' => $id, 'name' => $boards[$id]['name'], 'groups' => $boards[$id]['groups'], 'columns' => $boards[$id]['columns'],
                 'views' => $boards[$id]['views'] ?? [], 'board_folder_id' => $boards[$id]['folder'] ?? null,
+                'owners' => $boards[$id]['owners'] ?? [], 'subscribers' => $boards[$id]['subscribers'] ?? [],
             ], array_values(array_filter(array_map('strval', $vars['b']), fn ($id) => isset($boards[$id]))))],
             str_contains($query, '{ id columns') => ['boards' => array_map(fn ($id) => ['id' => $id, 'columns' => $this->monday['subitem_columns'] ?? []], array_map('strval', $vars['b']))],
             default => [],

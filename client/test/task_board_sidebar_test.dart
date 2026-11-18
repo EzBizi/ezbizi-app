@@ -204,8 +204,8 @@ void main() {
       'branches, in that order; no Other boards picker', (tester) async {
     await pumpBoard(tester);
     expect(find.text('Other boards'), findsNothing);
-    expect(inTree('My Board'), findsOneWidget);
-    expect(inTree('Spring push · from Dana Reyes'), findsOneWidget);
+    expect(inTree('Personal Task Board'), findsOneWidget);
+    expect(inTree('Spring push'), findsOneWidget);
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
     expect(inTree('Boston'), findsOneWidget);
@@ -258,7 +258,7 @@ void main() {
     await pumpBoard(tester, boards: [...fixture, everyone]);
     expect(inTree("EVERYONE'S BOARDS"), findsOneWidget);
     expect(inTree('Ben Okafor · 1 board'), findsOneWidget);
-    expect(inTree("Ben Okafor's board"), findsOneWidget);
+    expect(inTree('Ben Okafor'), findsOneWidget);
   });
 
   testWidgets('search filters the tree, and a branch found says its company', (
@@ -415,7 +415,7 @@ void main() {
         board('b-ev', 'user', 'Zed Ray', section: 'everyone', owner: 'Zed Ray'),
       ],
     );
-    expect(inTree('My Board'), findsOneWidget);
+    expect(inTree('Personal Task Board'), findsOneWidget);
     expect(row('b-me'), findsOneWidget, reason: 'not again in its folder');
     double y(Finder f) => tester.getTopLeft(f).dy;
     // Headers are drawn in capitals.
@@ -429,9 +429,9 @@ void main() {
     for (final below in [
       heading('My boards'),
       row('b-mine2'),
-      heading('Shared with me'),
+      heading('Team boards'),
       heading('Folders'),
-      heading('Companies'),
+      heading('All markets'),
       heading("Everyone's boards"),
     ]) {
       expect(below, findsOneWidget);

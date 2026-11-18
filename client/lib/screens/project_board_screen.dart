@@ -1,21 +1,27 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
-import '../core/files.dart';
+import '../core/deep_links.dart';
 import '../core/job_money.dart';
 import '../core/live_changes.dart';
 import '../core/job_status.dart';
+import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
+import '../widgets/error_note.dart';
+import '../widgets/lead_source_details.dart' show LeadAvatar;
+import '../widgets/lead_thread.dart' show messageWhen, threadDay;
 import '../widgets/list_search.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/list_table.dart';
+import '../widgets/pdf_panel.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
@@ -23,6 +29,7 @@ import '../widgets/tag.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_notes.dart';
+import 'phone/call_tab.dart';
 import 'jobs/job_lines_tab.dart' show pickJobTechnician;
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
@@ -116,6 +123,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   }
 
   String _tab = _tabs.first.$1;
+
+  /// A tab of jobs, not Settings or the Dashboard.
+  bool get _isBoard =>
+      _tab != 'settings' && _tab != 'dashboard' && _tab != 'inbox';
   String? _franchise;
   final _search = TextEditingController();
   Timer? _debounce;
@@ -133,6 +144,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
   bool get _canSet => widget.session.me?.can('organizations.edit') ?? false;
   List<(String, String, IconData)> get _shown => [
+    // Jose, 2026-11-17: parts waiting, late, and reminders.
+    ('dashboard', 'Dashboard', Icons.space_dashboard_outlined),
+    // The clients' texts, one thread per job (Jose, 2026-11-17).
+    ('inbox', 'Inbox', Icons.forum_outlined),
     ..._tabs,
     if (_canSet) ('settings', 'Settings', Icons.tune),
   ];
@@ -146,7 +161,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     _feed = LiveChanges.of(
       widget.api,
     ).subscribe({'jobs'}, (_) => _refresh(), active: LiveChanges.visible(this));
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
     _load();
+  }
+
+  /// A part alert (late, or a reminder) opens the Dashboard (Jose, 2026-11-17).
+  void _takeLink() {
+    final link = DeepLinks.take('project_board');
+    if (link == null || link.type != 'job_part') return;
+    if (mounted) setState(() => _tab = 'dashboard');
   }
 
   LiveSubscription? _feed;
@@ -160,7 +184,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// spinner, so the scroll stays where it is. Skipped while the screen is
   /// hidden (another module, or a sub-tab off stage) or Settings is open.
   void _refresh() {
-    if (!mounted || _fetching || _tab == 'settings') return;
+    if (!mounted || _fetching || !_isBoard) return;
     if (!TickerMode.valuesOf(context).enabled) return;
     if (WidgetsBinding.instance.lifecycleState case final s?
         when s != AppLifecycleState.resumed) {
@@ -172,6 +196,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DeepLinks.pending.removeListener(_takeLink);
     _live?.cancel();
     _feed?.cancel();
     _debounce?.cancel();
@@ -196,7 +221,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       if (!quiet) _loading = true;
       _fetching = true;
     });
-    final tab = _tab == 'settings' ? _tabs.first.$1 : _tab;
+    final tab = _isBoard ? _tab : _tabs.first.$1;
     final franchise = _franchise;
     final q = _q;
     final response = await widget.api.get('/project-board/jobs', {
@@ -313,7 +338,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// the rest of the window. Short windows keep the page scroll.
   Widget _page_(BuildContext context, List<Widget> kids) {
     const pad = EdgeInsets.fromLTRB(16, 16, 16, 16);
-    if (_tab == 'settings' || !_fills(context)) {
+    // The Inbox sizes itself: its list and its thread scroll on their own,
+    // so the composer stays on screen (Jose, 2026-11-18).
+    if (_tab == 'inbox') return Padding(padding: pad, child: kids.single);
+    if (!_isBoard || !_fills(context)) {
       return ListView(padding: pad, children: kids);
     }
     return Padding(
@@ -581,7 +609,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     ).showSnackBar(SnackBar(content: Text(r.reason)));
   }
 
-  /// Downloads the job's work order (Jose, 2026-11-17).
+  /// Opens the job's work order in the app, with Print, Share and Download
+  /// there (Jose, 2026-11-17; opened first since 2026-11-18).
   Future<void> _workOrder(Map<String, dynamic> row) async {
     final r = await widget.api.getBytesResponse(
       '/project-board/jobs/${row['id']}/work-order',
@@ -596,7 +625,12 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       );
       return;
     }
-    Files.download('Work order ${row['number'] ?? row['id']}.pdf', bytes);
+    await showPdfPanel(
+      context,
+      title: 'Work order ${row['number'] ?? ''}'.trim(),
+      filename: 'Work order ${row['number'] ?? row['id']}.pdf',
+      bytes: Uint8List.fromList(bytes),
+    );
   }
 
   /// The job's notes alone, in a side panel of their own.
@@ -1144,7 +1178,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             error: _error,
             onRetry: _load,
             child: _page_(context, [
-              if (_tab == 'settings')
+              if (_tab == 'inbox')
+                _ProjectInbox(
+                  api: widget.api,
+                  session: widget.session,
+                  canReply: _canEditJobs,
+                )
+              else if (_tab == 'dashboard')
+                _PartsDashboard(
+                  api: widget.api,
+                  formats: widget.session.me?.display ?? DisplayFormats.fallback,
+                  canEdit: _canEditJobs,
+                )
+              else if (_tab == 'settings')
                 _BoardSettings(
                   api: widget.api,
                   scope: _scope,
@@ -1370,6 +1416,11 @@ class _BoardSettingsState extends State<_BoardSettings> {
   /// Suppliers and same-day pickup stores (Jose, 2026-11-17: "we need to set
   /// up list of supplier"): id, name, address, phone, kind.
   final List<_SupplierRow> _suppliers = [];
+
+  /// The texts to the client (Jose, 2026-11-17), each a switch, its wording
+  /// and when it was switched on; all OFF until he approves the wording.
+  final Map<String, ({bool on, String? since, TextEditingController text})>
+  _clientTexts = {};
   final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
@@ -1412,6 +1463,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
     _badDays.dispose();
     for (final r in _suppliers) {
       r.dispose();
+    }
+    for (final t in _clientTexts.values) {
+      t.text.dispose();
     }
     super.dispose();
   }
@@ -1502,6 +1556,16 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
           '$t',
       ];
+      final texts = (byKey['project_board.client_messages'] as Map?) ?? const {};
+      for (final (kind, _) in _clientTextKinds) {
+        final t = (texts[kind] as Map?) ?? const {};
+        _clientTexts[kind]?.text.dispose();
+        _clientTexts[kind] = (
+          on: t['on'] == true,
+          since: t['since'] as String?,
+          text: TextEditingController(text: t['text'] as String? ?? ''),
+        );
+      }
       for (final r in _suppliers) {
         r.dispose();
       }
@@ -1617,6 +1681,67 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final r in _suppliers)
           if (r.name.text.trim().isNotEmpty) r.value,
       ],
+    },
+  );
+
+  static const _clientTextKinds = [
+    ('project_link', 'When a job reaches the board: the project link'),
+    ('scheduled', 'When it is scheduled (also sends the work order to the crew)'),
+    ('day_before', 'The day before the appointment'),
+    ('complete', 'When it is complete: thank you'),
+  ];
+
+  /// Each text to the client: its switch and wording (Jose, 2026-11-17).
+  /// Switching one on only reaches jobs from then on; replies land in Inbox.
+  Widget _clientTextsCard() => _card(
+    'client-texts',
+    'Texts to the client',
+    'Off until switched on. {client_first}, {company}, {date} and {link} '
+        'fill in. Replies land in Inbox.',
+    [
+      for (final (kind, label) in _clientTextKinds)
+        if (_clientTexts[kind] case final t?)
+          Padding(
+            key: ValueKey('project-board-client-text-$kind'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  key: ValueKey('project-board-client-text-on-$kind'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(label),
+                  value: t.on,
+                  onChanged: (on) => setState(
+                    () => _clientTexts[kind] = (
+                      on: on,
+                      // Only jobs from now on: never the backlog.
+                      since: on
+                          ? DateTime.now().toUtc().toIso8601String()
+                          : null,
+                      text: t.text,
+                    ),
+                  ),
+                ),
+                TextField(
+                  controller: t.text,
+                  minLines: 2,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    ],
+    () => {
+      'project_board.client_messages': {
+        for (final MapEntry(key: kind, value: t) in _clientTexts.entries)
+          kind: {'on': t.on, 'since': t.since, 'text': t.text.text.trim()},
+      },
     },
   );
 
@@ -2257,6 +2382,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         ),
         _repairCard(),
         _suppliersCard(),
+        _clientTextsCard(),
         _card(
           'ready',
           'Ready to schedule',
@@ -2396,7 +2522,16 @@ class _PartRow {
             ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
             : '',
       ),
-      delivery = TextEditingController(text: '${p['delivery_on'] ?? ''}');
+      delivery = TextEditingController(text: '${p['delivery_on'] ?? ''}'),
+      remind = TextEditingController(
+        text: () {
+          final at = DateTime.tryParse('${p['remind_at'] ?? ''}')?.toLocal();
+          return at == null
+              ? ''
+              : at.toIso8601String().substring(0, 16).replaceFirst('T', ' ');
+        }(),
+      ),
+      remindNote = TextEditingController(text: p['remind_note'] as String?);
 
   final String? id;
   String kind;
@@ -2411,11 +2546,22 @@ class _PartRow {
   final TextEditingController price;
   final TextEditingController delivery;
 
+  /// A reminder on this part (Jose, 2026-11-17): `YYYY-MM-DD HH:MM`, local.
+  final TextEditingController remind;
+  final TextEditingController remindNote;
+
+  /// The reminder as the server takes it, UTC, or null.
+  String? get remindAt => DateTime.tryParse(
+    remind.text.trim().replaceFirst(' ', 'T'),
+  )?.toUtc().toIso8601String();
+
   void dispose() {
     item.dispose();
     quantity.dispose();
     price.dispose();
     delivery.dispose();
+    remind.dispose();
+    remindNote.dispose();
   }
 }
 
@@ -2452,6 +2598,11 @@ class _PartsPanelState extends State<_PartsPanel> {
             'supplier_id': r.supplierId,
             'destination': r.destination,
             'received': r.received,
+          },
+          if (r.remindAt case final at?) ...{
+            'remind_at': at,
+            if (r.remindNote.text.trim().isNotEmpty)
+              'remind_note': r.remindNote.text.trim(),
           },
         },
   ];
@@ -2634,6 +2785,20 @@ class _PartsPanelState extends State<_PartsPanel> {
                   dense: true,
                 ),
               ],
+              Text('Remind me', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 4),
+              CalendarDayField(
+                key: ValueKey('project-board-part-remind-$i'),
+                controller: r.remind,
+                formats: widget.formats,
+                withTime: true,
+                dense: true,
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: r.remindNote,
+                decoration: box('Reminder note'),
+              ),
               CheckboxListTile(
                 key: ValueKey('project-board-part-received-$i'),
                 contentPadding: EdgeInsets.zero,
@@ -2910,6 +3075,7 @@ class _NotesPanelState extends State<_NotesPanel> {
             addRefusal: widget.addRefusal,
             workizNotes: _workiz,
             onAdded: (note) => setState(() => _notes = [note, ..._notes!]),
+            onChanged: (notes) => setState(() => _notes = notes),
           ),
   );
 }
@@ -2944,5 +3110,868 @@ class _SupplierRow {
     name.dispose();
     address.dispose();
     phone.dispose();
+  }
+}
+
+/// Project Management › Dashboard (Jose, 2026-11-17): how many items and
+/// jobs are waiting for parts, the parts three days late (red, like a lead),
+/// and the reminders, each movable or clearable.
+class _PartsDashboard extends StatefulWidget {
+  const _PartsDashboard({
+    required this.api,
+    required this.formats,
+    required this.canEdit,
+  });
+
+  final ApiClient api;
+  final DisplayFormats formats;
+  final bool canEdit;
+
+  @override
+  State<_PartsDashboard> createState() => _PartsDashboardState();
+}
+
+class _PartsDashboardState extends State<_PartsDashboard> {
+  Map<String, dynamic>? _data;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final r = await widget.api.get('/project-board/dashboard');
+    if (!mounted) return;
+    setState(() {
+      if (r.ok && r.data is Map) {
+        _data = Map<String, dynamic>.from(r.data as Map);
+        _error = null;
+      } else {
+        _error = r.reason;
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> _list(String key) => [
+    for (final m in (_data?[key] as List?) ?? const [])
+      if (m is Map) Map<String, dynamic>.from(m),
+  ];
+
+  String _when(Object? iso) {
+    final at = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (at == null) return '';
+    return '${widget.formats.formatDate(at)} ${TimeOfDay.fromDateTime(at).format(context)}';
+  }
+
+  /// Moves a reminder to a new time, or clears it with null.
+  Future<void> _remind(Map<String, dynamic> part, String? at) async {
+    final r = await widget.api.patch(
+      '/project-board/parts/${part['id']}/reminder',
+      {'remind_at': at},
+    );
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _load();
+  }
+
+  Future<void> _reschedule(Map<String, dynamic> part) async {
+    final at = await showSidePanel<String>(
+      context,
+      builder: (_) => _ReminderPanel(
+        item: '${part['item'] ?? ''}',
+        initial: part['remind_at'] as String?,
+        formats: widget.formats,
+      ),
+    );
+    if (at != null) await _remind(part, at);
+  }
+
+  Widget _tile(String key, String label, Object? n, Tone tone) {
+    final theme = Theme.of(context);
+    final c = ToneColours.of(context, tone);
+    return Container(
+      key: ValueKey('project-board-dashboard-$key'),
+      width: 200,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${n ?? 0}',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: c.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: c.ink)),
+        ],
+      ),
+    );
+  }
+
+  Widget _part(Map<String, dynamic> p, {Widget? trailing, String? when}) {
+    final supplier = (p['supplier'] as Map?)?['name'];
+    return ListTile(
+      key: ValueKey('project-board-dashboard-part-${p['id']}'),
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text('${p['item'] ?? ''}'),
+      subtitle: Text(
+        [
+          p['job_number'],
+          p['customer'],
+          supplier,
+          when,
+          p['remind_note'],
+        ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      ),
+      trailing: trailing,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_data == null) {
+      return _error == null
+          ? const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : ErrorNote(_error!);
+    }
+    final late = _list('late');
+    final reminders = _list('reminders');
+    final due = reminders.where((r) => r['due'] == true).length;
+
+    return Column(
+      key: const Key('project-board-dashboard'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _tile(
+              'items',
+              'Items waiting for parts',
+              _data!['waiting_items'],
+              Tone.caution,
+            ),
+            _tile(
+              'jobs',
+              'Jobs waiting for parts',
+              _data!['waiting_jobs'],
+              Tone.caution,
+            ),
+            _tile(
+              'late',
+              'Parts 3+ days late',
+              late.length,
+              late.isEmpty ? Tone.ok : Tone.bad,
+            ),
+            _tile(
+              'due',
+              'Reminders due',
+              due,
+              due == 0 ? Tone.ok : Tone.caution,
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Text('Late parts', style: theme.textTheme.titleMedium),
+        if (late.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('Nothing is late.'),
+          )
+        else
+          for (final p in late)
+            _part(
+              p,
+              when: 'ordered ${_when(p['ordered_at'])}',
+              trailing: const StatusPill('Late', tone: Tone.bad),
+            ),
+        const SizedBox(height: 20),
+        Text('Reminders', style: theme.textTheme.titleMedium),
+        if (reminders.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No reminders. Set one on a part from its Part Status.',
+            ),
+          )
+        else
+          for (final p in reminders)
+            _part(
+              p,
+              when: _when(p['remind_at']),
+              trailing: Wrap(
+                spacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (p['due'] == true)
+                    const StatusPill('Due', tone: Tone.caution),
+                  if (widget.canEdit) ...[
+                    TextButton(
+                      key: ValueKey('project-board-remind-move-${p['id']}'),
+                      onPressed: () => _reschedule(p),
+                      child: const Text('Reschedule'),
+                    ),
+                    IconButton(
+                      key: ValueKey('project-board-remind-clear-${p['id']}'),
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => _remind(p, null),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// A reminder's day and time; pops the ISO time, or null.
+class _ReminderPanel extends StatefulWidget {
+  const _ReminderPanel({
+    required this.item,
+    required this.formats,
+    this.initial,
+  });
+
+  final String item;
+  final String? initial;
+  final DisplayFormats formats;
+
+  @override
+  State<_ReminderPanel> createState() => _ReminderPanelState();
+}
+
+class _ReminderPanelState extends State<_ReminderPanel> {
+  late final _at = TextEditingController(
+    text: () {
+      final at = DateTime.tryParse(widget.initial ?? '')?.toLocal();
+      return at == null
+          ? ''
+          : at.toIso8601String().substring(0, 16).replaceFirst('T', ' ');
+    }(),
+  );
+
+  @override
+  void dispose() {
+    _at.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    title: 'Remind me',
+    subtitle: widget.item,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('project-board-remind-save'),
+        onPressed: () {
+          final at = DateTime.tryParse(_at.text.trim().replaceFirst(' ', 'T'));
+          Navigator.of(context).pop(at?.toUtc().toIso8601String());
+        },
+        child: const Text('Save'),
+      ),
+    ],
+    child: CalendarDayField(
+      controller: _at,
+      label: 'When',
+      formats: widget.formats,
+      withTime: true,
+    ),
+  );
+}
+
+/// Project Management › Inbox (Jose, 2026-11-17: "Inbox separated like a
+/// Mini Leads inside Project Management that only shows these messages per
+/// client"): one thread per board job, the client's answers included, and a
+/// reply from the job's branch line.
+///
+/// Laid out as Leads › conversation (Jose, 2026-11-18: "This needs to be
+/// improved"): the list and the thread scroll on their own, the thread opens
+/// on its newest text with the composer pinned under it, a header names the
+/// client and the job, and each bubble says who sent it and when.
+class _ProjectInbox extends StatefulWidget {
+  const _ProjectInbox({
+    required this.api,
+    required this.session,
+    required this.canReply,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final bool canReply;
+
+  @override
+  State<_ProjectInbox> createState() => _ProjectInboxState();
+}
+
+/// Waiting first: the client spoke last and nobody has answered.
+const _inboxFilters = [
+  ('waiting', 'Waiting'),
+  ('replied', 'Replied by us'),
+  ('all', 'All'),
+];
+
+class _ProjectInboxState extends State<_ProjectInbox> {
+  List<Map<String, dynamic>>? _threads;
+  List<Map<String, dynamic>> _messages = const [];
+  Map<String, dynamic>? _job;
+  String? _open;
+  String? _error;
+  String _q = '';
+  String _filter = 'waiting';
+  bool _sending = false;
+  final _draft = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _draft.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _maps(Object? raw) => [
+    for (final m in raw is List ? raw : const [])
+      if (m is Map) Map<String, dynamic>.from(m),
+  ];
+
+  Future<void> _load() async {
+    final r = await widget.api.get(
+      '/project-board/inbox',
+      _q.isEmpty ? null : {'q': _q},
+    );
+    if (!mounted) return;
+    setState(() {
+      _threads = r.ok ? _maps(r.data) : const [];
+      _error = r.ok ? null : r.reason;
+    });
+  }
+
+  bool _shows(Map<String, dynamic> t, String filter) => switch (filter) {
+    'waiting' => t['waiting'] == true,
+    // We answered something the client said, not only our own texts.
+    'replied' => t['client_spoke'] == true && t['waiting'] != true,
+    _ => true,
+  };
+
+  Future<void> _openThread(String jobId) async {
+    setState(() {
+      _open = jobId;
+      _messages = const [];
+      _job = null;
+      _error = null;
+    });
+    final r = await widget.api.get('/project-board/inbox/$jobId');
+    if (!mounted || _open != jobId) return;
+    setState(() {
+      _messages = r.ok ? _maps(r.data) : const [];
+      final job = r.ok ? r.body['job'] : null;
+      _job = job is Map ? Map<String, dynamic>.from(job) : null;
+      if (!r.ok) _error = r.reason;
+    });
+  }
+
+  Future<void> _reply() async {
+    final body = _draft.text.trim();
+    final job = _open;
+    if (body.isEmpty || job == null || _sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    final r = await widget.api.post('/project-board/inbox/$job', {
+      'body': body,
+    });
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (r.ok && r.data is Map) {
+        _messages = [..._messages, Map<String, dynamic>.from(r.data as Map)];
+        _draft.clear();
+      } else {
+        _error = r.reason;
+      }
+    });
+    if (r.ok) _load();
+  }
+
+  String _time(Object? iso) => messageWhen(
+    iso as String?,
+    clock: widget.session.me?.display.formatTime,
+  );
+
+  Widget _list(ThemeData theme) {
+    final all = _threads ?? const [];
+    final threads = [
+      for (final t in all)
+        if (_shows(t, _filter)) t,
+    ];
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListSearch(
+          key: const Key('project-inbox-search'),
+          hint: 'Client, job number or words',
+          width: double.infinity,
+          onChanged: (v) {
+            _q = v.trim();
+            _load();
+          },
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final (key, label) in _inboxFilters)
+              ChoiceChip(
+                key: ValueKey('project-inbox-filter-$key'),
+                label: Text(
+                  '$label · ${all.where((t) => _shows(t, key)).length}',
+                ),
+                selected: _filter == key,
+                onSelected: (_) => setState(() => _filter = key),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: threads.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    _filter == 'waiting'
+                        ? 'Nobody is waiting for an answer.'
+                        : 'No texts with the clients on the board here. '
+                              'Their answers to the scheduling texts show up '
+                              'here.',
+                    style: muted,
+                  ),
+                )
+              : ListView.builder(
+                  key: const Key('project-inbox-list'),
+                  itemCount: threads.length,
+                  itemBuilder: (context, i) => _row(theme, threads[i], muted),
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Name and job number on one line with the time at the right, the last
+  /// text under it, and a dot while the client waits for us.
+  Widget _row(ThemeData theme, Map<String, dynamic> t, TextStyle? muted) {
+    final selected = _open == t['job_id'];
+    final waiting = t['waiting'] == true;
+    final number = '${t['job_number'] ?? ''}';
+    final ours = t['last_direction'] == 'outbound';
+    return Material(
+      color: selected
+          ? theme.colorScheme.secondaryContainer
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      child: InkWell(
+        key: ValueKey('project-inbox-thread-${t['job_id']}'),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+        onTap: () => _openThread('${t['job_id']}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 8),
+                child: Container(
+                  key: waiting
+                      ? ValueKey('project-inbox-waiting-${t['job_id']}')
+                      : null,
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: waiting
+                        ? ToneColours.of(context, Tone.caution).ink
+                        : Colors.transparent,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '${t['customer'] ?? 'Client'}',
+                                  style: TextStyle(
+                                    fontWeight: waiting
+                                        ? FontWeight.w700
+                                        : FontWeight.w600,
+                                  ),
+                                ),
+                                if (number.isNotEmpty)
+                                  TextSpan(text: '  $number', style: muted),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_time(t['last_at']), style: muted),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${ours ? 'Us: ' : ''}${t['last_body'] ?? ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: muted,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The client, the job and where it stands, with Open job and Call.
+  Widget _header(ThemeData theme, {VoidCallback? back}) {
+    final job = _job;
+    final listed = (_threads ?? const []).firstWhere(
+      (t) => t['job_id'] == _open,
+      orElse: () => const {},
+    );
+    final name = '${job?['customer'] ?? listed['customer'] ?? 'Client'}';
+    final number = '${job?['number'] ?? listed['job_number'] ?? ''}';
+    final phone = '${job?['phone'] ?? listed['phone'] ?? ''}';
+    final stage = _tabs
+        .where((t) => t.$1 == job?['stage'])
+        .map((t) => t.$2)
+        .firstOrNull;
+    final canCall =
+        phone.isNotEmpty &&
+        (widget.session.me?.can('phone.phone.view') ?? false);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Padding(
+      key: const Key('project-inbox-header'),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      child: Row(
+        children: [
+          if (back != null)
+            IconButton(
+              key: const Key('project-inbox-back'),
+              tooltip: 'All clients',
+              onPressed: back,
+              icon: const Icon(Icons.arrow_back),
+            ),
+          LeadAvatar(name: name, radius: 16),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  children: [
+                    if (number.isNotEmpty) Text(number, style: muted),
+                    if (phone.isNotEmpty) ...[
+                      Text(formatPhoneNumber(phone), style: muted),
+                      InkWell(
+                        key: const Key('project-inbox-copy-phone'),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: phone));
+                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                            const SnackBar(content: Text('Phone copied')),
+                          );
+                        },
+                        child: Tooltip(
+                          message: 'Copy the phone',
+                          child: Icon(
+                            Icons.copy,
+                            size: 14,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (stage != null)
+                      StatusPill(
+                        stage,
+                        key: const Key('project-inbox-stage'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (canCall)
+            IconButton(
+              key: const Key('project-inbox-call'),
+              tooltip: 'Call',
+              onPressed: () => showSidePanel<void>(
+                context,
+                builder: (_) => SidePanel(
+                  title: 'Call',
+                  subtitle: phone,
+                  scrollable: false,
+                  child: CallTab(
+                    api: widget.api,
+                    session: widget.session,
+                    initialNumber: phone,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.call_outlined),
+            ),
+          OutlinedButton(
+            key: const Key('project-inbox-open-job'),
+            onPressed: _open == null
+                ? null
+                : () => showSidePanel<bool>(
+                    context,
+                    builder: (_) => JobDetailPanel(
+                      api: widget.api,
+                      session: widget.session,
+                      id: _open!,
+                    ),
+                  ),
+            child: const Text('Open job'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _thread(ThemeData theme, {VoidCallback? back}) {
+    // Newest at the bottom with day labels between, as Leads draws it.
+    final items = <Object>[];
+    String? day;
+    for (final m in _messages) {
+      final d = threadDay(m['at'] as String?);
+      if (d != null && d != day) items.add(d);
+      day = d ?? day;
+      items.add(m);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(theme, back: back),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.builder(
+            key: const Key('project-inbox-messages'),
+            reverse: true,
+            padding: const EdgeInsets.all(14),
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final item = items[items.length - 1 - i];
+              return item is String
+                  ? _day(theme, item)
+                  : _bubble(theme, item as Map<String, dynamic>);
+            },
+          ),
+        ),
+        if (widget.canReply) _composer(theme),
+      ],
+    );
+  }
+
+  Widget _day(ThemeData theme, String day) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(
+      children: [
+        const Expanded(child: Divider()),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(day, style: theme.textTheme.labelSmall),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    ),
+  );
+
+  /// Leads' colours: the client's on the surface with an outline, on the
+  /// left; ours in primary; a rule's in the ok tone, named.
+  Widget _bubble(ThemeData theme, Map<String, dynamic> m) {
+    final mine = m['direction'] != 'inbound';
+    final automatic = mine && m['automatic'] == true;
+    final scheme = theme.colorScheme;
+    final rule = ToneColours.of(context, Tone.ok);
+    final fill = !mine
+        ? scheme.surface
+        : automatic
+        ? rule.fill
+        : scheme.primary;
+    final ink = !mine
+        ? scheme.onSurface
+        : automatic
+        ? rule.ink
+        : scheme.onPrimary;
+    final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
+    final who = !mine
+        ? '${_job?['customer'] ?? 'Client'}'
+        : automatic
+        ? (m['automation_name'] is String
+              ? 'Automatic · ${m['automation_name']}'
+              : 'Automatic')
+        : (m['sent_by'] as String?) ?? 'EzBizi';
+    return Align(
+      key: ValueKey('project-inbox-message-${m['id']}'),
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
+          decoration: BoxDecoration(
+            color: fill,
+            border: mine ? null : Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText(
+                '${m['body'] ?? ''}',
+                style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$who · ${_time(m['at'])}',
+                key: ValueKey('project-inbox-sender-${m['id']}'),
+                style: theme.textTheme.labelSmall?.copyWith(color: quiet),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Pinned under the thread; Enter adds a line, the button sends.
+  Widget _composer(ThemeData theme) => Container(
+    decoration: BoxDecoration(
+      border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+    ),
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 6)],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('project-inbox-box'),
+                controller: _draft,
+                minLines: 1,
+                maxLines: 5,
+                enabled: !_sending,
+                decoration: const InputDecoration(
+                  hintText: 'Text the client from the branch line…',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              key: const Key('project-inbox-send'),
+              tooltip: _sending ? 'Sending…' : 'Send',
+              onPressed: _sending ? null : _reply,
+              icon: const Icon(Icons.send),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_threads == null) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return LayoutBuilder(
+      key: const Key('project-inbox'),
+      builder: (context, box) {
+        if (box.maxWidth < 860) {
+          return _open == null
+              ? _list(theme)
+              : _thread(theme, back: () => setState(() => _open = null));
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: 360, child: _list(theme)),
+            const SizedBox(width: 12),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: _open == null
+                  ? const Center(
+                      child: Text('Choose a client to read the texts.'),
+                    )
+                  : _thread(theme),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
