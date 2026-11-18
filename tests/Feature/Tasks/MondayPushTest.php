@@ -148,7 +148,7 @@ class MondayPushTest extends TestCase
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
 
         $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_column('));
-        $this->assertSame(['b' => '100', 't' => 'Workiz Job ID'], $made['vars']);
+        $this->assertSame(['b' => '100', 't' => 'Workiz Job ID', 'a' => 'name'], $made['vars'], 'right after Name');
         $values = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'change_multiple_column_values'));
         $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
     }

@@ -125,12 +125,22 @@ class FlagWorkizJobs extends Command
         $quiet = $tasks->quiet;
         $tasks->quiet = true;
         $bookedBy = trim((string) $bookedBy) ?: null;
+        // The job number lives in its columns, not the title (Jose 11-18); the alert keeps it.
+        $workizId = preg_match('/^Job #(\d+):\s*/', $title, $m) ? $m[1] : null;
+        $title = (string) preg_replace('/^Job #\d+:\s*/', '', $title);
+        $values = [];
+        if ($bookedBy) {
+            $values[self::bookedByColumn($board)->id] = $bookedBy;
+        }
+        if ($workizId !== null && $job === null) { // with a job, TaskWriter fills both job-id columns
+            $values[self::textColumn($board, TaskWriter::WORKIZ_JOB_COLUMN)->id] = $workizId;
+        }
         $tasks->create($board, array_filter([
             'title' => mb_substr(implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null])), 0, 255),
             // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
             'group_id' => $group ? self::groupOn($board, $group)->id : null,
             // Who booked it, also when they have no EzBizi account (Jose 11-18).
-            'values' => $bookedBy ? [self::bookedByColumn($board)->id => $bookedBy] : null,
+            'values' => $values ?: null,
             'about_type' => $job ? 'job' : null,
             'about_id' => $job?->id,
             'source' => 'flags',
@@ -149,7 +159,12 @@ class FlagWorkizJobs extends Command
 
     public static function bookedByColumn(TaskBoard $board): TaskColumn
     {
-        return TaskColumn::query()->firstOrCreate(['board_id' => $board->id, 'name' => 'Booked by'], [
+        return self::textColumn($board, 'Booked by');
+    }
+
+    public static function textColumn(TaskBoard $board, string $name): TaskColumn
+    {
+        return TaskColumn::query()->firstOrCreate(['board_id' => $board->id, 'name' => $name], [
             'organization_id' => $board->organization_id, 'type' => 'text',
             'position' => (int) TaskColumn::query()->where('board_id', $board->id)->max('position') + 1,
         ]);
