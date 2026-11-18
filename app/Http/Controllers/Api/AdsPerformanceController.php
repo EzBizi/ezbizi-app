@@ -508,6 +508,12 @@ class AdsPerformanceController extends Controller
                 report($e);
             }
         }
+        // A branch's PPC jobs are the account's that paid for PPC, not every
+        // account in the branch (desk, 2026-11-18: NJ's three accounts would
+        // each show Mt Laurel's jobs, and the roll-up count them three times).
+        if ($ppcJobs !== null && ! ($ppc > 0)) {
+            $ppcJobs = 0;
+        }
         $all = $total + (int) $ppcJobs;
         $per = fn (?float $cost, int $n) => $n > 0 && $cost !== null ? round($cost / $n, 2) : null;
 
@@ -554,8 +560,10 @@ class AdsPerformanceController extends Controller
      * The dialed "- PPC" line sets that source (SourceFromDialed). Null for an
      * account with no branch: nothing says which jobs are its.
      *
-     * ponytail: the whole branch's PPC jobs; a branch with two PPC accounts
-     * would count them twice (none on prod 2026-11-18).
+     * Given only to an account with PPC spend in the dates (withLeads).
+     * ponytail: two accounts with PPC spend in one branch would each get them
+     * all; none on prod 2026-11-18 (NJ: Mt Laurel, CT: Hamden). Split by
+     * spend if that changes.
      */
     private static function ppcJobs(SocialConnection $connection, Carbon $from, Carbon $to): ?int
     {

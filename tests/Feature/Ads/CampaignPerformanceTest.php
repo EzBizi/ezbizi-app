@@ -371,6 +371,30 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame(411.52, (float) $account['cost_per_lead'], 'all 1234.56 over all three');
     }
 
+    /** Desk, 2026-11-18: NJ's three accounts share a branch; only Mt Laurel pays for PPC, so only it takes the jobs. */
+    public function test_an_account_with_no_ppc_spend_takes_none_of_its_branchs_ppc_jobs(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+        ]);
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $row->forceFill(['leads_franchise_id' => $t['franchise']->id])->save();
+            \App\Models\WorkizJob::query()->create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'JOB-1',
+                'job_source' => 'PPC', 'booked_at' => '2026-09-01 09:00:00', 'payload' => [], 'synced_at' => now()]);
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(0, $account['ppc_jobs']);
+        $this->assertSame(0, $account['leads']);
+    }
+
     public function test_a_ratio_with_no_denominator_is_null(): void
     {
         $t = $this->provisionTenant('A1-Group');
