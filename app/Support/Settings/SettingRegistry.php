@@ -1608,6 +1608,12 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',
             ),
+            // Jose / desk, 2026-11-17: a job booked into a full window alerts at once.
+            new SettingDefinition(
+                key: 'scheduling.full_window_alert_to', label: 'Full-window alert: also tell (emails)',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                help: 'When a Workiz job is booked into a window that was already full, whoever booked it is alerted at once and it goes on the branch board. These people (the branch\'s field managers: emails separated by commas) are alerted too. Set it per branch.',
+            ),
             // Dispatchers, via Jose 2026-11-17: "Friday appointments must be scheduled
             // no later than the 12-3 PM time window." Weekday (0 Sun .. 6 Sat) => the
             // latest window start offered; an area can set its own.
