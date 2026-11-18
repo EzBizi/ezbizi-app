@@ -2,18 +2,23 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\AuditEvent;
 use App\Models\MondayOutboxEntry;
+use App\Models\Notification;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -39,6 +44,8 @@ class MondayPushTest extends TestCase
 
     /** @var list<array{query: string, vars: array}> */
     private array $mutations = [];
+
+    private bool $archived = false;
 
     private string $mondayUpdatedAt = '2026-11-13T10:00:00Z';
 
@@ -73,6 +80,10 @@ class MondayPushTest extends TestCase
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
+                if ($this->archived && str_contains($q, 'create_update(')) {
+                    return Http::response(['errors' => [['message' => 'User unauthorized to perform action', 'path' => ['create_update'],
+                        'extensions' => ['status_code' => 403, 'code' => 'USER_UNAUTHORIZED', 'error_data' => ['failure_reason' => 'Access denied']]]]]);
+                }
                 $this->mondayUpdatedAt = now()->utc()->format('Y-m-d\TH:i:s\Z');
 
                 return Http::response(['data' => match (true) {
@@ -84,7 +95,7 @@ class MondayPushTest extends TestCase
 
             return Http::response(['data' => match (true) {
                 str_contains($q, 'users(') => ['users' => [['id' => '5', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']]],
-                str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics']]]],
+                str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
                 str_contains($q, 'groups { id title }') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
                     'columns' => [
                         ['id' => 'name', 'title' => 'Name', 'type' => 'name', 'settings_str' => '{}'],
@@ -150,6 +161,22 @@ class MondayPushTest extends TestCase
         $this->assertCount(1, $this->mutations);
         $this->assertStringContainsString('Monday\'s is kept', $said()[1]);
         $this->assertSame(MondayOutboxEntry::SUPERSEDED, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->latest('changed_at')->first()->state));
+    }
+
+    /** Desk 11-18: an update on an item archived on Monday was retried 5 times on a 403. */
+    public function test_an_update_monday_refuses_on_an_archived_item_fails_once_with_a_reason_on_the_task(): void
+    {
+        $this->archived = true;
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->comment($this->task, $this->jose, 'Called him back'));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->latest('changed_at')->first());
+        $this->assertSame(MondayOutboxEntry::FAILED, $row->state);
+        $this->assertStringStartsWith('The item is archived on Monday', $row->error);
+        $this->assertSame('Not sent to Monday: The item is archived on Monday, which takes no changes to it.',
+            $this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task->id)->where('field', 'monday_sync')->value('to')));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertCount(1, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_update(')), 'never retried');
     }
 
     public function test_a_new_task_and_a_new_update_are_made_on_monday_and_keep_their_ids(): void
@@ -230,12 +257,12 @@ class MondayPushTest extends TestCase
     {
         $natalie = $this->userWithRole($this->tenant, 'CR', ['tasks.view', 'tasks.edit'], 'natalie@ezbizi.test');
         $this->inTenant($this->tenant['org'], function () use ($natalie) {
-            $field = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Field Manager - Lucas', 'position' => 20]);
-            $cr = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Customer Relations - Natalie', 'position' => 21]);
+            $field = TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Field Manager - Lucas', 'position' => 20]);
+            $cr = TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Customer Relations - Natalie', 'position' => 21]);
 
             // As MondayImport: one transaction, the outbox suppressed inside it,
             // the Monday creator stamped after the create.
-            \Illuminate\Support\Facades\DB::transaction(fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(function () use ($field, $natalie) {
+            DB::transaction(fn () => MondayOutbox::suppress(function () use ($field, $natalie) {
                 $t = app(TaskWriter::class)->create($this->board, ['title' => 'Refund for Gilbert', 'group_id' => $field->id], $this->jose);
                 $t->forceFill(['external_ref' => 'monday:77', 'created_by_user_id' => $natalie->id])->save();
             }));
@@ -244,19 +271,19 @@ class MondayPushTest extends TestCase
             $this->assertSame($cr->id, $task->group_id);
             $this->assertSame(['group'], MondayOutboxEntry::query()->where('task_id', $task->id)->sole()->kinds);
             $this->assertSame('Moved to Customer Relations: refunds start there',
-                \App\Models\Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->value('title'));
+                Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->value('title'));
 
             // Monday echoes the move: same group, nothing more happens.
-            \Illuminate\Support\Facades\DB::transaction(fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(
+            DB::transaction(fn () => MondayOutbox::suppress(
                 fn () => app(TaskWriter::class)->update($task, ['group_id' => $cr->id], $this->jose)));
-            $this->assertSame(1, \App\Models\AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
-            $this->assertSame(1, \App\Models\Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->count(), 'no second bell');
+            $this->assertSame(1, AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
+            $this->assertSame(1, Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->count(), 'no second bell');
         });
     }
 
     public function test_what_the_monday_sync_writes_is_never_sent_back(): void
     {
-        $this->inTenant($this->tenant['org'], fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(
+        $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(
             fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Done'], $this->jose)));
         $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->count()));
 
