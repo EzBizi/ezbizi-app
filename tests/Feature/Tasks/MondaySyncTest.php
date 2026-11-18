@@ -15,6 +15,7 @@ use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\FakesMonday;
@@ -127,11 +128,26 @@ class MondaySyncTest extends TestCase
     }
 
     /** Desk 11-18: a task moved to another board here stopped 29 syncs ("no column called <Area id>"). */
+    /** Desk 11-18: an item moved to another board ON MONDAY (nothing changed here) follows it here. */
+    public function test_an_item_moved_to_another_board_on_monday_follows_it_here(): void
+    {
+        $home = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $this->inTenant($this->tenant['org'], function () {
+            $other = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            // As if it had been on the other board and Monday moved it to board 100: no change here since the sync.
+            DB::table('tasks')->where('external_ref', 'monday:11')->update(['board_id' => $other->id, 'external_synced_at' => now()->addMinute(), 'updated_at' => now()]);
+        });
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
+
+        $this->assertSame($home->id, $this->task('11')->board_id);
+    }
+
     public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
     {
         $elsewhere = $this->inTenant($this->tenant['org'], function () {
             $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
-            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id]);
+            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id, 'updated_at' => now()->addMinutes(5)]); // moved here, after the last sync
 
             return $b;
         });
