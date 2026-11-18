@@ -81,8 +81,22 @@ final class MondaySync
                     ? $reader->changedSince($mondayId, null)
                     : $reader->changedSince($mondayId, CarbonImmutable::parse($cursor), filtered: ! $scan);
             }
-            if ($ids !== []) {
+            try {
                 $meta = $reader->board($mondayId);
+            } catch (MondayRefused $e) {
+                if (! str_starts_with($e->getMessage(), 'Monday shows no board')) {
+                    throw $e; // the connection itself
+                }
+                report($e); // that one board is gone on Monday: the others still sync
+
+                continue;
+            }
+            if ($ids === []) {
+                // No item changed, but a board or group rename, a group added or reordered touches
+                // no item's clock (desk 11-18): name, groups and members every pass.
+                $this->import->run($org, ['people' => (array) ($state['people'] ?? []), 'users' => [],
+                    'boards' => [$meta + ['target_board_id' => $board->id, 'items' => []]]], $as, refresh: true);
+            } else {
                 // In chunks: a whole board (NW, 24,659 items) read and written in one go outlasts
                 // the scheduler lane and holds one transaction for an hour (prod, 2026-11-13).
                 foreach (array_chunk($ids, 200) as $chunk) {

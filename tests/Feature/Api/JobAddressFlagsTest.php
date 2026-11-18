@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\TasksController;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Notification;
 use App\Models\Task;
+use App\Models\TaskColumnValue;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Jobs\JobAddress;
@@ -81,6 +83,31 @@ class JobAddressFlagsTest extends TestCase
             $task = Task::query()->where('title', 'like', 'Job #101:%')->firstOrFail();
             $this->assertSame(['job', true], [$task->about_type, $task->about_id !== null]);
             $this->assertSame(3, Task::query()->where('title', 'like', 'Job #%')->count());
+            // Desk 11-18: owned by the booker it alerts, made by EzBizi, and says what to do.
+            $this->assertSame([$booker->id], $task->owners()->pluck('user_id')->all());
+            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', $task->title);
+            // Jose 11-18: a job's task carries both job ids as columns.
+            $ids = TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->mapWithKeys(fn ($v) => [$v->column->name => $v->value_text])->all();
+            $this->assertSame(['Workiz Job ID' => '101', 'EzBizi Job #' => 'J-1'], array_intersect_key($ids, array_flip(['Workiz Job ID', 'EzBizi Job #'])));
+            $this->assertSame(['type' => 'automation', 'label' => 'EzBizi'], TasksController::present($task)['created_by']);
+        });
+    }
+
+    /** Desk 11-18: a flag task never has no owner: booker, else field managers, else the General Manager. */
+    public function test_a_flag_task_falls_back_to_the_field_managers_then_the_general_manager(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $gm = $this->userWithRole($alpha, 'GM', ['tasks.view'], 'shneor@ezbizi.test');
+        $fm = $this->userWithRole($alpha, 'FM', ['tasks.view'], 'fm@ezbizi.test');
+        $this->inTenant($alpha['org'], function () use ($alpha, $gm, $fm) {
+            $gm->forceFill(['name' => 'Shneor Cohen'])->save();
+            $board = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($alpha['franchise']);
+            \App\Models\TaskGroup::create(['organization_id' => $alpha['org']->id, 'board_id' => $board->id, 'name' => 'General Manager - Shneor', 'position' => 9]);
+            $can = [(string) $gm->id, (string) $fm->id];
+
+            $this->assertSame([(string) $gm->id], \App\Console\Commands\FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'no field managers listed: the GM');
+            app(SettingsResolver::class)->set(\App\Console\Commands\SchedulingFlagFullWindows::RECIPIENTS, $alpha['franchise'], 'fm@ezbizi.test');
+            $this->assertSame([(string) $fm->id], \App\Console\Commands\FlagWorkizJobs::owners($board, $alpha['franchise'], ['not-on-board'], $can), 'the listed field manager');
         });
     }
 
