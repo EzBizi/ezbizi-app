@@ -29,7 +29,10 @@ enum SocialPostState {
 
   /// Still to go out: the planner's Coming up / Needs attention.
   bool get upcoming =>
-      this == needsApproval || this == ready || this == scheduled || this == pastDue;
+      this == needsApproval ||
+      this == ready ||
+      this == scheduled ||
+      this == pastDue;
 
   /// What clears it, in a few words, for the inspector's primary action.
   String get nextStep => switch (this) {
