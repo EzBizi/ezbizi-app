@@ -14,6 +14,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Tasks\Monday\MondayOutbox;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -113,6 +114,22 @@ class MondayPushTest extends TestCase
     private function values(int $i = 0): array
     {
         return json_decode((string) ($this->mutations[$i]['vars']['v'] ?? '{}'), true);
+    }
+
+    /** Desk 11-18: a task moved to another board here moves on Monday too. */
+    public function test_a_task_moved_to_another_mirrored_board_moves_on_monday(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $other = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $other->forceFill(['external_ref' => 'monday:200'])->saveQuietly();
+            $group = $other->groups()->create(['organization_id' => $other->organization_id, 'name' => 'Open Tasks', 'position' => 99]);
+            app(TaskWriter::class)->move($this->task->fresh(), $group, null, $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board('));
+        $this->assertNotNull($move, 'moved on Monday');
+        $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
     }
 
     public function test_a_change_here_is_written_to_its_monday_item_once(): void

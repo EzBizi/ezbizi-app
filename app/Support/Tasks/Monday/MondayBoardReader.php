@@ -360,6 +360,20 @@ final class MondayBoardReader
      *
      * @return array{ids: list<string>, latest: ?string}
      */
+    /** @return array<string, string> every live top-level item of a board => its group's title (the parity check) */
+    public function itemGroups(string $boardId): array
+    {
+        $fields = 'cursor items { id group { title } }';
+        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
+        $items = $page['items'];
+        while (! empty($page['cursor'])) {
+            $page = $this->api->query('query($c:String!){ next_items_page(limit:500, cursor:$c) { '.$fields.' } }', ['c' => $page['cursor']])['next_items_page'];
+            array_push($items, ...$page['items']);
+        }
+
+        return array_column(array_map(fn ($i) => [(string) $i['id'], (string) ($i['group']['title'] ?? '')], $items), 1, 0);
+    }
+
     public function changedSince(string $boardId, ?CarbonImmutable $since, bool $filtered = false): array
     {
         $fields = 'cursor items { id updated_at subitems { id updated_at } }';

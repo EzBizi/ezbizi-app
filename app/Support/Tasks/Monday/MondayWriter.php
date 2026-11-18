@@ -54,6 +54,12 @@ final class MondayWriter
         return (string) ($data['create_group']['id'] ?? throw new RuntimeException('Monday made no group.'));
     }
 
+    /** Monday matches columns by id/title when no mapping is given. */
+    public function moveToBoard(string $itemId, string $boardId, ?string $groupId): void
+    {
+        $this->mutate('mutation($i:ID!,$b:ID!,$g:ID!){ move_item_to_board(item_id:$i, board_id:$b, group_id:$g) { id } }', ['i' => $itemId, 'b' => $boardId, 'g' => $groupId ?? 'topics']);
+    }
+
     public function archiveItem(string $itemId): void
     {
         $this->mutate('mutation($i:ID!){ archive_item(item_id:$i) { id } }', ['i' => $itemId]);

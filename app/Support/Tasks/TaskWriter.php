@@ -20,9 +20,10 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Live\ChangeFeed;
 use App\Support\Notifications\NotificationDispatcher;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -102,6 +103,8 @@ class TaskWriter
                 'estimate_minutes' => $input['estimate_minutes'] ?? null,
                 'created_by_user_id' => $actor?->getKey(),
                 'created_by_automation_id' => $automationId,
+                // No person and no rule: a system command (desk 11-18), shown as EzBizi.
+                'created_by_system' => $actor === null && $automationId === null ? mb_substr((string) ($input['source'] ?? 'system'), 0, 40) : null,
             ]);
 
             if ($owners !== null) {
@@ -192,7 +195,7 @@ class TaskWriter
                 // task anyway, so an open board's changes feed sees it.
                 if ($ownersChanged || ! empty($input['values'])) {
                     Task::query()->whereKey($task->id)->update(['updated_at' => now()]);
-                    \App\Support\Live\ChangeFeed::record($task, 'tasks');
+                    ChangeFeed::record($task, 'tasks');
                 }
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);

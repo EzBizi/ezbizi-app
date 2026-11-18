@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\TasksController;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Notification;
@@ -81,6 +82,10 @@ class JobAddressFlagsTest extends TestCase
             $task = Task::query()->where('title', 'like', 'Job #101:%')->firstOrFail();
             $this->assertSame(['job', true], [$task->about_type, $task->about_id !== null]);
             $this->assertSame(3, Task::query()->where('title', 'like', 'Job #%')->count());
+            // Desk 11-18: owned by the booker it alerts, made by EzBizi, and says what to do.
+            $this->assertSame([$booker->id], $task->owners()->pluck('user_id')->all());
+            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', $task->title);
+            $this->assertSame(['type' => 'automation', 'label' => 'EzBizi'], TasksController::present($task)['created_by']);
         });
     }
 

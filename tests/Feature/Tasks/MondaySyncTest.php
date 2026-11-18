@@ -157,14 +157,22 @@ class MondaySyncTest extends TestCase
         $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
         $mine = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(fn () => app(TaskWriter::class)->create($board, ['title' => 'Made before the outbox'], $this->jose)));
         $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
-            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z'),
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:30:00Z', ['group' => 'Completed Tasks']),
             $this->mondayItem('13', 'Only on Monday', '2026-11-12T10:30:00Z'),
         ])];
 
-        $this->artisan('ezbizi:monday-parity')->expectsOutputToContain('tasks only here 1, items only on Monday 1')->assertFailed();
+        $gone = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            $t = app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose);
+            $t->forceFill(['external_ref' => 'monday:99'])->saveQuietly();
+
+            return $t;
+        }));
+        $this->artisan('ezbizi:monday-parity')->expectsOutputToContain('tasks only here 1, items only on Monday 1, moved here not there 0, gone on Monday 1, in another group 1')->assertFailed();
         $this->artisan('ezbizi:monday-parity', ['--fix' => true])->assertSuccessful();
 
         $this->assertNotNull($this->task('13'));
+        $this->assertNull($this->task('99'), 'removed on Monday, removed here');
+        $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $this->task('11')->group->name), 'moved on Monday later: moved here');
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 

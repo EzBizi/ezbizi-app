@@ -162,6 +162,12 @@ final class MondayPush
             return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Monday no longer shows that item.');
         }
         $itemBoard = $item['board'];
+        if ($itemBoard !== $boardId && $task->parent_task_id === null && $entry->task_update_id === null) {
+            // Moved to another board here: moved there too (full mirror, desk 11-18).
+            $this->writer->moveToBoard($itemId, $boardId, $this->groupOn($boardId, $task));
+            $itemBoard = $boardId;
+            $item['group'] = null;
+        }
 
         if ($entry->task_update_id !== null) {
             $update = $entry->taskUpdate;

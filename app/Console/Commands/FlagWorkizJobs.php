@@ -89,14 +89,7 @@ class FlagWorkizJobs extends Command
                             $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: [$booker->getKey()]);
                         }
 
-                        $franchise = Franchise::query()->find($w->franchise_id);
-                        if ($franchise && TaskBoards::hasPlaceBoard($franchise)) {
-                            $tasks->create($boards->ensureFor($franchise), array_filter([
-                                'title' => $title,
-                                'about_type' => $job ? 'job' : null,
-                                'about_id' => $job?->id,
-                            ]), null);
-                        }
+                        self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
                     }
                 }
             });
@@ -105,6 +98,37 @@ class FlagWorkizJobs extends Command
         $this->info($flagged.' flag'.($flagged === 1 ? '' : 's').($dry ? ' would be raised.' : ' raised.'));
 
         return self::SUCCESS;
+    }
+
+    /** The one line that says what the flag asks for (desk 11-18: "what the point to them is"). */
+    public const WHY = [
+        'address' => 'Fix the address in Workiz so the tech can find it',
+    ];
+
+    /**
+     * The flag on the branch's board, owned by the people its alert reaches (those the
+     * board can take), made by EzBizi (desk 11-18: they had no owner and no maker).
+     *
+     * @param  list<?string>  $userIds
+     */
+    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds): void
+    {
+        if ($franchise === null || ! TaskBoards::hasPlaceBoard($franchise)) {
+            return;
+        }
+        $board = $boards->ensureFor($franchise);
+        $can = $boards->assignable($board)->pluck('id')->map(fn ($id) => (string) $id)->all();
+        // Quiet: the alert above is the bell; the task must not ring a second one.
+        $quiet = $tasks->quiet;
+        $tasks->quiet = true;
+        $tasks->create($board, array_filter([
+            'title' => mb_substr($why ? $title.' · '.$why : $title, 0, 255),
+            'about_type' => $job ? 'job' : null,
+            'about_id' => $job?->id,
+            'source' => 'flags',
+            'assignee_user_ids' => array_values(array_intersect(array_map('strval', array_filter($userIds)), $can)) ?: null,
+        ]), null);
+        $tasks->quiet = $quiet;
     }
 
     /** Workiz CreatedBy → the team member's linked user, else a user of that name. */
