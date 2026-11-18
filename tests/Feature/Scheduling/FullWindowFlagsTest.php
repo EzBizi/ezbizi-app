@@ -32,9 +32,12 @@ class FullWindowFlagsTest extends TestCase
             $f = $alpha['franchise'];
             app(SettingsResolver::class)->set('scheduling.full_window_alert_to', $f, 'nobody@example.com, '.strtoupper($manager->email));
             $area = ServiceArea::create(['franchise_id' => $f->id, 'name' => 'Maryland']);
-            foreach ([['08:00', '11:00', 1], ['14:00', '17:00', 3]] as [$s, $e, $max]) {
+            foreach ([['08:00', '11:00', 1], ['14:00', '17:00', 4]] as [$s, $e, $max]) {
                 ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 3, 'start_time' => $s, 'end_time' => $e, 'max_jobs' => $max]);
             }
+            // Prod 11-18: a mirrored row not projected yet (no job_id) shares the day.
+            WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => 'PENDING', 'status' => 'Submitted', 'service_area' => 'Maryland',
+                'payload' => [], 'scheduled_for' => '2026-11-18 14:00:00', 'synced_at' => now()]);
             WorkizTeamMember::create(['franchise_id' => $f->id, 'remote_id' => 'U1', 'name' => 'Ana Ruiz', 'user_id' => $booker->id, 'payload' => [], 'synced_at' => now()]);
             $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'A']);
             foreach ([['FIRST', 201, '2026-11-12 14:00:00'], ['SECOND', 202, '2026-11-13 08:11:00']] as [$id, $serial, $created]) {

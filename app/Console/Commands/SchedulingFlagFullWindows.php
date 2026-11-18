@@ -104,7 +104,7 @@ class SchedulingFlagFullWindows extends Command
         $windows = $openings->days($area, $date, 1)[0]['windows'] ?? [];
         $window = collect($windows)->first(fn ($x) => $time >= $x['start_time'] && $time < $x['end_time']);
         $seats = $openings->jobsOn($area, $date);
-        if ($window === null || ! $seats->contains(fn ($j) => $j->job_id === $job->id)) {
+        if ($window === null || ! $seats->contains(fn ($j) => ($j->job_id ?? null) === $job->id)) {
             return null; // no window, or not holding a seat (cancelled, excluded tag)
         }
         $created = fn ($j) => (is_string($j->payload) ? json_decode($j->payload, true) : (array) $j->payload)['CreatedDate'] ?? null;
@@ -113,7 +113,7 @@ class SchedulingFlagFullWindows extends Command
             $t = substr((string) $j->scheduled_for, 11, 5);
 
             // A move lands on everyone already there; a booking only on those booked before it.
-            return $j->job_id !== $job->id && $t >= $window['start_time'] && $t < $window['end_time'] && ($moved || ($created($j) ?? '0') < $mine);
+            return ($j->job_id ?? null) !== $job->id && $t >= $window['start_time'] && $t < $window['end_time'] && ($moved || ($created($j) ?? '0') < $mine);
         })->count();
         if ($before < $window['capacity']) {
             return null;
