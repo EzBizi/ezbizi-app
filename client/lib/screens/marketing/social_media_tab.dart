@@ -15,6 +15,7 @@ import 'comments_inbox_tab.dart';
 import 'connection_setup.dart';
 import 'instagram_comments_panel.dart';
 import 'qr_codes_tab.dart';
+import 'social_post_state.dart';
 import 'tiktok_post_choices.dart';
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
@@ -3258,7 +3259,13 @@ class _SentPost {
     this.scheduledFor,
     this.scheduledTimezone,
     this.createdAt,
+    this.state,
   });
+
+  /// The server's reading (stage B, 01a1ef57): one of the six states, or
+  /// null for one still sending or turned down everywhere; absent from an
+  /// older server, where the planner reads the targets itself.
+  final SocialPostState? state;
 
   final String id;
   final String body;
@@ -3287,6 +3294,7 @@ class _SentPost {
       author: json['author'] as String?,
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
+      state: SocialPostState.fromKey(json['state'] as String?),
       createdAt: DateTime.tryParse(
         json['created_at'] as String? ?? '',
       )?.toLocal(),
@@ -3361,7 +3369,18 @@ class _SentTarget {
     this.id,
     this.canDelete = false,
     this.statusLabel,
+    this.company,
+    this.ctaType,
+    this.ctaUrl,
+    this.connectionStatus,
   });
+
+  /// The company the account posts for, the button it carries, and whether
+  /// its connection still works (stage B).
+  final String? company;
+  final String? ctaType;
+  final String? ctaUrl;
+  final String? connectionStatus;
 
   /// The server's word for a sent target that is not on the profile:
   /// "Sent to TikTok inbox". Null otherwise.
@@ -3400,6 +3419,10 @@ class _SentTarget {
       id: json['id'] as String?,
       canDelete: json['can_delete'] as bool? ?? false,
       statusLabel: json['status_label'] as String?,
+      company: json['company'] as String?,
+      ctaType: json['cta_type'] as String?,
+      ctaUrl: json['cta_url'] as String?,
+      connectionStatus: json['connection_status'] as String?,
     );
   }
 }
@@ -4258,11 +4281,21 @@ class _PostDetailState extends State<_PostDetail> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(target.account, style: theme.textTheme.bodyMedium),
-                  FilledButton(
-                    key: Key('social-approve-${target.id}'),
-                    onPressed: _saving ? null : () => _approve(target),
-                    child: const Text('Approve'),
-                  ),
+                  if (socialApproveLabel(post.state, post.scheduledFor)
+                      case final String approve)
+                    FilledButton(
+                      key: Key('social-approve-${target.id}'),
+                      onPressed: _saving ? null : () => _approve(target),
+                      // Stage B: it posts now only with no time set; past the
+                      // time it is not offered (the server answers 422).
+                      child: Text(post.state == null ? 'Approve' : approve),
+                    )
+                  else
+                    Text(
+                      'Its time has passed: pick a new time, then approve it.',
+                      key: Key('social-approve-passed-${target.id}'),
+                      style: theme.textTheme.bodySmall,
+                    ),
                   TextButton(
                     key: Key('social-disapprove-${target.id}'),
                     onPressed: _saving
@@ -4557,6 +4590,29 @@ class _TargetLine extends StatelessWidget {
                     color: colours.ink,
                   ),
                 ),
+                if (target.company != null || target.ctaType != null)
+                  Text(
+                    [
+                      ?target.company,
+                      if (target.ctaType != null)
+                        'Button: ${_ctaWord(target.ctaType!)}'
+                            '${target.ctaUrl == null ? '' : ' · ${target.ctaUrl}'}',
+                    ].join(' · '),
+                    key: ValueKey('social-target-about-${target.id}'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                if (target.connectionStatus != null &&
+                    target.connectionStatus != 'connected')
+                  Text(
+                    'The connection to this account needs reconnecting: '
+                    'open Connections.',
+                    key: ValueKey('social-target-health-${target.id}'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ToneColours.of(context, Tone.bad).ink,
+                    ),
+                  ),
                 if (url != null && target.status == 'sent')
                   TextButton.icon(
                     style: TextButton.styleFrom(
@@ -4751,6 +4807,22 @@ DateTime? _placedAt(_SentPost post) {
 /// app's own pill words, plus Planned / Needs approval for a post held for
 /// approval (with or without a time) and Draft for one going nowhere yet.
 (String, Tone) _planState(_SentPost post) {
+  final state = post.state;
+  if (state != null) {
+    return switch (state) {
+      // A proposed time is Planned (Rodrigo 01a1ef71); none, Needs approval.
+      SocialPostState.needsApproval when post.scheduledFor != null => (
+        'Planned',
+        Tone.caution,
+      ),
+      SocialPostState.needsApproval => (state.label, Tone.caution),
+      SocialPostState.ready => (state.label, Tone.neutral),
+      SocialPostState.scheduled => (state.label, Tone.info),
+      SocialPostState.pastDue => (state.label, Tone.bad),
+      SocialPostState.published => (state.label, Tone.ok),
+      SocialPostState.failed => (state.label, Tone.bad),
+    };
+  }
   if (post.targets.isEmpty) return ('Draft', Tone.neutral);
   // Taken down after it went out is still a post that went out.
   const went = {'sent', 'removed'};
@@ -5520,7 +5592,7 @@ class _PlanCard extends StatelessWidget {
     final style = Theme.of(context).textTheme.labelSmall;
     final when = at == null
         ? label
-        : label == 'Scheduled' || label == 'Sent'
+        : label == 'Scheduled' || label == 'Sent' || label == 'Published'
         ? _clockShort(at, formats)
         : '$label ${_clockShort(at, formats)}';
 
@@ -5601,6 +5673,17 @@ String? _goesOut(_SentPost post) {
   final shown = wall.length > 16 ? wall.substring(0, 16) : wall;
   return 'Goes out $shown${clock.isEmpty ? '' : ' ($clock)'}';
 }
+
+/// Google's button words, as the composer offers them.
+String _ctaWord(String type) => switch (type) {
+  'BOOK' => 'Book',
+  'ORDER' => 'Order',
+  'SHOP' => 'Shop',
+  'LEARN_MORE' => 'Learn more',
+  'SIGN_UP' => 'Sign up',
+  'CALL' => 'Call',
+  _ => type,
+};
 
 /// A post as a list row: used by + more, Needs attention, Agenda and phones.
 class _PlanRow extends StatelessWidget {
