@@ -38,9 +38,24 @@ class ProjectInboxController extends Controller
             ->where(fn (Builder $w) => $w->whereNotNull('schedule_proposal')->orWhereIn('id', JobPart::query()->select('job_id'))->orWhere('tags', 'like', '%DEPOSIT RECEIVED%'))
             ->with('customer:id,name,phone')->latest('updated_at')->limit(500)->get()
             ->unique('customer_id');
+        // One read for every thread (phone_messages has no index on these
+        // columns, so a query per job scanned the window up to 500 times).
+        $phones = $jobs->pluck('customer.phone')->filter()->unique()->values()->all();
+        $byCustomer = $byPhone = [];
+        PhoneMessage::query()->where('created_at', '>=', now()->subDays(self::DAYS))
+            ->where(fn (Builder $w) => $w->whereIn('customer_id', $jobs->pluck('customer_id')->all())
+                ->when($phones !== [], fn (Builder $p) => $p->orWhereIn('from_e164', $phones)->orWhereIn('to_e164', $phones)))
+            ->latest('created_at')->get(['id', 'customer_id', 'from_e164', 'to_e164', 'body', 'direction', 'created_at'])
+            ->each(function (PhoneMessage $m) use (&$byCustomer, &$byPhone) {
+                // Newest first, so the first one seen per key is the latest.
+                $byCustomer[(string) $m->customer_id] ??= $m;
+                $byPhone[$m->from_e164] ??= $m;
+                $byPhone[$m->to_e164] ??= $m;
+            });
         $threads = [];
         foreach ($jobs as $job) {
-            $last = $this->messages($job)->latest('created_at')->first();
+            $last = collect([$byCustomer[$job->customer_id] ?? null, $byPhone[(string) $job->customer?->phone] ?? null])
+                ->filter()->sortByDesc('created_at')->first();
             if ($last === null) {
                 continue;
             }
