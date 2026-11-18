@@ -13,6 +13,8 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Newsletter\NewsletterBrandSettings;
+use App\Support\Newsletter\NewsletterSections;
 use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterImages;
 use App\Support\Newsletter\NewsletterSenders;
@@ -189,6 +191,7 @@ class NewslettersController extends Controller
             'preheader' => $this->clean($data['preheader'] ?? null),
             'blocks' => $data['blocks'] ?? [],
             'html_override' => $data['html_override'] ?? null,
+            'brand' => NewsletterBrandSettings::clean($data['brand'] ?? null),
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
             'created_by' => $user->getKey(),
             'scope_type' => $scopeType,
@@ -261,6 +264,10 @@ class NewslettersController extends Controller
         if (array_key_exists('html_override', $data)) {
             $row->html_override = $data['html_override'];
         }
+        // The applied brand (P1b): a snapshot, changed only when named. Null removes it.
+        if (array_key_exists('brand', $data)) {
+            $row->brand = NewsletterBrandSettings::clean($data['brand']);
+        }
 
         $this->applySchedule($request, $row, $data['scheduled_for'] ?? null);
         $row->revision = (int) $row->revision + 1;
@@ -309,8 +316,9 @@ class NewslettersController extends Controller
             'html_override' => $saved->html_override,
             'author' => $saved->author?->name,
             'at' => $saved->created_at?->toIso8601String(),
-            'html' => $this->renderer->document((array) ($saved->blocks ?? []), $saved->html_override, $saved->preheader,
-                NewsletterIdentity::footer($row) + ['unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview']),
+            'html' => $this->renderer->document(NewsletterSections::expand((array) ($saved->blocks ?? [])), $saved->html_override, $saved->preheader,
+                NewsletterIdentity::footer($row) + ['unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview'],
+                $row->brand),
         ]]);
     }
 
@@ -633,8 +641,8 @@ class NewslettersController extends Controller
     /** The document a send or test carries: footer ensured, preheader in. */
     private function sendHtml(Newsletter $row): string
     {
-        return $this->renderer->document((array) ($row->blocks ?? []), $row->html_override, $row->preheader,
-            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override, $row->preheader,
+            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*'], $row->brand);
     }
 
     /**
@@ -773,6 +781,7 @@ class NewslettersController extends Controller
             'preheader' => $source->preheader,
             'blocks' => $source->blocks ?? [],
             'html_override' => $source->html_override,
+            'brand' => $source->brand,
             'newsletter_audience_id' => $source->newsletter_audience_id,
             'created_by' => $user->getKey(),
             'scope_type' => $scopeType,
@@ -987,6 +996,7 @@ class NewslettersController extends Controller
             'blocks' => ['nullable', 'array'],
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
             'html_override' => ['nullable', 'string'],
+            'brand' => ['nullable', 'array'],
             'audience_id' => ['nullable', 'string'],
             'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i,Y-m-d H:i:s'],
         ], [
@@ -1006,6 +1016,9 @@ class NewslettersController extends Controller
          */
         if (array_key_exists('blocks', $data)) {
             $data['blocks'] = $request->input('blocks');
+        }
+        if (array_key_exists('brand', $data)) {
+            $data['brand'] = $request->input('brand');
         }
 
         // Imported HTML is refused, not cleaned: a mailing that silently lost its
@@ -1066,7 +1079,8 @@ class NewslettersController extends Controller
             'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
         ];
 
-        return $this->renderer->document((array) ($row->blocks ?? []), $row->html_override, $row->preheader, $footer);
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override,
+            $row->preheader, $footer, $row->brand);
     }
 
     /** @return array<string, mixed> */
@@ -1094,6 +1108,8 @@ class NewslettersController extends Controller
             'author' => $n->author?->name,
             'has_html_override' => is_string($n->html_override) && $n->html_override !== '',
             'html_override' => is_string($n->html_override) && $n->html_override !== '' ? $n->html_override : null,
+            // The brand as applied to this newsletter (P1b); null: none.
+            'brand' => $n->brand,
             'last_send' => $send === null ? null : [
                 'status' => $send->status,
                 'recipients' => $send->recipients,

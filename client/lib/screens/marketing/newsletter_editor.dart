@@ -17,6 +17,7 @@ import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
 import '../../core/api_client.dart';
 import 'newsletter_blocks.dart';
+import 'newsletter_brand_saved.dart';
 import 'newsletter_import_panel.dart';
 import 'newsletter_preflight.dart';
 
@@ -110,7 +111,15 @@ class NewsletterEditor extends StatefulWidget {
     this.localCopyNote,
     this.onRestoreLocal,
     this.onDiscardLocal,
+    this.brand,
+    this.onBrand,
   });
+
+  /// The brand applied to this newsletter (P1b), or null.
+  final Map<String, dynamic>? brand;
+
+  /// Applies (a map) or removes (null) the brand; null hides the Brand tab.
+  final ValueChanged<Map<String, dynamic>?>? onBrand;
 
   /// The internal campaign name (P1a); empty shows the subject instead.
   final TextEditingController name;
@@ -229,7 +238,24 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   /// The block being edited in place, by position.
   int? _selected;
+  /// Designing for a phone (P1b): the canvas draws at [_deviceWidth] with
+  /// mobile overrides applied, and the inspector edits those overrides.
   bool _phone = false;
+  double _deviceWidth = 375;
+
+  /// The Design panel's left tab: add, brand or saved.
+  String _leftTab = 'add';
+
+  /// Saved sections and starters; null until loaded.
+  List<NewsletterSavedSection>? _sections;
+
+  /// The block being saved as a section (its name form is in the inspector).
+  int? _namingSection;
+  final TextEditingController _sectionName = TextEditingController();
+  bool _sectionLinked = false;
+
+  /// Bumped when a mobile override is reset, so its field redraws.
+  int _mobileGeneration = 0;
 
   /// Show the server's HTML instead of the Flutter drawing, so the exact
   /// output stays checkable.
@@ -351,6 +377,67 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     }
     _resolve();
     _loadLists();
+    _loadSections();
+  }
+
+  Future<void> _loadSections() async {
+    final api = widget.api;
+    if (api == null) return;
+    final found = await loadSavedSections(api);
+    if (!mounted) return;
+    setState(() => _sections = found ?? const []);
+  }
+
+  void _say(String message) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Inserts blocks under the selection (or at the end) and selects the first.
+  void _insertBlocks(List<Map<String, dynamic>> blocks) {
+    if (blocks.isEmpty) return;
+    setState(() {
+      final at = _selected == null ? widget.blocks.length : _selected! + 1;
+      widget.blocks.insertAll(at, blocks);
+      _selected = at;
+      _serverPreview = false;
+    });
+    widget.onChanged();
+  }
+
+  /// "Save as section" from the block toolbar.
+  Future<void> _saveSection(int i) async {
+    final api = widget.api;
+    if (api == null) return;
+    final name = _sectionName.text.trim();
+    if (name.isEmpty) return;
+    final r = await api.post('/newsletter/sections', {
+      'name': name,
+      'mode': _sectionLinked ? 'linked' : 'copy',
+      'blocks': [widget.blocks[i]],
+    });
+    if (!mounted) return;
+    _say(r.ok ? 'Saved as "$name".' : r.reason);
+    if (r.ok) {
+      setState(() {
+        _namingSection = null;
+        _sectionName.clear();
+      });
+      await _loadSections();
+    }
+  }
+
+  /// Publishes the selected block as the section's next version. Linked
+  /// newsletters see "Update available"; none changes by itself.
+  Future<void> _publishSection(NewsletterSavedSection section) async {
+    final api = widget.api;
+    final i = _selected;
+    if (api == null || i == null) return;
+    final r = await api.put('/newsletter/sections/${section.id}', {
+      'blocks': [widget.blocks[i]],
+    });
+    if (!mounted) return;
+    _say(r.ok ? 'Published a new version of "${section.name}".' : r.reason);
+    if (r.ok) await _loadSections();
   }
 
   @override
@@ -375,6 +462,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   void dispose() {
     _keys.dispose();
     _inline?.dispose();
+    _sectionName.dispose();
     _html.dispose();
     super.dispose();
   }
@@ -1412,7 +1500,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _palette(context, wrap: true),
+          _leftPanel(context, wrap: true),
           const SizedBox(height: 12),
           _email(context, bounded: false),
           if (inspector != null) ...[const SizedBox(height: 12), inspector],
@@ -1425,10 +1513,10 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       children: [
         if (_paletteOpen)
           SizedBox(
-            width: 216,
+            width: 248,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(12),
-              child: _palette(context, wrap: false),
+              child: _leftPanel(context, wrap: false),
             ),
           )
         else
@@ -1808,6 +1896,52 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
+  /// Add content, Brand and Saved (P1b).
+  Widget _leftPanel(BuildContext context, {required bool wrap}) {
+    final api = widget.api;
+    final tabs = SegmentedButton<String>(
+      key: const ValueKey('newsletter-left-tabs'),
+      segments: [
+        const ButtonSegment(value: 'add', label: Text('Add')),
+        if (api != null && widget.onBrand != null)
+          const ButtonSegment(value: 'brand', label: Text('Brand')),
+        if (api != null) const ButtonSegment(value: 'saved', label: Text('Saved')),
+      ],
+      selected: {_leftTab},
+      showSelectedIcon: false,
+      onSelectionChanged: (s) => setState(() => _leftTab = s.first),
+    );
+    final Widget body = switch (_leftTab) {
+      'brand' when api != null && widget.onBrand != null => NewsletterBrandPanel(
+        api: api,
+        applied: widget.brand,
+        locked: _locked,
+        onApply: widget.onBrand!,
+      ),
+      'saved' when api != null => NewsletterSavedPanel(
+        sections: _sections,
+        locked: _locked || _htmlMode,
+        onInsertCopy: (s) => _insertBlocks(s.copyBlocks()),
+        onInsertLinked: (s) => _insertBlocks([s.reference()]),
+        onPublishFromSelection: _selected == null ||
+                widget.blocks[_selected!]['type'] == 'section_ref'
+            ? null
+            : _publishSection,
+      ),
+      _ => _palette(context, wrap: wrap),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (api != null) ...[
+          FittedBox(fit: BoxFit.scaleDown, child: tabs),
+          const SizedBox(height: 10),
+        ],
+        body,
+      ],
+    );
+  }
+
   /// A new block goes where it was dropped, else under the selected one, or at
   /// the end, and is selected so its fields are open where it landed.
   void _add(BlockKind kind, [int? dropped]) {
@@ -1852,7 +1986,10 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        // Designing, not previewing (P1b): Mobile edits the phone overrides
+        // the email carries. Preview & test is where the recipient's copy is.
         SegmentedButton<bool>(
+          key: const ValueKey('newsletter-device'),
           segments: const [
             ButtonSegment(
               value: false,
@@ -1861,7 +1998,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             ),
             ButtonSegment(
               value: true,
-              label: Text('Phone'),
+              label: Text('Mobile'),
               icon: Icon(Icons.phone_iphone, size: 16),
             ),
           ],
@@ -1869,6 +2006,20 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           onSelectionChanged: (s) => setState(() => _phone = s.first),
           showSelectedIcon: false,
         ),
+        if (_phone) ...[
+          for (final w in const [320.0, 375.0, 414.0])
+            ChoiceChip(
+              key: ValueKey('newsletter-device-${w.toInt()}'),
+              label: Text('${w.toInt()}'),
+              selected: _deviceWidth == w,
+              onSelected: (_) => setState(() => _deviceWidth = w),
+            ),
+          Text(
+            'Editing mobile styles',
+            key: const ValueKey('newsletter-editing-mobile'),
+            style: theme.textTheme.labelMedium,
+          ),
+        ],
         if (!_htmlMode)
           FilterChip(
             tooltip: 'Shows the email exactly as the server will send it',
@@ -1894,6 +2045,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         blocks: widget.blocks,
         company: widget.company,
         phone: _phone,
+        deviceWidth: _deviceWidth,
+        brand: widget.brand,
         selected: _selected,
         onSelect: _locked ? null : _select,
         editorFor: _locked ? null : _inlineEditor,
@@ -2004,7 +2157,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Align(
       alignment: Alignment.topCenter,
       child: SizedBox(
-        width: _phone ? 375 : double.infinity,
+        width: _phone ? _deviceWidth : double.infinity,
         child: MessageHtmlView(html: widget.previewHtml, ownHtml: true),
       ),
     );
@@ -2133,6 +2286,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               i >= widget.blocks.length - 1 ? null : () => _move(i, i + 1)),
           button('newsletter-block-duplicate', Icons.copy_outlined, 'Duplicate (Ctrl+D)',
               () => _duplicate(i)),
+          if (widget.api != null && widget.blocks[i]['type'] != 'section_ref')
+            button('newsletter-block-save-section', Icons.bookmark_add_outlined, 'Save as section',
+                () => setState(() {
+                      _namingSection = i;
+                      _sectionName.clear();
+                      _sectionLinked = false;
+                    })),
           button('newsletter-block-delete', Icons.delete_outline, 'Delete (Del)',
               () => _remove(i)),
         ],
@@ -2256,7 +2416,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '${kind?.label ?? (block['type'] as String? ?? 'Block')} settings',
+                    '${kind?.label ?? (block['type'] == 'section_ref' ? 'Linked section' : block['type'] as String? ?? 'Block')} '
+                    '${_phone ? 'mobile settings' : 'settings'}',
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
@@ -2268,12 +2429,227 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                 ),
               ],
             ),
+            if (_namingSection == i) _sectionForm(i),
             if (isHandWritten(block))
               const DashboardNote(
                 'This block was written as HTML and is kept exactly as typed.',
               )
+            else if (block['type'] == 'section_ref')
+              ..._linkedFields(i, block)
+            else if (_phone)
+              ..._mobileFields(block, kind)
             else
               ..._fieldsFor(context, block, kind),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Name and use of a new saved section, inline (no dialogs in this app).
+  Widget _sectionForm(int i) => Card(
+    key: const ValueKey('newsletter-section-form'),
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const ValueKey('newsletter-section-name'),
+            controller: _sectionName,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Section name', isDense: true),
+          ),
+          SwitchListTile(
+            key: const ValueKey('newsletter-section-linked'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Meant for linked use'),
+            subtitle: const Text('Linked uses show "Update available"; nothing updates by itself.'),
+            value: _sectionLinked,
+            onChanged: (v) => setState(() => _sectionLinked = v),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => setState(() => _namingSection = null),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const ValueKey('newsletter-section-save'),
+                onPressed: () => _saveSection(i),
+                child: const Text('Save section'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// A linked section (P1b): which version it is pinned to, and the explicit
+  /// update when a newer one is published. Nothing updates by itself.
+  List<Widget> _linkedFields(int i, Map<String, dynamic> block) {
+    NewsletterSavedSection? latest;
+    for (final s in _sections ?? const <NewsletterSavedSection>[]) {
+      if (!s.starter && s.id == block['section_id']) latest = s;
+    }
+    final pinned = (block['version'] as num?)?.toInt() ?? 0;
+    return [
+      Text('${block['name'] ?? 'Saved section'} · version $pinned'),
+      const SizedBox(height: 6),
+      if (latest != null && latest.version > pinned) ...[
+        Text(
+          'Update available: version ${latest.version}',
+          key: const ValueKey('newsletter-linked-update-available'),
+        ),
+        const SizedBox(height: 6),
+        FilledButton(
+          key: const ValueKey('newsletter-linked-update'),
+          onPressed: () {
+            final ref = latest!.reference();
+            setState(() => block
+              ..['version'] = ref['version']
+              ..['name'] = ref['name']
+              ..['preview_blocks'] = ref['preview_blocks']);
+            widget.onChanged();
+          },
+          child: const Text('Update to latest'),
+        ),
+      ] else
+        const DashboardNote('Up to date with the saved section.'),
+      const SizedBox(height: 6),
+      OutlinedButton(
+        key: const ValueKey('newsletter-linked-detach'),
+        onPressed: () {
+          setState(() {
+            widget.blocks
+              ..removeAt(i)
+              ..insertAll(i, [
+                for (final b in (block['preview_blocks'] as List? ?? const []))
+                  if (b is Map) Map<String, dynamic>.from(jsonDecode(jsonEncode(b)) as Map),
+              ]);
+            _selected = null;
+          });
+          widget.onChanged();
+        },
+        child: const Text('Detach as an editable copy'),
+      ),
+    ];
+  }
+
+  /// The block's mobile overrides (P1b). Each field shows the desktop value
+  /// greyed as "from desktop" until it is overridden; an override has a reset.
+  List<Widget> _mobileFields(Map<String, dynamic> block, BlockKind? kind) {
+    final fields = <String>[
+      if (kind == BlockKind.heading || kind == BlockKind.text || kind == BlockKind.button) 'font_size',
+      if (kind != BlockKind.divider && kind != BlockKind.spacer) 'padding',
+      if (kind == BlockKind.heading || kind == BlockKind.text || kind == BlockKind.image || kind == BlockKind.button)
+        'align',
+      if (kind == BlockKind.button) 'button_full_width',
+      if (kind == BlockKind.columns) 'stack',
+      'hidden',
+    ];
+    return [
+      const DashboardNote('Phone overrides. Anything not overridden comes from desktop.'),
+      for (final f in fields) _mobileField(block, kind, f),
+    ];
+  }
+
+  Object? _desktopValue(Map<String, dynamic> block, BlockKind? kind, String f) => switch (f) {
+    'font_size' => block['size'] ?? (kind == BlockKind.heading ? 24 : 15),
+    'padding' => block['spacing'] ?? 14,
+    'align' => block['align'] ?? 'left',
+    'button_full_width' => block['full_width'] == true,
+    'stack' => block['stack'] != false,
+    _ => false,
+  };
+
+  void _setMobile(Map<String, dynamic> block, String f, Object? v, {bool redraw = false}) {
+    setState(() {
+      final m = Map<String, dynamic>.from(block['mobile'] as Map? ?? const {});
+      if (v == null) {
+        m.remove(f);
+      } else {
+        m[f] = v;
+      }
+      if (m.isEmpty) {
+        block.remove('mobile');
+      } else {
+        block['mobile'] = m;
+      }
+      if (redraw) _mobileGeneration++;
+    });
+    widget.onChanged();
+  }
+
+  Widget _mobileField(Map<String, dynamic> block, BlockKind? kind, String f) {
+    final theme = Theme.of(context);
+    final mobile = block['mobile'] is Map ? block['mobile'] as Map : const {};
+    final overridden = mobile.containsKey(f);
+    final desktop = _desktopValue(block, kind, f);
+    final value = overridden ? mobile[f] : desktop;
+    const labels = {
+      'font_size': 'Text size (px)',
+      'padding': 'Space above and below (px)',
+      'align': 'Alignment',
+      'button_full_width': 'Full width',
+      'stack': 'Stack columns',
+      'hidden': 'Hide on mobile',
+    };
+
+    final Widget control = switch (f) {
+      'font_size' || 'padding' => TextFormField(
+        key: ValueKey('newsletter-mobile-$f'),
+        initialValue: overridden ? '$value' : '',
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(isDense: true, hintText: '$desktop'),
+        onChanged: (t) => _setMobile(block, f, int.tryParse(t.trim())),
+      ),
+      'align' => SegmentedButton<String>(
+        key: ValueKey('newsletter-mobile-$f'),
+        segments: const [
+          ButtonSegment(value: 'left', icon: Icon(Icons.format_align_left, size: 16)),
+          ButtonSegment(value: 'center', icon: Icon(Icons.format_align_center, size: 16)),
+          ButtonSegment(value: 'right', icon: Icon(Icons.format_align_right, size: 16)),
+        ],
+        selected: {'$value'},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => _setMobile(block, f, s.first, redraw: true),
+      ),
+      _ => Switch(
+        key: ValueKey('newsletter-mobile-$f'),
+        value: value == true,
+        onChanged: (v) => _setMobile(block, f, v, redraw: true),
+      ),
+    };
+
+    return KeyedSubtree(
+      key: ValueKey('mobile-$f-$_mobileGeneration'),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(labels[f]!, style: theme.textTheme.labelMedium)),
+                if (overridden)
+                  TextButton(
+                    key: ValueKey('newsletter-mobile-reset-$f'),
+                    onPressed: () => _setMobile(block, f, null, redraw: true),
+                    child: const Text('Reset'),
+                  )
+                else if (f != 'hidden')
+                  Text(
+                    'from desktop',
+                    key: ValueKey('newsletter-mobile-inherited-$f'),
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor),
+                  ),
+              ],
+            ),
+            Opacity(opacity: overridden || f == 'hidden' ? 1 : 0.6, child: control),
           ],
         ),
       ),

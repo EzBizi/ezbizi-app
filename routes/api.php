@@ -127,6 +127,7 @@ use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScree
 use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
 use App\Http\Controllers\Api\NewsletterImportController;
+use App\Http\Controllers\Api\NewsletterBrandSectionsController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\NoteActivityController;
@@ -2584,6 +2585,15 @@ Route::prefix('v1')
             Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
             Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
             Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
+
+            // P1b: the company brand and saved sections (linked uses pin a version).
+            Route::get('newsletter/brand', [NewsletterBrandSectionsController::class, 'brand']);
+            Route::put('newsletter/brand', [NewsletterBrandSectionsController::class, 'saveBrand']);
+            Route::get('newsletter/sections', [NewsletterBrandSectionsController::class, 'sections']);
+            Route::post('newsletter/sections', [NewsletterBrandSectionsController::class, 'store']);
+            Route::get('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'section']);
+            Route::put('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'update']);
+            Route::delete('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'destroy']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
