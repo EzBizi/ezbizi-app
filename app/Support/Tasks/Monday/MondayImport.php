@@ -152,9 +152,17 @@ final class MondayImport
                     $this->layout($board, $b);
                     $this->folder($board, $b['folder'] ?? null);
                     foreach ($b['items'] as $item) {
-                        $parent = $this->task($board, $item, null, $actor);
-                        foreach ($item['subitems'] ?? [] as $sub) {
-                            $this->task($board, $sub + ['group' => $item['group']], $parent, $actor);
+                        // One bad item never stops the rest (desk 11-18: one item stopped 29 syncs).
+                        try {
+                            DB::transaction(function () use ($board, $item, $actor) {
+                                $parent = $this->task($board, $item, null, $actor);
+                                foreach ($item['subitems'] ?? [] as $sub) {
+                                    $this->task($board, $sub + ['group' => $item['group']], $parent, $actor);
+                                }
+                            });
+                        } catch (\Throwable $e) {
+                            report($e);
+                            $this->counts['items failed'] = ($this->counts['items failed'] ?? 0) + 1;
                         }
                     }
                 }
@@ -308,6 +316,14 @@ final class MondayImport
     {
         $ref = 'monday:'.$item['monday_id'];
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
+        if ($existing !== null && ! $existing->trashed() && $existing->board_id !== $board->id) {
+            // Moved to another board here: EzBizi's place wins; Monday's notes still arrive,
+            // but its columns, group and status belong to the board it left (desk 11-18).
+            $this->updates($existing, $item, $as);
+            $this->counts['kept (moved to another board here)'] = ($this->counts['kept (moved to another board here)'] ?? 0) + 1;
+
+            return $existing;
+        }
         if ($existing !== null && ! $existing->trashed()) {
             $this->refreshed($existing, $board, $item, $parent, $as);
             $this->fillBlanks($existing->refresh(), $board, $item, $as);
