@@ -519,7 +519,11 @@ final class WebsiteEnquiries
              * a lead under the wrong branch is worse than one under none,
              * because the branch it belongs to never sees it.
              */
-            'franchise_id' => $site->franchise_id,
+            // A review, though, comes from one customer of one place: it is
+            // that place's, so lead.received routes it there (desk, 2026-11-18:
+            // a Houston and a Maryland review both fell to the no-branch rule).
+            'franchise_id' => $site->franchise_id ?? (in_array($visitor['lead_type'] ?? null, ['BAD_RATING', 'GOOD_RATING'], true)
+                ? self::branchFor((string) $site->company_id, $visitor['zip'] ?? null, $phone) : null),
             'source' => $source,
             'remote_id' => $remoteId,
             'contact_name' => $visitor['name'] ?? null,
@@ -574,6 +578,38 @@ final class WebsiteEnquiries
         ]);
 
         return $lead;
+    }
+
+    /**
+     * The company's branch for where a customer is: the service area taking
+     * their ZIP; else the branch nearly all (80%+, 5 or more) of the
+     * company's leads from their phone's area code went to in 180 days.
+     * Null when neither says: no branch beats a wrong one.
+     *
+     * ponytail: the area code is read from the company's own leads, not a
+     * NANP table; add one if a market starts with too few leads to vote.
+     */
+    public static function branchFor(string $companyId, ?string $zip, ?string $phone): ?string
+    {
+        $branches = Franchise::query()->where('company_id', $companyId)->pluck('id');
+        if ($branches->isEmpty()) {
+            return null;
+        }
+        if ($zip !== null && ($area = ServiceArea::forZip($zip, $branches)) !== null && $area->franchise_id !== null) {
+            return (string) $area->franchise_id;
+        }
+        $digits = substr((string) Lead::digits($phone), -10);
+        if (strlen($digits) !== 10) {
+            return null;
+        }
+        $votes = Lead::query()->where('company_id', $companyId)->whereIn('franchise_id', $branches)
+            ->where('phone_digits', 'like', '%'.substr($digits, 0, 3).'_______')
+            ->where('received_at', '>=', now()->subDays(180))
+            ->groupBy('franchise_id')->selectRaw('franchise_id, count(*) AS n')->orderByDesc('n')->get();
+        $total = (int) $votes->sum('n');
+        $top = $votes->first();
+
+        return $top !== null && $total >= 5 && $top->n / $total >= 0.8 ? (string) $top->franchise_id : null;
     }
 
     /**
