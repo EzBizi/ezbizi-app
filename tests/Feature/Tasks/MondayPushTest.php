@@ -89,6 +89,7 @@ class MondayPushTest extends TestCase
                 return Http::response(['data' => match (true) {
                     str_contains($q, 'create_item(') => ['create_item' => ['id' => '77']],
                     str_contains($q, 'create_update(') => ['create_update' => ['id' => '901']],
+                    str_contains($q, 'create_group(') => ['create_group' => ['id' => 'g_new']],
                     default => ['ok' => ['id' => '1']],
                 }]);
             }
@@ -161,6 +162,23 @@ class MondayPushTest extends TestCase
         $this->assertCount(1, $this->mutations);
         $this->assertStringContainsString('Monday\'s is kept', $said()[1]);
         $this->assertSame(MondayOutboxEntry::SUPERSEDED, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->latest('changed_at')->first()->state));
+    }
+
+    /** Jose 11-18, "full sync": a group made here (the complaint rule's) is made on Monday too, once. */
+    public function test_a_task_in_a_group_monday_lacks_makes_the_group_there_once(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $g = TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Customer Experience', 'position' => 9]);
+            foreach (['Complaint A', 'Complaint B'] as $t) {
+                app(TaskWriter::class)->create($this->board, ['title' => $t, 'group_id' => $g->id], $this->jose);
+            }
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $groups = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_group('));
+        $this->assertCount(1, $groups);
+        $this->assertSame('Customer Experience', $groups->first()['vars']['n']);
+        $this->assertSame(['g_new', 'g_new'], collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.g')->values()->all());
     }
 
     /** Desk 11-18: an update on an item archived on Monday was retried 5 times on a 403. */
