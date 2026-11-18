@@ -3874,7 +3874,10 @@ class ActionRunner
             : [];
 
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
+            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event)
+                // {{branch}} on a record's event: the record's branch (its Area on a task, 2026-11-17).
+                ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
+                    ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
             $text = is_scalar($value) ? (string) $value : '';
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
@@ -4004,6 +4007,13 @@ class ActionRunner
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
         $group = trim((string) ($action['group'] ?? ''));
+        // No group of exactly that name: the board's group that contains it
+        // ("Customer Relations" finds "🤝 Customer Relations Board - Adeline";
+        // Jose, 2026-11-17: the rule made a duplicate group on every board).
+        if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
+            $group = (string) ($board->groups()->orderBy('position')->get()
+                ->first(fn ($g) => str_contains(mb_strtolower($g->name), mb_strtolower($group)))?->name ?? $group);
+        }
 
         // Skip while an open task in that group has this title, or carries the
         // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.

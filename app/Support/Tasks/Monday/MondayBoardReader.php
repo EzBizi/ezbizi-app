@@ -297,12 +297,14 @@ final class MondayBoardReader
      */
     public function writeMeta(string $boardId): array
     {
-        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } groups { id title } } }', ['b' => [$boardId]])['boards'][0] ?? null;
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } groups { id title position } } }', ['b' => [$boardId]])['boards'][0] ?? null;
         if ($b === null) {
             throw new MondayRefused("Monday shows no board {$boardId} to this connection.");
         }
         $this->remember($boardId, $b['columns']);
         $meta = $this->columns[$boardId];
+        // In board order: a new group is placed after the right one (desk 11-18).
+        usort($b['groups'], fn ($x, $y) => (float) ($x['position'] ?? 0) <=> (float) ($y['position'] ?? 0));
         $due = array_key_first(array_filter($meta, fn ($m) => $m['type'] === 'date' && mb_strtolower(trim($m['title'])) === 'due date'));
         $groups = [];
         foreach ($b['groups'] as $g) {
@@ -360,6 +362,69 @@ final class MondayBoardReader
      *
      * @return array{ids: list<string>, latest: ?string}
      */
+    /** @return array<string, string> an item's non-empty column values, column id => text (a cross-board move's check) */
+    public function valuesOf(string $itemId): array
+    {
+        $item = $this->api->query('query($i:[ID!]){ items(ids:$i) { column_values { id text value } } }', ['i' => [$itemId]])['items'][0] ?? null;
+        $out = [];
+        foreach ($item['column_values'] ?? [] as $v) {
+            if (trim((string) ($v['text'] ?? '')) !== '' || ($v['value'] ?? null) !== null) {
+                $out[(string) $v['id']] = (string) ($v['text'] ?? '');
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<array{id: int, kind: string}> who an item's People column holds now */
+    public function peopleOn(string $itemId, string $columnId): array
+    {
+        $item = $this->api->query('query($i:[ID!],$c:[String!]){ items(ids:$i) { column_values(ids:$c) { ... on PeopleValue { persons_and_teams { id kind } } } } }',
+            ['i' => [$itemId], 'c' => [$columnId]])['items'][0] ?? null;
+
+        return array_map(fn ($p) => ['id' => (int) $p['id'], 'kind' => (string) $p['kind']], $item['column_values'][0]['persons_and_teams'] ?? []);
+    }
+
+    /**
+     * What Monday changed on an item since a moment, from the board's activity log:
+     * column ids, 'name' for the title, 'group' for a move (per-field last writer).
+     *
+     * @return list<string>
+     */
+    public function changedFields(string $boardId, string $itemId, CarbonImmutable $since): array
+    {
+        $logs = $this->api->query('query($b:[ID!],$i:[ID!],$f:ISO8601DateTime){ boards(ids:$b) { activity_logs(item_ids:$i, from:$f, limit:100) { event data } } }',
+            ['b' => [$boardId], 'i' => [$itemId], 'f' => $since->utc()->toIso8601ZuluString()])['boards'][0]['activity_logs'] ?? [];
+        $out = [];
+        foreach ($logs as $log) {
+            $data = json_decode((string) ($log['data'] ?? ''), true) ?: [];
+            $event = (string) ($log['event'] ?? '');
+            if (str_contains($event, 'name')) {
+                $out[] = 'name';
+            } elseif (str_contains($event, 'group')) {
+                $out[] = 'group';
+            } elseif (isset($data['column_id'])) {
+                $out[] = (string) $data['column_id'];
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** @return array<string, string> every live top-level item of a board => its group's title (the parity check) */
+    public function itemGroups(string $boardId): array
+    {
+        $fields = 'cursor items { id group { title } }';
+        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
+        $items = $page['items'];
+        while (! empty($page['cursor'])) {
+            $page = $this->api->query('query($c:String!){ next_items_page(limit:500, cursor:$c) { '.$fields.' } }', ['c' => $page['cursor']])['next_items_page'];
+            array_push($items, ...$page['items']);
+        }
+
+        return array_column(array_map(fn ($i) => [(string) $i['id'], (string) ($i['group']['title'] ?? '')], $items), 1, 0);
+    }
+
     public function changedSince(string $boardId, ?CarbonImmutable $since, bool $filtered = false): array
     {
         $fields = 'cursor items { id updated_at subitems { id updated_at } }';
@@ -405,7 +470,7 @@ final class MondayBoardReader
             $this->board($boardId);
         }
         $updates = 'updates(limit:100) { id text_body created_at creator { id email name } '.self::ASSET.' replies { id text_body created_at creator { id email name } '.self::ASSET.' } }';
-        $item = 'id name created_at updated_at group { id title } creator { id email name } '.self::CV.' '.$updates
+        $item = 'id name state created_at updated_at group { id title } creator { id email name } '.self::CV.' '.$updates
             .' subitems { id name created_at updated_at creator { id email name } board { id } '.self::CV.' '.$updates.' }';
 
         $out = [];
@@ -416,6 +481,7 @@ final class MondayBoardReader
             foreach ($rows as $row) {
                 $group = (string) ($row['group']['title'] ?? 'Open Tasks');
                 $converted = $this->convert($boardId, $row, $this->columns[$boardId], $group);
+                $converted['state'] = $row['state'] ?? 'active'; // archived/deleted on Monday: archived here (desk 11-18)
                 foreach ($row['subitems'] ?? [] as $sub) {
                     $subBoard = (string) ($sub['board']['id'] ?? '');
                     $converted['subitems'][] = $this->convert($subBoard, $sub, $this->columns[$subBoard] ?? [], $group);

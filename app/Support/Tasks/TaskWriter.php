@@ -18,11 +18,13 @@ use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Live\ChangeFeed;
 use App\Support\Notifications\NotificationDispatcher;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -102,12 +104,15 @@ class TaskWriter
                 'estimate_minutes' => $input['estimate_minutes'] ?? null,
                 'created_by_user_id' => $actor?->getKey(),
                 'created_by_automation_id' => $automationId,
+                // No person and no rule: a system command (desk 11-18), shown as EzBizi.
+                'created_by_system' => $actor === null && $automationId === null ? mb_substr((string) ($input['source'] ?? 'system'), 0, 40) : null,
             ]);
 
             if ($owners !== null) {
                 $this->syncOwners($task, $owners, $actor);
             }
 
+            $input['values'] = ($input['values'] ?? []) + $this->jobValues($task);
             if (! empty($input['values'])) {
                 $this->writeValues($task, $input['values'], $actor);
             }
@@ -145,6 +150,9 @@ class TaskWriter
     public function update(Task $task, array $input, ?User $actor): Task
     {
         return DB::transaction(function () use ($task, $input, $actor) {
+            if (array_key_exists('about_id', $input) || array_key_exists('about_type', $input)) {
+                $input['values'] = ($input['values'] ?? []) + $this->jobValues($task, $input['about_type'] ?? $task->about_type, $input['about_id'] ?? $task->about_id);
+            }
             app(MondayOutbox::class)->record($task, self::mondayKinds($input));
             $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
@@ -192,7 +200,7 @@ class TaskWriter
                 // task anyway, so an open board's changes feed sees it.
                 if ($ownersChanged || ! empty($input['values'])) {
                     Task::query()->whereKey($task->id)->update(['updated_at' => now()]);
-                    \App\Support\Live\ChangeFeed::record($task, 'tasks');
+                    ChangeFeed::record($task, 'tasks');
                 }
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);
@@ -323,6 +331,44 @@ class TaskWriter
     }
 
     /** Fields a linked task keeps the same (Jose, 2026-10-29: "both remain and should be synced"). */
+    public const WORKIZ_JOB_COLUMN = 'Workiz Job ID';
+
+    public const EZBIZI_JOB_COLUMN = 'EzBizi Job #';
+
+    /**
+     * A task about a job carries both job ids as columns, made on the board when
+     * missing (Jose 11-18: "a column with the job id, both the workiz one and the
+     * ezbizi one"). Top-level tasks only; a subtask's parent carries them.
+     *
+     * @return array<string, string> column id => value
+     */
+    public function jobValues(Task $task, ?string $type = null, ?string $id = null): array
+    {
+        $type ??= $task->about_type;
+        $id ??= $task->about_id;
+        if ($type !== 'job' || $id === null || $task->parent_task_id !== null) {
+            return [];
+        }
+        $job = Job::query()->find($id);
+        if ($job === null) {
+            return [];
+        }
+        $workiz = WorkizJob::query()->where('job_id', $job->id)->first();
+        $out = [];
+        foreach ([self::WORKIZ_JOB_COLUMN => $workiz ? (string) ($workiz->serial_id ?? $workiz->remote_id) : null, self::EZBIZI_JOB_COLUMN => (string) $job->number] as $name => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $column = TaskColumn::query()->firstOrCreate(['board_id' => $task->board_id, 'name' => $name], [
+                'organization_id' => $task->organization_id, 'type' => 'text',
+                'position' => (int) TaskColumn::query()->where('board_id', $task->board_id)->max('position') + 1,
+            ]);
+            $out[$column->id] = $value;
+        }
+
+        return $out;
+    }
+
     private const SYNCED = ['title', 'due_on', 'priority', 'estimate_minutes', 'about_type', 'about_id'];
 
     /** True while a change is being copied across a link: the copies do not copy on. */

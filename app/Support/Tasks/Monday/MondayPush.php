@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
+use App\Models\TaskGroup;
 use App\Models\User;
 use App\Support\Tasks\ColumnConverter;
 use App\Support\Tenancy\TenantContext;
@@ -143,7 +144,7 @@ final class MondayPush
             }
             $itemId = $parent !== null
                 ? $this->writer->createSubitem($this->mondayId($parent->external_ref), $task->title)
-                : $this->writer->createItem($boardId, $this->meta($boardId)['groups'][mb_strtolower(trim((string) $task->group?->name))] ?? null, $task->title, []);
+                : $this->writer->createItem($boardId, $this->groupOn($boardId, $task), $task->title, []);
             // The id first: a retry after this point updates the item, never makes a second one.
             $task->timestamps = false;
             $task->forceFill(['external_ref' => 'monday:'.$itemId])->saveQuietly();
@@ -151,9 +152,9 @@ final class MondayPush
             $kinds = array_values(array_unique([...$kinds, 'status', 'due', 'owners',
                 ...TaskColumnValue::query()->where('task_id', $task->id)->pluck('column_id')->map(fn ($id) => 'values:'.$id)->all()]));
         } elseif ($entry->task_update_id === null) {
-            $loser = $this->lastWriter($entry, $task, $itemId);
-            if ($loser !== null) {
-                return $loser;
+            $kinds = $this->lastWriter($entry, $task, $itemId, $boardId, $kinds);
+            if ($kinds === []) {
+                return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Monday changed the same fields later.');
             }
         }
 
@@ -162,6 +163,43 @@ final class MondayPush
             return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Monday no longer shows that item.');
         }
         $itemBoard = $item['board'];
+        if ($itemBoard !== $boardId && $task->parent_task_id === null && $entry->task_update_id === null) {
+            // Moved to another board here: moved there too (full mirror, desk 11-18), but only when
+            // every column holding a value has its twin there: Monday matches columns by title and
+            // type and DROPS a value with no match. A missing text column is made; any other stops it.
+            $before = $this->reader->valuesOf($itemId);
+            $source = $this->meta($itemBoard)['columns'];
+            foreach ($before as $col => $text) {
+                $m = $source[$col] ?? null;
+                // Monday's own (computed) columns, and the status, which each board keeps as its own.
+                if ($m === null || in_array($col, ['name', 'subitems'], true) || $col === $this->meta($itemBoard)['status']
+                    || in_array($m['type'], ['subtasks', 'creation_log', 'last_updated', 'item_id', 'formula', 'mirror', 'board_relation', 'auto_number'], true)) {
+                    continue;
+                }
+                $twin = MondayBoardReader::columnFor($this->meta($boardId), (string) $m['title']);
+                $twinType = $twin !== null ? ($this->meta($boardId)['columns'][$twin]['type'] ?? null) : null;
+                if ($twin !== null && $twinType === $m['type']) {
+                    continue;
+                }
+                if ($twin === null && in_array($m['type'], ['text', 'long_text'], true)) {
+                    $this->writer->createTextColumn($boardId, (string) $m['title']);
+                    unset($this->meta[$boardId]);
+
+                    continue;
+                }
+                $why = 'Not moved on Monday: the board it moved to has no "'.$m['title'].'" ('.$m['type'].') column, so Monday would drop its value.';
+                $this->activity($task, $why);
+                throw new \RuntimeException($why);
+            }
+            $this->writer->moveToBoard($itemId, $boardId, $this->groupOn($boardId, $task));
+            $lost = array_diff_key($before, $this->reader->valuesOf($itemId));
+            if ($lost !== []) {
+                $this->activity($task, 'Moved on Monday, but '.count($lost).' value(s) did not arrive: '.implode(', ', array_map(fn ($c) => $source[$c]['title'] ?? $c, array_keys($lost))));
+                report(new \RuntimeException('Monday move dropped values on item '.$itemId));
+            }
+            $itemBoard = $boardId;
+            $item['group'] = null;
+        }
 
         if ($entry->task_update_id !== null) {
             $update = $entry->taskUpdate;
@@ -176,8 +214,8 @@ final class MondayPush
                 $this->writer->changeValues($itemBoard, $itemId, $values);
             }
             if (in_array('group', $kinds, true) && $task->parent_task_id === null) {
-                $group = $this->meta($itemBoard)['groups'][mb_strtolower(trim((string) $task->group?->name))] ?? null;
-                if ($group !== null && $group !== $item['group']) {
+                $group = $this->groupOn($itemBoard, $task);
+                if ($group !== $item['group']) {
                     $this->writer->moveToGroup($itemId, $group);
                 }
             }
@@ -196,28 +234,39 @@ final class MondayPush
     }
 
     /**
-     * Last writer wins. Monday changed the item after we last took it: if
-     * that was after the change here, Monday's stays (this change is the
-     * loser, and the read side brings Monday's); if before, this change is
-     * sent and Monday's is the loser. Both are written on the task.
+     * Last writer wins, per field (desk 11-18: a whole queued change was dropped
+     * when Monday touched any field of the item). Monday's activity log since our
+     * change names the fields Monday changed after us: those of ours are dropped
+     * (Monday's stays, the read side brings it); the rest are sent. Both on the task.
+     *
+     * @return list<string> the kinds still to send
      */
-    private function lastWriter(MondayOutboxEntry $entry, Task $task, string $itemId): ?string
+    private function lastWriter(MondayOutboxEntry $entry, Task $task, string $itemId, string $boardId, array $kinds): array
     {
         $item = $this->reader->itemState($itemId);
         $mondayAt = isset($item['updated_at']) ? CarbonImmutable::parse($item['updated_at']) : null;
-        if ($mondayAt === null || ($task->external_updated_at !== null && ! $mondayAt->greaterThan($task->external_updated_at))) {
-            return null; // Monday has not changed since we took it
-        }
         $here = CarbonImmutable::parse($entry->changed_at);
-        $fields = implode(', ', array_map(fn ($k) => str_starts_with($k, 'values:') ? 'a column' : $k, (array) $entry->kinds));
-        if ($mondayAt->greaterThan($here)) {
-            $this->activity($task, 'Monday changed this item at '.$mondayAt->format('M j g:i A').', after the change here ('.$fields.') at '.$here->format('g:i A').': Monday\'s is kept.');
-
-            return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Monday changed the item later.');
+        if ($mondayAt === null || ! $mondayAt->greaterThan($here)) {
+            return $kinds; // nothing on Monday after our change
         }
-        $this->activity($task, 'Monday changed this item at '.$mondayAt->format('M j g:i A').'; the later change here ('.$fields.') at '.$here->format('g:i A').' replaced it on Monday.');
+        $changed = $this->reader->changedFields($item['board'] ?? $boardId, $itemId, $here);
+        $meta = $this->meta($item['board'] ?? $boardId);
+        $lost = array_values(array_filter($kinds, fn (string $k) => match (true) {
+            $k === 'title' => in_array('name', $changed, true),
+            $k === 'group' => in_array('group', $changed, true),
+            $k === 'status' => $meta['status'] !== null && in_array($meta['status'], $changed, true),
+            $k === 'due' => $meta['due'] !== null && in_array($meta['due'], $changed, true),
+            $k === 'owners' => $meta['assignee'] !== null && in_array($meta['assignee'], $changed, true),
+            str_starts_with($k, 'values:') => ($c = TaskColumn::query()->find(substr($k, 7))) !== null
+                && in_array(MondayBoardReader::columnFor($meta, $c->name), $changed, true),
+            default => false,
+        }));
+        if ($lost !== []) {
+            $names = implode(', ', array_map(fn ($k) => str_starts_with($k, 'values:') ? 'a column' : $k, $lost));
+            $this->activity($task, 'Monday changed '.$names.' at '.$mondayAt->format('M j g:i A').', after the change here at '.$here->format('g:i A').": Monday's is kept.");
+        }
 
-        return null;
+        return array_values(array_diff($kinds, $lost));
     }
 
     private function activity(Task $task, string $sentence): void
@@ -240,15 +289,39 @@ final class MondayPush
             } elseif ($kind === 'due' && $meta['due'] !== null) {
                 $out[$meta['due']] = $task->due_on ? ['date' => $task->due_on->toDateString()] : '';
             } elseif ($kind === 'owners' && $meta['assignee'] !== null) {
-                $out[$meta['assignee']] = ['personsAndTeams' => $this->people($task->owners()->pluck('user_id')->all())];
+                $owners = $task->owners()->pluck('user_id')->all();
+                $mine = $this->people($owners);
+                // Desk 11-18: never shrink Monday's Person column for people we cannot name there. Keep
+                // Monday's people with no account here (and teams); ours replace only the ones we know.
+                $known = array_flip(array_values($this->mondayIds ?? []));
+                $kept = $this->mondayId($task->external_ref) === null ? [] : array_values(array_filter(
+                    $this->reader->peopleOn($this->mondayId($task->external_ref), $meta['assignee']),
+                    fn (array $p) => $p['kind'] !== 'person' || ! isset($known[(string) $p['id']]),
+                ));
+                $unmapped = array_diff($owners, array_keys($this->mondayIds ?? []));
+                if ($unmapped !== []) {
+                    $this->activity($task, "Not on Monday's Person column (no Monday account): ".User::query()->whereIn('id', $unmapped)->pluck('name')->join(', '));
+                }
+                $all = [...$mine, ...$kept];
+                if ($all === [] && $owners !== []) {
+                    continue; // only unmapped owners: Monday's column is left as it is
+                }
+                $out[$meta['assignee']] = ['personsAndTeams' => $all];
             } elseif (str_starts_with($kind, 'values:')) {
                 $column = TaskColumn::query()->find(substr($kind, 7));
                 $mondayColumn = $column ? MondayBoardReader::columnFor($meta, $column->name) : null;
+                $mondayType = $mondayColumn !== null ? $meta['columns'][$mondayColumn]['type'] : null;
+                if ($mondayColumn === null && $column?->type === 'text' && isset($meta['board'])) {
+                    // A text column made here is made on Monday too, same name (full mirror, Jose 11-18).
+                    $mondayColumn = $this->writer->createTextColumn($meta['board'], $column->name);
+                    $mondayType = 'text';
+                    unset($this->meta[$meta['board']]);
+                }
                 if ($mondayColumn === null) {
                     continue;
                 }
                 $value = TaskColumnValue::query()->with('column')->where('task_id', $task->id)->where('column_id', $column->id)->first();
-                $encoded = $this->encode($meta['columns'][$mondayColumn]['type'], $column, $value);
+                $encoded = $this->encode($mondayType, $column, $value);
                 if ($encoded !== false) {
                     $out[$mondayColumn] = $encoded;
                 }
@@ -324,9 +397,45 @@ final class MondayPush
         return 'deferred';
     }
 
+    /**
+     * The Monday group of the task's group name; made there when Monday has none
+     * (full mirror, Jose 11-18), right after the Monday group of the EzBizi group
+     * before it, else after Monday's last group. Never null: Monday files an item
+     * with no group in its FIRST group (Company Info, desk 11-18), so a task with
+     * no group is refused, not sent.
+     */
+    private function groupOn(string $boardId, Task $task): string
+    {
+        $name = trim((string) $task->group?->name);
+        if ($name === '') {
+            throw new \RuntimeException('The task has no group; it is not sent to Monday until it has one.');
+        }
+        $groups = $this->meta($boardId)['groups'];
+        $ref = (string) $task->group->external_ref;
+        if (str_starts_with($ref, 'monday:') && in_array(substr($ref, 7), $groups, true)) {
+            return substr($ref, 7); // the Monday group it mirrors, whatever either side calls it now
+        }
+        if (isset($groups[mb_strtolower($name)])) {
+            return $groups[mb_strtolower($name)];
+        }
+        $after = null;
+        foreach (TaskGroup::query()->where('board_id', $task->board_id)->where('position', '<', (int) $task->group->position)->orderByDesc('position')->pluck('name') as $before) {
+            if (isset($groups[mb_strtolower(trim($before))])) {
+                $after = $groups[mb_strtolower(trim($before))];
+                break;
+            }
+        }
+        $after ??= array_values($groups)[count($groups) - 1] ?? throw new \RuntimeException('Monday shows no group on that board to place a new one after.');
+
+        $made = $this->writer->createGroup($boardId, $name, $after);
+        $task->group->forceFill(['external_ref' => 'monday:'.$made])->saveQuietly();
+
+        return $this->meta[$boardId]['groups'][mb_strtolower($name)] = $made;
+    }
+
     private function meta(string $boardId): array
     {
-        return $this->meta[$boardId] ??= $this->reader->writeMeta($boardId);
+        return $this->meta[$boardId] ??= $this->reader->writeMeta($boardId) + ['board' => $boardId];
     }
 
     private function mondayId(?string $ref): ?string

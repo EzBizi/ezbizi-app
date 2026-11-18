@@ -2,12 +2,15 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
+use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,6 +126,86 @@ class MondaySyncTest extends TestCase
         $this->assertSame(3, $this->inTenant($this->tenant['org'], fn () => Task::query()->whereNotNull('external_ref')->count()));
     }
 
+    /** Desk 11-18: a task moved to another board here stopped 29 syncs ("no column called <Area id>"). */
+    public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
+    {
+        $elsewhere = $this->inTenant($this->tenant['org'], function () {
+            $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            Task::query()->where('external_ref', 'monday:11')->update(['board_id' => $b->id]);
+
+            return $b;
+        });
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $board = $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer again', '2026-11-12T12:00:00Z', ['status' => 'Done']),
+            $this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z'),
+        ]);
+        $board['columns'][] = ['id' => 'area', 'title' => 'Area', 'type' => 'status', 'settings_str' => json_encode(['labels' => ['0' => 'North']])];
+        foreach ($board['items'] as &$i) {
+            $i['column_values'][] = ['id' => 'area', 'type' => 'status', 'text' => 'North', 'label' => 'North', 'index' => 0, 'value' => json_encode(['index' => 0])];
+        }
+        unset($i);
+        $this->monday['boards'] = ['100' => $board];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertSame($elsewhere->id, $this->task('11')->board_id);
+        $this->assertNotNull($this->task('12'), 'the next item still arrived');
+    }
+
+    /** Desk 11-18: a group renamed on Monday is renamed here, same group, with no item changed; a starter group with no tasks goes. */
+    public function test_a_quiet_pass_renames_a_group_monday_renamed_and_keeps_its_tasks(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z')]);
+        $before = $this->task('11')->group_id;
+
+        $this->monday['boards']['100']['groups'][0]['title'] = 'James (Mar after 4 PM)';
+        Carbon::setTestNow('2026-11-13 09:00:00');
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $group = $this->inTenant($this->tenant['org'], fn () => TaskGroup::query()->find($before));
+        $this->assertSame('James (Mar after 4 PM)', $group->name);
+        $this->assertSame($before, $this->task('11')->group_id, 'same group, its task stays');
+        $names = $this->inTenant($this->tenant['org'], fn () => TaskGroup::query()->where('board_id', $group->board_id)->orderBy('position')->pluck('name')->all());
+        $this->assertSame(['James (Mar after 4 PM)', 'Completed Tasks'], array_slice($names, 0, 2), "Monday's groups, in Monday's order, first");
+        $this->assertNotContains('Guidelines', $names, 'an empty starter group Monday lacks goes');
+    }
+
+    /** Desk 11-18: an item archived on Monday is moved to the trash here (restorable), logged. */
+    public function test_an_item_archived_on_monday_goes_to_the_trash_here(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z') + ['state' => 'archived']]);
+        $this->assertNull($this->task('11'));
+        $this->assertNotNull($this->inTenant($this->tenant['org'], fn () => Task::withTrashed()->where('external_ref', 'monday:11')->first()?->deleted_at));
+    }
+
+    /** Jose 11-18, "everything must be mirrored": the nightly parity check finds both sides' gaps and closes them. */
+    public function test_parity_finds_what_one_side_lacks_and_fix_closes_it(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $mine = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(fn () => app(TaskWriter::class)->create($board, ['title' => 'Made before the outbox'], $this->jose)));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:30:00Z', ['group' => 'Completed Tasks']),
+            $this->mondayItem('13', 'Only on Monday', '2026-11-12T10:30:00Z'),
+        ])];
+
+        $gone = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            $t = app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose);
+            $t->forceFill(['external_ref' => 'monday:99'])->saveQuietly();
+
+            return $t;
+        }));
+        $this->artisan('ezbizi:monday-parity')->expectsOutputToContain('tasks only here 1, items only on Monday 1, moved here not there 0, gone on Monday 1, in another group 1, name differs 1')->assertFailed();
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true])->assertSuccessful();
+
+        $this->assertNotNull($this->task('13'));
+        $this->assertNull($this->task('99'), 'removed on Monday, removed here');
+        $this->assertSame('Jose Demasi', $this->inTenant($this->tenant['org'], fn () => $board->fresh()->name), "Monday's board name");
+        $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $this->task('11')->group->name), 'moved on Monday later: moved here');
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
+    }
+
     /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */
     public function test_someone_who_joins_later_gets_the_branch_boards_monday_shares_with_them(): void
     {
@@ -171,10 +254,10 @@ class MondaySyncTest extends TestCase
         $this->mondayQueries = [];
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
 
-        $this->assertCount(1, $this->mondayQueries, 'one query for the one board: '.implode(' | ', $this->mondayQueries));
+        // The date filter, then the board itself (name, groups, members: renames touch no item, desk 11-18).
         $this->assertStringContainsString('__last_updated__', $this->mondayQueries[0]);
-        $this->assertSame([], array_filter($this->mondayQueries, fn ($q) => str_contains($q, 'items(ids:') || str_contains($q, 'users(')),
-            'no item, update or user read');
+        $this->assertLessThanOrEqual(5, count($this->mondayQueries), implode(' | ', $this->mondayQueries));
+        $this->assertSame([], array_filter($this->mondayQueries, fn ($q) => str_contains($q, 'items(ids:')), 'no item or update read');
 
         // A change since the cursor is still found, and only it is read.
         $this->monday['boards']['100']['items'][] = $this->mondayItem('12', 'New job', '2026-11-13T08:30:00Z') + ['_board' => '100'];

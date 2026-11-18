@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\Customer;
+use App\Models\Lead;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskLink;
@@ -57,6 +59,22 @@ class TaskRollUpAndLinksTest extends TestCase
         $this->assertNull($siblingRows->firstWhere('id', $task->id));
     }
 
+    /** Health sweep 11-18: the company board sent all 31k branch rows and ran out of memory. */
+    public function test_per_group_pages_the_rolled_up_rows_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $company = $this->board($tenant, 'company', $tenant['company']->id);
+        $branch = $this->board($tenant, 'franchise', $tenant['franchise']->id);
+        foreach (range(1, 4) as $i) {
+            $this->task($tenant, $branch, "Branch {$i}");
+        }
+
+        $rows = collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}?per_group=2")->assertOk()->json('data.tasks'))
+            ->whereNotNull('rolled_up_from');
+        $this->assertCount(2, $rows);
+        $this->assertCount(4, collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}")->json('data.tasks'))->whereNotNull('rolled_up_from'));
+    }
+
     public function test_a_rolled_up_row_takes_the_company_boards_status_by_name(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -99,12 +117,12 @@ class TaskRollUpAndLinksTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         [$lead, $customer] = $this->inTenant($tenant['org'], fn () => [
-            \App\Models\Lead::create([
+            Lead::create([
                 'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id,
                 'source' => 'website_form', 'remote_id' => 'link-1', 'status' => 'NEW', 'received_at' => now(),
                 'contact_name' => 'Ann Gilbert', 'phone' => '+17325550101', 'phone_digits' => '7325550101',
             ]),
-            \App\Models\Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-77', 'name' => 'Gilbert Home', 'phone' => '7325550199']),
+            Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-77', 'name' => 'Gilbert Home', 'phone' => '7325550199']),
         ]);
         $admin = $tenant['admin'];
 

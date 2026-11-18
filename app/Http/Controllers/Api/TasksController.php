@@ -20,6 +20,7 @@ use App\Support\Ai\GrokCli;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
 use App\Support\Notes\NoteActivity;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
@@ -360,10 +361,10 @@ class TasksController extends Controller
         $user = $request->user();
         $like = '%'.addcslashes($q, '%_\\').'%';
         $digits = preg_replace('/\D/', '', $q);
-        $boards = app(\App\Support\Tasks\TaskBoards::class)->visibleTo($user)->pluck('id');
+        $boards = app(TaskBoards::class)->visibleTo($user)->pluck('id');
 
         $records = [];
-        $view = \App\Support\Scoping\ViewScope::forUser($user);
+        $view = ViewScope::forUser($user);
         $byPhone = fn ($w, string $column) => strlen($digits) >= 4 ? $w->orWhere($column, 'like', '%'.$digits.'%') : $w;
         if ($user->hasPermission('leads.view')) {
             $view->constrainPlaces(Lead::query())
@@ -521,6 +522,7 @@ class TasksController extends Controller
                     'label' => Automation::query()->find($task->created_by_automation_id)?->name ?? 'An automation',
                 ],
                 $task->creator !== null => ['type' => 'user', 'id' => $task->creator->id, 'label' => $task->creator->name],
+                $task->created_by_system !== null => ['type' => 'automation', 'label' => 'EzBizi'],
                 default => null,
             },
         ];

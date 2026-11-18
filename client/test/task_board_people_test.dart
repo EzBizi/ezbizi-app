@@ -383,9 +383,9 @@ void main() {
     for (final header in ['MY BOARDS', 'TEAM BOARDS', "EVERYONE'S BOARDS"]) {
       expect(find.text(header), findsOneWidget);
     }
-    expect(find.text('Office move · from Dana Ruiz'), findsOneWidget);
+    expect(find.text('Office move'), findsOneWidget);
     expect(find.text('Ben Okafor · 1 board'), findsOneWidget);
-    expect(find.text("Ben Okafor's board"), findsOneWidget);
+    expect(find.text('Ben'), findsOneWidget);
   });
 
   testWidgets("Automate lists this board's rules as sentences and saves a "

@@ -278,6 +278,51 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-11-17: the complaint rule made a duplicate "Customer Experience" group and left Area empty. */
+    public function test_a_group_by_part_of_its_name_and_the_records_branch_as_area(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $real = \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => '🤝 Customer Relations Board - Adeline', 'position' => 9]);
+            $area = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Area', 'type' => 'status', 'position' => 1,
+                'settings' => ['options' => [['id' => 'a1', 'label' => $t['franchise']->name, 'colour' => '#000000']]]]);
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => \App\Models\Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'c1', 'contact_name' => 'Pat', 'lead_type' => 'PHONE_CALL', 'status' => \App\Models\Lead::STATUS_NEW, 'received_at' => now()]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint', 'assignee' => 'user:'.$t['admin']->id,
+                'group' => 'Customer Relations', 'values' => ['Area' => '{{branch}}']],
+                new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => []],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), $lead, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame($real->id, $task->group_id, 'the board\'s own group, not a new one');
+            $this->assertSame('a1', $task->values()->where('column_id', $area->id)->value('value_text'));
+        });
+    }
+
+    /** Desk for Jose, 2026-11-18: Done, then back to Working on it; the rule still moved the task to Done. */
+    public function test_a_status_change_undone_before_the_rule_runs_is_not_acted_on(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $rule = Automation::create(['organization_id' => $t['org']->id, 'name' => 'To Done', 'trigger_key' => 'task.status_changed', 'is_active' => true, 'created_by' => $t['admin']->id]);
+            $rule->addVersion(null, [['type' => 'task.move_group', 'group' => 'Done']], $t['admin']);
+            $w = app(\App\Support\Tasks\TaskWriter::class);
+            $task = $w->create($board, ['title' => 'Job'], $t['admin']);
+            $w->update($task->load('board'), ['status' => 'Done'], $t['admin']);
+            $w->update($task->fresh()->load('board'), ['status' => 'Working on it'], $t['admin']);
+            $done = AutomationEvent::query()->where('event_key', 'task.status_changed')->oldest('id')->first();
+
+            app(\App\Support\Automations\AutomationEngine::class)->deliver($done);
+
+            $this->assertSame('skipped', \App\Models\AutomationRun::query()->where('event_id', $done->id)->value('status'));
+            $this->assertNotSame('Done', $task->fresh()->group?->name);
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');
