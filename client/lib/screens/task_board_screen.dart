@@ -3272,17 +3272,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       children: [
         // A visible sideways bar, as PM's table (Jose 11-18: "no way to scroll
         // sideways"); shift-wheel and a trackpad also move it.
-        Scrollbar(
-          key: const Key('tasks-sideways-bar'),
-          controller: _sideways,
-          thumbVisibility: true,
-          trackVisibility: true,
-          child: SidewaysScroll(
-            key: const Key('tasks-table-scroll'),
+        // Hold the wheel button and move: the table pans both ways, with a
+        // grab cursor (Jose 11-19).
+        _middlePan(
+          Scrollbar(
+            key: const Key('tasks-sideways-bar'),
             controller: _sideways,
-            // 32: page padding; 2: the group box's border.
-            contentWidth: 34 + _fixedWidth,
-            child: list,
+            thumbVisibility: true,
+            trackVisibility: true,
+            child: SidewaysScroll(
+              key: const Key('tasks-table-scroll'),
+              controller: _sideways,
+              // 32: page padding; 2: the group box's border.
+              contentWidth: 34 + _fixedWidth,
+              child: list,
+            ),
           ),
         ),
         if (_picked.isNotEmpty)
@@ -3295,6 +3299,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       ],
     );
   }
+
+  bool _panning = false;
+
+  Widget _middlePan(Widget child) => MouseRegion(
+    cursor: _panning ? SystemMouseCursors.grabbing : MouseCursor.defer,
+    child: Listener(
+      key: const Key('tasks-middle-pan'),
+      onPointerDown: (e) {
+        if (e.buttons & kMiddleMouseButton != 0)
+          setState(() => _panning = true);
+      },
+      onPointerUp: (_) {
+        if (_panning) setState(() => _panning = false);
+      },
+      onPointerCancel: (_) {
+        if (_panning) setState(() => _panning = false);
+      },
+      onPointerMove: (e) {
+        if (e.buttons & kMiddleMouseButton == 0) return;
+        void by(ScrollController c, double d) {
+          if (!c.hasClients) return;
+          final p = c.position;
+          c.jumpTo((p.pixels - d).clamp(0.0, p.maxScrollExtent));
+        }
+
+        by(_sideways, e.delta.dx);
+        by(_tableScroll, e.delta.dy);
+      },
+      child: child,
+    ),
+  );
 
   Widget _tableList(BuildContext context, {required bool cards}) {
     Widget box(Widget w) => SliverToBoxAdapter(child: w);

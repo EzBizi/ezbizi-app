@@ -136,7 +136,8 @@ class MondayPushTest extends TestCase
                 str_contains($q, 'column_values { id text value }') => ['items' => [['column_values' => array_map(fn ($id, $t) => ['id' => $id, 'text' => $t, 'value' => '{}'], array_keys($this->itemValues), $this->itemValues)]]],
                 str_contains($q, 'PeopleValue') => ['items' => [['column_values' => [['persons_and_teams' => $this->mondayPeople]]]]],
                 str_contains($q, 'owners { id } subscribers { id }') => ['boards' => [$this->boardPeople]],
-                str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
+                str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'user_id' => $c === 'person' ? '5' : '99', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
+                str_contains($q, '{ me { id } }') => ['me' => ['id' => '5']],
                 str_contains($q, 'users(') => ['users' => $this->mondayUsers],
                 str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
                 str_contains($q, 'groups { id title') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
@@ -374,6 +375,19 @@ class MondayPushTest extends TestCase
 
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
         $this->assertCount(2, $this->mutations, 'sent once');
+    }
+
+    /** Desk 11-19: our own earlier write of the Person column is not "Monday changed it": a rule task's owner still goes. */
+    public function test_our_own_earlier_write_does_not_make_our_owner_change_lose(): void
+    {
+        Carbon::setTestNow('2026-11-13 11:10:00');
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['assignee_user_ids' => [$this->jose->id]], null));
+        $this->mondayUpdatedAt = '2026-11-13T11:20:00Z';
+        $this->mondayChanged = ['person']; // written by our API user (5), not a person on Monday
+        Carbon::setTestNow('2026-11-13 11:21:00');
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertSame([['id' => 5, 'kind' => 'person']], $this->values(count($this->mutations) - 1)['person']['personsAndTeams'] ?? null);
     }
 
     /** Desk 11-18: Monday's Person column never shrinks because someone here has no Monday account. */

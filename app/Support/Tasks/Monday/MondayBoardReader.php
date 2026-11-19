@@ -362,6 +362,14 @@ final class MondayBoardReader
      *
      * @return array{ids: list<string>, latest: ?string}
      */
+    private ?string $me = null;
+
+    /** Monday's id for the user our token acts as. */
+    public function me(): ?string
+    {
+        return $this->me ??= (string) ($this->api->query('{ me { id } }')['me']['id'] ?? '') ?: null;
+    }
+
     /** @return array<string, string> item id => state (active, archived, deleted), as Monday answers for each id */
     public function statesOf(array $itemIds): array
     {
@@ -415,10 +423,16 @@ final class MondayBoardReader
      */
     public function changedFields(string $boardId, string $itemId, CarbonImmutable $since): array
     {
-        $logs = $this->api->query('query($b:[ID!],$i:[ID!],$f:ISO8601DateTime){ boards(ids:$b) { activity_logs(item_ids:$i, from:$f, limit:100) { event data } } }',
+        $logs = $this->api->query('query($b:[ID!],$i:[ID!],$f:ISO8601DateTime){ boards(ids:$b) { activity_logs(item_ids:$i, from:$f, limit:100) { event user_id data } } }',
             ['b' => [$boardId], 'i' => [$itemId], 'f' => $since->utc()->toIso8601ZuluString()])['boards'][0]['activity_logs'] ?? [];
+        // Our own writes (the API user) are not Monday's changes: they would make our next change
+        // to the same field lose (desk 11-19: rule-made tasks' owners never reached Monday).
+        $me = $this->me();
         $out = [];
         foreach ($logs as $log) {
+            if ($me !== null && (string) ($log['user_id'] ?? '') === $me) {
+                continue;
+            }
             $data = json_decode((string) ($log['data'] ?? ''), true) ?: [];
             $event = (string) ($log['event'] ?? '');
             if (str_contains($event, 'name')) {
