@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\Scheduling\DueSinceLastRun;
 use Illuminate\Console\Scheduling\Schedule;
 use Tests\TestCase;
 
@@ -16,6 +17,12 @@ class SchedulerLanesTest extends TestCase
         'ezbizi:workiz-web-estimate-links', 'ezbizi:project-workiz', 'ezbizi:gbp-sync', 'ezbizi:review-backlog',
         // 2026-11-16: ~4 min of a 5-min slot; slot 1 timed out at 14:15 UTC.
         'ezbizi:monday-sync'];
+
+    protected function tearDown(): void
+    {
+        DueSinceLastRun::$fake = null;
+        parent::tearDown();
+    }
 
     /** @return array<string, bool> command => would its filters pass */
     private function lane(?string $lane): array
@@ -47,6 +54,7 @@ class SchedulerLanesTest extends TestCase
     public function test_flag_on_slow_commands_run_only_in_the_slow_lane_and_everything_else_only_in_the_fast_slots(): void
     {
         config(['ezbizi.scheduler.slow_lane' => true]);
+        DueSinceLastRun::$fake = true; // lane membership here; timing in DueSinceLastRunTest
         $fast = $this->lane(null);
         $slow = $this->lane('slow');
 
