@@ -13,6 +13,7 @@ import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../core/ui_strings.dart';
 import '../../widgets/address_fields.dart';
@@ -903,6 +904,31 @@ class _PersonRecordState extends State<_PersonRecord> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _header(context),
+            // Their unfinished onboarding, and what it still needs (Merav,
+            // 2026-11-19: "Missing Information Warning").
+            if ((_person['onboarding_missing'] as List?)?.isNotEmpty ?? false)
+              Padding(
+                key: const ValueKey('record-onboarding-missing'),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: StateColour.of(context).caution,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Onboarding not finished. Missing: '
+                        '${(_person['onboarding_missing'] as List).join(', ')}.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Material(
               color: Theme.of(context).colorScheme.surface,
               child: TabBarLike(

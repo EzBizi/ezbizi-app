@@ -16,6 +16,7 @@ use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Auth\PasswordResets;
+use App\Services\Hr\OnboardingForm;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
@@ -970,6 +971,11 @@ class HrPeopleController extends Controller
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
             // Only whether it is on file; the photo itself is a reveal on the onboarding.
+            // What their unfinished onboarding still needs (Merav, 2026-11-19),
+            // as labels; empty when none is open or nothing is missing.
+            'onboarding_missing' => ($open = Onboarding::query()->where('user_id', $user->id)
+                ->where('status', Onboarding::IN_PROGRESS)->latest('started_at')->first()) === null
+                ? [] : array_values(app(OnboardingForm::class)->missing($open)),
             'ssn_card' => OnboardingAnswer::query()->where('field_key', Onboarding::SSN_CARD)
                 ->whereHas('onboarding', fn ($q) => $q->where('user_id', $user->id))->get()
                 ->contains(fn (OnboardingAnswer $a) => ! in_array($a->getAttribute('value'), [null, '', 'N/A'], true)) ? 'on_file' : 'missing',
