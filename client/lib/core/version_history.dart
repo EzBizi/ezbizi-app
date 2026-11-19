@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0612', date: '19 Nov 2026', items: [
       'Reviews: the walkthrough says 1-3 stars, matching the filter',
+      'Background jobs that run every half hour or nightly (like the Monday check) now always run on time instead of only when the clock lines up',
     ]),
     VersionRelease(version: '0.0.0611', date: '19 Nov 2026', items: [
       'Task Board: a big Monday board syncs a bit each run and picks up where it stopped, so one busy board never holds up the rest',
