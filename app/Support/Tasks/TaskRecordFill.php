@@ -39,8 +39,9 @@ final class TaskRecordFill
     ];
 
     /** @return array<string, string> column id => value written */
-    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null): array
+    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
     {
+        $writer ??= app(TaskWriter::class);
         $board = $task->board;
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
         // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
@@ -105,11 +106,11 @@ final class TaskRecordFill
         $person = array_intersect_key($set, array_flip($people));
         $set = array_diff_key($set, $person);
         if ($set !== []) {
-            app(TaskWriter::class)->update($task->load('board'), ['values' => $set], $actor);
+            $writer->update($task->load('board'), ['values' => $set], $actor);
         }
         foreach ($person as $columnId => $userId) {
             try {
-                app(TaskWriter::class)->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
+                $writer->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
                 $set[$columnId] = $userId;
             } catch (\Illuminate\Validation\ValidationException) {
             }
