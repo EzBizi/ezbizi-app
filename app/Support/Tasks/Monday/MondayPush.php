@@ -73,6 +73,7 @@ final class MondayPush
         // A time budget (the shard jobs): the database queue hands a job still running after
         // retry_after (90 s) to a second worker, which then fails it as "attempted too many times".
         $deadline = $seconds === null ? null : microtime(true) + $seconds;
+        MondayClient::$deadline = $deadline;
         $token = app(MondayToken::class)->for($connection);
         $this->reader = new MondayBoardReader($client ?? new MondayClient($token));
         $this->writer = $writer ?? new MondayWriter($token);
@@ -104,6 +105,8 @@ final class MondayPush
                     }
                     try {
                         $outcome = $this->send($entry, $connection);
+                    } catch (MondayBudgetSpent) {
+                        break; // Monday wants a wait past this run's budget: the next run takes the rest
                     } catch (MondayRefused $e) {
                         throw $e; // the connection is broken: stop, retry next run
                     } catch (\Throwable $e) {
@@ -128,6 +131,8 @@ final class MondayPush
             }));
         } catch (LockTimeoutException) {
             return $counts + ['busy' => 1];
+        } finally {
+            MondayClient::$deadline = null; // a queue worker lives on: the next job has no budget of ours
         }
     }
 

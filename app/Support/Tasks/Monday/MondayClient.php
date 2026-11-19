@@ -52,6 +52,9 @@ final class MondayClient
     private ?int $askedAt = null;
 
     /** @return array<string, mixed> the `data` of the answer */
+    /** Unix time a caller must be done by (MondayPush's shard budget); null: no budget. */
+    public static ?float $deadline = null;
+
     public function query(string $query, array $variables = []): array
     {
         if (preg_match('/^\s*mutation\b/i', $query)) {
@@ -77,7 +80,13 @@ final class MondayClient
             if ($wait <= 0 || $attempt >= 5) {
                 break;
             }
-            sleep(min(65, max(1, $wait)));
+            $sleep = min(65, max(1, $wait));
+            // A caller on a time budget (a push shard) stops instead of sleeping past it (desk 11-19:
+            // four shards slept on one 429 past their 85 s timeout).
+            if (self::$deadline !== null && microtime(true) + $sleep > self::$deadline) {
+                throw new MondayBudgetSpent("Monday asked to wait {$sleep} s, past this run's budget.");
+            }
+            sleep($sleep);
         }
 
         if (in_array($response->status(), [401, 403], true)) {

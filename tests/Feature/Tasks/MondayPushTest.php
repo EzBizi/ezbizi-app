@@ -16,6 +16,7 @@ use App\Models\TaskColumn;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\Monday\MondayClient;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\Monday\MondayPush;
 use App\Support\Tasks\TaskBoards;
@@ -64,6 +65,9 @@ class MondayPushTest extends TestCase
 
     private array $extraColumns = [];
 
+    /** Monday answers every read with "complexity budget exhausted, retry in 40 s". */
+    private bool $budgetSpent = false;
+
     /** The board's people on Monday. */
     private array $boardPeople = ['owners' => [], 'subscribers' => []];
 
@@ -99,6 +103,9 @@ class MondayPushTest extends TestCase
 
         Http::fake(['api.monday.com/*' => function (Request $request) {
             $q = (string) $request->data()['query'];
+            if ($this->budgetSpent && ! preg_match('/^\s*mutation/', $q)) {
+                return Http::response(['errors' => [['message' => 'budget', 'extensions' => ['code' => 'COMPLEXITY_BUDGET_EXHAUSTED', 'retry_in_seconds' => 40]]]]);
+            }
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
@@ -187,6 +194,23 @@ class MondayPushTest extends TestCase
         $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board('));
         $this->assertNotNull($move, 'moved on Monday');
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
+    }
+
+    /** Desk 11-19: Monday's "wait N seconds" past the budget stops the run at once (no sleep, no timeout); the row waits. */
+    public function test_a_monday_wait_past_the_budget_stops_the_run_and_the_row_stays_pending(): void
+    {
+        $this->budgetSpent = true;
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $connection = SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->first();
+
+        $started = microtime(true);
+        app(MondayPush::class)->run($connection, 60, seconds: 10);
+
+        $this->assertLessThan(5, microtime(true) - $started, 'did not sleep 40 s');
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->first());
+        $this->assertSame(MondayOutboxEntry::PENDING, $row->state);
+        $this->assertSame(0, (int) $row->attempts, 'not counted as a failure');
+        $this->assertNull(MondayClient::$deadline, 'no budget left behind for the next job');
     }
 
     /** Desk 11-18: a shard stops at its time budget (under the queue's retry_after); the rest wait, nothing is lost. */
