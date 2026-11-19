@@ -599,7 +599,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       for (final c in was)
         if (c['key'] != key) c,
     ];
-    final at = before == null ? -1 : rest.indexWhere((c) => c['key'] == before);
+    final at = before == null
+        ? -1
+        : rest.indexWhere((c) => c['key'] == before);
     at < 0 ? rest.add(moving) : rest.insert(at, moving);
     setState(() => _columns = rest);
     final r = await widget.api.put('/project-board/column-order', {
@@ -621,10 +623,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     if (!mounted) return;
     final bytes = r.bytes;
     if (!r.ok || bytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(r.message ?? 'The work order could not be made.'),
-        ),
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        SnackBar(content: Text(r.message ?? 'The work order could not be made.')),
       );
       return;
     }
@@ -642,10 +644,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     builder: (_) => _NotesPanel(
       api: widget.api,
       jobId: '${row['id']}',
-      title: [
-        row['customer'],
-        row['number'],
-      ].where((s) => s != null).join(' · '),
+      title: [row['customer'], row['number']].where((s) => s != null).join(' · '),
       formats: widget.session.me?.display ?? DisplayFormats.fallback,
       addRefusal: widget.session.me?.refusal('jobs.edit', 'add a note'),
     ),
@@ -1193,8 +1192,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               else if (_tab == 'dashboard')
                 _PartsDashboard(
                   api: widget.api,
-                  formats:
-                      widget.session.me?.display ?? DisplayFormats.fallback,
+                  formats: widget.session.me?.display ?? DisplayFormats.fallback,
                   canEdit: _canEditJobs,
                 )
               else if (_tab == 'settings')
@@ -1408,9 +1406,7 @@ class _BoardSettings extends StatefulWidget {
 
 class _BoardSettingsState extends State<_BoardSettings> {
   /// The sub-tab open, kept for this person.
-  late String _sub = switch (widget
-      .session
-      .me
+  late String _sub = switch (widget.session.me
       ?.preferences['project_board.settings_tab']) {
     final String saved when _settingsTabs.any((t) => t.$1 == saved) => saved,
     _ => 'columns',
@@ -1575,8 +1571,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
           '$t',
       ];
-      final texts =
-          (byKey['project_board.client_messages'] as Map?) ?? const {};
+      final texts = (byKey['project_board.client_messages'] as Map?) ?? const {};
       for (final (kind, _) in _clientTextKinds) {
         final t = (texts[kind] as Map?) ?? const {};
         _clientTexts[kind]?.text.dispose();
@@ -1592,10 +1587,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
       _suppliers
         ..clear()
         ..addAll([
-          for (final v
-              in (byKey['project_board.suppliers'] as List?) ?? const [])
-            if (v is Map) _SupplierRow(Map<String, dynamic>.from(v)),
-        ]);
+        for (final v in (byKey['project_board.suppliers'] as List?) ?? const [])
+          if (v is Map) _SupplierRow(Map<String, dynamic>.from(v)),
+      ]);
       // Job Status starts from the company's own statuses, not an empty list.
       final status = _labels['status'];
       if (status != null && status.isEmpty) {
@@ -1673,10 +1667,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
                 showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(value: 'order', label: Text('Order')),
-                  ButtonSegment(
-                    value: 'pickup',
-                    label: Text('Same-day pickup'),
-                  ),
+                  ButtonSegment(value: 'pickup', label: Text('Same-day pickup')),
                 ],
                 selected: {r.kind},
                 onSelectionChanged: (v) => setState(() => r.kind = v.first),
@@ -1694,8 +1685,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
           key: const Key('project-board-supplier-add'),
-          onPressed: () =>
-              setState(() => _suppliers.add(_SupplierRow(const {}))),
+          onPressed: () => setState(() => _suppliers.add(_SupplierRow(const {}))),
           icon: const Icon(Icons.add, size: 18),
           label: const Text('Add a supplier'),
         ),
@@ -1711,10 +1701,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
 
   static const _clientTextKinds = [
     ('project_link', 'When a job reaches the board: the project link'),
-    (
-      'scheduled',
-      'When it is scheduled (also sends the work order to the crew)',
-    ),
+    ('scheduled', 'When it is scheduled (also sends the work order to the crew)'),
     ('day_before', 'The day before the appointment'),
     ('complete', 'When it is complete: thank you'),
   ];
@@ -2219,292 +2206,286 @@ class _BoardSettingsState extends State<_BoardSettings> {
         ),
         const SizedBox(height: 12),
         if (_sub == 'columns') ...[
-          _card(
-            'columns',
-            'Columns',
-            'Rename, drag to reorder, and choose which columns show.',
-            [
-              ReorderableListView(
-                key: const Key('project-board-columns'),
-                shrinkWrap: true,
-                buildDefaultDragHandles: false,
-                physics: const NeverScrollableScrollPhysics(),
-                onReorder: (from, to) => setState(() {
-                  final c = _columns.removeAt(from);
-                  _columns.insert(to > from ? to - 1 : to, c);
-                }),
-                children: [
-                  for (final (i, c) in _columns.indexed)
-                    _columnRow(i, c, phone: phone),
-                ],
-              ),
-            ],
-            () => {'project_board.columns': _columns, ..._labelValues()},
-          ),
-          _card(
-            'labels',
-            'Label colours',
-            'The colour each value gets in a column shown as coloured labels.',
-            [
-              for (final c in _columns)
-                if (c['as_label'] == true) ...[
-                  Text(
-                    '${c['label'] ?? c['key']}',
-                    style: theme.textTheme.titleSmall,
+        _card(
+          'columns',
+          'Columns',
+          'Rename, drag to reorder, and choose which columns show.',
+          [
+            ReorderableListView(
+              key: const Key('project-board-columns'),
+              shrinkWrap: true,
+              buildDefaultDragHandles: false,
+              physics: const NeverScrollableScrollPhysics(),
+              onReorder: (from, to) => setState(() {
+                final c = _columns.removeAt(from);
+                _columns.insert(to > from ? to - 1 : to, c);
+              }),
+              children: [
+                for (final (i, c) in _columns.indexed)
+                  _columnRow(i, c, phone: phone),
+              ],
+            ),
+          ],
+          () => {'project_board.columns': _columns, ..._labelValues()},
+        ),
+        _card(
+          'labels',
+          'Label colours',
+          'The colour each value gets in a column shown as coloured labels.',
+          [
+            for (final c in _columns)
+              if (c['as_label'] == true) ...[
+                Text(
+                  '${c['label'] ?? c['key']}',
+                  style: theme.textTheme.titleSmall,
+                ),
+                for (final (i, (text, tone))
+                    in (_labels['${c['key']}'] ?? []).indexed)
+                  _labelRow('${c['key']}', i, text, tone),
+                TextButton.icon(
+                  key: ValueKey('project-board-add-label:${c['key']}'),
+                  onPressed: () => setState(
+                    () => (_labels['${c['key']}'] ??= []).add((
+                      TextEditingController(),
+                      Tone.neutral.name,
+                    )),
                   ),
-                  for (final (i, (text, tone))
-                      in (_labels['${c['key']}'] ?? []).indexed)
-                    _labelRow('${c['key']}', i, text, tone),
-                  TextButton.icon(
-                    key: ValueKey('project-board-add-label:${c['key']}'),
-                    onPressed: () => setState(
-                      () => (_labels['${c['key']}'] ??= []).add((
-                        TextEditingController(),
-                        Tone.neutral.name,
-                      )),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add value'),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-            ],
-            _labelValues,
-          ),
-          _card(
-            'status_days',
-            'Status Time colours',
-            'Green below the first number of days, yellow from it, red from the second.',
-            [
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  for (final (c, label, key) in [
-                    (
-                      _warnDays,
-                      'Yellow from (days)',
-                      'project-board-warn-days',
-                    ),
-                    (_badDays, 'Red from (days)', 'project-board-bad-days'),
-                  ])
-                    SizedBox(
-                      width: 180,
-                      child: TextField(
-                        key: Key(key),
-                        controller: c,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          labelText: label,
-                          border: const OutlineInputBorder(),
-                        ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add value'),
+                ),
+                const SizedBox(height: 8),
+              ],
+          ],
+          _labelValues,
+        ),
+        _card(
+          'status_days',
+          'Status Time colours',
+          'Green below the first number of days, yellow from it, red from the second.',
+          [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final (c, label, key) in [
+                  (_warnDays, 'Yellow from (days)', 'project-board-warn-days'),
+                  (_badDays, 'Red from (days)', 'project-board-bad-days'),
+                ])
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      key: Key(key),
+                      controller: c,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: label,
+                        border: const OutlineInputBorder(),
                       ),
                     ),
-                ],
-              ),
-            ],
-            () => {
-              'project_board.status_days': {
-                'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
-                'bad': int.tryParse(_badDays.text.trim()) ?? 7,
-              },
+                  ),
+              ],
+            ),
+          ],
+          () => {
+            'project_board.status_days': {
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
             },
-          ),
+          },
+        ),
         ],
         if (_sub == 'stages') ...[
-          // One card per sub-tab (Jose, 2026-11-16: "separated in their own
-          // boxes"); each Save writes every sub-tab's rules, as before.
-          for (final (key, name, _) in _tabs)
-            KeyedSubtree(
-              key: ValueKey('project-board-tab-card:$key'),
-              child: _card(
-                'tabs:$key',
-                name,
-                'What puts a job on $name: its status, its tags, and its scheduled date. No status chosen lists nothing.',
-                [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Spacer(),
-                          DropdownMenu<String>(
-                            enableFilter: true,
-                            requestFocusOnTap: true,
-                            width: 240,
-                            label: const Text('Scheduled date'),
-                            initialSelection: switch (_scheduled[key]) {
-                              true => 'yes',
-                              false => 'no',
-                              null => 'any',
-                            },
-                            onSelected: (v) => _scheduled[key] = switch (v) {
-                              'yes' => true,
-                              'no' => false,
-                              _ => null,
-                            },
-                            dropdownMenuEntries: const [
-                              DropdownMenuEntry(value: 'any', label: 'Any'),
-                              DropdownMenuEntry(
-                                value: 'yes',
-                                label: 'Must be set',
-                              ),
-                              DropdownMenuEntry(
-                                value: 'no',
-                                label: 'Must be empty',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Status is one of',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      _chips(
-                        'project-board-statuses:$key',
-                        _knownStatuses,
-                        _statuses[key]!,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Text('Tags: has', style: theme.textTheme.bodySmall),
-                          const SizedBox(width: 8),
-                          DropdownMenu<bool>(
-                            key: ValueKey('project-board-tags-mode:$key'),
-                            enableFilter: true,
-                            requestFocusOnTap: true,
-                            width: 140,
-                            initialSelection: _anyTag[key] ?? false,
-                            onSelected: (v) => _anyTag[key] = v ?? false,
-                            dropdownMenuEntries: const [
-                              DropdownMenuEntry(value: false, label: 'all of'),
-                              DropdownMenuEntry(value: true, label: 'any of'),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                          // Flexible: on a phone it ran past the edge.
-                          Flexible(
-                            child: Text(
-                              'these (none chosen: tags do not matter)',
-                              style: theme.textTheme.bodySmall,
+        // One card per sub-tab (Jose, 2026-11-16: "separated in their own
+        // boxes"); each Save writes every sub-tab's rules, as before.
+        for (final (key, name, _) in _tabs)
+          KeyedSubtree(
+            key: ValueKey('project-board-tab-card:$key'),
+            child: _card(
+              'tabs:$key',
+              name,
+              'What puts a job on $name: its status, its tags, and its scheduled date. No status chosen lists nothing.',
+              [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Spacer(),
+                        DropdownMenu<String>(
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          width: 240,
+                          label: const Text('Scheduled date'),
+                          initialSelection: switch (_scheduled[key]) {
+                            true => 'yes',
+                            false => 'no',
+                            null => 'any',
+                          },
+                          onSelected: (v) => _scheduled[key] = switch (v) {
+                            'yes' => true,
+                            'no' => false,
+                            _ => null,
+                          },
+                          dropdownMenuEntries: const [
+                            DropdownMenuEntry(value: 'any', label: 'Any'),
+                            DropdownMenuEntry(
+                              value: 'yes',
+                              label: 'Must be set',
                             ),
+                            DropdownMenuEntry(
+                              value: 'no',
+                              label: 'Must be empty',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text('Status is one of', style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 4),
+                    _chips(
+                      'project-board-statuses:$key',
+                      _knownStatuses,
+                      _statuses[key]!,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text('Tags: has', style: theme.textTheme.bodySmall),
+                        const SizedBox(width: 8),
+                        DropdownMenu<bool>(
+                          key: ValueKey('project-board-tags-mode:$key'),
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          width: 140,
+                          initialSelection: _anyTag[key] ?? false,
+                          onSelected: (v) => _anyTag[key] = v ?? false,
+                          dropdownMenuEntries: const [
+                            DropdownMenuEntry(value: false, label: 'all of'),
+                            DropdownMenuEntry(value: true, label: 'any of'),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        // Flexible: on a phone it ran past the edge.
+                        Flexible(
+                          child: Text(
+                            'these (none chosen: tags do not matter)',
+                            style: theme.textTheme.bodySmall,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      _tagPicker('project-board-tab-tags:$key', _tabTags[key]!),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Must not have any of these tags',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      _tagPicker(
-                        'project-board-tab-no-tags:$key',
-                        _tabNoTags[key]!,
-                      ),
-                    ],
-                  ),
-                ],
-                () => {
-                  'project_board.tabs': {
-                    for (final (key, _, _) in _tabs)
-                      key: {
-                        'statuses': _statuses[key]!,
-                        if (_tabTags[key]!.isNotEmpty) ...{
-                          'tags': _tabTags[key]!,
-                          'tags_mode': _anyTag[key] == true ? 'any' : 'all',
-                        },
-                        if (_tabNoTags[key]!.isNotEmpty)
-                          'tags_none': _tabNoTags[key]!,
-                        if (_scheduled[key] != null)
-                          'scheduled': _scheduled[key]!,
-                      },
-                  },
-                },
-              ),
-            ),
-          _card(
-            'ready',
-            'Ready to schedule',
-            'What a job needs before "Ready to schedule" can move it on.',
-            [
-              for (final (k, label) in const [
-                ('service_area', 'Service Area'),
-                ('technician', 'Technician'),
-                ('repair_team', 'Repair Team / Contractor'),
-                ('attachment', 'At least one attachment'),
-                ('note', 'At least one note'),
-              ])
-                CheckboxListTile(
-                  key: ValueKey('project-board-ready-needs:$k'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(label),
-                  value: _readyNeeds.contains(k),
-                  onChanged: (on) => setState(
-                    () =>
-                        on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
-                  ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    _tagPicker('project-board-tab-tags:$key', _tabTags[key]!),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Must not have any of these tags',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    _tagPicker(
+                      'project-board-tab-no-tags:$key',
+                      _tabNoTags[key]!,
+                    ),
+                  ],
                 ),
-            ],
-            () => {'project_board.ready_requires': _readyNeeds.toList()},
+              ],
+              () => {
+                'project_board.tabs': {
+                  for (final (key, _, _) in _tabs)
+                    key: {
+                      'statuses': _statuses[key]!,
+                      if (_tabTags[key]!.isNotEmpty) ...{
+                        'tags': _tabTags[key]!,
+                        'tags_mode': _anyTag[key] == true ? 'any' : 'all',
+                      },
+                      if (_tabNoTags[key]!.isNotEmpty)
+                        'tags_none': _tabNoTags[key]!,
+                      if (_scheduled[key] != null)
+                        'scheduled': _scheduled[key]!,
+                    },
+                },
+              },
+            ),
           ),
+        _card(
+          'ready',
+          'Ready to schedule',
+          'What a job needs before "Ready to schedule" can move it on.',
+          [
+            for (final (k, label) in const [
+              ('service_area', 'Service Area'),
+              ('technician', 'Technician'),
+              ('repair_team', 'Repair Team / Contractor'),
+              ('attachment', 'At least one attachment'),
+              ('note', 'At least one note'),
+            ])
+              CheckboxListTile(
+                key: ValueKey('project-board-ready-needs:$k'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(label),
+                value: _readyNeeds.contains(k),
+                onChanged: (on) => setState(
+                  () => on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
+                ),
+              ),
+          ],
+          () => {'project_board.ready_requires': _readyNeeds.toList()},
+        ),
         ],
         if (_sub == 'team') ...[
-          _card(
-            'tech_roles',
-            'Roles that can be picked as Technician',
-            'The technician picker lists only active users holding one of these roles.',
-            [
-              Wrap(
-                key: const Key('project-board-tech-roles'),
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final r in {..._knownRoles, ..._techRoles})
-                    FilterChip(
-                      key: ValueKey('project-board-tech-role:$r'),
-                      label: Text(r),
-                      selected: _techRoles.any(
-                        (t) => t.toLowerCase() == r.toLowerCase(),
-                      ),
-                      onSelected: (on) => setState(() {
-                        _techRoles.removeWhere(
-                          (t) => t.toLowerCase() == r.toLowerCase(),
-                        );
-                        if (on) _techRoles.add(r);
-                      }),
+        _card(
+          'tech_roles',
+          'Roles that can be picked as Technician',
+          'The technician picker lists only active users holding one of these roles.',
+          [
+            Wrap(
+              key: const Key('project-board-tech-roles'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final r in {..._knownRoles, ..._techRoles})
+                  FilterChip(
+                    key: ValueKey('project-board-tech-role:$r'),
+                    label: Text(r),
+                    selected: _techRoles.any(
+                      (t) => t.toLowerCase() == r.toLowerCase(),
                     ),
-                ],
-              ),
-            ],
-            () => {'project_board.technician_roles': _techRoles},
-          ),
-          _repairCard(),
+                    onSelected: (on) => setState(() {
+                      _techRoles.removeWhere(
+                        (t) => t.toLowerCase() == r.toLowerCase(),
+                      );
+                      if (on) _techRoles.add(r);
+                    }),
+                  ),
+              ],
+            ),
+          ],
+          () => {'project_board.technician_roles': _techRoles},
+        ),
+        _repairCard(),
         ],
         if (_sub == 'parts') ...[
-          _card(
-            'parts',
-            'Part status',
-            'The job tags shown in the Part Status column.',
-            [
-              KeyedSubtree(
-                key: const Key('project-board-part-tags'),
-                child: _tagPicker('project-board-part-tags-chips', _partTags),
-              ),
-            ],
-            () => {'project_board.part_tags': _partTags},
-          ),
-          _suppliersCard(),
+        _card(
+          'parts',
+          'Part status',
+          'The job tags shown in the Part Status column.',
+          [
+            KeyedSubtree(
+              key: const Key('project-board-part-tags'),
+              child: _tagPicker('project-board-part-tags-chips', _partTags),
+            ),
+          ],
+          () => {'project_board.part_tags': _partTags},
+        ),
+        _suppliersCard(),
         ],
-        if (_sub == 'texts') ...[_clientTextsCard()],
+        if (_sub == 'texts') ...[
+        _clientTextsCard(),
+        ],
       ],
     );
   }
@@ -2647,7 +2628,9 @@ class _PartRow {
 }
 
 class _PartsPanelState extends State<_PartsPanel> {
-  late final List<_PartRow> _rows = [for (final p in widget.parts) _PartRow(p)];
+  late final List<_PartRow> _rows = [
+    for (final p in widget.parts) _PartRow(p),
+  ];
 
   @override
   void dispose() {
@@ -2697,18 +2680,16 @@ class _PartsPanelState extends State<_PartsPanel> {
     return r.was != null && r.was!['id'] == r.supplierId ? r.was : null;
   }
 
-  String _where(
-    _PartRow r,
-    Map<String, dynamic>? supplier,
-  ) => switch (r.destination) {
-    'warehouse' => 'Work order: warehouse pickup.',
-    'customer' => "At the customer's location.",
-    'supplier' =>
-      supplier == null
-          ? 'Collected at the supplier.'
-          : 'Collected at ${[supplier['name'], supplier['address']].whereType<String>().join(', ')}.',
-    _ => '',
-  };
+  String _where(_PartRow r, Map<String, dynamic>? supplier) =>
+      switch (r.destination) {
+        'warehouse' => 'Work order: warehouse pickup.',
+        'customer' => "At the customer's location.",
+        'supplier' =>
+          supplier == null
+              ? 'Collected at the supplier.'
+              : 'Collected at ${[supplier['name'], supplier['address']].whereType<String>().join(', ')}.',
+        _ => '',
+      };
 
   Widget _part(BuildContext context, int i, _PartRow r) {
     final theme = Theme.of(context);
@@ -2791,10 +2772,7 @@ class _PartsPanelState extends State<_PartsPanel> {
                 isDense: true,
                 options: [
                   for (final u in widget.technicians)
-                    SearchOption<String?>(
-                      value: '${u['id']}',
-                      label: '${u['name']}',
-                    ),
+                    SearchOption<String?>(value: '${u['id']}', label: '${u['name']}'),
                   if (r.paidBy != null &&
                       !widget.technicians.any((u) => u['id'] == r.paidBy))
                     SearchOption<String?>(
@@ -2892,7 +2870,8 @@ class _PartsPanelState extends State<_PartsPanel> {
                   ),
                 ),
               ),
-              if (_where(r, picked) case final where when where.isNotEmpty) ...[
+              if (_where(r, picked) case final where
+                  when where.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   where,
@@ -3567,9 +3546,7 @@ class _ProjectInboxState extends State<_ProjectInbox> {
   String? _open;
   String? _error;
   String _q = '';
-  late String _filter = switch (widget
-      .session
-      .me
+  late String _filter = switch (widget.session.me
       ?.preferences['project_board.inbox_filter']) {
     final String saved when _inboxFilters.any((f) => f.$1 == saved) => saved,
     _ => 'all',
@@ -3654,8 +3631,10 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     if (r.ok) _load();
   }
 
-  String _time(Object? iso) =>
-      messageWhen(iso as String?, clock: widget.session.me?.display.formatTime);
+  String _time(Object? iso) => messageWhen(
+    iso as String?,
+    clock: widget.session.me?.display.formatTime,
+  );
 
   Widget _list(ThemeData theme) {
     final all = _threads ?? const [];
@@ -3694,11 +3673,7 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                 if (i > 0) const SizedBox(width: 6),
                 FilterChip(
                   key: ValueKey('project-inbox-filter-$key'),
-                  avatar: Icon(
-                    icon,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
+                  avatar: Icon(icon, size: 16, color: theme.colorScheme.primary),
                   label: Text(
                     '$label · ${all.where((t) => _shows(t, key)).length}',
                   ),
@@ -3921,7 +3896,10 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                       ),
                     ],
                     if (stage != null)
-                      StatusPill(stage, key: const Key('project-inbox-stage')),
+                      StatusPill(
+                        stage,
+                        key: const Key('project-inbox-stage'),
+                      ),
                   ],
                 ),
               ],
