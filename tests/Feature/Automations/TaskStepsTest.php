@@ -357,6 +357,24 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Desk for Jose, 11-19: a complaint at another company is made there, owned by its General Manager group person, never a failed run. */
+    public function test_an_owner_who_cannot_be_on_the_board_gives_way_to_its_general_manager(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $other = $this->userWithRole($t, 'Helper', [], 'outside@example.test'); $other->forceFill(['is_active' => false])->saveQuietly(); // not assignable here
+        $this->inTenant($t['org'], function () use ($t, $other) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => 'General Manager - '.$t['admin']->name, 'position' => 9]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint', 'assignees' => ['user:'.$other->id]],
+                new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => []],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame([$t['admin']->id], Task::query()->sole()->owners()->pluck('user_id')->all());
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');
