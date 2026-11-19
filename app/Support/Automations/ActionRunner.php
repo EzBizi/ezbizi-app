@@ -4003,6 +4003,16 @@ class ActionRunner
         }
 
         $board = $named ?? app(TaskBoards::class)->ensureFor($owner);
+        // Owners who cannot be on this board (another company's: desk for Jose,
+        // 11-19, open question B5) give way to the board's General Manager group
+        // person, else the task is made unassigned. Never a failed run.
+        $assignable = app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+        $owners = $owners->filter(fn (User $u) => in_array($u->getKey(), $assignable, true))->values();
+        if ($owners->isEmpty() && (! empty($action['assignees']) || ! empty($action['assignee']))) {
+            $gm = $board->groups()->get()->first(fn ($g) => str_starts_with(mb_strtolower(trim($g->name)), 'general manager'));
+            $name = $gm ? trim((string) \Illuminate\Support\Str::after($gm->name, '-')) : '';
+            $owners = collect([$name !== '' ? User::query()->whereIn('id', $assignable)->where('name', 'like', $name.'%')->first() : null])->filter()->values();
+        }
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
