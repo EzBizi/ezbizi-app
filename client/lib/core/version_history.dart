@@ -26,6 +26,7 @@ class VersionHistory {
       'Reports: every report table has a Download button for Excel or CSV, as shown with its search and filters',
       'Project Management: a part can be marked paid by the technician, shown as a tech expense until reimbursed',
       'Task Board: the nightly Monday check now compares every cell value, not just groups, and fixes differences',
+      'Task Board: a new task that Monday asks to retry still goes to Monday ahead of any large update',
     ]),
     VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
       'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
