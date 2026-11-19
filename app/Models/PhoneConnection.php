@@ -83,6 +83,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         return [
             'credentials' => 'encrypted',
             'auth_token' => 'encrypted',
+            'previous_auth_token' => 'encrypted',
             'require_call_tag' => 'boolean',
             'wrap_up_seconds' => 'integer',
             'default_record' => 'boolean',
@@ -154,7 +155,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
 
     public function sensitiveAttributes(): array
     {
-        return ['credentials', 'auth_token'];
+        return ['credentials', 'auth_token', 'previous_auth_token'];
     }
 
     /**

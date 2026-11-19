@@ -38,6 +38,7 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
 // Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:time-clock-payroll')->everyFifteenMinutes()->withoutOverlapping(10);
 // Unfinished onboardings to their branch's managers (Merav, 2026-11-19).
 Schedule::command('ezbizi:hr-onboarding-gap-alerts')->dailyAt('14:00')->withoutOverlapping(30);
 // Project Management: parts 3 days late, and part reminders due (Jose, 2026-11-17).
