@@ -16,8 +16,6 @@ class VersionHistory {
     VersionRelease(version: '0.0.0610', date: '19 Nov 2026', items: [
       'Task Board: clicking a linked job or customer on a task opens it, and so does Linked to in the side panel',
       'Reviews: the Unanswered count matches your filters; the low-rating filter is now 1-3 stars',
-    ]),
-    VersionRelease(version: '0.0.0609', date: '19 Nov 2026', items: [
       'Task Board: missed-call tasks fill the caller client, phone, address and job numbers from the number in the title',
     ]),
     VersionRelease(version: '0.0.0608', date: '19 Nov 2026', items: [
