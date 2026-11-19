@@ -2519,6 +2519,15 @@ class SettingRegistry
                 allowedScopes: $orgOnly,
                 help: 'When the days earned must be used by. Days are still earned per the "Earned per" setting; at each reset, carryover decides whether what is left comes along.',
             ),
+            new SettingDefinition(
+                key: 'time_clock.payroll_recipients',
+                section: 'Payroll',
+                label: 'Payroll goes to',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Email addresses, separated by commas. Monday morning they get the whole company week as a spreadsheet, every branch, approved or not.',
+            ),
         ];
     }
 

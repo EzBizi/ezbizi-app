@@ -1195,6 +1195,12 @@ final class TimeClock
      * Carbon's own `startOfWeek()` is deliberately not used: it answers for the
      * locale, and this has to answer for a setting somebody chose.
      */
+    /** The start of the week $date falls in, for Payroll (2026-11-19). */
+    public function weekStartFor(string $date, string $tz, string $startsOn): Carbon
+    {
+        return $this->weekStart($date, $tz, $startsOn);
+    }
+
     private function weekStart(string $date, string $tz, string $startsOn): Carbon
     {
         // Carbon numbers Sunday 0 through Saturday 6, which is the order below.

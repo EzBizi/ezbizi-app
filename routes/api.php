@@ -235,6 +235,7 @@ use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\TimeClockApprovalsController;
+use App\Http\Controllers\Api\TimeClockPayrollController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\TimeClockCorrectionsController;
 use App\Http\Controllers\Api\TimeClockReportsController;
@@ -2252,6 +2253,14 @@ Route::prefix('v1')
         // Reading the day is the tab (view-only reads, UI/UX 2026-10-22);
         // approving and adjusting need "Approve daily hours".
         Route::get('hr/time-clock/approvals', [TimeClockApprovalsController::class, 'index']);
+        // Work Hours › Payroll (2026-11-19).
+        Route::middleware('permission:work_hours.payroll')->group(function () {
+            Route::get('hr/time-clock/payroll', [TimeClockPayrollController::class, 'index']);
+            Route::get('hr/time-clock/payroll/export', [TimeClockPayrollController::class, 'export']);
+            Route::post('hr/time-clock/payroll/approve', [TimeClockPayrollController::class, 'approve']);
+            Route::post('hr/time-clock/payroll/approve-all', [TimeClockPayrollController::class, 'approveAll']);
+            Route::put('hr/time-clock/payroll/{user}', [TimeClockPayrollController::class, 'update']);
+        });
         Route::middleware('permission:work_hours.approve')->group(function () {
             Route::post('hr/time-clock/approvals', [TimeClockApprovalsController::class, 'store']);
             Route::post('hr/time-clock/approvals/all', [TimeClockApprovalsController::class, 'approveAll']);

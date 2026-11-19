@@ -855,11 +855,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // people one reaches. Implies seeing them.
                 // `pto.request` (Jose, 2026-10-26): ask for your own paid time
                 // off. Every role was given it by the migration of that day.
-                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request'],
+                // `payroll` (Merav via Jose, 2026-11-19): see pay, set bonus and
+                // deductions, approve a week. Money, so its own grant.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
                     'approve' => ['work_hours.all'],
+                    'payroll' => ['work_hours.all'],
                     'pto.edit' => ['work_hours.pto.view'],
                 ],
                 actionLabels: [
@@ -867,6 +870,7 @@ class ModuleServiceProvider extends ServiceProvider
                     'manage' => 'Edit hours and schedules',
                     'pto.edit' => 'Edit used paid time off',
                     'approve' => 'Approve daily hours',
+                    'payroll' => 'Weekly payroll: pay, bonus, deductions, approve',
                     'pto.request' => 'Ask for paid time off',
                 ],
                 tabs: [
@@ -1037,6 +1041,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Shift extended',
                         description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
                             .'and how many times this shift has been extended.',
+                        isRaised: true,
+                    ),
+                    // Payroll (2026-11-19): Sunday evening, a branch's week is ready for its managers.
+                    new TriggerDefinition(
+                        key: 'time_clock.payroll_ready',
+                        subjects: [\App\Models\User::class],
+                        label: 'Weekly payroll ready to approve',
+                        description: 'Sunday evening a manager\'s week of payroll is ready. Subject: the manager. It carries week_start, people, waiting and with_warnings.',
                         isRaised: true,
                     ),
                     // Daily approval (2026-10-22).
