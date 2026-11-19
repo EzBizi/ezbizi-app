@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import 'heading_pin.dart';
+import 'table_download.dart';
 
 /// One column of a [ReportGrid].
 class GridColumn {
@@ -76,12 +77,33 @@ class ReportGrid extends StatelessWidget {
     required this.rows,
     this.total,
     this.onTap,
+    this.download,
   });
 
   final List<GridColumn> columns;
   final List<List<GridCell>> rows;
   final List<GridCell>? total;
   final ValueChanged<int>? onTap;
+
+  /// The file name for a Download button over the table (Merav, 2026-11-19);
+  /// none when null, as for someone without reports.export.
+  final String? download;
+
+  /// The table as a file's rows: headings, the rows, the total.
+  List<List<Object?>> get sheet => sheetFor(columns, [...rows, ?total]);
+
+  /// [rows] under [columns]' headings, each figure a number.
+  static List<List<Object?>> sheetFor(
+    List<GridColumn> columns,
+    List<List<GridCell>> rows,
+  ) => [
+    [for (final c in columns) c.label],
+    for (final row in rows)
+      [
+        for (final (i, c) in row.indexed)
+          TableFile.value(c.text, numeric: columns[i].numeric),
+      ],
+  ];
 
   static const _rowHeight = 40.0;
   static const _pad = 12.0;
@@ -92,9 +114,22 @@ class ReportGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
+    final grid = LayoutBuilder(
       builder: (context, box) =>
           box.maxWidth < cardsBelow ? _GridCards(grid: this) : _table(context),
+    );
+    if (download == null) return grid;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: TableDownload(name: download!, rows: () => sheet),
+        ),
+        const SizedBox(height: 8),
+        grid,
+      ],
     );
   }
 

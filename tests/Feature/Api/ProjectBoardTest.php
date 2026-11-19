@@ -388,6 +388,36 @@ class ProjectBoardTest extends TestCase
         $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /** Merav, 2026-11-19: a part the technician paid for is a tech expense to reimburse, read by payroll. */
+    public function test_a_part_paid_by_the_technician_is_a_tech_expense_until_reimbursed(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-19 10:00:00');
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, []));
+        $tech = $this->userWithRole($alpha, 'Technician', ['jobs.view']);
+        $api = $this->signedInAs($alpha['admin']);
+        $url = "/api/v1/project-board/jobs/{$id}/parts";
+        $part = fn (array $x = []) => ['parts' => [['kind' => 'pickup', 'item' => 'Damper', 'quantity' => 2, 'price_minor' => 4500] + $x]];
+        $week = '/api/v1/project-board/tech-expenses?from=2026-11-16&to=2026-11-23';
+
+        $api->putJson($url, $part(['paid_by_user_id' => $beta['admin']->id]))->assertStatus(422);
+        $saved = $api->putJson($url, $part(['paid_by_user_id' => $tech->id]))->assertOk()->json('data.0');
+        $this->assertSame([$tech->name, 9000], [$saved['paid_by'], $saved['expense_minor']]);
+        $this->assertTrue($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.technicians') !== []);
+
+        $res = $api->getJson($week."&user_id={$tech->id}")->assertOk();
+        $this->assertSame([['J-1', 'Damper', 9000]], array_map(fn ($e) => [$e['job_number'], $e['item'], $e['amount_minor']], $res->json('data')));
+        $this->assertSame(9000, $res->json('meta.total_minor'));
+
+        // A later save keeps when it was paid; reimbursed drops it from payroll.
+        \Illuminate\Support\Carbon::setTestNow('2026-11-25 10:00:00');
+        $api->putJson($url, $part(['id' => $saved['id'], 'paid_by_user_id' => $tech->id, 'reimbursed' => true]))->assertOk();
+        $this->assertSame([], $api->getJson($week)->json('data'));
+        $this->assertSame($saved['paid_at'], $api->getJson($week.'&all=1')->json('data.0.paid_at'));
+        $this->signedInAs($tech)->getJson($week)->assertForbidden();
+    }
+
     /**
      * Jose, 2026-11-17, the parts selector: in stock, ordered from a supplier
      * or a same-day pickup store, where it goes, and red three days after it
