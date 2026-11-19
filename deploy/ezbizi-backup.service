@@ -34,6 +34,11 @@ ExecStart=-/usr/local/bin/ezbizi-restore-check.sh
 # (126-157 bytes) that the backup writes as plain USTAR. 255 is USTAR's own cap.
 Environment=EZBIZI_PRIVATE_MAX_PATH_BYTES=255
 
+# The restore check refuses a private-file archive over 64 GiB by default; the
+# full was 40.7 GB on 11-19, growing ~4.6 GB a day, so it would have gone red
+# within a week. 256 GiB, reviewed when the incremental backups land.
+Environment=EZBIZI_PRIVATE_MAX_ENCRYPTED_BYTES=274877906944
+
 # The ceiling must cover backup AND restore check. 3600 s killed the restore
 # check two nights running (11-18, 11-19) once private files grew from 8.6 GB
 # (11-12) to 40.7 GB (11-19): the backup alone now takes ~56 min, so the check
