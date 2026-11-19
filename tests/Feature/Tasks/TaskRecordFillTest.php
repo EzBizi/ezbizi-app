@@ -72,4 +72,26 @@ class TaskRecordFillTest extends TestCase
             $this->assertSame('Kerry Falloon', $task->values()->where('column_id', $name->id)->value('value_text'));
         });
     }
+
+    /** Desk, 11-19: the backfill's writes raised 3,333 events that held up missed calls. It raises none; the value still lands. */
+    public function test_the_backfill_raises_no_automation_events(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$taskId, $ruleId] = $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Reason', 'type' => 'status', 'position' => 1,
+                'settings' => ['options' => [['id' => 'o', 'label' => 'Other', 'colour' => '#000000']]]]);
+            $rule = \App\Models\Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+
+            return [app(TaskWriter::class)->create($board, ['title' => 'Hello'], $t['admin'], $rule->id)->id, $rule->id];
+        });
+        $before = $this->inTenant($t['org'], fn () => \App\Models\AutomationEvent::query()->count());
+
+        $this->artisan('ezbizi:tasks-fill-from-record', ['--org' => $t['org']->id, '--as' => $t['admin']->id, '--rule' => [$ruleId]])->assertSuccessful();
+
+        $this->inTenant($t['org'], function () use ($before, $taskId) {
+            $this->assertSame($before, \App\Models\AutomationEvent::query()->count(), 'no events');
+            $this->assertTrue(\App\Models\Task::find($taskId)->values()->exists(), 'the value was written');
+        });
+    }
 }

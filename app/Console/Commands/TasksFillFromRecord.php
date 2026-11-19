@@ -28,10 +28,20 @@ class TasksFillFromRecord extends Command
         return $tenant->run($org, function () use ($fill) {
             $actor = User::query()->findOrFail($this->option('as'));
             $counts = ['tasks' => 0, 'filled' => 0, 'cells' => 0];
+            $before = \App\Models\AutomationEvent::query()->count();
+            $checked = false;
             Task::query()->whereNull('completed_at')->where(fn ($q) => $q->whereIn('created_by_automation_id', (array) $this->option('rule'))
                 ->when($this->option('group'), fn ($q, $g) => $q->orWhereHas('group', fn ($x) => $x->where('name', 'like', '%'.$g.'%')))
                 ->when($this->option('all-open'), fn ($q) => $q->orWhereNotNull('id')))
-                ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts) {
+                ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts, &$checked, $before) {
+                    // The first batch's events are read before the rest runs (RetardMoments 11-18): any, and it stops.
+                    if (! $checked && $counts['tasks'] > 0) {
+                        $checked = true;
+                        $raised = \App\Models\AutomationEvent::query()->count() - $before;
+                        if ($raised > 0) {
+                            throw new \RuntimeException("The first batch raised {$raised} automation event(s); stopped.");
+                        }
+                    }
                     foreach ($tasks as $task) {
                         $counts['tasks']++;
                         $about = (string) $task->about_type;
@@ -52,7 +62,8 @@ class TasksFillFromRecord extends Command
                             $task->values()->where('column_id', $reason->id)->delete();
                             $counts['reasons_cleared'] = ($counts['reasons_cleared'] ?? 0) + 1;
                         }
-                        $set = $fill->fill($task, $lead, $actor, $review, $job);
+                        // Silent: no automation events (desk 11-19: 3,333 events held up missed calls), Monday still queued.
+                        $set = \App\Support\Tasks\TaskWriter::bulk(fn ($w) => $fill->fill($task, $lead, $actor, $review, $job, $w), toMonday: true);
                         $counts['filled'] += $set === [] ? 0 : 1;
                         $counts['cells'] += count($set);
                     }

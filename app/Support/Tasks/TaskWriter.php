@@ -345,7 +345,7 @@ class TaskWriter
      * @param  callable(TaskWriter): T  $fn
      * @return T
      */
-    public static function bulk(callable $fn): mixed
+    public static function bulk(callable $fn, bool $toMonday = false): mixed
     {
         $had = app()->bound(EventEmitter::class) ? app(EventEmitter::class) : null;
         app()->instance(EventEmitter::class, new class extends EventEmitter
@@ -358,7 +358,8 @@ class TaskWriter
             $writer = app()->make(self::class);
             $writer->quiet = true;
 
-            return MondayOutbox::suppress(fn () => $fn($writer));
+            // $toMonday: a backfill whose values Monday must still get (11-19 fill), only the events are silenced.
+            return $toMonday ? $fn($writer) : MondayOutbox::suppress(fn () => $fn($writer));
         } finally {
             $had !== null ? app()->instance(EventEmitter::class, $had) : app()->forgetInstance(EventEmitter::class);
         }
