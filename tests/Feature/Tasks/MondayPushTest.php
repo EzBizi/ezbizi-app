@@ -383,6 +383,27 @@ class MondayPushTest extends TestCase
         $this->assertCount(2, $this->mutations, 'sent once');
     }
 
+    /** Jose 11-19: a group moved here moves on Monday after its new neighbour (update_group relative_position_after). */
+    public function test_a_group_moved_here_moves_on_monday(): void
+    {
+        $groups = $this->inTenant($this->tenant['org'], function () {
+            $gs = $this->board->groups()->orderBy('position')->get()->values();
+            foreach ($gs as $i => $g) {
+                $g->forceFill(['external_ref' => 'monday:grp'.$i])->save();
+            }
+
+            return $gs;
+        });
+        $last = $groups->last();
+        $this->signedInAs($this->tenant['admin'])->patchJson("/api/v1/task-boards/{$this->board->id}/groups/{$last->id}", ['position' => 0])->assertOk();
+
+        $names = $this->inTenant($this->tenant['org'], fn () => $this->board->groups()->orderBy('position')->pluck('id')->all());
+        $this->assertSame($last->id, $names[0], 'first here, saved');
+        $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'update_group('));
+        $this->assertStringContainsString('relative_position_before', $move['query']);
+        $this->assertSame(['b' => '100', 'g' => 'grp'.($groups->count() - 1), 'v' => 'grp0'], $move['vars']);
+    }
+
     /** Desk 11-19: Monday refuses one owner on a private board: the others still go, and the task says so. */
     public function test_an_owner_monday_refuses_is_dropped_and_the_rest_are_sent(): void
     {

@@ -3,15 +3,19 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\AutomationEvent;
+use App\Models\Customer;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskColumnValue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 class TaskBoardCustomizationTest extends TestCase
 {
     use BuildsTenants;
+    use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
     private array $tenant;
@@ -140,7 +144,7 @@ class TaskBoardCustomizationTest extends TestCase
         $tags = $col('tags', ['options' => [['label' => 'Complaint'], ['label' => 'Bad Review']]]);
         $link = $col('link')['id'];
         [$a, $b] = array_column($tags['settings']['options'], 'id');
-        $customer = $this->inTenant($this->tenant['org'], fn () => \App\Models\Customer::create(
+        $customer = $this->inTenant($this->tenant['org'], fn () => Customer::create(
             ['owning_franchise_id' => $this->tenant['franchise']->id, 'number' => 'C-9', 'name' => 'Ann Smith']));
         $id = $this->newTask();
 
@@ -172,7 +176,7 @@ class TaskBoardCustomizationTest extends TestCase
             ->assertOk()->assertJsonPath("data.values.{$people}", [$admin]);
 
         // Erasure finds them (personalDataAbout), as it finds a person column.
-        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => \App\Models\TaskColumnValue::personalDataAbout($this->tenant['admin'])->count()));
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::personalDataAbout($this->tenant['admin'])->count()));
     }
 
     public function test_a_retired_label_stays_on_its_tasks(): void
@@ -242,6 +246,9 @@ class TaskBoardCustomizationTest extends TestCase
 
         $url = "/api/v1/task-boards/{$this->board->id}/groups/{$groups[0]['id']}";
         $this->api()->deleteJson($url)->assertStatus(422);
-        $this->api()->deleteJson($url, ['move_to' => $groups[1]['id']])->assertNoContent();
+        // Jose 11-19: a group delete takes a fresh authenticator code.
+        $this->api()->deleteJson($url, ['move_to' => $groups[1]['id']])->assertStatus(422)->assertJsonPath('code', 'no_authenticator');
+        $code = $this->authenticatorCode($this->tenant['admin']);
+        $this->api()->deleteJson($url, ['move_to' => $groups[1]['id']] + $code)->assertNoContent();
     }
 }

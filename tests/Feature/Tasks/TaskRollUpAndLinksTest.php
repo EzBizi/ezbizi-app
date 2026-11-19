@@ -75,6 +75,21 @@ class TaskRollUpAndLinksTest extends TestCase
         $this->assertCount(4, collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}")->json('data.tasks'))->whereNotNull('rolled_up_from'));
     }
 
+    /** Health sweep 11-19: a PATCH answered with the whole roll-up and ran out of memory; it answers paged. */
+    public function test_a_patch_answers_with_a_paged_board(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $company = $this->board($tenant, 'company', $tenant['company']->id);
+        $branch = $this->board($tenant, 'franchise', $tenant['franchise']->id);
+        foreach (range(1, 55) as $i) {
+            $this->task($tenant, $branch, "Branch {$i}");
+        }
+
+        $rows = collect($this->signedInAs($tenant['admin'])->patchJson("/api/v1/task-boards/{$company->id}", ['position' => 3])->assertOk()->json('data.tasks'))
+            ->whereNotNull('rolled_up_from');
+        $this->assertLessThanOrEqual(50, $rows->count());
+    }
+
     public function test_a_rolled_up_row_takes_the_company_boards_status_by_name(): void
     {
         $tenant = $this->provisionTenant('Alpha');

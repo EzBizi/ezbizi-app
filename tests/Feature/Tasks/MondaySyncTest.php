@@ -3,8 +3,10 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\MondayOutboxEntry;
+use App\Models\Notification;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
@@ -372,6 +374,20 @@ class MondaySyncTest extends TestCase
     }
 
     /** Jose 11-19: an item made on Monday as "Job #N - Name" arrives as "Name", N in its column, and the clean title goes back. */
+    /** Desk 11-19: a task given to someone on Monday rings their bell here, and the change is Monday's, not the connection user's. */
+    public function test_an_assignment_made_on_monday_notifies_the_person_here(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'ana@a-1chimney.com');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'];
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id,
+            'board_id' => TaskBoard::query()->where('external_ref', 'monday:100')->value('id'), 'user_id' => $ana->id, 'role' => 'member']));
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['people' => ['2']])]);
+
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => Notification::query()->where('user_id', $ana->id)->where('kind', 'task.assigned')->count()));
+        $this->assertNull($this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task('11')->id)->where('field', 'owner')->latest('created_at')->value('user_id')), 'Monday, not Jose');
+    }
+
     public function test_a_job_number_title_from_monday_is_split_and_sent_back_clean(): void
     {
         Carbon::setTestNow('2026-11-12 12:05:00');
