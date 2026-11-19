@@ -214,7 +214,7 @@ final class MondayPush
                     continue;
                 }
                 if ($twin === null && in_array($m['type'], ['text', 'long_text'], true)) {
-                    $this->writer->createTextColumn($boardId, (string) $m['title']);
+                    $this->textColumnOn($boardId, (string) $m['title'], null);
                     unset($this->meta[$boardId]);
 
                     continue;
@@ -352,7 +352,7 @@ final class MondayPush
                         TaskWriter::WORKIZ_JOB_COLUMN => MondayBoardReader::columnFor($meta, TaskWriter::EZBIZI_JOB_COLUMN) ?? 'name',
                         default => null,
                     };
-                    $mondayColumn = $this->writer->createTextColumn($meta['board'], $column->name, $after);
+                    $mondayColumn = $this->textColumnOn($meta['board'], $column->name, $after);
                     $mondayType = 'text';
                     unset($this->meta[$meta['board']]);
                 }
@@ -470,6 +470,20 @@ final class MondayPush
         $task->group->forceFill(['external_ref' => 'monday:'.$made])->saveQuietly();
 
         return $this->meta[$boardId]['groups'][mb_strtolower($name)] = $made;
+    }
+
+    /**
+     * The board's text column of that title, made once (desk 11-19: four shards made Ohio PM's
+     * job-id columns three times). Under a per-board lock, Monday's columns are read fresh;
+     * only when none has the title is one made.
+     */
+    private function textColumnOn(string $boardId, string $title, ?string $after): string
+    {
+        return Cache::lock('monday-column:'.$boardId.':'.mb_strtolower($title), 60)->block(30, function () use ($boardId, $title, $after) {
+            $fresh = $this->reader->writeMeta($boardId);
+
+            return MondayBoardReader::columnFor($fresh, $title) ?? $this->writer->createTextColumn($boardId, $title, $after);
+        });
     }
 
     private function meta(string $boardId): array
