@@ -17,6 +17,7 @@ class VersionHistory {
       'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
       'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
       'Task Board: the Date column on Customer Relations tasks shows the job booked visit',
+      'Automations: complaints for every company land in that company Customer Relations group, owned by its General Manager when the usual owner is not on that board',
       'Task Board: complaint and review tasks fill the board own Area, Reason, Address, Client name and Phone from the job; Resolution is left for people',
       'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
       'Task Board: tasks made on Monday as Job number and name arrive with just the name, the number in its job column, on both sides',
