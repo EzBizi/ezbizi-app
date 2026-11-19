@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.30
+ * Version:           1.26.31
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.30';
+const EZBIZI_VERSION = '1.26.31';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -345,7 +345,25 @@ function ezbizi_payload_differs($before, $after) {
 
     unset($before['fetched_at'], $after['fetched_at']);
 
-    return $before !== $after;
+    return ezbizi_without_signatures($before) !== ezbizi_without_signatures($after);
+}
+
+/**
+ * A signed link's expires/signature change on every fetch while what it points
+ * at does not. Compared with them in, the chat avatar made every refresh look
+ * like a change and purged the page cache every 5 minutes (Bar, 2026-11-18:
+ * 6,697 purges on call.a-1chimney.com). Only the comparison drops them; the
+ * stored payload keeps the working link.
+ */
+function ezbizi_without_signatures($value) {
+    if (is_array($value)) {
+        return array_map('ezbizi_without_signatures', $value);
+    }
+    if (is_string($value) && strpos($value, 'signature=') !== false) {
+        return preg_replace('/([?&])(expires|signature)=[^&#]*/', '$1', $value);
+    }
+
+    return $value;
 }
 
 /**

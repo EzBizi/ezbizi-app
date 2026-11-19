@@ -34,13 +34,14 @@ final class TaskRecordFill
         ['/\b(invoice|receipt)\b/i', 'Invoice Request'],
         ['/\b(paid|payment|pay|balance|deposit)\b/i', 'Waiting Payment'],
         ['/\b(estimate|quote|pric(e|ing)|how much)\b/i', 'Estimate Inquiry'],
-        ['/\b(no[- ]show|never (showed|came)|rude|damage|mess|soot|upset|unhappy|complain|dissatisf|unprofessional|manager)\b/i', 'Complaint'],
+        ['/\b(no[- ]show|never (showed|came|arrived)|didn.t (show|come)|rude|damage|mess|soot|upset|unhappy|complain|dissatisf|unprofessional|manager)\b/i', 'Complaint'],
         ['/\b(book|schedul|appointment|inspection|clean|sweep|wants a)\b/i', 'Call To Book'],
     ];
 
     /** @return array<string, string> column id => value written */
-    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null): array
+    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
     {
+        $writer ??= app(TaskWriter::class);
         $board = $task->board;
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
         // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
@@ -64,7 +65,7 @@ final class TaskRecordFill
 
         $wanted = [
             'Area' => $this->area($customer?->state ?? $lead?->service_state, $job?->franchise_id ?? $lead?->franchise_id, $board->franchise_id),
-            'Reason' => $review ? ['Bad Review'] : $this->reasons($text),
+            'Reason' => $review ? ['Bad Review'] : ($this->reasons($text) ?: ['Other']),
             'Address' => $address,
             'Client name' => $customer?->name ?? $lead?->contact_name,
             'Phone number' => $customer?->phone ?? $lead?->phone,
@@ -105,11 +106,11 @@ final class TaskRecordFill
         $person = array_intersect_key($set, array_flip($people));
         $set = array_diff_key($set, $person);
         if ($set !== []) {
-            app(TaskWriter::class)->update($task->load('board'), ['values' => $set], $actor);
+            $writer->update($task->load('board'), ['values' => $set], $actor);
         }
         foreach ($person as $columnId => $userId) {
             try {
-                app(TaskWriter::class)->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
+                $writer->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
                 $set[$columnId] = $userId;
             } catch (\Illuminate\Validation\ValidationException) {
             }

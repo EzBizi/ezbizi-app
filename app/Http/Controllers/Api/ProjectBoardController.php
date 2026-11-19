@@ -417,6 +417,8 @@ class ProjectBoardController extends Controller
                 'labels' => (object) $settings->get('project_board.labels', $place),
                 // For the parts selector (Jose, 2026-11-17).
                 'suppliers' => self::suppliers($settings->get('project_board.suppliers', $place)),
+                // Who can have paid for a part (Merav, 2026-11-19).
+                'technicians' => User::query()->where('organization_id', $user->organization_id)->orderBy('name')->get(['id', 'name']),
                 'can_edit' => $user->hasPermission('jobs.edit'),
                 // Columns a header click can sort by, over the whole tab.
                 'sortable' => array_keys(self::SORTS),
@@ -875,6 +877,9 @@ class ProjectBoardController extends Controller
             'parts.*.price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
             'parts.*.delivery_on' => ['nullable', 'date_format:Y-m-d'],
             'parts.*.inventory_item_id' => ['nullable', 'uuid', 'exists:inventory_items,id'],
+            // Paid by the technician with his own money (Merav, 2026-11-19).
+            'parts.*.paid_by_user_id' => ['nullable', 'uuid', \Illuminate\Validation\Rule::exists('users', 'id')->where('organization_id', $job->organization_id)],
+            'parts.*.reimbursed' => ['nullable', 'boolean'],
         ]);
         // The company's suppliers (Settings), copied onto the part as picked.
         $suppliers = collect(self::suppliers(app(SettingsResolver::class)
@@ -909,6 +914,10 @@ class ProjectBoardController extends Controller
                     'remind_at' => $remind = filled($p['remind_at'] ?? null) ? Carbon::parse($p['remind_at']) : null,
                     'remind_note' => filled($p['remind_note'] ?? null) ? trim($p['remind_note']) : null,
                     'reminded_at' => $remind !== null && $old?->remind_at?->equalTo($remind) ? $old->reminded_at : null,
+                    // A tech expense: kept when it stays the same technician's.
+                    'paid_by_user_id' => $paidBy = $p['paid_by_user_id'] ?? null,
+                    'paid_at' => $paidBy === null ? null : ($old?->paid_by_user_id === $paidBy && $old->paid_at ? $old->paid_at : now()),
+                    'reimbursed_at' => $paidBy !== null && ($p['reimbursed'] ?? false) ? ($old?->reimbursed_at ?? now()) : null,
                 ]);
             }
         });
@@ -916,6 +925,24 @@ class ProjectBoardController extends Controller
 
         return response()->json(['data' => JobPart::query()->where('job_id', $job->id)->orderBy('position')->get()
             ->map(fn (JobPart $p) => $p->present())->values()]);
+    }
+
+    /**
+     * GET /api/v1/project-board/tech-expenses?from&to[&user_id][&all]: parts
+     * technicians paid for themselves, to reimburse (Merav, 2026-11-19); the
+     * payroll sheet adds them as lines. Unreimbursed only unless all=1.
+     */
+    public function techExpenses(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('project_board.view') && $request->user()->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $input = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'],
+            'user_id' => ['nullable', 'uuid'], 'all' => ['nullable', 'boolean']]);
+        $jobs = Job::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->pluck('id')->flip();
+        $data = JobPart::techExpenses($input['user_id'] ?? null, Carbon::parse($input['from']), Carbon::parse($input['to']), (bool) ($input['all'] ?? false))
+            ->filter(fn (array $e) => $jobs->has($e['job_id']))->values();
+
+        return response()->json(['data' => $data, 'meta' => ['total_minor' => $data->sum('amount_minor')]]);
     }
 
     /** PATCH /api/v1/project-board/jobs/{job}/proposal: view or change the offered times. */

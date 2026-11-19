@@ -2141,4 +2141,49 @@ class HrOnboardingTest extends TestCase
         $this->assertSame('28.00', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->toDateString())->amount));
         $this->assertSame('26', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->subDays(20)->toDateString())->amount));
     }
+
+    /**
+     * Merav, 2026-11-19: the contract prints the hire's BRANCH address, and an
+     * onboarding left unfinished warns on the record and alerts that branch's
+     * managers, saying what is missing.
+     */
+    public function test_branch_address_and_unfinished_onboarding_alerts(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario();
+        $branch = $alpha['franchise'];
+        $address = fn () => $this->inTenant($alpha['org'], fn () => Onboarding::findOrFail($id)->employer()['address']);
+
+        $before = $address();
+        $this->as($alpha['admin'])->patchJson("/api/v1/franchises/{$branch->id}", ['address' => '12 Branch Rd, Bethel CT 06801'])
+            ->assertOk()->assertJsonPath('address', '12 Branch Rd, Bethel CT 06801');
+        $this->assertNotSame('12 Branch Rd, Bethel CT 06801', $before);
+        $this->assertSame('12 Branch Rd, Bethel CT 06801', $address());
+
+        // The record says it is unfinished, and what is missing.
+        $missing = $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertOk()->json('data.onboarding_missing');
+        $this->assertNotEmpty($missing);
+
+        // A manager at that branch, and one at another, both able to read records.
+        $here = $this->userWithRole($alpha, 'Local Manager', ['hr.view', 'hr.records.view'], 'here@alpha.test', onlyAt: $branch);
+        $other = $this->userWithRole($alpha, 'Other Manager', ['hr.view', 'hr.records.view'], 'other@alpha.test',
+            onlyAt: $this->extraFranchise($alpha, 'Elsewhere'));
+        $told = fn (User $u) => $this->inTenant($alpha['org'], fn () => \App\Models\Notification::query()
+            ->where('user_id', $u->id)->where('kind', 'hr.onboarding_missing')->get());
+
+        // Too new to chase.
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $this->assertCount(0, $told($here));
+
+        DB::table('onboardings')->where('id', $id)->update(['started_at' => now()->subDays(5)]);
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $alerts = $told($here);
+        $this->assertCount(1, $alerts);
+        $this->assertStringContainsString('Marta', $alerts[0]->title);
+        $this->assertStringContainsString($missing[0], (string) $alerts[0]->body);
+        $this->assertCount(0, $told($other));
+
+        // Not again within the quiet days.
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $this->assertCount(1, $told($here));
+    }
 }

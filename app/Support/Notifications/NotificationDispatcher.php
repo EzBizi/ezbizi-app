@@ -588,6 +588,8 @@ class NotificationDispatcher
         // Project Management parts (Jose, 2026-11-17).
         'project_board.part_late' => 'A part is 3 days late',
         'project_board.part_reminder' => 'A part reminder is due',
+        // HR (Merav, 2026-11-19).
+        'hr.onboarding_missing' => 'Unfinished onboardings at my branch',
     ];
 
     /** Minutes within which a repeat of one kind on one record is one row. */

@@ -27,7 +27,7 @@ class Franchise extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'organization_id', 'company_id', 'name',
+        'organization_id', 'company_id', 'name', 'address',
         'timezone', 'currency', 'is_active',
     ];
 

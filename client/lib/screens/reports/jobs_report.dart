@@ -13,6 +13,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/module_overview.dart';
 import '../../widgets/report_grid.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/table_download.dart';
 import 'report_dates.dart';
 
 /// Every job created in the dates (Jose, 2026-11-11: "All created Jobs.
@@ -25,7 +26,11 @@ class JobsReport extends StatefulWidget {
     required this.api,
     required this.span,
     this.formats = DisplayFormats.fallback,
+    this.canExport = false,
   });
+
+  /// A Download button over the table (reports.export; Merav, 2026-11-19).
+  final bool canExport;
 
   /// The range from the Reports screen's shared date bar.
   final DateSpan span;
@@ -39,6 +44,9 @@ class JobsReport extends StatefulWidget {
 
 class _JobsReportState extends State<JobsReport> {
   static const _page = 200;
+
+  /// The server's largest page (5,000), for a file of every row.
+  static const _filePage = 5000;
 
   Set<String> _sources = {};
   Set<String> _dialed = {};
@@ -77,12 +85,7 @@ class _JobsReportState extends State<JobsReport> {
   /// The first page afresh, or [more] the next one under it.
   Future<void> _load({bool more = false}) async {
     final response = await widget.api.get('/reports/jobs', {
-      'from': formatCalendarDay(widget.span.from),
-      'to': formatCalendarDay(widget.span.to),
-      if (_sources.isNotEmpty) 'source[]': _sources.toList(),
-      if (_dialed.isNotEmpty) 'dialed[]': _dialed.toList(),
-      'area': ?_area,
-      if (_query.isNotEmpty) 'q': _query,
+      ..._filters,
       'offset': '${more ? _rows.length : 0}',
       'limit': '$_page',
     });
@@ -100,6 +103,44 @@ class _JobsReportState extends State<JobsReport> {
           (r as Map).cast<String, dynamic>(),
       ]);
     });
+  }
+
+  Map<String, Object> get _filters => {
+    'from': formatCalendarDay(widget.span.from),
+    'to': formatCalendarDay(widget.span.to),
+    if (_sources.isNotEmpty) 'source[]': _sources.toList(),
+    if (_dialed.isNotEmpty) 'dialed[]': _dialed.toList(),
+    'area': ?_area,
+    if (_query.isNotEmpty) 'q': _query,
+  };
+
+  /// Every row the filters match, not only the pages shown: a file of the
+  /// first 200 would pass for the whole range. Null when a page failed.
+  Future<List<List<Object?>>?> _everyRow() async {
+    final rows = <String, Map<String, dynamic>>{};
+    var offset = 0;
+    int? count;
+    while (count == null || offset < count) {
+      final response = await widget.api.get('/reports/jobs', {
+        ..._filters,
+        'offset': '$offset',
+        'limit': '$_filePage',
+      });
+      if (!response.ok) return null;
+      final data = (response.data as Map).cast<String, dynamic>();
+      count = (data['count'] as num).toInt();
+      final page = data['rows'] as List? ?? const [];
+      if (page.isEmpty) break;
+      offset += page.length;
+      // A job synced in between shifts the pages; keep each job once.
+      for (final r in page) {
+        final row = (r as Map).cast<String, dynamic>();
+        rows['${row['workiz_id']}'] = row;
+      }
+    }
+    return ReportGrid.sheetFor(_columns, [
+      for (final r in rows.values) _cells(r),
+    ]);
   }
 
   /// A filter's choices with how many jobs each has; 'none' is the jobs with none.
@@ -171,6 +212,56 @@ class _JobsReportState extends State<JobsReport> {
         '• its \$0 copy of a finished job, status "done pending approval": '
         '${formatCount(n('copies'))}';
   }
+
+  static const _columns = [
+    GridColumn('EzBizi ID', pinned: true),
+    GridColumn('Workiz ID'),
+    GridColumn('Created'),
+    GridColumn('Client'),
+    GridColumn('Phone'),
+    GridColumn('Branch'),
+    GridColumn('Service area'),
+    GridColumn('Source', main: true),
+    GridColumn('Number dialed', main: true),
+    GridColumn('Called at'),
+    GridColumn('Job type'),
+    GridColumn('Status'),
+    GridColumn('Job total', numeric: true, main: true, help: _grossHelp),
+    GridColumn('Created by'),
+  ];
+
+  /// One job's row, as the table shows it and as a file has it.
+  List<GridCell> _cells(Map<String, dynamic> r) => [
+    r['ezbizi_number'] == null && r['ezbizi_syncing'] == true
+        ? const GridCell(
+            'Syncing',
+            muted: true,
+            tooltip:
+                'Just in from Workiz; EzBizi makes its copy '
+                'within a minute or two.',
+          )
+        : _text(r['ezbizi_number']),
+    GridCell(
+      '${r['workiz_number'] ?? r['workiz_id']}',
+      tooltip: 'Workiz job ${r['workiz_id']}',
+    ),
+    GridCell(_when(r['created_at'])),
+    _text(r['client']),
+    r['phone'] == null ? const GridCell.none() : GridCell(_phone(r['phone'])),
+    _text(r['branch']),
+    _text(r['service_area']),
+    _text(r['source']),
+    r['dialed'] == null
+        ? const GridCell.none()
+        : GridCell(_line(r['dialed'], r['dialed_name'])),
+    r['called_at'] == null
+        ? const GridCell.none()
+        : GridCell(_when(r['called_at'])),
+    _text(r['job_type']),
+    _text(r['status']),
+    GridCell(formatMoney((((r['total'] as num?) ?? 0) * 100).round())),
+    _text(r['created_by']),
+  ];
 
   GridCell _text(Object? v) =>
       v == null || '$v'.isEmpty ? const GridCell.none() : GridCell('$v');
@@ -267,67 +358,20 @@ class _JobsReportState extends State<JobsReport> {
             ],
           ),
           const SizedBox(height: 12),
+          if (widget.canExport) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: TableDownload(
+                name: TableFile.name('Jobs', widget.span),
+                rows: _everyRow,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           ReportGrid(
             key: const ValueKey('jobs-table'),
-            columns: const [
-              GridColumn('EzBizi ID', pinned: true),
-              GridColumn('Workiz ID'),
-              GridColumn('Created'),
-              GridColumn('Client'),
-              GridColumn('Phone'),
-              GridColumn('Branch'),
-              GridColumn('Service area'),
-              GridColumn('Source', main: true),
-              GridColumn('Number dialed', main: true),
-              GridColumn('Called at'),
-              GridColumn('Job type'),
-              GridColumn('Status'),
-              GridColumn(
-                'Job total',
-                numeric: true,
-                main: true,
-                help: _grossHelp,
-              ),
-              GridColumn('Created by'),
-            ],
-            rows: [
-              for (final r in _rows)
-                [
-                  r['ezbizi_number'] == null && r['ezbizi_syncing'] == true
-                      ? const GridCell(
-                          'Syncing',
-                          muted: true,
-                          tooltip:
-                              'Just in from Workiz; EzBizi makes its copy '
-                              'within a minute or two.',
-                        )
-                      : _text(r['ezbizi_number']),
-                  GridCell(
-                    '${r['workiz_number'] ?? r['workiz_id']}',
-                    tooltip: 'Workiz job ${r['workiz_id']}',
-                  ),
-                  GridCell(_when(r['created_at'])),
-                  _text(r['client']),
-                  r['phone'] == null
-                      ? const GridCell.none()
-                      : GridCell(_phone(r['phone'])),
-                  _text(r['branch']),
-                  _text(r['service_area']),
-                  _text(r['source']),
-                  r['dialed'] == null
-                      ? const GridCell.none()
-                      : GridCell(_line(r['dialed'], r['dialed_name'])),
-                  r['called_at'] == null
-                      ? const GridCell.none()
-                      : GridCell(_when(r['called_at'])),
-                  _text(r['job_type']),
-                  _text(r['status']),
-                  GridCell(
-                    formatMoney((((r['total'] as num?) ?? 0) * 100).round()),
-                  ),
-                  _text(r['created_by']),
-                ],
-            ],
+            columns: _columns,
+            rows: [for (final r in _rows) _cells(r)],
           ),
           if (_rows.length < count) ...[
             const SizedBox(height: 12),

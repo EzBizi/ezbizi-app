@@ -100,6 +100,8 @@ class FranchisesController extends Controller
     {
         $input = $request->validate([
             'name'      => ['sometimes', 'string', 'max:120'],
+            // Printed on its hires' contracts (Merav, 2026-11-19); empty clears it.
+            'address'   => ['sometimes', 'nullable', 'string', 'max:500'],
             'timezone'  => ['sometimes', 'string', 'timezone'],
             'is_active' => ['sometimes', 'boolean'],
             'company_id' => ['missing'],
@@ -136,6 +138,7 @@ class FranchisesController extends Controller
         return [
             'id' => $franchise->id,
             'name' => $franchise->name,
+            'address' => $franchise->address,
             'is_active' => $franchise->is_active,
         ];
     }

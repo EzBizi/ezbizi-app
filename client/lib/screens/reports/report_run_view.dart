@@ -6,7 +6,9 @@ import '../../widgets/list_table.dart';
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
 import '../../core/phone_numbers.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/table_download.dart';
 
 /// One run of one saved report (spec 2026-09-10).
 ///
@@ -37,11 +39,15 @@ class ReportRunView extends StatefulWidget {
     required this.api,
     required this.reportId,
     required this.name,
+    this.canExport = false,
   });
 
   final ApiClient api;
   final String reportId;
   final String name;
+
+  /// A Download button over the table (reports.export; Merav, 2026-11-19).
+  final bool canExport;
 
   static const double tableAbove = 900;
 
@@ -162,6 +168,21 @@ class _ReportRunViewState extends State<ReportRunView> {
                     onChanged: (v) => setState(() => _query = v),
                   ),
                 ),
+                if (widget.canExport)
+                  TableDownload(
+                    name: '${widget.name} ${formatCalendarDay(DateTime.now())}',
+                    rows: () => [
+                      [for (final c in run.columns) c.label],
+                      for (final row in rows)
+                        [
+                          for (final c in run.columns)
+                            TableFile.value(
+                              _cell(row[c.key], c.type, c.key),
+                              numeric: c.type == 'integer' || c.type == 'money',
+                            ),
+                        ],
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 12),

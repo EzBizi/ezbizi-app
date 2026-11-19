@@ -142,6 +142,7 @@ class CompaniesController extends Controller
                         return [
                             'id'        => $f->id,
                             'name'      => $f->name,
+                            'address'   => $f->address,
                             'timezone'  => $f->timezone,
                             'currency'  => $f->currency,
                             'is_active' => $f->is_active,

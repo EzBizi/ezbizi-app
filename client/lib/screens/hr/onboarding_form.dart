@@ -1619,15 +1619,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final missing = _isMissing(question);
     final caution = StateColour.of(context).caution;
 
+    // The same tree answered or not: a key or a decoration that comes and
+    // goes with `missing` remounts the box under the cursor on the first
+    // keystroke, and typing stops (Merav, 2026-11-19: "when typing a number
+    // on the field it stops selecting the field").
     return Container(
-      key: missing ? Key('missing-${field.key}') : null,
+      key: ValueKey('question-${field.key}'),
       margin: const EdgeInsets.only(bottom: 22),
-      padding: missing ? const EdgeInsets.only(left: 10) : EdgeInsets.zero,
-      decoration: missing
-          ? BoxDecoration(
-              border: Border(left: BorderSide(color: caution, width: 3)),
-            )
-          : null,
+      padding: EdgeInsets.only(left: missing ? 10 : 0),
+      decoration: BoxDecoration(
+        border: Border(
+          left: missing
+              ? BorderSide(color: caution, width: 3)
+              : BorderSide.none,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1642,7 +1648,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
                         style: theme.textTheme.titleSmall,
                       ),
                     ),
-                    if (missing) const Tag('Not filled in', warn: true),
+                    if (missing)
+                      Tag(
+                        'Not filled in',
+                        key: Key('missing-${field.key}'),
+                        warn: true,
+                      ),
                     // The one thing position cannot show: that the other side
                     // may have got there first, and that correcting them is
                     // expected.
