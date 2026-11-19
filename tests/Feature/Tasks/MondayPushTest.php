@@ -189,6 +189,21 @@ class MondayPushTest extends TestCase
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
     }
 
+    /** Desk 11-18: a live change goes before any deferred backfill row, however old the backfill's change. */
+    public function test_live_rows_go_before_deferred_backfill_rows(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (range(1, 3) as $i) {
+                MondayOutboxEntry::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task->id,
+                    'kinds' => ['title'], 'changed_at' => now()->subHours(5), 'available_at' => now()->subMinute()]); // backfill: deferred, now due
+            }
+            app(TaskWriter::class)->create($this->board, ['title' => 'Missed call now'], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push', ['--limit' => 1])->assertSuccessful();
+
+        $this->assertStringContainsString('create_item(', $this->mutations[0]['query'], 'the live create went first');
+    }
+
     /** Desk 11-18: one switch pauses every sender; nothing is lost while paused. */
     public function test_pause_stops_every_sender_and_resume_sends_what_waited(): void
     {
