@@ -51,4 +51,24 @@ class TaskRecordFillTest extends TestCase
             $this->assertSame([], app(TaskRecordFill::class)->reasons('Hello there'));
         });
     }
+
+    /** Desk for Jose, 11-19: a rule task with no job link finds the caller's job by phone and gets both job ids. */
+    public function test_a_task_with_only_a_phone_finds_the_callers_job(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $phone = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Phone number', 'type' => 'text', 'position' => 1]);
+            $jobNo = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'EzBizi Job #', 'type' => 'text', 'position' => 2]);
+            $name = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 3]);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Kerry Falloon', 'phone' => '(732) 555-0199']);
+            $job = Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            $task = app(TaskWriter::class)->create($board, ['title' => 'Wants a chimney estimate', 'values' => [$phone->id => '+17325550199']], $t['admin']);
+
+            app(TaskRecordFill::class)->fill($task->load('board'), null, $t['admin']);
+
+            $this->assertSame($job->number, $task->values()->where('column_id', $jobNo->id)->value('value_text'));
+            $this->assertSame('Kerry Falloon', $task->values()->where('column_id', $name->id)->value('value_text'));
+        });
+    }
 }
