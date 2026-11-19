@@ -16,6 +16,7 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Tasks\JobTitle;
 use App\Support\Tasks\Monday\MondayOutbox;
+use App\Support\Tasks\Monday\MondaySync;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -88,6 +89,19 @@ class MondaySyncTest extends TestCase
     {
         $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', $items)];
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+    }
+
+    /** Desk 11-19: a sync past its budget stops between boards, so the lane (and parity behind it) is freed. */
+    public function test_a_sync_past_its_deadline_reads_no_more_boards(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [$this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z')])];
+
+        app(MondaySync::class)->run($this->connection, deadline: microtime(true) - 1);
+        $this->assertNull($this->task('12'), 'past the deadline: no board read');
+
+        app(MondaySync::class)->run($this->connection, deadline: microtime(true) + 600);
+        $this->assertNotNull($this->task('12'), 'within it: read');
     }
 
     public function test_the_import_marks_its_board_for_the_sync(): void
