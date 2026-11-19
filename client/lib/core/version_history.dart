@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0609', date: '19 Nov 2026', items: [
+      'Task Board: missed-call tasks fill the caller client, phone, address and job numbers from the number in the title',
+    ]),
     VersionRelease(version: '0.0.0608', date: '19 Nov 2026', items: [
       'Phone: calls and texts keep working while numbers move to a new Twilio account (both accounts accepted)',
       'Task Board: the half-hourly Monday check always gets its turn, even when a long sync is running',
