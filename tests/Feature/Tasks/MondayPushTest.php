@@ -223,6 +223,14 @@ class MondayPushTest extends TestCase
         $del = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'delete_subscribers_from_board('));
         $this->assertSame(['b' => '100', 'u' => ['7']], $del['vars']);
         $this->assertCount(2, $this->mutations, 'Jose, a Monday owner, untouched');
+
+        // A personal board's own person is never pushed as a Monday owner.
+        $this->mutations = [];
+        $mine = $this->inTenant($this->tenant['org'], fn () => app(TaskBoards::class)->ensureFor($ana));
+        $this->inTenant($this->tenant['org'], fn () => $mine->forceFill(['external_ref' => 'monday:300'])->saveQuietly());
+        $this->boardPeople = ['owners' => [], 'subscribers' => []];
+        (new PushBoardMembers($mine->id))->handle(app(TenantContext::class));
+        $this->assertCount(0, $this->mutations);
     }
 
     /** Desk 11-18: parallel senders share the outbox by task; together they send every row once. */
