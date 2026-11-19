@@ -192,6 +192,23 @@ void main() {
     expect(tester.getTopLeft(far).dx, lessThan(farAt.dx - 200));
   });
 
+  testWidgets('Jose 11-19: hold the wheel button and drag: the table pans '
+      'sideways', (tester) async {
+    await pumpBoard(tester);
+    final far = find.text('far right').first;
+    final farAt = tester.getTopLeft(far);
+    final at = tester.getCenter(find.text('Sweep the Oak Park flue'));
+    final g = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+      buttons: kMiddleMouseButton,
+    );
+    await g.moveBy(const Offset(-300, 0));
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(far).dx, lessThan(farAt.dx - 200));
+  });
+
   testWidgets('#26: a cell scrolled under the pinned Task column cannot be '
       'clicked through it', (tester) async {
     await pumpBoard(tester);
