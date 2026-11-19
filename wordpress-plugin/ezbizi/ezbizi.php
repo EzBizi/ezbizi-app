@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.31
+ * Version:           1.26.32
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.31';
+const EZBIZI_VERSION = '1.26.32';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -311,10 +311,11 @@ function ezbizi_fetch() {
      * like a change, which would purge the page cache every few minutes on
      * 110 sites for nothing.
      */
-    $changed = ezbizi_payload_differs(get_option(EZBIZI_LAST_GOOD, null), $payload);
+    $changed = ezbizi_payload_changed($payload);
 
     set_transient(EZBIZI_CACHE_KEY, $payload, EZBIZI_CACHE_TTL);
     update_option(EZBIZI_LAST_GOOD, $payload, false);
+    update_option(EZBIZI_LAST_GOOD . '_fp', ezbizi_payload_fingerprint($payload), false);
 
     if ($changed) {
         ezbizi_purge_page_cache();
@@ -338,6 +339,33 @@ function ezbizi_fetch() {
  * `fetched_at` is removed from both: it moves on every refresh and is the one
  * key that never changes what a visitor sees.
  */
+/**
+ * Whether [$payload] differs from the last one this site stored, by a
+ * fingerprint of the RAW payload. Reading the stored payload back runs every
+ * `option_ezbizi_last_good` filter: a site mu-plugin that patches it (A1
+ * Garage's a1g-town-phones.php adds page phones) made it differ from the raw
+ * fetch on every refresh, and the page cache was purged every 5 minutes
+ * (2026-11-19). The first refresh after an upgrade has no fingerprint and
+ * falls back to the old comparison.
+ */
+function ezbizi_payload_changed($payload) {
+    $before = get_option(EZBIZI_LAST_GOOD . '_fp', '');
+    if (! is_string($before) || $before === '') {
+        return ezbizi_payload_differs(get_option(EZBIZI_LAST_GOOD, null), $payload);
+    }
+
+    return $before !== ezbizi_payload_fingerprint($payload);
+}
+
+function ezbizi_payload_fingerprint($payload) {
+    if (! is_array($payload)) {
+        return '';
+    }
+    unset($payload['fetched_at']);
+
+    return md5(serialize(ezbizi_without_signatures($payload)));
+}
+
 function ezbizi_payload_differs($before, $after) {
     if (! is_array($before)) {
         return true;

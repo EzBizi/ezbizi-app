@@ -27,6 +27,7 @@ if (! defined('WP_UNINSTALL_PLUGIN')) {
 delete_option('ezbizi_token');
 delete_option('ezbizi_api_base');
 delete_option('ezbizi_last_good');
+delete_option('ezbizi_last_good_fp');
 
 delete_transient('ezbizi_payload');
 delete_transient('ezbizi_refreshing');

@@ -13,6 +13,20 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0607', date: '19 Nov 2026', items: [
+      'Passwords now need at least 8 characters (was 12)',
+      'Task Board: select several attachments on an update and download them together',
+      'Task Board: the text of updates can be selected and copied',
+      'Task Board: flag tasks find their booker even when the EzBizi name has a middle name',
+      'HR: unfinished onboardings alert the branch local managers and show what is missing',
+      'HR: contracts print the address of the employee branch',
+      'Forms: typing in a field no longer drops the cursor after the first key',
+      'Website chat: the team avatar uses a small, stable image so pages stay cached',
+      'Task Board: a task whose reason matches nothing gets Other instead of an empty Reason',
+      'Reports: every report table has a Download button for Excel or CSV, as shown with its search and filters',
+      'Project Management: a part can be marked paid by the technician, shown as a tech expense until reimbursed',
+      'Task Board: the nightly Monday check now compares every cell value, not just groups, and fixes differences',
+    ]),
     VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
       'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
       'Task Board: deleting a group or a board asks for your authenticator code first',

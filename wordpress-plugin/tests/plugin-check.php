@@ -66,7 +66,8 @@ $GLOBALS['scheduled'] = [];
 $GLOBALS['http_calls'] = 0;
 $GLOBALS['http_next'] = null;
 
-function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['opt']) ? $GLOBALS['opt'][$k] : $d; }
+// As WordPress does, a stored option passes through its option_{name} filters.
+function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['opt']) ? apply_filters("option_$k", $GLOBALS['opt'][$k]) : $d; }
 function update_option($k, $v, $a = null) { $GLOBALS['opt'][$k] = $v; return true; }
 function delete_option($k) { unset($GLOBALS['opt'][$k]); return true; }
 
@@ -414,6 +415,16 @@ $GLOBALS['home'] = 'https://WWW.A-1Chimney.com/';
 $sig = fn ($v, $e, $s) => ['fetched_at' => 1, 'widgets' => ['chat' => ['team' => [['avatar' => "https://app.ezbizi.com/api/v1/web/chat/avatar/u1?expires=$e&signature=$s&v=$v"]]]]];
 check('a re-signed link is not a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('a', 2, 'y')), false);
 check('a new photo is a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('b', 1, 'x')), true);
+// 2026-11-19: a site filter that patches the stored payload (a1g-town-phones.php) is not a change.
+$raw = ['fetched_at' => 1, 'pages' => ['/a' => ['phone' => '1']]];
+update_option(EZBIZI_LAST_GOOD, $raw);
+update_option(EZBIZI_LAST_GOOD . '_fp', ezbizi_payload_fingerprint($raw));
+$patch = function ($p) { $p['pages']['/b'] = ['phone' => '2']; return $p; };
+add_filter('option_' . EZBIZI_LAST_GOOD, $patch);
+check('a patched stored payload is not a change', ezbizi_payload_changed(['fetched_at' => 2] + $raw), true === false);
+check('a real value change is still a change', ezbizi_payload_changed(['fetched_at' => 2, 'pages' => ['/a' => ['phone' => '9']]]), true);
+remove_filter('option_' . EZBIZI_LAST_GOOD, $patch);
+delete_option(EZBIZI_LAST_GOOD); delete_option(EZBIZI_LAST_GOOD . '_fp');
 check('www stripped, lowercased', ezbizi_host(), 'a-1chimney.com');
 $GLOBALS['home'] = 'https://nj.a-1chimney.com';
 check('a subdomain is its own host', ezbizi_host(), 'nj.a-1chimney.com');
