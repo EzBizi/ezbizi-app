@@ -122,7 +122,12 @@ class MondayPushTest extends TestCase
                     str_contains($q, 'create_item(') => ['create_item' => ['id' => '77']],
                     str_contains($q, 'create_update(') => ['create_update' => ['id' => '901']],
                     str_contains($q, 'create_group(') => ['create_group' => ['id' => 'g_new']],
-                    str_contains($q, 'create_column(') => ['create_column' => ['id' => 'text_new']],
+                    str_contains($q, 'create_column(') => (function () use ($vars) {
+                        // Monday now has it: the next read lists it.
+                        $this->extraColumns[(string) $vars['b']][] = ['id' => 'text_new', 'title' => $vars['t'], 'type' => 'text', 'settings_str' => '{}'];
+
+                        return ['create_column' => ['id' => 'text_new']];
+                    })(),
                     default => ['ok' => ['id' => '1']],
                 }]);
             }
@@ -166,6 +171,21 @@ class MondayPushTest extends TestCase
         $this->assertSame(['b' => '100', 't' => 'Workiz Job ID', 'a' => 'name'], $made['vars'], 'right after Name');
         $values = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'change_multiple_column_values'));
         $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
+    }
+
+    /** Desk 11-19: a text column is made on Monday once, however many tasks need it in one run. */
+    public function test_a_text_column_is_made_once_for_many_tasks(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $col = TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Workiz Job ID', 'type' => 'text', 'position' => 20]);
+            app(TaskWriter::class)->update($this->task, ['values' => [$col->id => '800021103']], $this->jose);
+            $other = app(TaskWriter::class)->create($this->board, ['title' => 'Second'], $this->jose);
+            $other->forceFill(['external_ref' => 'monday:12'])->saveQuietly();
+            app(TaskWriter::class)->update($other->fresh(), ['values' => [$col->id => '800021104']], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertCount(1, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_column(')));
     }
 
     /** Desk 11-18: Monday files an item with no group in its FIRST group; a task with no group is never sent. */
