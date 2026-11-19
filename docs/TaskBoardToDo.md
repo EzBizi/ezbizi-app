@@ -60,7 +60,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | M3 | Merav (Payroll, W2): Sunday 5 PM each manager gets employees, rate/salary and hours to fill/approve; columns Bonus, Deductions, Weekly salary; missing-info warning; Monday morning copy to Merav | Clock In (+ HR) | WORKING | Plan approved: Work Hours › Payroll tab, Sunday 5 PM bell + email to branch managers, Monday 8 AM .xlsx to Merav; overtime shown, pay unchanged (asking Jose/Merav about 1.5×) |
 | M4 | Merav (Reports/Marketing): download as Excel or CSV | Reports (+ Marketing) | WORKING | SHA |
 | M5 | Merav (Project Management): parts option "paid by technician" (tech expense to reimburse) | Jobs (PM code) | WORKING | SHA |
-| P1 | A-1 Chimney texting (A2P campaign) | Phone | DONE | Campaign VERIFIED 11-19 15:16 UTC; texting on for 11 numbers; +19545162455 on Twilio has no EzBizi row (Phone to decide) |
+| P1 | A-1 Chimney texting (A2P campaign) | Phone | DONE | Campaign VERIFIED 11-19 15:16 UTC; texting on for 11 numbers; the 12th number (+19545162455) was the A-1 WhatsApp bot, bound by mistake; removed from the texting service (11 = 11) |
 
 ## Done (measured)
 
