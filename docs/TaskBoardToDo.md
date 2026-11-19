@@ -49,6 +49,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 23 | Open complaint tasks had BOTH Natalie and Adeline (made before the routing split) | Task Board | DONE | 11-19: Adeline removed from 201 tasks on Natalie's 6 branch boards (CT 38, DMV 18, GA 32, MA 25, NJ 65, TX 23); 0 left with both; pushed to Monday |
 | 24 | A live task's push to Monday that hits the rate limit once gets demoted behind the backlog (an MA overbook flag waited 45+ min) (11-19) | Task Board | WORKING | Store "live" explicitly on the outbox row; test; stuck row bumped by hand |
 | 25 | Adeline: **clicking the Linked job on a task does nothing** (11-19 suggestion, approved) | Task Board | WORKING | Merged 48bdc1786 (a linked job/customer opens its screen; panel Linked to too; test). Ships in 0610; desk checks on prod |
+| 26 | Monday→EzBizi sync stuck on NW since 16:44 UTC (NW alone outlasts a lane run, restarts each time); the 30-min parity starved behind it (a deleted Ohio PM item stayed live) (11-19) | Task Board | WORKING | Artem trashed 21:30. NW one-off sync failed to start ("mutex taken"), sent back 21:32. Fix: per-board page budget + mid-board resume; ships next release |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
