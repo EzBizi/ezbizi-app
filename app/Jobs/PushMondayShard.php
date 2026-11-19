@@ -20,7 +20,8 @@ final class PushMondayShard implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 290;
+    /** Under the database queue's retry_after (90 s): longer and a second worker takes the same job. */
+    public int $timeout = 85;
 
     public int $uniqueFor = 600;
 
@@ -38,7 +39,7 @@ final class PushMondayShard implements ShouldBeUnique, ShouldQueue
     {
         foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', SocialProvider::Monday->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)->get() as $connection) {
-            rescue(fn () => $push->run($connection, $this->limit, shard: $this->shard, shards: $this->shards));
+            rescue(fn () => $push->run($connection, $this->limit, shard: $this->shard, shards: $this->shards, seconds: 70));
         }
     }
 }

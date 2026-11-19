@@ -189,6 +189,18 @@ class MondayPushTest extends TestCase
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
     }
 
+    /** Desk 11-18: a shard stops at its time budget (under the queue's retry_after); the rest wait, nothing is lost. */
+    public function test_a_spent_time_budget_sends_nothing_more_and_leaves_rows_pending(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->create($this->board, ['title' => 'Later'], $this->jose));
+        $connection = SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->first();
+        $counts = app(MondayPush::class)->run($connection, 60, seconds: -1);
+
+        $this->assertSame(0, $counts['sent']);
+        $this->assertCount(0, $this->mutations);
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)->count()));
+    }
+
     /** Desk 11-18: a live change goes before any deferred backfill row, however old the backfill's change. */
     public function test_live_rows_go_before_deferred_backfill_rows(): void
     {
