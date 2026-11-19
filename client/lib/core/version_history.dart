@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0611', date: '19 Nov 2026', items: [
+      'Task Board: a big Monday board syncs a bit each run and picks up where it stopped, so one busy board never holds up the rest',
+    ]),
     VersionRelease(version: '0.0.0610', date: '19 Nov 2026', items: [
       'Task Board: clicking a linked job or customer on a task opens it, and so does Linked to in the side panel',
       'Reviews: the Unanswered count matches your filters; the low-rating filter is now 1-3 stars',
