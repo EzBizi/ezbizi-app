@@ -6595,8 +6595,12 @@ class _TaskPanelState extends State<_TaskPanel> {
                           ),
                         ),
                         const SizedBox(height: 2),
+                        // Selectable, to copy as is (Merav via Jose 11-19).
                         if ('${u['body'] ?? ''}'.isNotEmpty)
-                          Text('${u['body']}'),
+                          SelectableText(
+                            '${u['body']}',
+                            key: ValueKey('task-update-body-${u['id']}'),
+                          ),
                         TaskAttachments(
                           api: widget.api,
                           attachments: [

@@ -433,6 +433,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required bool canExperiment,
   }) {
     final me = widget.session.me;
+    // Download a table as Excel or CSV (Merav, 2026-11-19).
+    final canExport = me?.can('reports.export') ?? false;
 
     return [
       /*
@@ -486,6 +488,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => MarketingReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
@@ -498,6 +501,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => MetaAdsReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             canEdit: canBuildHere,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
@@ -510,6 +514,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => ThumbtackReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
@@ -521,6 +526,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => JobsReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
@@ -727,6 +733,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         api: widget.api,
         reportId: open.id,
         name: open.name,
+        canExport: widget.session.me?.can('reports.export') ?? false,
       );
     }
 

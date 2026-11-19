@@ -66,6 +66,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   /// The company's suppliers and same-day pickup stores (Settings).
   List<Map<String, dynamic>> _suppliers = const [];
+
+  /// Who can have paid for a part themselves (Merav, 2026-11-19).
+  List<Map<String, dynamic>> _technicians = const [];
   Map<String, String> _scope = const {};
   Map<String, dynamic> _counts = const {};
 
@@ -257,6 +260,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
       _suppliers = _maps(meta['suppliers']);
+      _technicians = _maps(meta['technicians']);
       _canEditJobs = meta['can_edit'] == true;
       final days = (meta['status_days'] as Map?) ?? const {};
       _days = (
@@ -317,6 +321,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         customer: '${row['customer'] ?? ''}',
         parts: parts,
         suppliers: _suppliers,
+        technicians: _technicians,
         formats: widget.session.me?.display ?? DisplayFormats.fallback,
       ),
     );
@@ -2538,12 +2543,14 @@ class _PartsPanel extends StatefulWidget {
     required this.parts,
     required this.formats,
     this.suppliers = const [],
+    this.technicians = const [],
   });
 
   final String customer;
   final List<Map<String, dynamic>> parts;
   final DisplayFormats formats;
   final List<Map<String, dynamic>> suppliers;
+  final List<Map<String, dynamic>> technicians;
 
   @override
   State<_PartsPanel> createState() => _PartsPanelState();
@@ -2560,6 +2567,10 @@ class _PartRow {
       supplierId = (p['supplier'] as Map?)?['id'] as String?,
       destination = p['destination'] as String?,
       received = p['received_at'] != null,
+      paidBy = p['paid_by_user_id'] as String?,
+      paidByName = p['paid_by'] as String?,
+      techPaid = p['paid_by_user_id'] != null,
+      reimbursed = p['reimbursed_at'] != null,
       item = TextEditingController(text: '${p['item'] ?? ''}'),
       quantity = TextEditingController(text: '${p['quantity'] ?? 1}'),
       price = TextEditingController(
@@ -2586,6 +2597,12 @@ class _PartRow {
   String? supplierId;
   String? destination;
   bool received;
+
+  /// Bought by the technician with his own money (Merav, 2026-11-19).
+  bool techPaid;
+  String? paidBy;
+  final String? paidByName;
+  bool reimbursed;
   final TextEditingController item;
   final TextEditingController quantity;
   final TextEditingController price;
@@ -2643,6 +2660,10 @@ class _PartsPanelState extends State<_PartsPanel> {
             'supplier_id': r.supplierId,
             'destination': r.destination,
             'received': r.received,
+          },
+          if (r.techPaid && r.paidBy != null) ...{
+            'paid_by_user_id': r.paidBy,
+            'reimbursed': r.reimbursed,
           },
           if (r.remindAt case final at?) ...{
             'remind_at': at,
@@ -2733,6 +2754,44 @@ class _PartsPanelState extends State<_PartsPanel> {
                 ),
               ],
             ),
+            CheckboxListTile(
+              key: ValueKey('project-board-part-tech-paid-$i'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Paid by technician (reimburse)'),
+              value: r.techPaid,
+              onChanged: (v) => setState(() => r.techPaid = v ?? false),
+            ),
+            if (r.techPaid) ...[
+              SearchPickerField<String?>(
+                key: ValueKey('project-board-part-paid-by-$i'),
+                value: r.paidBy,
+                label: 'Technician',
+                hint: 'Who paid',
+                isDense: true,
+                options: [
+                  for (final u in widget.technicians)
+                    SearchOption<String?>(value: '${u['id']}', label: '${u['name']}'),
+                  if (r.paidBy != null &&
+                      !widget.technicians.any((u) => u['id'] == r.paidBy))
+                    SearchOption<String?>(
+                      value: r.paidBy,
+                      label: r.paidByName ?? 'Former user',
+                    ),
+                ],
+                onChanged: (v) => setState(() => r.paidBy = v),
+              ),
+              CheckboxListTile(
+                key: ValueKey('project-board-part-reimbursed-$i'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Reimbursed'),
+                value: r.reimbursed,
+                onChanged: (v) => setState(() => r.reimbursed = v ?? false),
+              ),
+            ],
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,

@@ -663,11 +663,11 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'security.password_min_length', label: 'Minimum password length',
-                type: SettingDefinition::TYPE_INT, default: 12,
+                type: SettingDefinition::TYPE_INT, default: 8,
                 allowedScopes: $orgOnly,
                 // Raise-only, and it says so, because "minimum password length"
                 // reads like a number you can set in either direction.
-                help: 'Can only make passwords longer than the platform minimum of 12, '
+                help: 'Can only make passwords longer than the platform minimum of 8, '
                     .'never shorter. Above 72 has no effect — the password hash stops '
                     .'reading there. Does not apply to the very first account, which is '
                     .'created before this organization exists.',
