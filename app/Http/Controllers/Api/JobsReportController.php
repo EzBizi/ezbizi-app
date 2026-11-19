@@ -52,7 +52,7 @@ class JobsReportController extends Controller
             'area' => ['nullable', 'string', 'max:191'],
             'q' => ['nullable', 'string', 'max:100'],
             'offset' => ['nullable', 'integer', 'min:0'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:5000'],
         ]);
         abort_if(CarbonImmutable::parse($q['from'])->diffInDays(CarbonImmutable::parse($q['to'])) > 92, 422, 'Choose a range of three months or less.');
 

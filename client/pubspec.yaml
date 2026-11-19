@@ -88,6 +88,9 @@ dependencies:
   # Reports › Marketing's Print (Merav, 2026-11-04): the page drawn from the
   # report's rows, so a long table runs onto more pages instead of being cut.
   pdf: ^3.12.0
+  # Reports' Download as Excel (Merav, 2026-11-19): an .xlsx is a zip of XML.
+  # Already here through image and printing; named so the import is ours.
+  archive: ^4.0.9
   desktop_drop: 0.7.1
 
   # The how-to video in the app on Windows too (Jose, 2026-10-14: "video
