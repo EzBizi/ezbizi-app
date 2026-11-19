@@ -47,7 +47,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 |---|---|---|---|---|
 | B1 | Backups have limits: **7 nights on the app server, 3 nights of files off-site, ONE monthly copy** (11-19) | Desk | DONE (applied) | Script 96dd2ca89 installed. Websites server went from 97% to 76% full. Old copies deleted now; the rules dry-run on both servers. Tonight's run must show "backup ok" and "restore ok" |
 | B2 | Backups RED 2 nights: the 1 h limit killed the run (files grew 8.6 → 40.7 GB a night) and the off-site disk was full | Desk | WORKING | Limit raised to 6 h (4b0df0038, installed); check tonight's 03:18 UTC run |
-| B3 | Incremental file backups (each night only what changed) | Desk (helper) | WORKING | Being built with restore tests; install after review |
+| B3 | Incremental file backups (each night only what changed) | Desk (helper) | WORKING | Built + 19 restore tests pass (594b2ee68, a weekly full plus nightly changes, ~25–30% of a full). Merged only after tonight's run is green, because merging installs it on the next cut. The 256 GiB archive cap was raised today (44b5a5aca) |
 | B4 | Air 75, Roofirst, Crestline Home as sub-companies of A-1 Chimney, flattened (11-19) | Desk | DONE | 9 companies now directly under A-1 Chimney (API read back); old layout saved in companies-before-flatten-2026-11-19.json |
 | B5 | Who handles complaints for the non-chimney brands (garage doors etc.)? | Jose | WAITING | Question below |
 

@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0605', date: '19 Nov 2026', items: [
       'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
+      'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
     ]),
     VersionRelease(version: '0.0.0604', date: '19 Nov 2026', items: [
       'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
