@@ -833,58 +833,76 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
-  /// Design 171: a phone's one bar - back, the avatar and name, where the
-  /// lead stands, Book, and ... for everything else in the header.
+  /// Design 171, two lines (Jose, 2026-11-19: "fix the overlapping then I
+  /// can copy the phone easily"): back, the avatar and the whole name or
+  /// number with its copy button; under it where the lead stands, Book, and
+  /// ... for everything else in the header.
   Widget _phoneBar(
     ThemeData theme,
     Map<String, dynamic> lead,
     LeadSourceFields src,
-  ) => Row(
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
     children: [
-      if (widget.onBack != null)
-        IconButton(
-          key: const ValueKey('thread-back'),
-          tooltip: 'All leads',
-          visualDensity: VisualDensity.compact,
-          onPressed: widget.onBack,
-          icon: const Icon(Icons.arrow_back),
-        ),
-      LeadAvatar(
-        key: const ValueKey('thread-avatar'),
-        name: leadTitle(lead),
-        url: src.avatarUrl,
-        radius: 16,
+      Row(
+        children: [
+          if (widget.onBack != null)
+            IconButton(
+              key: const ValueKey('thread-back'),
+              tooltip: 'All leads',
+              visualDensity: VisualDensity.compact,
+              onPressed: widget.onBack,
+              icon: const Icon(Icons.arrow_back),
+            ),
+          LeadAvatar(
+            key: const ValueKey('thread-avatar'),
+            name: leadTitle(lead),
+            url: src.avatarUrl,
+            radius: 16,
+          ),
+          const SizedBox(width: 8),
+          // The whole of it, wrapping rather than cut: a number is copied.
+          Flexible(
+            child: Text(
+              leadTitle(lead),
+              key: const ValueKey('phone-bar-title'),
+              softWrap: true,
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          _copyButton(
+            leadTitle(lead),
+            key: const ValueKey('phone-bar-copy'),
+            what: RegExp(r'[A-Za-z]').hasMatch(leadTitle(lead))
+                ? 'Name'
+                : 'Number',
+          ),
+        ],
       ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          leadTitle(lead),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleMedium,
-        ),
-      ),
-      if (widget.onStatusChanged != null) ...[
-        const SizedBox(width: 6),
-        SizedBox(width: 118, child: _moves(lead, fill: true)),
-      ],
-      // Book as a filled icon: the worded button left the name ~60 px
-      // ("Adelen…", phone audit 2026-11-04). Design 171 keeps one bar.
-      if (_canBook) ...[
-        const SizedBox(width: 4),
-        IconButton.filled(
-          key: const ValueKey('book-open'),
-          tooltip: 'Book',
-          onPressed: _openBooking,
-          icon: const Icon(Icons.event_available_outlined),
-        ),
-      ],
-      IconButton(
-        key: const ValueKey('thread-details-toggle'),
-        tooltip: _showDetails ? 'Hide details' : 'Details',
-        visualDensity: VisualDensity.compact,
-        onPressed: () => setState(() => _showDetails = !_showDetails),
-        icon: Icon(_showDetails ? Icons.expand_less : Icons.more_horiz),
+      const SizedBox(height: 4),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (widget.onStatusChanged != null)
+            SizedBox(width: 140, child: _moves(lead, fill: true)),
+          if (_canBook) ...[
+            const SizedBox(width: 6),
+            IconButton.filled(
+              key: const ValueKey('book-open'),
+              tooltip: 'Book',
+              onPressed: _openBooking,
+              icon: const Icon(Icons.event_available_outlined),
+            ),
+          ],
+          IconButton(
+            key: const ValueKey('thread-details-toggle'),
+            tooltip: _showDetails ? 'Hide details' : 'Details',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => _showDetails = !_showDetails),
+            icon: Icon(_showDetails ? Icons.expand_less : Icons.more_horiz),
+          ),
+        ],
       ),
     ],
   );
