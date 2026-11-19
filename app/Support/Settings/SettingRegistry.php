@@ -2520,6 +2520,15 @@ class SettingRegistry
                 help: 'When the days earned must be used by. Days are still earned per the "Earned per" setting; at each reset, carryover decides whether what is left comes along.',
             ),
             new SettingDefinition(
+                key: 'time_clock.payroll_manager_review',
+                section: 'Payroll',
+                label: 'Sunday 5 PM: ask branch managers to approve their payroll',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'A notification and email to each branch manager to add bonuses or deductions and approve the week in Work Hours › Payroll.',
+            ),
+            new SettingDefinition(
                 key: 'time_clock.payroll_recipients',
                 section: 'Payroll',
                 label: 'Payroll goes to',

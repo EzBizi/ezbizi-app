@@ -91,6 +91,7 @@ class TimeClockPayrollTest extends TestCase
         $this->rate($t, $hourly, 'hourly', '25.00', 'hour');
         $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('time_clock.payroll_recipients', $t['org'], 'merav@alpha.test, payroll@alpha.test'));
         Mail::fake();
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('time_clock.payroll_manager_review', $t['org'], true));
         $bell = fn () => Notification::query()->withoutGlobalScopes()->where('user_id', $manager->id)->where('title', 'like', 'Payroll%')->count();
 
         Carbon::setTestNow(Carbon::parse('2026-10-25 20:45', 'UTC'));   // Sunday 4:45 PM
