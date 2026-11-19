@@ -51,7 +51,10 @@ class TimeClockPayrollSends extends Command
                     return;
                 }
                 try {
-                    $this->managers($org, $settings, $clock, $payroll, $notify, $events);
+                    // Off until the Payroll screen ships with it (desk, 2026-11-19).
+                    if ($settings->get('time_clock.payroll_manager_review', $org)) {
+                        $this->managers($org, $settings, $clock, $payroll, $notify, $events);
+                    }
                     $this->office($org, $settings, $clock, $payroll, $mail, $audit);
                 } catch (Throwable $e) {
                     report($e);   // one organization's failure must not cost the others theirs
