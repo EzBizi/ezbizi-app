@@ -17,6 +17,7 @@ class VersionHistory {
       'Task Board: clicking a linked job or customer on a task opens it, and so does Linked to in the side panel',
       'Reviews: the Unanswered count matches your filters; the low-rating filter is now 1-3 stars',
       'Task Board: missed-call tasks fill the caller client, phone, address and job numbers from the number in the title',
+      'Leads on a phone: the number or name shows in full on its own line with a copy button; Status, Book and the menu sit underneath',
     ]),
     VersionRelease(version: '0.0.0608', date: '19 Nov 2026', items: [
       'Phone: calls and texts keep working while numbers move to a new Twilio account (both accounts accepted)',
