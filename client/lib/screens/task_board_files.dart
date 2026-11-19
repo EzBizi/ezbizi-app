@@ -95,7 +95,9 @@ Future<void> openTaskAttachment(
 }
 
 /// An update's files: images as thumbnails, everything else as a chip.
-class TaskAttachments extends StatelessWidget {
+/// Two or more can be selected together and downloaded at once (Merav via
+/// Jose 11-19: "Multiple Select Attachments").
+class TaskAttachments extends StatefulWidget {
   const TaskAttachments({
     super.key,
     required this.api,
@@ -106,24 +108,83 @@ class TaskAttachments extends StatelessWidget {
   final List<Map<String, dynamic>> attachments;
 
   @override
+  State<TaskAttachments> createState() => _TaskAttachmentsState();
+}
+
+class _TaskAttachmentsState extends State<TaskAttachments> {
+  bool _selecting = false;
+  final Set<String> _picked = {};
+
+  Future<void> _downloadPicked() async {
+    for (final a in widget.attachments) {
+      if (!_picked.contains('${a['id']}')) continue;
+      final res = await _fetch(widget.api, '${a['url']}');
+      if (res.bytes != null) Files.download('${a['name']}', res.bytes!);
+    }
+    if (mounted) setState(() => _picked.clear());
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final attachments = widget.attachments;
     if (attachments.isEmpty) return const SizedBox.shrink();
+    Widget item(Map<String, dynamic> a) {
+      final file = a['thumbnail_url'] is String
+          ? _Thumbnail(api: widget.api, attachment: a)
+          : TaskFileChip(
+              key: ValueKey('task-attachment-${a['id']}'),
+              name: '${a['name']}',
+              mime: a['mime'] as String?,
+              size: a['size'] as num?,
+              onTap: () => openTaskAttachment(context, widget.api, a),
+            );
+      if (!_selecting) return file;
+      final id = '${a['id']}';
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Checkbox(
+            key: ValueKey('task-attachment-pick-$id'),
+            value: _picked.contains(id),
+            onChanged: (on) => setState(
+              () => on == true ? _picked.add(id) : _picked.remove(id),
+            ),
+          ),
+          file,
+        ],
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final a in attachments)
-            a['thumbnail_url'] is String
-                ? _Thumbnail(api: api, attachment: a)
-                : TaskFileChip(
-                    key: ValueKey('task-attachment-${a['id']}'),
-                    name: '${a['name']}',
-                    mime: a['mime'] as String?,
-                    size: a['size'] as num?,
-                    onTap: () => openTaskAttachment(context, api, a),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [for (final a in attachments) item(a)],
+          ),
+          if (attachments.length > 1)
+            Row(
+              children: [
+                TextButton(
+                  key: const Key('task-attachments-select'),
+                  onPressed: () => setState(() {
+                    _selecting = !_selecting;
+                    _picked.clear();
+                  }),
+                  child: Text(_selecting ? 'Done' : 'Select files'),
+                ),
+                if (_selecting)
+                  TextButton.icon(
+                    key: const Key('task-attachments-download'),
+                    onPressed: _picked.isEmpty ? null : _downloadPicked,
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: Text('Download ${_picked.length}'),
                   ),
+              ],
+            ),
         ],
       ),
     );
