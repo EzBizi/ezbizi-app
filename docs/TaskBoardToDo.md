@@ -45,6 +45,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 19 | **Everything above applies to EVERY company**, not just A-1 (Everdoors, Air 75 / Roofirst / Crestline brands, garage-door brands…): job-id columns, fills, Customer Relations layout, complaint flows, Monday parity (11-19) | Task Board + Automations | WORKING | Measured: Everdoors 15 flags (14 with no owner, ids present); A-1 41 "Job #" titles and 13 flags with no owner. Next pass: titles, owners from the GM fallback; Automations fill on every company after 0605 |
 | 20 | Merav: **select several attachments at once** on a task (11-19) | Task Board | WORKING | Merged (3c39010b0): pick several attachments and download them together; ships in 0607. Deleting/moving attachments has no server endpoint yet |
 | 21 | Merav: **updates/comments text selectable and copyable** like normal text (11-19) | Task Board | WORKING | Merged: update text is selectable and copyable; ships in 0607 |
+| 22 | **Values set when a task is created never reached Monday** (e.g. MA Pamela Gignon: client and phone here, empty on Monday) (11-19) | Task Board | WORKING | Fix the create push + a value-parity pass on every board (open first) + value check added to the 30-min parity |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
