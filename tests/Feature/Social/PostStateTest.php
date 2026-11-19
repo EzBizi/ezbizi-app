@@ -161,4 +161,29 @@ class PostStateTest extends TestCase
         Bus::assertNotDispatched(PublishSocialTarget::class);
         $this->assertSame('awaiting_approval', SocialPostTarget::withoutGlobalScopes()->find($target->id)->status);
     }
+
+    /** Jose 2026-11-18: no time set still posts at once, but only after the person is told where. */
+    public function test_approving_a_post_with_no_time_asks_first_and_publishes_only_when_confirmed(): void
+    {
+        Bus::fake([PublishSocialTarget::class]);
+        Process::fake();
+        [$t, $c, $place] = $this->googleListing();
+        $post = $this->qaPost($t, $c, 'awaiting_approval', null);
+        $target = $post->targets()->withoutGlobalScopes()->first();
+        $this->inTenant($t['org'], fn () => $target->forceFill(['options' => $target->options
+            + ['gbp_location' => GoogleBusinessProfilePublisher::v4Name($place, $c)]])->save());
+        $url = "/api/v1/business-profile/post-queue/{$target->id}/approve";
+
+        $this->signedInAs($t['admin'])->postJson($url)->assertStatus(422)
+            ->assertJsonPath('code', 'needs_publish_now_confirm')
+            ->assertJsonPath('accounts', ['QA Chimney · Washington, DC'])
+            ->assertJsonPath('message', 'This post has no time set — approving publishes it now to QA Chimney · Washington, DC.');
+        $this->signedInAs($t['admin'])->postJson($url, ['publish_now' => false])->assertStatus(422);
+        Bus::assertNotDispatched(PublishSocialTarget::class);
+        $this->assertSame('awaiting_approval', SocialPostTarget::withoutGlobalScopes()->find($target->id)->status);
+
+        $this->signedInAs($t['admin'])->postJson($url, ['publish_now' => true])
+            ->assertOk()->assertJsonPath('data.status', 'queued');
+        Bus::assertDispatched(PublishSocialTarget::class, 1);
+    }
 }

@@ -102,11 +102,11 @@ class SocialPosterQueueSafetyTest extends TestCase
 
         // Two tabs both loaded the draft while it was waiting; the first wins.
         $stale = SocialPostTarget::withoutGlobalScopes()->find($target->id);
-        $this->signedInAs($t['admin'])->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve")->assertOk();
+        $this->signedInAs($t['admin'])->postJson("/api/v1/business-profile/post-queue/{$target->id}/approve", ['publish_now' => true])->assertOk();
 
         try {
             $this->inTenant($t['org'], fn () => app(BusinessProfilePostQueueController::class)
-                ->approve(Request::create('/', 'POST'), $stale));
+                ->approve(Request::create('/', 'POST', ['publish_now' => true]), $stale));
             $this->fail('A second approve went through.');
         } catch (HttpException $e) {
             $this->assertSame(409, $e->getStatusCode());

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api_client.dart';
+
 import 'newsletter_blocks.dart';
 import 'newsletter_studio.dart';
 
@@ -21,8 +23,12 @@ class NewsletterStarter {
     required this.preheader,
     required this.useCase,
     required this.check,
+    this.checkResolved,
     required this.build,
   });
+
+  /// [check] once the booking link resolved to the branch's own site.
+  final String? checkResolved;
 
   final String id;
 
@@ -132,6 +138,7 @@ class NewsletterStarters {
       preheader: 'Start with a chimney inspection or sweep before your first fire.',
       useCase: 'One appointment request before the first cold nights.',
       check: 'Change the seasonal wording, pick a local service photo if you like, and confirm the location’s booking link.',
+      checkResolved: 'Change the seasonal wording and pick a local service photo if you like.',
       build: () => [
         _logo(),
         _divider(),
@@ -239,6 +246,72 @@ class NewsletterStarters {
   }
 }
 
+/// A starter made ready for the view it is used in (follow-up 2026-11-18):
+/// its pictures copied from the company's own website into the company's
+/// newsletter library (so every client can draw them and the email links to
+/// EzBizi's copy), and its booking button sent to the branch's market site.
+class StarterResolution {
+  StarterResolution({this.pictures = const {}, this.bookingUrl});
+
+  /// Remote address → library address, for each picture that was copied.
+  final Map<String, String> pictures;
+
+  /// `<branch site>/booking/`, or null: the template's national page stays.
+  final String? bookingUrl;
+
+  bool get regional => bookingUrl != null;
+
+  static Future<StarterResolution> load(ApiClient api, List<NewsletterStarter> starters) async {
+    final link = await api.get('/newsletter/booking-link');
+    final data = link.ok ? link.body['data'] : null;
+    final booking = data is Map ? data['url'] as String? : null;
+
+    final remote = <String>{};
+    void collect(List<Map<String, dynamic>> blocks) {
+      for (final b in blocks) {
+        final src = '${b['src'] ?? ''}';
+        if (b['type'] == 'image' && src.startsWith('https://')) remote.add(src);
+        for (final c in (b['columns'] as List? ?? const [])) {
+          collect([for (final x in ((c as Map)['blocks'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]);
+        }
+      }
+    }
+
+    for (final s in starters) {
+      collect(s.blocks());
+    }
+    final pictures = <String, String>{};
+    for (final url in remote) {
+      final response = await api.post('/newsletter/images/copy', {'url': url});
+      final copied = response.ok ? response.body['data'] : null;
+      if (copied is Map && copied['url'] is String) pictures[url] = copied['url'] as String;
+    }
+    return StarterResolution(pictures: pictures, bookingUrl: booking);
+  }
+
+  /// The starter's blocks with library pictures and the branch booking link.
+  List<Map<String, dynamic>> blocks(NewsletterStarter s) {
+    void fix(List<Map<String, dynamic>> blocks) {
+      for (final b in blocks) {
+        final src = pictures[b['src']];
+        if (b['type'] == 'image' && src != null) b['src'] = src;
+        if (b['type'] == 'button' && b['url'] == NewsletterStarters.contact && bookingUrl != null) {
+          b['url'] = bookingUrl;
+        }
+        for (final c in (b['columns'] as List? ?? const [])) {
+          fix([for (final x in ((c as Map)['blocks'] as List? ?? const [])) x as Map<String, dynamic>]);
+        }
+      }
+    }
+
+    final out = s.blocks();
+    fix(out);
+    return out;
+  }
+
+  String check(NewsletterStarter s) => regional ? (s.checkResolved ?? s.check) : s.check;
+}
+
 /// Start from template: a thumbnail per starter, then a Desktop / Phone proof
 /// of the exact version and one Use template action.
 class NewsletterTemplateGallery extends StatefulWidget {
@@ -246,13 +319,18 @@ class NewsletterTemplateGallery extends StatefulWidget {
     super.key,
     required this.company,
     required this.onUse,
+    this.api,
     this.useLabel = 'Use template',
     this.note,
   });
 
   /// The company in view: which brand's starters are offered.
   final String company;
-  final Future<void> Function(NewsletterStarter starter)? onUse;
+  /// Gets the resolved blocks (library pictures, branch booking link).
+  final Future<void> Function(NewsletterStarter starter, List<Map<String, dynamic>> blocks)? onUse;
+
+  /// Copies the pictures and reads the booking link; null shows starters as they are.
+  final ApiClient? api;
   final String useLabel;
 
   /// Said above the Use button (e.g. that it replaces the open draft).
@@ -266,6 +344,19 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
   NewsletterStarter? _open;
   bool _phone = false;
   bool _using = false;
+  StarterResolution _resolved = StarterResolution();
+
+  @override
+  void initState() {
+    super.initState();
+    final api = widget.api;
+    final starters = NewsletterStarters.forCompany(widget.company);
+    if (api != null && starters.isNotEmpty) {
+      StarterResolution.load(api, starters).then((r) {
+        if (mounted) setState(() => _resolved = r);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +404,7 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
           child: SizedBox(
             width: NewsletterEmail.desktopWidth + 36,
             child: IgnorePointer(
-              child: NewsletterEmail(blocks: s.blocks(), company: widget.company),
+              child: NewsletterEmail(blocks: _resolved.blocks(s), company: widget.company),
             ),
           ),
         ),
@@ -389,14 +480,16 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
           color: Studio.canvas(context),
           child: NewsletterEmail(
             key: const ValueKey('newsletter-template-email'),
-            blocks: s.blocks(),
+            blocks: _resolved.blocks(s),
             company: widget.company,
             phone: _phone,
             deviceWidth: 375,
           ),
         ),
         const SizedBox(height: Studio.grid),
-        Text('Before sending: ${s.check}', style: muted),
+        Text('Before sending: ${_resolved.check(s)}', key: const ValueKey('newsletter-template-check'), style: muted),
+        if (_resolved.regional)
+          Text('Booking button: ${_resolved.bookingUrl}', key: const ValueKey('newsletter-template-booking'), style: muted),
         Text('Audience and send time stay unset; the footer is added when it goes out.', style: muted),
         if (widget.note != null) ...[
           const SizedBox(height: 4),
@@ -412,7 +505,7 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
                 : () async {
                     setState(() => _using = true);
                     try {
-                      await widget.onUse!(s);
+                      await widget.onUse!(s, _resolved.blocks(s));
                     } finally {
                       if (mounted) setState(() => _using = false);
                     }

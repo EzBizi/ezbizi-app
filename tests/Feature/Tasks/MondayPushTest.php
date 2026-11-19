@@ -16,6 +16,7 @@ use App\Models\TaskColumn;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\Monday\MondayClient;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\Monday\MondayPush;
 use App\Support\Tasks\TaskBoards;
@@ -64,6 +65,9 @@ class MondayPushTest extends TestCase
 
     private array $extraColumns = [];
 
+    /** Monday answers every read with "complexity budget exhausted, retry in 40 s". */
+    private bool $budgetSpent = false;
+
     /** The board's people on Monday. */
     private array $boardPeople = ['owners' => [], 'subscribers' => []];
 
@@ -99,6 +103,9 @@ class MondayPushTest extends TestCase
 
         Http::fake(['api.monday.com/*' => function (Request $request) {
             $q = (string) $request->data()['query'];
+            if ($this->budgetSpent && ! preg_match('/^\s*mutation/', $q)) {
+                return Http::response(['errors' => [['message' => 'budget', 'extensions' => ['code' => 'COMPLEXITY_BUDGET_EXHAUSTED', 'retry_in_seconds' => 40]]]]);
+            }
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
@@ -115,7 +122,12 @@ class MondayPushTest extends TestCase
                     str_contains($q, 'create_item(') => ['create_item' => ['id' => '77']],
                     str_contains($q, 'create_update(') => ['create_update' => ['id' => '901']],
                     str_contains($q, 'create_group(') => ['create_group' => ['id' => 'g_new']],
-                    str_contains($q, 'create_column(') => ['create_column' => ['id' => 'text_new']],
+                    str_contains($q, 'create_column(') => (function () use ($vars) {
+                        // Monday now has it: the next read lists it.
+                        $this->extraColumns[(string) $vars['b']][] = ['id' => 'text_new', 'title' => $vars['t'], 'type' => 'text', 'settings_str' => '{}'];
+
+                        return ['create_column' => ['id' => 'text_new']];
+                    })(),
                     default => ['ok' => ['id' => '1']],
                 }]);
             }
@@ -161,6 +173,21 @@ class MondayPushTest extends TestCase
         $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
     }
 
+    /** Desk 11-19: a text column is made on Monday once, however many tasks need it in one run. */
+    public function test_a_text_column_is_made_once_for_many_tasks(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $col = TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Workiz Job ID', 'type' => 'text', 'position' => 20]);
+            app(TaskWriter::class)->update($this->task, ['values' => [$col->id => '800021103']], $this->jose);
+            $other = app(TaskWriter::class)->create($this->board, ['title' => 'Second'], $this->jose);
+            $other->forceFill(['external_ref' => 'monday:12'])->saveQuietly();
+            app(TaskWriter::class)->update($other->fresh(), ['values' => [$col->id => '800021104']], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertCount(1, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_column(')));
+    }
+
     /** Desk 11-18: Monday files an item with no group in its FIRST group; a task with no group is never sent. */
     public function test_a_task_in_a_blank_named_group_is_held_not_dropped_in_mondays_first_group(): void
     {
@@ -187,6 +214,50 @@ class MondayPushTest extends TestCase
         $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board('));
         $this->assertNotNull($move, 'moved on Monday');
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
+    }
+
+    /** Desk 11-19: Monday's "wait N seconds" past the budget stops the run at once (no sleep, no timeout); the row waits. */
+    public function test_a_monday_wait_past_the_budget_stops_the_run_and_the_row_stays_pending(): void
+    {
+        $this->budgetSpent = true;
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $connection = SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->first();
+
+        $started = microtime(true);
+        app(MondayPush::class)->run($connection, 60, seconds: 10);
+
+        $this->assertLessThan(5, microtime(true) - $started, 'did not sleep 40 s');
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->first());
+        $this->assertSame(MondayOutboxEntry::PENDING, $row->state);
+        $this->assertSame(0, (int) $row->attempts, 'not counted as a failure');
+        $this->assertNull(MondayClient::$deadline, 'no budget left behind for the next job');
+    }
+
+    /** Desk 11-18: a shard stops at its time budget (under the queue's retry_after); the rest wait, nothing is lost. */
+    public function test_a_spent_time_budget_sends_nothing_more_and_leaves_rows_pending(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->create($this->board, ['title' => 'Later'], $this->jose));
+        $connection = SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->first();
+        $counts = app(MondayPush::class)->run($connection, 60, seconds: -1);
+
+        $this->assertSame(0, $counts['sent']);
+        $this->assertCount(0, $this->mutations);
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)->count()));
+    }
+
+    /** Desk 11-18: a live change goes before any deferred backfill row, however old the backfill's change. */
+    public function test_live_rows_go_before_deferred_backfill_rows(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (range(1, 3) as $i) {
+                MondayOutboxEntry::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task->id,
+                    'kinds' => ['title'], 'changed_at' => now()->subHours(5), 'available_at' => now()->subMinute()]); // backfill: deferred, now due
+            }
+            app(TaskWriter::class)->create($this->board, ['title' => 'Missed call now'], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push', ['--limit' => 1])->assertSuccessful();
+
+        $this->assertStringContainsString('create_item(', $this->mutations[0]['query'], 'the live create went first');
     }
 
     /** Desk 11-18: one switch pauses every sender; nothing is lost while paused. */
@@ -223,6 +294,14 @@ class MondayPushTest extends TestCase
         $del = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'delete_subscribers_from_board('));
         $this->assertSame(['b' => '100', 'u' => ['7']], $del['vars']);
         $this->assertCount(2, $this->mutations, 'Jose, a Monday owner, untouched');
+
+        // A personal board's own person is never pushed as a Monday owner.
+        $this->mutations = [];
+        $mine = $this->inTenant($this->tenant['org'], fn () => app(TaskBoards::class)->ensureFor($ana));
+        $this->inTenant($this->tenant['org'], fn () => $mine->forceFill(['external_ref' => 'monday:300'])->saveQuietly());
+        $this->boardPeople = ['owners' => [], 'subscribers' => []];
+        (new PushBoardMembers($mine->id))->handle(app(TenantContext::class));
+        $this->assertCount(0, $this->mutations);
     }
 
     /** Desk 11-18: parallel senders share the outbox by task; together they send every row once. */

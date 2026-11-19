@@ -2581,6 +2581,10 @@ Route::prefix('v1')
             Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // A starter's picture copied from the company's own website (SSRF-guarded).
+            Route::post('newsletter/images/copy', [NewsletterImportController::class, 'copy'])
+                ->middleware('throttle:30,1');
+            Route::get('newsletter/booking-link', [NewsletterImportController::class, 'bookingLink']);
             // P1a: the picker's library list for newsletter-only roles, and a
             // non-destructive crop (the original is kept).
             Route::get('newsletter/images', [NewsletterImportController::class, 'images']);

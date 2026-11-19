@@ -49,7 +49,9 @@ class LeadsRingCentralCalls extends Command
         // Two minutes, not ten: measured 2026-10-16, calls landed 10-19 minutes
         // late and Jose saw Bar's call "after a while". The log lists a call
         // once it has ended; a Google copy that arrives later is withdrawn.
-        $ready = $now->subMinutes(2);
+        // Desk, 2026-11-18: 30 seconds after the call ENDED, not two minutes
+        // after it started; missed-call alerts were taking about 6 minutes.
+        $ready = $now->subSeconds(30);
 
         foreach ($organizations as $organization) {
             $tenant->run($organization, function () use ($log, $calls, $connections, $organization, $start, $now, $ready) {
@@ -76,8 +78,7 @@ class LeadsRingCentralCalls extends Command
                     $read = (int) $this->option('days') <= 1
                         ? $log->forDate($start->toIso8601String(), $now->toIso8601String())
                         : $log->forPeriod($start, $now, outbound: true);
-                    $rows = array_values(array_filter($read,
-                        fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
+                    $rows = array_values(array_filter($read, fn (array $c) => self::endedAt($c) <= $ready));
                     // Live calls, which the call log shows as "Accepted": In progress,
                     // re-read when they end. No list: the last three hours wait for
                     // the next run - guessing would tag live calls Missed and alert
@@ -91,7 +92,11 @@ class LeadsRingCentralCalls extends Command
                         $this->warn("{$organization->name}: {$e->getMessage()} Calls of the last three hours skipped this run.");
                         $live = [];
                     }
-                    $rows = array_map(fn (array $c) => $c + ['live' => isset($live[(string) $c['id']])], $rows);
+                    // RingCentral keeps a call on its active list for minutes after it
+                    // ends (measured 2026-11-18: 9 of 10 listed had stopped growing),
+                    // which held every missed call "In progress" for a pass or two.
+                    // Live: listed AND its length still reaching now (or no length yet).
+                    $rows = array_map(fn (array $c) => $c + ['live' => isset($live[(string) $c['id']]) && ((int) ($c['duration'] ?? 0) === 0 || self::endedAt($c) >= $now->subSeconds(20))], $rows);
 
                     $filed += $calls->file($rows, $log->numberNames(), $company);
                     // New or existing, from evidence rather than the key pressed (2026-10-16).
@@ -106,6 +111,12 @@ class LeadsRingCentralCalls extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** When the call ended: its start plus RingCentral's length of it, so far for a live one. */
+    private static function endedAt(array $call): CarbonImmutable
+    {
+        return CarbonImmutable::parse((string) $call['started_at'])->addSeconds((int) ($call['duration'] ?? 0));
     }
 
     /**

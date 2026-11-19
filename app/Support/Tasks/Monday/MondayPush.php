@@ -68,8 +68,12 @@ final class MondayPush
      * @param  int  $shard  with $shards > 1, only the tasks whose CRC32(task_id) % $shards is
      *                      $shard: senders in parallel on disjoint tasks, each task's rows in order
      */
-    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null, int $shard = 0, int $shards = 1): array
+    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null, int $shard = 0, int $shards = 1, ?int $seconds = null): array
     {
+        // A time budget (the shard jobs): the database queue hands a job still running after
+        // retry_after (90 s) to a second worker, which then fails it as "attempted too many times".
+        $deadline = $seconds === null ? null : microtime(true) + $seconds;
+        MondayClient::$deadline = $deadline;
         $token = app(MondayToken::class)->for($connection);
         $this->reader = new MondayBoardReader($client ?? new MondayClient($token));
         $this->writer = $writer ?? new MondayWriter($token);
@@ -87,14 +91,22 @@ final class MondayPush
 
         try {
             // One sender per shard; the token's own lock (MondayToken) guards only its refresh.
-            return Cache::lock('monday-push:'.$connection->getKey().':'.$shard.'/'.$shards, 300)->block(5, fn () => $this->tenant->run($org, function () use ($connection, $limit, $shard, $shards, &$counts) {
+            return Cache::lock('monday-push:'.$connection->getKey().':'.$shard.'/'.$shards, 300)->block(5, fn () => $this->tenant->run($org, function () use ($connection, $limit, $shard, $shards, $deadline, &$counts) {
                 $entries = MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)
                     ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
                     ->when($shards > 1, fn ($q) => $q->whereRaw('MOD(CRC32(task_id), ?) = ?', [$shards, $shard]))
+                    // Live work first (desk 11-18: a missed call waited an hour behind 7k backfill rows): a row
+                    // queued to wait (available_at well after its change: a backfill) goes after every live one.
+                    ->orderByRaw('CASE WHEN available_at IS NOT NULL AND available_at > changed_at + INTERVAL 5 MINUTE THEN 1 ELSE 0 END')
                     ->orderBy('changed_at')->limit($limit)->get();
                 foreach ($entries as $entry) {
+                    if ($deadline !== null && microtime(true) > $deadline) {
+                        break; // the rest are taken by the next minute's run
+                    }
                     try {
                         $outcome = $this->send($entry, $connection);
+                    } catch (MondayBudgetSpent) {
+                        break; // Monday wants a wait past this run's budget: the next run takes the rest
                     } catch (MondayRefused $e) {
                         throw $e; // the connection is broken: stop, retry next run
                     } catch (\Throwable $e) {
@@ -119,6 +131,8 @@ final class MondayPush
             }));
         } catch (LockTimeoutException) {
             return $counts + ['busy' => 1];
+        } finally {
+            MondayClient::$deadline = null; // a queue worker lives on: the next job has no budget of ours
         }
     }
 
@@ -200,7 +214,7 @@ final class MondayPush
                     continue;
                 }
                 if ($twin === null && in_array($m['type'], ['text', 'long_text'], true)) {
-                    $this->writer->createTextColumn($boardId, (string) $m['title']);
+                    $this->textColumnOn($boardId, (string) $m['title'], null);
                     unset($this->meta[$boardId]);
 
                     continue;
@@ -338,7 +352,7 @@ final class MondayPush
                         TaskWriter::WORKIZ_JOB_COLUMN => MondayBoardReader::columnFor($meta, TaskWriter::EZBIZI_JOB_COLUMN) ?? 'name',
                         default => null,
                     };
-                    $mondayColumn = $this->writer->createTextColumn($meta['board'], $column->name, $after);
+                    $mondayColumn = $this->textColumnOn($meta['board'], $column->name, $after);
                     $mondayType = 'text';
                     unset($this->meta[$meta['board']]);
                 }
@@ -456,6 +470,20 @@ final class MondayPush
         $task->group->forceFill(['external_ref' => 'monday:'.$made])->saveQuietly();
 
         return $this->meta[$boardId]['groups'][mb_strtolower($name)] = $made;
+    }
+
+    /**
+     * The board's text column of that title, made once (desk 11-19: four shards made Ohio PM's
+     * job-id columns three times). Under a per-board lock, Monday's columns are read fresh;
+     * only when none has the title is one made.
+     */
+    private function textColumnOn(string $boardId, string $title, ?string $after): string
+    {
+        return Cache::lock('monday-column:'.$boardId.':'.mb_strtolower($title), 60)->block(30, function () use ($boardId, $title, $after) {
+            $fresh = $this->reader->writeMeta($boardId);
+
+            return MondayBoardReader::columnFor($fresh, $title) ?? $this->writer->createTextColumn($boardId, $title, $after);
+        });
     }
 
     private function meta(string $boardId): array

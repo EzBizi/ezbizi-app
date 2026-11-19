@@ -108,6 +108,37 @@ class MondayWebhookTest extends TestCase
         $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => Task::query()->with('group')->where('external_ref', 'monday:11')->first()->group->name));
     }
 
+    /** Desk 11-18: 12k echoes of a backlog push: our API user's change right after our send is dropped; a person's is queued. */
+    public function test_our_users_change_right_after_our_send_is_an_echo_and_another_users_is_not(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+        $this->inTenant($this->tenant['org'], function () {
+            $t = Task::query()->where('external_ref', 'monday:11')->first();
+            // Stamped long ago (the old timestamp check alone would queue it): only the outbox row tells.
+            $t->forceFill(['external_synced_at' => '2026-11-12 09:00:00'])->saveQuietly();
+            MondayOutboxEntry::query()->create(['organization_id' => $t->organization_id, 'task_id' => $t->id, 'kinds' => ['title'],
+                'changed_at' => '2026-11-12 10:30:00', 'available_at' => '2026-11-12 10:30:00', 'state' => 'sent', 'sent_at' => '2026-11-12 10:30:22']);
+        });
+        Queue::fake();
+        $mine = ['event' => ['type' => 'update_name', 'boardId' => 100, 'pulseId' => 11, 'userId' => 1, 'triggerTime' => '2026-11-12T10:30:20.000Z']];
+        $this->postJson(self::URL, $mine, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 0]);
+
+        $person = $mine;
+        $person['event']['userId'] = 2;
+        $this->postJson(self::URL, $person, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+    }
+
+    /** Desk 11-18: a delete right after our push is never taken for our echo. */
+    public function test_a_delete_within_the_echo_window_is_still_queued(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['external_synced_at' => '2026-11-12 10:30:30']));
+        Queue::fake();
+        $delete = ['event' => ['type' => 'delete_pulse', 'boardId' => 100, 'pulseId' => 11, 'userId' => 1, 'triggerTime' => '2026-11-12T10:30:20.000Z']];
+
+        $this->postJson(self::URL, $delete, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+    }
+
     /** Desk 11-18: our own push coming back is dropped at the door, not queued; a later change still is. */
     public function test_an_event_no_later_than_our_last_write_is_our_echo_and_is_not_queued(): void
     {

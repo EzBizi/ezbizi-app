@@ -74,7 +74,9 @@ final class PushBoardMembers implements ShouldBeUnique, ShouldQueue
         $there = $reader->boardPeople(substr($board->external_ref, 7));
 
         $add = [];
-        foreach (TaskBoardMember::query()->with('user')->where('board_id', $board->id)->get() as $m) {
+        foreach (TaskBoardMember::query()->with('user')->where('board_id', $board->id)
+            // A personal board's own person is EzBizi's idea of "owner", not Monday's: never pushed.
+            ->when($board->kind === TaskBoard::KIND_USER, fn ($q) => $q->where('user_id', '!=', $board->owner_user_id))->get() as $m) {
             $id = $idOf($m->user);
             $owner = $m->role === TaskBoardMember::OWNER;
             // Missing there; or made an owner here by a person while only a subscriber there (never demoted).

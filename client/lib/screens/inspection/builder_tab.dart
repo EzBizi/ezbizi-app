@@ -642,6 +642,8 @@ class _BuilderTabState extends State<BuilderTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Deleted “${labelOf(field)}”.'),
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {

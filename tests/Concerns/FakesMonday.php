@@ -55,6 +55,10 @@ trait FakesMonday
                 fn ($i) => in_array((string) $i['id'], array_map('strval', $vars['i']), true) ? ['id' => $i['id'], 'board' => ['id' => $i['_board']]] : null,
                 $allItems(),
             )))],
+            str_contains($query, 'limit:100) { id state }') => ['items' => array_values(array_filter(array_map(
+                fn ($id) => isset($this->monday['states'][$id]) ? ['id' => $id, 'state' => $this->monday['states'][$id]] : null,
+                array_map('strval', $vars['i']),
+            )))],
             str_contains($query, 'items(ids:$i, limit:25)') => ['items' => array_values(array_filter(
                 $allItems(),
                 fn ($i) => in_array((string) $i['id'], array_map('strval', $vars['i']), true),

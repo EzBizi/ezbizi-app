@@ -13,6 +13,35 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0602', date: '19 Nov 2026', items: [
+      'Task Board: when Monday asks EzBizi to slow down, the sync picks up where it left off a minute later instead of stopping with an error',
+    ]),
+    VersionRelease(version: '0.0.0601', date: '18 Nov 2026', items: [
+      'Task Board: changes made on Monday by people show here within a couple of minutes, even while EzBizi is sending a large update to Monday',
+      'Task Board: a title or group changed here is no longer put back to the old Monday value before Monday has received the change',
+      'Task Board: the Monday sync no longer logs false failures while it sends large updates',
+    ]),
+    VersionRelease(version: '0.0.0600', date: '18 Nov 2026', items: [
+      'Task Board: new tasks such as missed calls reach Monday within about a minute, even while a large update is still being sent',
+      'Task Board: a personal board no longer adds its own person to Monday a second time',
+    ]),
+    VersionRelease(version: '0.0.0599', date: '18 Nov 2026', items: [
+      'Task Board: the company board shows first in Team boards for everyone who can already open it',
+      'Project Management: the Inbox shows how long ago each recent message came in, as Leads does',
+      'Phone: the company and branch picker has its own row under the top bar, so it is never squeezed',
+      'Task Board: a task deleted on Monday right after it was created there now leaves EzBizi too',
+      'Task Board: every 30 minutes, moves and deletions made on Monday are checked on every board except the largest, so nothing stays out of step for long',
+    ]),
+    VersionRelease(version: '0.0.0598', date: '18 Nov 2026', items: [
+      'Task Board: the weekly misfiled report names the rule or automation that filed a task, not the person who made the rule',
+      'Task Board: complaint and bad-review tasks stay in Customer Relations until a person approves a refund or files a chargeback',
+      'Leads: a Local Services reply no longer shows twice (once as sent outside EzBizi)',
+      'Task Board: people added to or removed from a board here are added or removed on Monday too',
+      'Automations: a missed call from a hidden number makes a task titled Unknown caller (no number) with the line and time',
+      'Social: approving a post with no time set says which accounts it will publish to, and posts only after you confirm',
+      'Leads: missed-call alerts arrive about a minute after the call ends instead of five to seven',
+      'Newsletter: starter templates bring their pictures into the company library, so they show in the web app, and the booking button goes to the market site of the branch',
+    ]),
     VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
       'Task Board: a task moved or closed on Monday moves the same way in EzBizi within minutes',
       'Google Ads: the account picker shows campaign accounts only, each figure says when it was read, missing access says what to do, and budget or bid changes show a before and after review first',

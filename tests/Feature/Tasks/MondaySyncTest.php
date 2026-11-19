@@ -241,6 +241,45 @@ class MondaySyncTest extends TestCase
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 
+    /** Desk 11-18: missing from Monday's board listing is not proof; an item Monday says is active is never trashed. */
+    public function test_parity_trashes_only_what_monday_says_is_archived_or_deleted(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        [$live, $dead] = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            $a = app(TaskWriter::class)->create($board, ['title' => 'Still on Monday'], $this->jose);
+            $a->forceFill(['external_ref' => 'monday:77'])->saveQuietly();
+            $b = app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose);
+            $b->forceFill(['external_ref' => 'monday:78'])->saveQuietly();
+
+            return [$a, $b];
+        }));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z')])];
+        $this->monday['states'] = ['77' => 'active', '78' => 'deleted'];
+
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--boards' => $board->name])->assertSuccessful();
+
+        $this->assertNotNull($this->task('77'), 'active on Monday: kept');
+        $this->assertNull($this->task('78'), 'deleted on Monday: trashed here');
+    }
+
+    /** Desk 11-18: the 30-minute run also trashes what Monday deleted, and skips boards above --max-items. */
+    public function test_the_thirty_minute_run_trashes_monday_deletions_and_skips_big_boards(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose)->forceFill(['external_ref' => 'monday:78'])->saveQuietly();
+        }));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z')])];
+        $this->monday['states'] = ['78' => 'deleted'];
+
+        // Two Monday items here: above a max of 1, the board is left to the nightly run.
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--gone' => true, '--max-items' => 1])->assertSuccessful();
+        $this->assertNotNull($this->task('78'));
+
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--gone' => true, '--max-items' => 2000])->assertSuccessful();
+        $this->assertNull($this->task('78'));
+    }
+
     /** Desk 11-18: the 30-minute run settles groups only: Monday's move arrives, nothing else is queued or trashed. */
     public function test_groups_only_parity_pulls_mondays_move_and_queues_nothing_else(): void
     {
@@ -329,6 +368,25 @@ class MondaySyncTest extends TestCase
         Carbon::setTestNow('2026-11-12 12:05:00');
         $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
+    }
+
+    /** Desk 11-18: a title still waiting in the outbox is never put back by Monday's older title. */
+    public function test_a_field_waiting_in_the_outbox_is_not_overwritten_by_monday(): void
+    {
+        Carbon::setTestNow('2026-11-12 11:30:00');
+        // Renamed as the night backfill did: a direct write (no Activity row) and its outbox row.
+        $this->inTenant($this->tenant['org'], function () {
+            $t = $this->task('11');
+            DB::table('tasks')->where('id', $t->id)->update(['title' => 'Insurer', 'updated_at' => now()]);
+            MondayOutboxEntry::query()->create(['organization_id' => $t->organization_id, 'task_id' => $t->id, 'kinds' => ['title'], 'changed_at' => now(), 'available_at' => now()->addHour()]);
+        });
+
+        // Monday still shows the old title, its clock (our earlier push of another field) before our rename.
+        Carbon::setTestNow('2026-11-12 11:45:00');
+        $this->poll([$this->mondayItem('11', 'Job #600019688 - Call the insurer', '2026-11-12T11:20:00Z', ['status' => 'Done'])]);
+
+        $this->assertSame('Insurer', $this->task('11')->title, 'ours waits for the push');
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => $this->task('11')->statusRow->is_done), "Monday's other fields still arrive");
     }
 
     /** Desk 11-18: an owner change here later must not keep Monday's move to Done from arriving. */

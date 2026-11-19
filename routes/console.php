@@ -52,7 +52,11 @@ Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
 Schedule::command('ezbizi:meta-catch-up')->hourlyAt(23)->withoutOverlapping(60);
 // Campaigns on and off at their set times (Jose, 2026-11-05).
 Schedule::command('ezbizi:ad-schedules')->everyMinute()->withoutOverlapping(5);
-Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
+// Every minute, ahead of the rest of its slot: a missed call is an alert someone acts on
+// (desk, 2026-11-18: Bar's came ~6 minutes late). The leads one was every two minutes.
+Schedule::command('ezbizi:watch-missed-calls')->everyMinute()->withoutOverlapping(5);
+// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
+Schedule::command('ezbizi:leads-ringcentral')->everyMinute()->withoutOverlapping(15);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
@@ -218,8 +222,9 @@ foreach (range(0, 3) as $shard) {
 }
 // Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
 // Every 30 minutes, group moves only (desk 11-18: a missed call closed on Monday must close here soon,
-// and a Monday move may not bump the item's clock): Outgoing Calls and every Project Management board.
-Schedule::command("ezbizi:monday-parity --fix --groups-only --boards='Outgoing Calls,%Project Management%'")->everyThirtyMinutes()->withoutOverlapping(25);
+// and a Monday move may not bump the item's clock), plus what Monday archived or deleted (state-confirmed):
+// every board up to 2,000 items; NW stays nightly.
+Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2000')->everyThirtyMinutes()->withoutOverlapping(25);
 Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
@@ -458,8 +463,6 @@ Schedule::command('ezbizi:meta-ads-sync')->dailyAt('19:30')->timezone('America/N
 Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
-// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
-Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlapping(15);
 // Calls and texts to EzBizi's own lead lines: EZ Calls and EZ Texts (Jose, 2026-10-16).
 Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
 // A Google call filed under another person's message lead, moved to its own (2026-10-16).

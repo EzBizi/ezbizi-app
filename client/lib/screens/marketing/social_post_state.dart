@@ -59,3 +59,20 @@ String? socialApproveLabel(SocialPostState? state, String? scheduledFor) {
       ? 'Approve and post now'
       : 'Approve for the planned time';
 }
+
+/// The approve route's answer when a post has no time set (Jose, 2026-11-18):
+/// approving would publish now, so it asks first. Send the same request again
+/// with [socialApproveBody] `publishNow: true` once the person has said yes.
+const socialPublishNowConfirmCode = 'needs_publish_now_confirm';
+
+/// True when an approve answer is the "publishes now, confirm first" question;
+/// its `message` names the accounts and `accounts` lists them.
+bool socialNeedsPublishNowConfirm(int statusCode, Map<String, dynamic> body) =>
+    statusCode == 422 && body['code'] == socialPublishNowConfirmCode;
+
+/// The approve request: an edited caption, if any, and the explicit yes to
+/// publishing immediately.
+Map<String, dynamic> socialApproveBody({
+  String? body,
+  bool publishNow = false,
+}) => {'body': ?body, if (publishNow) 'publish_now': true};

@@ -1296,6 +1296,32 @@ class _HomeShellState extends State<HomeShell> {
     IssueReporter.module = shownId;
     IssueReporter.route = Address.pathOf(shownId);
 
+    final barStates = _BarStates(
+      // A state is not a control, and states already have a home here:
+      // `_timeClockNotice` is described in this file as sitting "as a
+      // one-line strip under the AppBar, same family as the two-factor
+      // chip". The chip was simply never put in it.
+      //
+      // On a phone that is not tidiness. Measured at 375 with both
+      // showing, the actions row runs off the right edge -- these two
+      // are conditional, so the worst case is worse than any screenshot
+      // of a healthy account.
+      twoFactor: !wide && me.twoFactorEnrolmentRequired,
+      readOnly: !wide && me.organization.isReadOnly,
+      // The third state this strip's own comment anticipated. It
+      // scrolls rather than wraps, so it does not push every screen
+      // down a row on a phone.
+      emailConfirmation: !wide && me.emailConfirmationRequired,
+      onTwoFactor: _showProfile,
+      onEmailConfirmation: _resendConfirmation,
+      // The company picker on its own row on a phone (live 0.0.0597 at 375:
+      // between the hamburger and the icons it got ~20 px and drew an
+      // empty box). Only when there is somewhere else to stand.
+      scope: !wide && ScopeSwitcher.hasChoices(me)
+          ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
+          : null,
+    );
+
     final shell = Scaffold(
       key: _scaffoldKey,
       // The top bar belongs to the CHROME, not to the page.
@@ -1307,9 +1333,12 @@ class _HomeShellState extends State<HomeShell> {
       // deliberately different.
       //
       // PreferredSize because Scaffold.appBar demands one and a Theme is not:
-      // the height is the toolbar plus the one-pixel rule below it.
+      // the height is the toolbar plus what hangs below it (the rule, and on
+      // a phone the state strip and the company picker's row).
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight + 1),
+        preferredSize: Size.fromHeight(
+          kToolbarHeight + barStates.preferredSize.height,
+        ),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
           builder: (context) => AppBar(
@@ -1318,25 +1347,7 @@ class _HomeShellState extends State<HomeShell> {
             // The bar and the rail were both plain surface, so on a light theme
             // they met as one continuous white field and the sidebar read as part
             // of the header. One pixel fixes it; nothing else would.
-            bottom: _BarStates(
-              // A state is not a control, and states already have a home here:
-              // `_timeClockNotice` is described in this file as sitting "as a
-              // one-line strip under the AppBar, same family as the two-factor
-              // chip". The chip was simply never put in it.
-              //
-              // On a phone that is not tidiness. Measured at 375 with both
-              // showing, the actions row runs off the right edge -- these two
-              // are conditional, so the worst case is worse than any screenshot
-              // of a healthy account.
-              twoFactor: !wide && me.twoFactorEnrolmentRequired,
-              readOnly: !wide && me.organization.isReadOnly,
-              // The third state this strip's own comment anticipated. It
-              // scrolls rather than wraps, so it does not push every screen
-              // down a row on a phone.
-              emailConfirmation: !wide && me.emailConfirmationRequired,
-              onTwoFactor: _showProfile,
-              onEmailConfirmation: _resendConfirmation,
-            ),
+            bottom: barStates,
             leading: wide
                 ? IconButton(
                     tooltip: expanded
@@ -1400,7 +1411,7 @@ class _HomeShellState extends State<HomeShell> {
                 // and says nothing, which is worse than absence.
                 //
                 // So the wordmark, the rule and the company logo are dropped
-                // together below 900, and the switcher gets the whole slot. It
+                // together below 900, and the switcher gets a row of its own. It
                 // still NAMES the company in words, which is what the logo was
                 // saying in pixels -- nothing that identifies the business is
                 // lost, only a second copy of it.
@@ -1414,8 +1425,10 @@ class _HomeShellState extends State<HomeShell> {
                   // So when it has nothing to offer, the name is said plainly.
                   // Asking the switcher rather than re-deriving the condition
                   // here keeps one definition of "is there a choice".
+                  // With a choice, the switcher has its own row below
+                  // (`_BarStates.scope`).
                   return ScopeSwitcher.hasChoices(me)
-                      ? switcher
+                      ? const SizedBox.shrink()
                       : Text(
                           me.scope.label,
                           overflow: TextOverflow.ellipsis,
@@ -2465,7 +2478,11 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     required this.emailConfirmation,
     required this.onTwoFactor,
     required this.onEmailConfirmation,
+    this.scope,
   });
+
+  /// The company picker's row on a phone, or null.
+  final Widget? scope;
 
   final bool twoFactor;
   final bool readOnly;
@@ -2476,12 +2493,27 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
-  Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
+  Size get preferredSize =>
+      Size.fromHeight((_any ? 49 : 1) + (scope == null ? 0 : 44));
 
   @override
   Widget build(BuildContext context) {
     final rule = Container(height: 1, color: EzBiziTheme.edge(context));
-    if (!_any) return rule;
+    final row = scope == null
+        ? null
+        : SizedBox(
+            key: const Key('top-bar-scope-row'),
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+              child: scope,
+            ),
+          );
+    if (!_any) {
+      return row == null
+          ? rule
+          : Column(mainAxisSize: MainAxisSize.min, children: [row, rule]);
+    }
 
     final scheme = Theme.of(context).colorScheme;
     final tint = scheme.errorContainer.withValues(alpha: 0.4);
@@ -2489,6 +2521,7 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?row,
         SizedBox(
           height: 48,
           // Scrolls rather than wraps: two chips fit at 375, and a third state

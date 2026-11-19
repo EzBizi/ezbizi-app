@@ -3764,3 +3764,51 @@ live on web; 0588 never deployed. Training, ring groups, Scheduled Jobs: nothing
 `app/Support/Social` changed, no new publisher. LSA `external_id`: not measured. The desk did not check claims
 against the site; its candidates (Monday, Task Board, Project Management, Newsletter, Reports, permissions wording)
 are the ones read above. The 11-13 scheduling inversion stands, unwritten.
+
+## 2026-11-18: 0.0.0589-0.0.0598 live, and `/google-ads-api/` had said "status only" for nine days
+
+Production web is 0.0.0598 at `1d65ae8c0` (release `20261118225407`); `/download/windows.json` reads 0.0.0598 at
+`1d65ae8c0`. 0588 and 0595 never deployed (folded into 0589 and 0596); 0599 cutting. Before the edit no WP page was
+modified since the 11-16 privacy edit and all 10 live pages contained their WP post_content (method of 11-15). www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 7, body and `_ezb_head`** (pre-edit copies `~/ezb-wp-bak-20261118/page7.html` and `page7.head` on
+  the websites box). `dc99f2c33` (**11-09**, Marketing › Ads manages Google) added
+  `POST ads-manager/google/budget` → `CampaignPerformance::setDailyBudget` → `campaignBudgets:mutate`
+  (`updateMask: amountMicros`) and `POST ads-manager/google/target` → `setTarget` → `campaigns:mutate` on the target
+  CPA / target ROAS field. The page said `campaigns:mutate`, "status only", "changes the campaign's status and
+  nothing else", and "does not … set or adjust bids or budgets". **False since 11-09 and missed by eight runs**; the
+  11-04 note above ("budgets are Meta-only") was true when written and nobody re-read it. Found today only because
+  `727b6c163`'s subject said "budget before/after with Google's read-back".
+  Now: a `campaigns:mutate` "status and bid target" row, a new `campaignBudgets:mutate` "daily amount" row, the
+  Search row also names status, daily budget and bid target; "two kinds of write"; the second paragraph names
+  pause/resume, daily budget and bid target, campaign level only, by "a person holding the permission to manage
+  advertising" (`ads_manager.manage`; the old "Manage Google Ads permission" name no longer exists), schedule for
+  pause/resume only, shared budgets and manual/shared bid strategies refused, audit with before and after; the
+  not-list reads "other than its status, its daily budget and its bid target; set bids on ad groups or keywords;
+  change a budget or bid strategy shared between campaigns". Last updated / `dateModified` → 2026-11-18. Every
+  clause read from `GoogleAdsManagerController` and `CampaignPerformance` at `1d65ae8c0`: only that controller calls
+  `setDailyBudget`/`setTarget` (`ApplyAdSchedules` calls `setStatus` only). Saved copy diffed against the written
+  one; live on bare and www: new row present, "status only" and "set or adjust bids" gone.
+  **Triggers:** an automation or schedule that changes a budget or target; any ad-group, keyword or creative write;
+  a create/remove campaign call. **Rule for next runs:** grep `->mutate(` and every `ads-manager/` and `meta-ads/`
+  route against the usage table on `/google-ads-api/` and the list on `/social-media/`; a usage table is an
+  exhaustive claim. This page is also what Google holds for the API application; the Leads + Google API session was
+  told (it owns the submission).
+- `/privacy/` holds: no `*OAuth.php` or `config/services.php` change, no new outbound host in the diff. Monday now
+  receives board members, groups and job-id columns (covered by "reads from or updates at your instruction"; no page
+  names Monday). Project Management client texts ship OFF; the client's signed project page (60 days, status only)
+  and a contractor's signed 7-day work-order link are new no-login addresses, and no sentence says otherwise.
+  Newsletter sending is still Mailchimp only (`MailchimpSender`); starter pictures are copied from the company's
+  own website. Work-order Workiz photos are fetched and not stored. Alerts › Questions and bulk-read alerts are
+  staff-side.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-18, ~00:15 UTC 11-19), recorded as given** (`docs/agents/inbox/website-daily-2026-11-18-desk-reply.md`):
+0589-0594, 0596-0598 live, nothing rolled back. No new processor, no new scope. Training, ring groups
+(`phone_ring_groups` 6 rows), Scheduled Jobs: 0 commits. LSA `external_id`: not measured (98 LSA MESSAGE leads since
+11-17). Publishers: **10 classes** (Bluesky, Facebook, Google Business Profile, Instagram, LinkedIn, Pinterest,
+Threads, TikTok, X, YouTube); yesterday's "9" was a miscount, none added. The desk did not flag the Google budget
+write; it answers a diff since yesterday, and this was older than the diff. No other sentence moves.

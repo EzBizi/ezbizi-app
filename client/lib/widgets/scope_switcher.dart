@@ -22,10 +22,18 @@ import 'scope_picker_panel.dart';
 /// app simply IS that franchise for them. A control with one option is a
 /// control that only teaches people it does nothing.
 class ScopeSwitcher extends StatelessWidget {
-  const ScopeSwitcher({super.key, required this.api, required this.session});
+  const ScopeSwitcher({
+    super.key,
+    required this.api,
+    required this.session,
+    this.block = false,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Full width, the chevron at the right end: the phone's own row.
+  final bool block;
 
   /// The current view's logo, sized for the top bar.
   ///
@@ -94,13 +102,16 @@ class ScopeSwitcher extends StatelessWidget {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: block ? MainAxisSize.max : MainAxisSize.min,
           children: [
             // Flexible: a fixed 300 ran under the top bar's Clock Out chip on a
             // phone (phone review 2026-11-13, item 2). It ellipsises instead.
             Flexible(
+              fit: block ? FlexFit.tight : FlexFit.loose,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 300),
+                constraints: BoxConstraints(
+                  maxWidth: block ? double.infinity : 300,
+                ),
                 child: Tooltip(
                   message: me.scope.fullPath,
                   child: Text(

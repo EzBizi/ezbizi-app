@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Log;
  */
 class MondayParity extends Command
 {
-    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated}';
+    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated} {--gone : with --groups-only, also trash what Monday says is archived or deleted} {--max-items= : skip boards holding more Monday items than this (by our own count)}';
 
     protected $description = 'Compare every Monday-mirrored board with Monday: what exists on one side only';
 
@@ -46,7 +46,9 @@ class MondayParity extends Command
                             str_contains($n, '%') ? $w->orWhere('name', 'like', $n) : $w->orWhere('name', $n);
                         }
                     }))
-                    ->orderBy('name')->get();
+                    ->orderBy('name')->get()
+                    // The 30-minute run leaves the big boards (NW, ~24k) to the nightly one.
+                    ->when($this->option('max-items'), fn ($c, $max) => $c->filter(fn ($b) => Task::query()->where('board_id', $b->id)->where('external_ref', 'like', 'monday:%')->count() <= (int) $max));
                 // Every live Monday item, by board: an item here on another board was moved here, one on no board is gone there.
                 $where = [];
                 $groupOf = [];
@@ -62,7 +64,8 @@ class MondayParity extends Command
                     $meta = $reader->board($mondayId);
                     $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $meta['groups']);
                     $renamed = trim($meta['name']) !== trim($board->name) ? 1 : 0;
-                    $people = PushBoardMembers::diff($board, $reader, $connection);
+                    // The 30-minute (groups-only) run spends nothing on members.
+                    $people = $this->option('groups-only') ? null : PushBoardMembers::diff($board, $reader, $connection);
                     $members = $people === null ? 0 : count($people['add']) + count($people['remove']);
                     $groupsHere = TaskGroup::query()->where('board_id', $board->id)->whereIn('id', Task::query()->where('board_id', $board->id)->select('group_id'))->pluck('name')
                         ->filter(fn ($n) => ! in_array(mb_strtolower(trim($n)), $mondayGroups, true))->values()->all();
@@ -78,7 +81,14 @@ class MondayParity extends Command
                         && $groupOf[substr($t->external_ref, 7)] !== mb_strtolower(trim((string) $t->group?->name)));
                     $pushGroup = $regroup->filter(fn ($t) => $t->external_synced_at === null || $t->updated_at->greaterThan($t->external_synced_at))->pluck('id')->all();
                     $pullGroup = $regroup->reject(fn ($t) => in_array($t->id, $pushGroup, true))->map(fn ($t) => substr($t->external_ref, 7))->values()->all();
-                    $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]))->pluck('id')->all();
+                    $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]));
+                    // Missing from the board listing is not proof (desk 11-18: an active NW item was missed):
+                    // only an item Monday itself says is archived or deleted counts as gone.
+                    if ($gone->isNotEmpty()) {
+                        $states = $reader->statesOf($gone->map(fn ($t) => substr($t->external_ref, 7))->all());
+                        $gone = $gone->filter(fn ($t) => in_array($states[substr($t->external_ref, 7)] ?? 'gone', ['archived', 'deleted', 'gone'], true));
+                    }
+                    $gone = $gone->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
                     $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed + $members;
@@ -95,7 +105,7 @@ class MondayParity extends Command
                 foreach ($missingThere as $mondayId => $gap) {
                     if ($this->option('groups-only')) {
                         // Every 30 minutes (desk 11-18): which group, nothing else; Monday's moves first.
-                        $gap = ['here' => collect(), 'monday' => [], 'gone' => [], 'name' => null] + $gap;
+                        $gap = ['here' => collect(), 'monday' => [], 'name' => null] + ($this->option('gone') ? [] : ['gone' => []]) + $gap;
                     }
                     if (($gap['members'] ?? 0) > 0 && ! $this->option('groups-only')) {
                         PushBoardMembers::dispatch((string) $gap['board']);
