@@ -5,6 +5,7 @@ namespace App\Support\Tasks\Monday;
 use App\Jobs\MakeVideoPoster;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\MondayOutboxEntry;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
@@ -470,6 +471,22 @@ final class MondayImport
         }
         $hereChanged = $task->external_synced_at !== null && $task->updated_at->greaterThan($task->external_synced_at);
         $input = $this->input($board, $item);
+        // A field still waiting in the outbox is newer here than anything Monday shows: Monday's
+        // older value never overwrites it (desk 11-18: 189 renamed titles were put back).
+        // Only a change made after Monday's: a later Monday change still wins (last writer).
+        $waiting = MondayOutboxEntry::query()->where('task_id', $task->id)->where('state', MondayOutboxEntry::PENDING)
+            ->whereNull('task_update_id')->where('changed_at', '>=', $mondayAt)->pluck('kinds')->flatten()->unique()->all();
+        foreach ($waiting as $k) {
+            match (true) {
+                $k === 'title' => $input = array_diff_key($input, ['title' => 1]),
+                $k === 'group' => $input = array_diff_key($input, ['group' => 1]),
+                $k === 'status' => $input = array_diff_key($input, ['status' => 1]),
+                $k === 'due' => $input = array_diff_key($input, ['due_on' => 1]),
+                $k === 'owners' => $input = array_diff_key($input, ['assignee_user_ids' => 1]),
+                str_starts_with((string) $k, 'values:') => $input['values'] = array_diff_key($input['values'] ?? [], [substr($k, 7) => 1]),
+                default => null,
+            };
+        }
         if ($hereChanged && ! $mondayAt->greaterThan($task->updated_at)) {
             // Both changed, the change here later: per field (desk 11-18: an owner fix here kept 55
             // missed calls open that people had moved to Done on Monday). The fields changed here

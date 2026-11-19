@@ -370,6 +370,25 @@ class MondaySyncTest extends TestCase
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
     }
 
+    /** Desk 11-18: a title still waiting in the outbox is never put back by Monday's older title. */
+    public function test_a_field_waiting_in_the_outbox_is_not_overwritten_by_monday(): void
+    {
+        Carbon::setTestNow('2026-11-12 11:30:00');
+        // Renamed as the night backfill did: a direct write (no Activity row) and its outbox row.
+        $this->inTenant($this->tenant['org'], function () {
+            $t = $this->task('11');
+            DB::table('tasks')->where('id', $t->id)->update(['title' => 'Insurer', 'updated_at' => now()]);
+            MondayOutboxEntry::query()->create(['organization_id' => $t->organization_id, 'task_id' => $t->id, 'kinds' => ['title'], 'changed_at' => now(), 'available_at' => now()->addHour()]);
+        });
+
+        // Monday still shows the old title, its clock (our earlier push of another field) before our rename.
+        Carbon::setTestNow('2026-11-12 11:45:00');
+        $this->poll([$this->mondayItem('11', 'Job #600019688 - Call the insurer', '2026-11-12T11:20:00Z', ['status' => 'Done'])]);
+
+        $this->assertSame('Insurer', $this->task('11')->title, 'ours waits for the push');
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => $this->task('11')->statusRow->is_done), "Monday's other fields still arrive");
+    }
+
     /** Desk 11-18: an owner change here later must not keep Monday's move to Done from arriving. */
     public function test_both_changed_each_side_keeps_its_own_fields(): void
     {
