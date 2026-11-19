@@ -4043,7 +4043,7 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
         }
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group) {
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group, $action) {
             // A rule's group is made on the branch's board the first time it is
             // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
@@ -4106,6 +4106,10 @@ class ActionRunner
             ], $actor, $automation?->getKey());
             if ($short !== $title) {
                 app(TaskWriter::class)->comment($made, $actor, $title);
+            }
+            // The board's own Area/Reason/Address/Client/Phone from the lead's job (Jose, 11-19).
+            if (! empty($action['fill_from_record']) && $subject instanceof Lead) {
+                app(\App\Support\Tasks\TaskRecordFill::class)->fill($made, $subject, $actor);
             }
 
             return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
