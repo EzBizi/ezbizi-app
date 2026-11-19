@@ -28,7 +28,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 2 | Flag tasks ("Address needs fixing") must not sit in Company Info; they go to **Open Tasks** (11-19) | Task Board | WORKING | 37 moved to Open Tasks (0 address flags left in Company Info, measured). TaskWriter default → Open Tasks for every writer (629c2033c), ships in 0604; the desk watch alarms on any new one |
 | 3 | Job-id columns right after Name, **EzBizi before Workiz**, on Monday too (11-18) | Task Board | WORKING | New columns created in the right place on 13 boards. Values copying (24k left at 08:15 ET, Monday's daytime limit). Old columns removed only at 0 mismatches. Task taskboard-jobid-columns-finish runs every 2 h |
 | 4 | Board order in the sidebar (company board first; reorder boards) | Task Board / UI | WORKING | Shipped in 0597/0599; desk to check the sidebar order on prod |
-| 5 | Flag tasks for bookers with no EzBizi account (12) | Bar | WAITING | Bar to say who they are |
+| 5 | Flag tasks for bookers with no EzBizi account (12) | Bar | WORKING | 11-19: 27 owners fixed (Bar owns Everdoors CT, Sasha gets hers via the middle-name match, 7 to their real booker). Nissin Callanta, Jacky Ferrer and Rachelle have no account; invite them? |
 | 6 | Unknown-caller title and long titles | Automations | WORKING | Shipped 0598; desk to check today's tasks |
 | 7 | 2 "Job #" titles left: one empty "job #" (nothing to name it from); 174 number-only titles (151 are phone numbers) | — | DONE by rule | Left on purpose; Jose can say otherwise |
 | 8 | **Cutoff** | Desk | WAITING | Jose says when |
