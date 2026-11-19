@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0608', date: '19 Nov 2026', items: [
+      'Phone: calls and texts keep working while numbers move to a new Twilio account (both accounts accepted)',
+      'Task Board: the half-hourly Monday check always gets its turn, even when a long sync is running',
+    ]),
     VersionRelease(version: '0.0.0607', date: '19 Nov 2026', items: [
       'Passwords now need at least 8 characters (was 12)',
       'Task Board: select several attachments on an update and download them together',
