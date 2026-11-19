@@ -1043,6 +1043,7 @@ Route::prefix('v1')
         Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
+        Route::get('project-board/tech-expenses', [ProjectBoardController::class, 'techExpenses']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
         Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
