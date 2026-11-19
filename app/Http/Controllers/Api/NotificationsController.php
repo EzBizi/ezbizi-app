@@ -7,6 +7,8 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\FieldAlert;
+use App\Models\Job;
+use App\Models\JobPart;
 use App\Models\Lead;
 use App\Models\Mailbox;
 use App\Models\Notification;
@@ -14,6 +16,8 @@ use App\Models\Onboarding;
 use App\Models\PtoRequest;
 use App\Models\Review;
 use App\Models\Suggestion;
+use App\Models\Task;
+use App\Models\TaskUpdate;
 use App\Models\TimeClockCorrectionRequest;
 use App\Models\TimeClockDayApproval;
 use App\Support\Modules\ModuleRegistry;
@@ -326,8 +330,12 @@ class NotificationsController extends Controller
 
     private function kindOf(Notification $notification, $events): ?string
     {
-        if ($notification->source === 'mention') {
+        if ($notification->source === 'mention' || $notification->kind === 'task.mentioned') {
             return 'mentioned';
+        }
+        // A task bell carries its kind, not an automation event (desk 11-19: Jose's "Assigned to me" was empty).
+        if (in_array($notification->kind, ['task.assigned', 'task.subitem_assigned'], true)) {
+            return 'assigned';
         }
 
         $key = $notification->event_id === null ? null : $events->get($notification->event_id)?->event_key;
@@ -353,11 +361,11 @@ class NotificationsController extends Controller
     public const SUBJECT_MODULES = [
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
-        \App\Models\Job::class => 'jobs',
+        Job::class => 'jobs',
         // Its part on the Project Management board (Jose, 2026-11-17).
-        \App\Models\JobPart::class => 'project_board',
-        \App\Models\Task::class => 'tasks',
-        \App\Models\TaskUpdate::class => 'tasks',
+        JobPart::class => 'project_board',
+        Task::class => 'tasks',
+        TaskUpdate::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',
         TimeClockDayApproval::class => 'work_hours',
         PtoRequest::class => 'work_hours',
@@ -421,10 +429,10 @@ class NotificationsController extends Controller
         // A mention or reply is about one update: open its task, at that update
         // (Jose, 2026-11-17: "clicking on the notification should lead you to
         // the board").
-        if ($notification->subject_type === \App\Models\TaskUpdate::class) {
+        if ($notification->subject_type === TaskUpdate::class) {
             return [
                 'type' => 'task',
-                'id' => (string) \App\Models\TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
+                'id' => (string) TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
                 'update' => (string) $notification->subject_id,
             ];
         }

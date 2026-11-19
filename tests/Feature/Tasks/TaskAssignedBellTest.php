@@ -43,4 +43,15 @@ class TaskAssignedBellTest extends TestCase
             $this->assertSame(1, Notification::query()->count());
         });
     }
+
+    /** Desk 11-19: Jose's "Assigned to me" was empty: a task bell carries its kind and the tab finds it. */
+    public function test_a_task_assignment_bell_shows_under_assigned_to_me(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $ana = $this->userWithRole($t, 'Dispatcher', ['tasks.view', 'tasks.edit']);
+        $this->inTenant($t['org'], fn () => app(TaskWriter::class)->create(app(TaskBoards::class)->ensureFor($t['franchise']), ['title' => 'Call back Ann', 'assignee_user_ids' => [$ana->id]], $t['admin']));
+
+        $rows = collect($this->signedInAs($ana)->getJson('/api/v1/notifications')->assertOk()->json('data'));
+        $this->assertSame(['assigned'], $rows->pluck('kind')->unique()->values()->all());
+    }
 }
