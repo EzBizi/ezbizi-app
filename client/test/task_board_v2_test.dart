@@ -634,6 +634,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('group-delete-g2')));
     await tester.pumpAndSettle();
+    // Jose 11-19: a delete asks for a fresh authenticator code first.
+    await tester.enterText(find.byKey(const Key('delete-code')), '123456');
+    await tester.tap(find.byKey(const Key('delete-code-go')));
+    await tester.pumpAndSettle();
     expect(log.last.$1, 'DELETE');
     expect(log.last.$2, '/task-boards/b-1/groups/g2');
 
@@ -644,8 +648,36 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('group-delete-g1-to-g2')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('delete-code')), '123456');
+    await tester.tap(find.byKey(const Key('delete-code-go')));
+    await tester.pumpAndSettle();
     expect(log.last.$2, '/task-boards/b-1/groups/g1');
   });
+
+  testWidgets(
+    'Jose 11-19: a group moves up from its menu, saved as its place',
+    (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(const ValueKey('group-menu-g2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('group-up-g2')));
+      await tester.pumpAndSettle();
+      expect(
+        log.any((l) => l.$1 == 'PATCH' && l.$2 == '/task-boards/b-1/groups/g2'),
+        isTrue,
+      );
+
+      // The first group cannot go up: off, not a silent no-op.
+      await tester.tap(find.byKey(const ValueKey('group-menu-g1')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MenuItemButton>(find.byKey(const ValueKey('group-up-g1')))
+            .onPressed,
+        isNull,
+      );
+    },
+  );
 
   // -- Built-in columns (Jose, 2026-10-20) --
 

@@ -272,11 +272,11 @@ class SignupTest extends TestCase
         // definition, because the scope it is stored against does not exist until
         // this request succeeds. The platform floor is what applies.
         $this->postJson('/api/v1/auth/signup', $this->payload([
-            'password' => str_repeat('a', 11),
+            'password' => str_repeat('a', 7),
         ]))->assertStatus(422)->assertJsonValidationErrors('password');
 
         $this->postJson('/api/v1/auth/signup', $this->payload([
-            'password' => str_repeat('a', 12),
+            'password' => str_repeat('a', 8),
         ]))->assertCreated();
     }
 

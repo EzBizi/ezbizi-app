@@ -232,6 +232,17 @@ class _BoardTreeState extends State<BoardTree> {
 
   /// Move up/down in its own section and folder (the board's ⋯ menu, for the
   /// keyboard; Jose 11-18: boards could only change group, not order).
+  /// Its place among the boards it moves with: (index, count).
+  (int, int) _placeIn(String boardId) {
+    final me = widget.boards.firstWhere((b) => '${b['id']}' == boardId);
+    final row = [
+      for (final b in widget.boards)
+        if (b['folder_id'] == me['folder_id'] && b['section'] == me['section'])
+          b,
+    ]..sort(_byPlace);
+    return (row.indexWhere((b) => '${b['id']}' == boardId), row.length);
+  }
+
   Future<void> _shift(String boardId, int by) async {
     final me = widget.boards.firstWhere((b) => '${b['id']}' == boardId);
     final row = [
@@ -638,13 +649,16 @@ class _BoardTreeState extends State<BoardTree> {
           MenuItemButton(
             key: ValueKey('board-up-$id'),
             leadingIcon: const Icon(Icons.arrow_upward, size: 18),
-            onPressed: () => _shift(id, -1),
+            // Already first: nothing to do, so it says so (Jose 11-19: "seems to do nothing").
+            onPressed: _placeIn(id).$1 <= 0 ? null : () => _shift(id, -1),
             child: const Text('Move up'),
           ),
           MenuItemButton(
             key: ValueKey('board-down-$id'),
             leadingIcon: const Icon(Icons.arrow_downward, size: 18),
-            onPressed: () => _shift(id, 1),
+            onPressed: _placeIn(id).$1 >= _placeIn(id).$2 - 1
+                ? null
+                : () => _shift(id, 1),
             child: const Text('Move down'),
           ),
           SubmenuButton(

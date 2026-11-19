@@ -96,6 +96,28 @@ void main() {
     expect(find.byKey(const Key('missing-notice_period')), findsNothing);
   });
 
+  // Merav, 2026-11-19: "when typing a number on the field it stops selecting
+  // the field". The first keystroke answered it, the box remounted, and the
+  // rest of the number went nowhere. Typed one key at a time, as a person does.
+  testWidgets('typing a number keeps the cursor in the box', (tester) async {
+    await _pumpForm(tester, _handler(form: _asEmployee));
+
+    final box = find.byKey(answerKey('notice_period'));
+    await tester.tap(box);
+    await tester.pump();
+    for (final digit in ['2', '6', '.', '5']) {
+      final editor = tester.widget<EditableText>(
+        find.descendant(of: box, matching: find.byType(EditableText)),
+      );
+      expect(editor.focusNode.hasFocus, isTrue, reason: 'lost focus before "$digit"');
+      tester.testTextInput.enterText('${editor.controller.text}$digit');
+      await tester.pump();
+    }
+
+    expect(tester.widget<TextField>(box).controller!.text, '26.5');
+    expect(find.byKey(const Key('missing-notice_period')), findsNothing);
+  });
+
   testWidgets('the employee fills in theirs, and sees what the employer owes', (
     tester,
   ) async {

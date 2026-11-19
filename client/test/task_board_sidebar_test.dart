@@ -9,6 +9,7 @@ import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -165,7 +166,13 @@ void main() {
           return json({'data': groupColours});
         }
         if (path.startsWith('/task-boards/') && request.method == 'PATCH') {
-          patches.add([path.split('/').last, jsonDecode(request.body)]);
+          final id = path.split('/').last;
+          final body = jsonDecode(request.body) as Map;
+          patches.add([id, body]);
+          // Saved, as the server keeps it: the next list carries it.
+          for (final b in boards ?? fixture) {
+            if (b['id'] == id) b.addAll(Map<String, Object?>.from(body));
+          }
           return json({'data': <String, dynamic>{}});
         }
         if (path.startsWith('/task-boards/')) {
@@ -446,6 +453,19 @@ void main() {
         p[0]: (p[1] as Map)['position'],
     };
     expect(positions['b-dmv'], lessThan(positions['b-ct'] as int));
+    // The first board cannot go up: its Move up is off, not a silent no-op.
+    await tester.tap(row('b-a1'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<MenuItemButton>(find.byKey(const ValueKey('board-up-b-a1')))
+          .onPressed,
+      isNull,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    // And the list shows it, after the reload (Jose 11-19: "seems to do nothing").
+    expect(y('b-dmv'), lessThan(y('b-ct')));
   });
 
   testWidgets('My Board is the first entry, above Shared with me, Folders, '

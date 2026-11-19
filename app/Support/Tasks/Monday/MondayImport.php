@@ -143,7 +143,9 @@ final class MondayImport
             public function emitAfterCommit(string $eventKey, ?Model $subject = null, array $payload = []): void {}
         });
         $this->writer = app()->make(TaskWriter::class);
-        $this->writer->quiet = true;
+        // The first import is history: no bells. The sync is live work: a person given a task on
+        // Monday hears about it (desk 11-19: Jose's bell never rang for Monday's assignments).
+        $this->writer->quiet = ! $refresh;
 
         DB::beginTransaction();
         try {
@@ -383,7 +385,7 @@ final class MondayImport
             && $existing->external_synced_at !== null && ! $existing->updated_at->greaterThan($existing->external_synced_at)) {
             // Nothing changed here since the last sync, so the board change is Monday's (desk 11-18: a
             // Georgia task moved to Texas on Monday stayed on Georgia here). Follow it, its old board's values dropped.
-            $this->writer->move($existing, $this->group($board, $item['group'] ?? null), null, $as);
+            $this->writer->move($existing, $this->group($board, $item['group'] ?? null), null, null);
             self::carryValues($existing, $board);
             $existing->refresh();
             $this->counts['moved here (moved on Monday)'] = ($this->counts['moved here (moved on Monday)'] ?? 0) + 1;
@@ -411,7 +413,9 @@ final class MondayImport
         $input = $this->input($board, $item);
         $task = $existing !== null
             ? $this->reuse($existing, $board, $parent, $input, $as)
-            : $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $as);
+            // On the sync, made by the Monday item's creator when they have an account here, else by
+            // nobody (Monday), never by the connection's own user (desk 11-19).
+            : $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $this->refresh ? $this->person($item['creator_email'] ?? null) : $as);
 
         $created = isset($item['created_at']) ? CarbonImmutable::parse($item['created_at']) : null;
         $task->forceFill(array_filter([
@@ -531,7 +535,8 @@ final class MondayImport
         if ($task->created_by_automation_id !== null) { // and a lagging copy put Gino's predecessors back (21:05): Monday's People never override a rule's
             unset($input['assignee_user_ids']);
         }
-        $this->writer->update($task->load('board'), $input, $as);
+        // A change from Monday is Monday's, not the connection user's (desk 11-19).
+        $this->writer->update($task->load('board'), $input, $this->refresh ? null : $as);
         $this->taken($task->refresh(), $item);
         $this->counts['refreshed from monday']++;
     }

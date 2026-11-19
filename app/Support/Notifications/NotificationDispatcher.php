@@ -5,8 +5,8 @@ namespace App\Support\Notifications;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Models\Assignment;
 use App\Models\AutomationEvent;
-use App\Models\DeviceToken;
 use App\Models\Company;
+use App\Models\DeviceToken;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -140,6 +140,7 @@ class NotificationDispatcher
             'organization_id' => $this->tenant->idOrFail(),
             'user_id' => $user->getKey(),
             'source' => $source,
+            'kind' => $kind === null ? null : mb_substr($kind, 0, 40),
             'title' => $title,
             'body' => $body,
             'urgent' => $urgent,
@@ -297,7 +298,7 @@ class NotificationDispatcher
         }
 
         return in_array(
-            \App\Models\AutomationEvent::query()->whereKey($eventId)->value('event_key'),
+            AutomationEvent::query()->whereKey($eventId)->value('event_key'),
             ['lead.received', 'reports.call.missed', 'phone.call.missed'],
             true,
         );
@@ -375,9 +376,9 @@ class NotificationDispatcher
      * needs more than this, the fix is a per-source number or a digest, not a
      * bigger constant.
      *
-     * @return int how many were actually emailed
      *
      * @param  Collection<int, User>  $recipients  already capped by the caller
+     * @return int how many were actually emailed
      */
     private function alsoByEmail(Collection $recipients, string $title, ?string $body, Model $scope, ?string $header = null): int
     {
@@ -587,6 +588,8 @@ class NotificationDispatcher
         // Project Management parts (Jose, 2026-11-17).
         'project_board.part_late' => 'A part is 3 days late',
         'project_board.part_reminder' => 'A part reminder is due',
+        // HR (Merav, 2026-11-19).
+        'hr.onboarding_missing' => 'Unfinished onboardings at my branch',
     ];
 
     /** Minutes within which a repeat of one kind on one record is one row. */
@@ -637,7 +640,7 @@ class NotificationDispatcher
             return $recipients;
         }
 
-        $flooded = \App\Models\Notification::query()
+        $flooded = Notification::query()
             ->where('automation_id', $automationId)
             ->where('created_at', '>=', now()->subMinutes(self::FLOOD_WINDOW_MINUTES))
             ->whereIn('user_id', $recipients->map->getKey()->all())

@@ -468,6 +468,11 @@ void main() {
     await tester.pump();
     await tester.tap(confirm);
     await tester.pumpAndSettle();
+    // Jose 11-19: and a fresh authenticator code.
+    expect(log.last.$1, isNot('DELETE'));
+    await tester.enterText(find.byKey(const Key('delete-code')), '123456');
+    await tester.tap(find.byKey(const Key('delete-code-go')));
+    await tester.pumpAndSettle();
     expect(log.last.$1, 'DELETE');
     expect(log.last.$2, '/task-boards/b-me');
   });

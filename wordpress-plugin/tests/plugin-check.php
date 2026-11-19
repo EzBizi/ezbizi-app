@@ -410,6 +410,10 @@ function ok_response(array $values, array $pages = []) {
 
 echo "\nThe host must be spelled the way the server spells it\n";
 $GLOBALS['home'] = 'https://WWW.A-1Chimney.com/';
+// Bar, 2026-11-18: a re-signed avatar link alone is not a change; a new photo is.
+$sig = fn ($v, $e, $s) => ['fetched_at' => 1, 'widgets' => ['chat' => ['team' => [['avatar' => "https://app.ezbizi.com/api/v1/web/chat/avatar/u1?expires=$e&signature=$s&v=$v"]]]]];
+check('a re-signed link is not a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('a', 2, 'y')), false);
+check('a new photo is a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('b', 1, 'x')), true);
 check('www stripped, lowercased', ezbizi_host(), 'a-1chimney.com');
 $GLOBALS['home'] = 'https://nj.a-1chimney.com';
 check('a subdomain is its own host', ezbizi_host(), 'nj.a-1chimney.com');

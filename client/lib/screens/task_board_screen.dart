@@ -1461,10 +1461,54 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     await _load();
   }
 
+  /// A fresh authenticator code before a delete (Jose 11-19): null when cancelled.
+  Future<String?> _askCode(String doing) async {
+    final code = TextEditingController();
+    // A side panel, as the house uses for confirmations (no modal dialogs).
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Authenticator code to $doing',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('delete-code-go'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(panel).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(panel).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+        child: TextField(
+          key: const Key('delete-code'),
+          controller: code,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(
+            labelText: '6-digit code from your authenticator app',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => Navigator.of(panel).pop(true),
+        ),
+      ),
+    );
+    // Not disposed here: the panel's closing animation still reads it.
+    final value = code.text.trim();
+    return ok == true && value.isNotEmpty ? value : null;
+  }
+
   /// A group with tasks names the group they move to.
   Future<void> _deleteGroup(String id, {String? moveTo}) async {
+    final code = await _askCode('delete this group');
+    if (code == null || !mounted) return;
     final res = await widget.api.delete('$_groupsPath/$id', {
       'move_to': ?moveTo,
+      'code': code,
     });
     if (!mounted) return;
     if (!res.ok) {
@@ -1477,6 +1521,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   /// Rename and delete, on a group's heading.
+  int _groupIndex(String id) => [
+    for (final g in _groups(_board!))
+      if (g['id'] != null) g['id'],
+  ].indexOf(id);
+
+  Future<void> _moveGroup(String id, int by) async {
+    final res = await widget.api.patch('$_groupsPath/$id', {
+      'position': _groupIndex(id) + by,
+    });
+    if (!mounted) return;
+    if (!res.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(res.reason)));
+      return;
+    }
+    await _load();
+  }
+
   Widget _groupMenu(_Json group, int tasks) {
     final id = group['id'] as String;
     final others = [
@@ -1493,6 +1556,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             _groupName.text = '${group['name']}';
           }),
           child: const Text('Rename'),
+        ),
+        // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
+        MenuItemButton(
+          key: ValueKey('group-up-$id'),
+          leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+          onPressed: _groupIndex(id) <= 0 ? null : () => _moveGroup(id, -1),
+          child: const Text('Move up'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-down-$id'),
+          leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+          onPressed:
+              _groupIndex(id) >=
+                  _groups(_board!).where((g) => g['id'] != null).length - 1
+              ? null
+              : () => _moveGroup(id, 1),
+          child: const Text('Move down'),
         ),
         if (tasks == 0)
           MenuItemButton(
@@ -3062,8 +3142,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       ),
     );
     if (ok != true || !mounted) return;
+    final code = await _askCode('delete this board');
+    if (code == null || !mounted) return;
     final r = await widget.api.delete('/task-boards/${_board!['id']}', {
       'confirm': name,
+      'code': code,
     });
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -6512,8 +6595,12 @@ class _TaskPanelState extends State<_TaskPanel> {
                           ),
                         ),
                         const SizedBox(height: 2),
+                        // Selectable, to copy as is (Merav via Jose 11-19).
                         if ('${u['body'] ?? ''}'.isNotEmpty)
-                          Text('${u['body']}'),
+                          SelectableText(
+                            '${u['body']}',
+                            key: ValueKey('task-update-body-${u['id']}'),
+                          ),
                         TaskAttachments(
                           api: widget.api,
                           attachments: [

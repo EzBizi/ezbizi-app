@@ -149,4 +149,19 @@ class JobAddressFlagsTest extends TestCase
         $this->artisan('ezbizi:flag-workiz-jobs --future-only --dry-run')->expectsOutputToContain('1 flag would be raised')->assertSuccessful();
         $this->artisan('ezbizi:flag-workiz-jobs --future-only')->expectsOutputToContain('1 flag raised')->assertSuccessful();
     }
+
+    /** Jose 11-19: Workiz "Sasha Solano" is the user "Sasha marie Solano"; an ambiguous match is nobody. */
+    public function test_a_booker_matches_a_user_with_a_middle_name(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $sasha = $this->userWithRole($alpha, 'Dispatcher', ['jobs.view']);
+        $this->inTenant($alpha['org'], function () use ($alpha, $sasha) {
+            $sasha->forceFill(['name' => 'Sasha marie Solano'])->save();
+            $w = WorkizJob::create(['franchise_id' => $alpha['franchise']->id, 'remote_id' => 'S1', 'status' => 'x',
+                'created_by' => 'Sasha Solano', 'payload' => [], 'synced_at' => now()]);
+            $this->assertSame($sasha->id, FlagWorkizJobs::booker($w)?->id);
+            $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha Perez'));
+            $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha'));
+        });
+    }
 }
