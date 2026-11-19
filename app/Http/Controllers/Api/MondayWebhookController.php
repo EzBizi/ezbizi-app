@@ -107,11 +107,34 @@ class MondayWebhookController extends Controller
         if ($me === '' || $userId !== $me) {
             return false;
         }
+        // A direct write of ours (a remap or column move, not through the outbox) registered itself.
+        if (Cache::has(self::directKey($itemId))) {
+            return true;
+        }
         $taskIds = Task::query()->withoutGlobalScopes()->where('external_ref', 'monday:'.$itemId)->pluck('id');
 
         return MondayOutboxEntry::query()->withoutGlobalScopes()->whereIn('task_id', $taskIds)
             ->where(fn ($q) => $q->whereBetween('sent_at', [$at->subSeconds(10), $at->addSeconds(120)])
                 ->orWhere(fn ($p) => $p->where('state', MondayOutboxEntry::PENDING)->where('changed_at', '<=', $at)))
             ->exists();
+    }
+
+    /**
+     * Mark items we are about to write on Monday directly (not via the outbox), so their
+     * webhooks are dropped as echoes (desk 11-19: a 1,700-item label remap came back as
+     * 441 sync jobs). Lasts 15 minutes from the call.
+     *
+     * @param  list<string|int>  $itemIds
+     */
+    public static function expectDirectWrites(array $itemIds): void
+    {
+        foreach ($itemIds as $id) {
+            Cache::put(self::directKey((string) $id), true, now()->addMinutes(15));
+        }
+    }
+
+    private static function directKey(string $itemId): string
+    {
+        return 'monday-direct-write:'.$itemId;
     }
 }

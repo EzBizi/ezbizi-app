@@ -46,6 +46,11 @@ trait FakesMonday
             str_contains($query, 'workspaces(') => ['workspaces' => [['id' => '1']]],
             str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
+            // The value parity read: each item's values with their column's title.
+            str_contains($query, 'column_values { text column { title } }') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_values(array_map(
+                fn ($i) => ['id' => $i['id'], 'column_values' => array_map(fn ($v) => ['text' => $v['text'] ?? '', 'column' => ['title' => collect($boards[(string) $vars['b'][0]]['columns'])->firstWhere('id', $v['id'])['title'] ?? $v['id']]], $i['column_values'])],
+                $boards[(string) $vars['b'][0]]['items'] ?? [],
+            ))]]]],
             str_contains($query, 'items_page') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_values(array_map(
                 fn ($i) => ['id' => $i['id'], 'updated_at' => $i['updated_at'], 'group' => ['title' => $i['group']['title'] ?? 'Open Tasks'], 'subitems' => array_map(fn ($s) => ['id' => $s['id'], 'updated_at' => $s['updated_at']], $i['subitems'] ?? [])],
                 // Monday's __last_updated__ filter, by the day (greater_than_or_equals ["EXACT", "Y-m-d"]).

@@ -244,6 +244,34 @@ class MondaySyncTest extends TestCase
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 
+    /** Desk 11-19: Client name filled here, empty on Monday, and nothing saw it. --values counts it; --fix queues it. */
+    public function test_value_parity_finds_a_value_monday_lacks_and_queues_it(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z'), $this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z')]);
+        [$client, $same] = $this->inTenant($this->tenant['org'], function () {
+            $board = TaskBoard::query()->where('external_ref', 'monday:100')->sole();
+            $col = TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 9]);
+            foreach (['11' => 'Pamela Gignon', '12' => 'Tom Garangelli'] as $ref => $v) {
+                TaskColumnValue::query()->create(['organization_id' => $board->organization_id, 'task_id' => Task::query()->where('external_ref', 'monday:'.$ref)->value('id'), 'column_id' => $col->id, 'value_text' => $v]);
+            }
+
+            return [$col, Task::query()->where('external_ref', 'monday:12')->value('id')];
+        });
+        $board = $this->monday['boards']['100'];
+        $board['columns'][] = ['id' => 'text_c', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
+        $board['items'][0]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => '', 'value' => null];             // empty there
+        $board['items'][1]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => 'tom  garangelli', 'value' => null]; // same, as a person reads it
+        $this->monday['boards'] = ['100' => $board];
+
+        $this->artisan('ezbizi:monday-parity', ['--values' => true])->expectsOutputToContain('values differ 1')->assertFailed();
+        $this->artisan('ezbizi:monday-parity', ['--values' => true, '--fix' => true])->assertSuccessful();
+
+        $queued = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->whereJsonContains('kinds', 'values:'.$client->id)->pluck('task_id')->all());
+        $this->assertSame([$this->task('11')->id], $queued, 'only the one Monday lacks');
+        $this->assertNotContains($same, $queued);
+    }
+
     /** Desk 11-18: missing from Monday's board listing is not proof; an item Monday says is active is never trashed. */
     public function test_parity_trashes_only_what_monday_says_is_archived_or_deleted(): void
     {
