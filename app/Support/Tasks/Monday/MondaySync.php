@@ -43,7 +43,7 @@ final class MondaySync
      * @return array<string, array<string, mixed>> monday board id => report
      */
     /** @param  bool  $reapply  take Monday's state even when the item's clock did not move (a group move may not bump it) */
-    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null, bool $scan = false, bool $reapply = false): array
+    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null, bool $scan = false, bool $reapply = false, ?float $deadline = null): array
     {
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
         $reader = new MondayBoardReader($client ?? MondayClient::for($connection));
@@ -67,6 +67,11 @@ final class MondaySync
 
         $reports = [];
         foreach ($boards as $board) {
+            // Past the run's budget: stop between boards (each board's cursor is already kept), so one
+            // long pass never holds the lane and the parity run behind it (desk 11-19: 2.5 h without parity).
+            if ($deadline !== null && microtime(true) > $deadline) {
+                break;
+            }
             $mondayId = substr((string) $board->external_ref, strlen('monday:'));
             if ($only !== null && ! in_array($mondayId, $only, true)) {
                 continue;

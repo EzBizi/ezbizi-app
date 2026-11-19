@@ -23,7 +23,7 @@ use Illuminate\Console\Command;
  */
 class MondaySyncCommand extends Command
 {
-    protected $signature = 'ezbizi:monday-sync {--connection= : one Monday connection id} {--full : read every item, not just the changed ones} {--scan : list every item to find the changed ones (a subitem-only change), not just the Monday date filter} {--people= : JSON file of monday email => EzBizi email}';
+    protected $signature = 'ezbizi:monday-sync {--connection= : one Monday connection id} {--full : read every item, not just the changed ones} {--scan : list every item to find the changed ones (a subitem-only change), not just the Monday date filter} {--people= : JSON file of monday email => EzBizi email} {--max-seconds= : stop between boards once this long has passed}';
 
     protected $description = 'Read Monday boards imported onto the Task Board and bring their changes over';
 
@@ -41,6 +41,7 @@ class MondaySyncCommand extends Command
         }
 
         $failed = false;
+        $started = microtime(true);
         foreach ($connections as $connection) {
             $save = fn (array $fields) => $tenant->run(
                 Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id),
@@ -52,7 +53,8 @@ class MondaySyncCommand extends Command
                 $save(['setup' => $setup]);
             }
             try {
-                $reports = $sync->run($connection, full: (bool) $this->option('full'), scan: (bool) $this->option('scan'));
+                $reports = $sync->run($connection, full: (bool) $this->option('full'), scan: (bool) $this->option('scan'),
+                    deadline: $this->option('max-seconds') ? $started + (int) $this->option('max-seconds') : null);
             } catch (MondayRefused $e) {
                 $save([
                     'status' => SocialConnection::STATUS_BROKEN,
