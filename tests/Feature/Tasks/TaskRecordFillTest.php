@@ -49,6 +49,7 @@ class TaskRecordFillTest extends TestCase
             $this->assertNull($v($resolution), 'Resolution is for people');
             $this->assertSame(['Estimate Inquiry'], array_slice(app(TaskRecordFill::class)->reasons('Wants a chimney estimate'), 0, 1));
             $this->assertSame([], app(TaskRecordFill::class)->reasons('Hello there'));
+            $this->assertSame('Complaint', app(TaskRecordFill::class)->reasons('the crew never arrived')[0] ?? null);
         });
     }
 

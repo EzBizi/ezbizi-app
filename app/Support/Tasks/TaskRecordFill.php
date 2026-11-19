@@ -34,7 +34,7 @@ final class TaskRecordFill
         ['/\b(invoice|receipt)\b/i', 'Invoice Request'],
         ['/\b(paid|payment|pay|balance|deposit)\b/i', 'Waiting Payment'],
         ['/\b(estimate|quote|pric(e|ing)|how much)\b/i', 'Estimate Inquiry'],
-        ['/\b(no[- ]show|never (showed|came)|rude|damage|mess|soot|upset|unhappy|complain|dissatisf|unprofessional|manager)\b/i', 'Complaint'],
+        ['/\b(no[- ]show|never (showed|came|arrived)|didn.t (show|come)|rude|damage|mess|soot|upset|unhappy|complain|dissatisf|unprofessional|manager)\b/i', 'Complaint'],
         ['/\b(book|schedul|appointment|inspection|clean|sweep|wants a)\b/i', 'Call To Book'],
     ];
 
@@ -64,7 +64,7 @@ final class TaskRecordFill
 
         $wanted = [
             'Area' => $this->area($customer?->state ?? $lead?->service_state, $job?->franchise_id ?? $lead?->franchise_id, $board->franchise_id),
-            'Reason' => $review ? ['Bad Review'] : $this->reasons($text),
+            'Reason' => $review ? ['Bad Review'] : ($this->reasons($text) ?: ['Other']),
             'Address' => $address,
             'Client name' => $customer?->name ?? $lead?->contact_name,
             'Phone number' => $customer?->phone ?? $lead?->phone,
