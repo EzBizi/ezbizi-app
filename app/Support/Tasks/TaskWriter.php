@@ -75,7 +75,9 @@ class TaskWriter
             $groupId = match (true) {
                 $parent !== null => $parent->group_id,
                 $groupId !== null => $this->groupOn($board, $groupId)->id,
-                default => $board->groups()->value('id'),
+                // No group named: "Open Tasks", made at the end where missing. Never the board's first
+                // group, which on a Monday-mirrored board is "Company Info" (desk 11-19: 33 flags filed there).
+                default => $this->openTasks($board)->id,
             };
 
             $status = $this->resolveStatus($board, $input)
@@ -360,6 +362,16 @@ class TaskWriter
         } finally {
             $had !== null ? app()->instance(EventEmitter::class, $had) : app()->forgetInstance(EventEmitter::class);
         }
+    }
+
+    public const DEFAULT_GROUP = 'Open Tasks';
+
+    /** Where a task with no group named goes. */
+    public function openTasks(TaskBoard $board): TaskGroup
+    {
+        return $board->groups()->get()->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === mb_strtolower(self::DEFAULT_GROUP))
+            ?? TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => self::DEFAULT_GROUP,
+                'colour' => '#579BFC', 'position' => (int) $board->groups()->max('position') + 1]);
     }
 
     public const WORKIZ_JOB_COLUMN = 'Workiz Job ID';

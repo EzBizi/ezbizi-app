@@ -13,6 +13,17 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0604', date: '19 Nov 2026', items: [
+      'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
+      'Task Board: tasks made on Monday as Job number and name arrive with just the name, the number in its job column, on both sides',
+      'Task Board: hold the mouse wheel button and drag to move around a wide table',
+      'Task Board: the people on a task reach Monday even when one of them is not on that private Monday board',
+    ]),
+    VersionRelease(version: '0.0.0603', date: '19 Nov 2026', items: [
+      'Task Board: complaint and review tasks fill the board own Area, Reason, Address, Client name and Phone from the job; Resolution is left for people',
+      'Task Board: a deleted task notice with Undo now closes by itself instead of staying on screen',
+      'Task Board: a new Monday column is made once per board, even when several updates need it at the same moment',
+    ]),
     VersionRelease(version: '0.0.0602', date: '19 Nov 2026', items: [
       'Task Board: when Monday asks EzBizi to slow down, the sync picks up where it left off a minute later instead of stopping with an error',
     ]),

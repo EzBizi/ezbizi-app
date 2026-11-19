@@ -68,6 +68,9 @@ class MondayPushTest extends TestCase
     /** Monday answers every read with "complexity budget exhausted, retry in 40 s". */
     private bool $budgetSpent = false;
 
+    /** A Monday user id Monday refuses to assign on the board. */
+    private ?string $refusePerson = null;
+
     /** The board's people on Monday. */
     private array $boardPeople = ['owners' => [], 'subscribers' => []];
 
@@ -109,6 +112,9 @@ class MondayPushTest extends TestCase
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
+                if ($this->refusePerson !== null && str_contains($q, 'change_multiple_column_values') && str_contains((string) ($vars['v'] ?? ''), '"id":'.$this->refusePerson)) {
+                    return Http::response(['errors' => [['message' => 'invalid value - unable to assign person with id: '.$this->refusePerson.'. Please check our API documentation']]]);
+                }
                 if ($this->archived && str_contains($q, 'change_multiple_column_values')) {
                     return Http::response(['errors' => [['message' => 'Cannot change column value for inactive item', 'path' => ['change_multiple_column_values']]]]);
                 }
@@ -136,7 +142,8 @@ class MondayPushTest extends TestCase
                 str_contains($q, 'column_values { id text value }') => ['items' => [['column_values' => array_map(fn ($id, $t) => ['id' => $id, 'text' => $t, 'value' => '{}'], array_keys($this->itemValues), $this->itemValues)]]],
                 str_contains($q, 'PeopleValue') => ['items' => [['column_values' => [['persons_and_teams' => $this->mondayPeople]]]]],
                 str_contains($q, 'owners { id } subscribers { id }') => ['boards' => [$this->boardPeople]],
-                str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
+                str_contains($q, 'activity_logs(') => ['boards' => [['activity_logs' => array_map(fn ($c) => ['event' => 'update_column_value', 'user_id' => $c === 'person' ? '5' : '99', 'data' => json_encode(['column_id' => $c])], $this->mondayChanged)]]],
+                str_contains($q, '{ me { id } }') => ['me' => ['id' => '5']],
                 str_contains($q, 'users(') => ['users' => $this->mondayUsers],
                 str_contains($q, 'updated_at board { id } group { id }') => ['items' => [['id' => $vars['i'][0], 'updated_at' => $this->mondayUpdatedAt, 'board' => ['id' => '100'], 'group' => ['id' => 'topics'], 'state' => $this->archived ? 'archived' : 'active']]],
                 str_contains($q, 'groups { id title') => ['boards' => [['id' => '100', 'groups' => [['id' => 'topics', 'title' => 'Open Tasks'], ['id' => 'done', 'title' => 'Completed Tasks']],
@@ -374,6 +381,35 @@ class MondayPushTest extends TestCase
 
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
         $this->assertCount(2, $this->mutations, 'sent once');
+    }
+
+    /** Desk 11-19: Monday refuses one owner on a private board: the others still go, and the task says so. */
+    public function test_an_owner_monday_refuses_is_dropped_and_the_rest_are_sent(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'ana@a-1chimney.com');
+        $this->mondayUsers[] = ['id' => '6', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'];
+        $this->refusePerson = '6';
+        $this->inTenant($this->tenant['org'], function () use ($ana) {
+            TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'user_id' => $ana->id, 'role' => 'member']);
+            app(TaskWriter::class)->update($this->task, ['assignee_user_ids' => [$this->jose->id, $ana->id]], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertSame([['id' => 5, 'kind' => 'person']], $this->values(count($this->mutations) - 1)['person']['personsAndTeams']);
+        $this->assertSame(MondayOutboxEntry::SENT, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->latest('changed_at')->first()->state));
+    }
+
+    /** Desk 11-19: our own earlier write of the Person column is not "Monday changed it": a rule task's owner still goes. */
+    public function test_our_own_earlier_write_does_not_make_our_owner_change_lose(): void
+    {
+        Carbon::setTestNow('2026-11-13 11:10:00');
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['assignee_user_ids' => [$this->jose->id]], null));
+        $this->mondayUpdatedAt = '2026-11-13T11:20:00Z';
+        $this->mondayChanged = ['person']; // written by our API user (5), not a person on Monday
+        Carbon::setTestNow('2026-11-13 11:21:00');
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertSame([['id' => 5, 'kind' => 'person']], $this->values(count($this->mutations) - 1)['person']['personsAndTeams'] ?? null);
     }
 
     /** Desk 11-18: Monday's Person column never shrinks because someone here has no Monday account. */

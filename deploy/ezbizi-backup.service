@@ -34,9 +34,11 @@ ExecStart=-/usr/local/bin/ezbizi-restore-check.sh
 # (126-157 bytes) that the backup writes as plain USTAR. 255 is USTAR's own cap.
 Environment=EZBIZI_PRIVATE_MAX_PATH_BYTES=255
 
-# A dump plus a full restore of a database this size is seconds today. The
-# ceiling is generous so growth does not silently start killing the run.
-TimeoutStartSec=3600
+# The ceiling must cover backup AND restore check. 3600 s killed the restore
+# check two nights running (11-18, 11-19) once private files grew from 8.6 GB
+# (11-12) to 40.7 GB (11-19): the backup alone now takes ~56 min, so the check
+# was cut off and backup-status.json went red. 6 h leaves room for growth.
+TimeoutStartSec=21600
 
 # NOT hardened the way the scheduler unit is: this deliberately reads /etc,
 # /var/repos and /root, and writes to another host. ProtectSystem here would

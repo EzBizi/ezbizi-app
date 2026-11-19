@@ -58,6 +58,9 @@ final class MondayPush
     /** Set by `ezbizi:monday-push --pause[=minutes]`, cleared by `--resume`: every sender checks it. */
     public const PAUSED = 'monday-push:paused';
 
+    /** @var array<string, true> Monday user ids Monday refused to assign in this run */
+    private array $unassignable = [];
+
     /** @var array<string, ?array> lastWriter's read of an item, reused by send() */
     private array $seen = [];
 
@@ -104,7 +107,21 @@ final class MondayPush
                         break; // the rest are taken by the next minute's run
                     }
                     try {
-                        $outcome = $this->send($entry, $connection);
+                        try {
+                            $outcome = $this->send($entry, $connection);
+                        } catch (\RuntimeException $e) {
+                            // One owner Monday won't take on this board (not on a private board): drop that
+                            // person and send the rest (desk 11-19: Natalie never reached MA because Adeline
+                            // couldn't be assigned). Said on the task.
+                            if (! preg_match('/unable to assign person with id: (\d+)/', $e->getMessage(), $m)) {
+                                throw $e;
+                            }
+                            $this->unassignable[$m[1]] = true;
+                            if (($t = Task::query()->find($entry->task_id)) !== null) {
+                                $this->activity($t, 'Monday would not take one owner (Monday user '.$m[1].', not on that board): the others were sent.');
+                            }
+                            $outcome = $this->send($entry->fresh(), $connection);
+                        }
                     } catch (MondayBudgetSpent) {
                         break; // Monday wants a wait past this run's budget: the next run takes the rest
                     } catch (MondayRefused $e) {
@@ -419,7 +436,7 @@ final class MondayPush
         }
 
         return array_values(array_map(fn ($id) => ['id' => (int) $this->mondayIds[$id], 'kind' => 'person'],
-            array_filter($userIds, fn ($id) => isset($this->mondayIds[$id]))));
+            array_filter($userIds, fn ($id) => isset($this->mondayIds[$id]) && ! isset($this->unassignable[$this->mondayIds[$id]]))));
     }
 
     /** A making of the task is still on its way to Monday. */
