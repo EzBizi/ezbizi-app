@@ -69,6 +69,13 @@ final class TaskRecordFill
             'Client name' => $customer?->name ?? $lead?->contact_name,
             'Phone number' => $customer?->phone ?? $lead?->phone,
             'EzBizi Job #' => $job?->number,
+            // When the call, review or lead came in; the last time we heard from them.
+            'Date Received' => ($lead?->received_at ?? $task->created_at)?->toDateString(),
+            'Last Contact Date' => $lead?->last_contact_at?->toDateString(),
+            'Last Customer Contact' => $lead?->last_contact_at?->toDateString(),
+            'Booked by' => $job?->created_by_label,
+            'Technician' => $job?->performed_by_user_id,
+            'Notes' => $lead?->summary,
             'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
         ];
 
@@ -91,8 +98,19 @@ final class TaskRecordFill
             }
             $set[$column->id] = is_array($value) ? (string) reset($value) : (string) $value;
         }
+        // A person cell can be refused (not on this board): written on its own so the rest still lands.
+        $people = $board->columns()->where('type', 'person')->pluck('id')->all();
+        $person = array_intersect_key($set, array_flip($people));
+        $set = array_diff_key($set, $person);
         if ($set !== []) {
             app(TaskWriter::class)->update($task->load('board'), ['values' => $set], $actor);
+        }
+        foreach ($person as $columnId => $userId) {
+            try {
+                app(TaskWriter::class)->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
+                $set[$columnId] = $userId;
+            } catch (\Illuminate\Validation\ValidationException) {
+            }
         }
 
         return $set;
