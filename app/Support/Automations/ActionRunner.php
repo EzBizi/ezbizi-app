@@ -4003,6 +4003,16 @@ class ActionRunner
         }
 
         $board = $named ?? app(TaskBoards::class)->ensureFor($owner);
+        // Owners who cannot be on this board (another company's: desk for Jose,
+        // 11-19, open question B5) give way to the board's General Manager group
+        // person, else the task is made unassigned. Never a failed run.
+        $assignable = app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+        $owners = $owners->filter(fn (User $u) => in_array($u->getKey(), $assignable, true))->values();
+        if ($owners->isEmpty() && (! empty($action['assignees']) || ! empty($action['assignee']))) {
+            $gm = $board->groups()->get()->first(fn ($g) => str_starts_with(mb_strtolower(trim($g->name)), 'general manager'));
+            $name = $gm ? trim((string) \Illuminate\Support\Str::after($gm->name, '-')) : '';
+            $owners = collect([$name !== '' ? User::query()->whereIn('id', $assignable)->where('name', 'like', $name.'%')->first() : null])->filter()->values();
+        }
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
@@ -4043,7 +4053,7 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
         }
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group) {
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group, $action) {
             // A rule's group is made on the branch's board the first time it is
             // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
@@ -4106,6 +4116,10 @@ class ActionRunner
             ], $actor, $automation?->getKey());
             if ($short !== $title) {
                 app(TaskWriter::class)->comment($made, $actor, $title);
+            }
+            // The board's own Area/Reason/Address/Client/Phone from the lead's job (Jose, 11-19).
+            if (! empty($action['fill_from_record']) && $subject instanceof Lead) {
+                app(\App\Support\Tasks\TaskRecordFill::class)->fill($made, $subject, $actor);
             }
 
             return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');

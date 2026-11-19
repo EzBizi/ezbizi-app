@@ -98,6 +98,8 @@ void main() {
       445, // pinned three times (a4a51667, 05a42380) and stopped in its
       // backend gate each time: the downwards-only view fix turned 14, then 20,
       // reach tests red. No artefact exists; its notes shipped in 0.0.0446.
+      604, // stopped in its box gate and folded into 0605 so it all ships in one go (Jose 11-19)
+      603, // queued behind 0602's web deploy and folded into 0604 before it built
       595, // pinned at 94267603 and stopped in its client gate: the freeze
       // watchdog test's 0.3 s real-time margin failed on a loaded machine. No
       // artefact exists; its notes shipped in 0.0.0596.

@@ -13,6 +13,46 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
+      'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
+      'Task Board: deleting a group or a board asks for your authenticator code first',
+      'Notifications: Assigned to me and Mentioned show task assignments and mentions, including ones made on Monday',
+      'Task Board: changes made on Monday are no longer recorded as made by the account that connects Monday',
+    ]),
+    VersionRelease(version: '0.0.0605', date: '19 Nov 2026', items: [
+      'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
+      'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
+      'Task Board: the Date column on Customer Relations tasks shows the job booked visit',
+      'Automations: complaints for every company land in that company Customer Relations group, owned by its General Manager when the usual owner is not on that board',
+      'Task Board: complaint and review tasks fill the board own Area, Reason, Address, Client name and Phone from the job; Resolution is left for people',
+      'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
+      'Task Board: tasks made on Monday as Job number and name arrive with just the name, the number in its job column, on both sides',
+      'Task Board: hold the mouse wheel button and drag to move around a wide table',
+      'Task Board: the people on a task reach Monday even when one of them is not on that private Monday board',
+    ]),
+    VersionRelease(version: '0.0.0604', date: '19 Nov 2026', items: [
+      'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
+      'Task Board: tasks made on Monday as Job number and name arrive with just the name, the number in its job column, on both sides',
+      'Task Board: hold the mouse wheel button and drag to move around a wide table',
+      'Task Board: the people on a task reach Monday even when one of them is not on that private Monday board',
+    ]),
+    VersionRelease(version: '0.0.0603', date: '19 Nov 2026', items: [
+      'Task Board: complaint and review tasks fill the board own Area, Reason, Address, Client name and Phone from the job; Resolution is left for people',
+      'Task Board: a deleted task notice with Undo now closes by itself instead of staying on screen',
+      'Task Board: a new Monday column is made once per board, even when several updates need it at the same moment',
+    ]),
+    VersionRelease(version: '0.0.0602', date: '19 Nov 2026', items: [
+      'Task Board: when Monday asks EzBizi to slow down, the sync picks up where it left off a minute later instead of stopping with an error',
+    ]),
+    VersionRelease(version: '0.0.0601', date: '18 Nov 2026', items: [
+      'Task Board: changes made on Monday by people show here within a couple of minutes, even while EzBizi is sending a large update to Monday',
+      'Task Board: a title or group changed here is no longer put back to the old Monday value before Monday has received the change',
+      'Task Board: the Monday sync no longer logs false failures while it sends large updates',
+    ]),
+    VersionRelease(version: '0.0.0600', date: '18 Nov 2026', items: [
+      'Task Board: new tasks such as missed calls reach Monday within about a minute, even while a large update is still being sent',
+      'Task Board: a personal board no longer adds its own person to Monday a second time',
+    ]),
     VersionRelease(version: '0.0.0599', date: '18 Nov 2026', items: [
       'Task Board: the company board shows first in Team boards for everyone who can already open it',
       'Project Management: the Inbox shows how long ago each recent message came in, as Leads does',
