@@ -1156,7 +1156,7 @@ class QrWithPicture extends StatelessWidget {
               key: const Key('qr-center-picture'),
               width: pad,
               height: pad,
-              color: Colors.white,
+              color: EzBiziTheme.paper,
               alignment: Alignment.center,
               child: Image.memory(
                 bytes,
