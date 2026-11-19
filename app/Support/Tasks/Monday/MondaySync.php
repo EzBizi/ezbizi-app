@@ -103,9 +103,23 @@ final class MondaySync
                 $this->import->run($org, ['people' => (array) ($state['people'] ?? []), 'users' => [],
                     'boards' => [$meta + ['target_board_id' => $board->id, 'items' => []]]], $as, refresh: true);
             } else {
+                // A pass stopped part way through this board (its deadline) kept the items it had
+                // done for this same cursor: the next run takes up the rest (desk 11-19: NW's cursor
+                // sat at 16:44 for 5 h while every lane run restarted NW and was killed).
+                $partial = (array) ($state['partial'][$mondayId] ?? []);
+                if (isset($partial['done']) && ($partial['cursor'] ?? null) === $cursor && $items === null) {
+                    $ids = array_values(array_diff($ids, (array) ($partial['done'] ?? [])));
+                } else {
+                    $partial = ['cursor' => $cursor, 'done' => []];
+                }
+                $stopped = false;
                 // In chunks: a whole board (NW, 24,659 items) read and written in one go outlasts
                 // the scheduler lane and holds one transaction for an hour (prod, 2026-11-13).
                 foreach (array_chunk($ids, 200) as $chunk) {
+                    if ($deadline !== null && microtime(true) > $deadline) {
+                        $stopped = true;
+                        break;
+                    }
                     $report = $this->import->run($org, [
                         'people' => (array) ($state['people'] ?? []),
                         'users' => $reader->users(),
@@ -115,7 +129,16 @@ final class MondaySync
                         $reports[$mondayId]['counts'][$k] = ($reports[$mondayId]['counts'][$k] ?? 0) + $v;
                     }
                     $reports[$mondayId] += $report;
+                    if ($items === null) {
+                        $partial['done'] = [...$partial['done'], ...array_map('strval', $chunk)];
+                        $state['partial'][$mondayId] = $partial;
+                        $this->save($org, $connection, $state);
+                    }
                 }
+                if ($stopped) {
+                    break; // the cursor stays: this board is not finished
+                }
+                unset($state['partial'][$mondayId]);
             }
             if ($latest !== null) {
                 $state['cursors'][$mondayId] = $latest;

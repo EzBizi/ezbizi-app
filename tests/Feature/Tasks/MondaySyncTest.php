@@ -91,6 +91,33 @@ class MondaySyncTest extends TestCase
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
     }
 
+    /** Desk 11-19: a board stopped part way keeps what it did; the next run reads only the rest, then moves the cursor. */
+    public function test_a_board_stopped_part_way_resumes_with_the_rest(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z')]);
+        $cursor = $this->connection->fresh()->setup['monday']['cursors']['100'];
+
+        // The last run did item 11 for this cursor and was stopped before 12.
+        $setup = $this->connection->fresh()->setup;
+        $setup['monday']['partial']['100'] = ['cursor' => $cursor, 'done' => ['11']];
+        $this->inTenant($this->tenant['org'], fn () => $this->connection->forceFill(['setup' => $setup])->save());
+
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer AGAIN', '2026-11-12T12:01:00Z'),
+            $this->mondayItem('12', 'Order a liner', '2026-11-12T12:02:00Z'),
+        ])];
+        Carbon::setTestNow('2026-11-12 12:10:00');
+        $this->mondayQueries = [];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertNotNull($this->task('12'), 'the rest was read');
+        $this->assertSame('Call the insurer', $this->task('11')->title, 'what was done is not read again');
+        $after = $this->connection->fresh()->setup['monday'];
+        $this->assertArrayNotHasKey('100', (array) ($after['partial'] ?? []), 'finished: no partial left');
+        $this->assertNotSame($cursor, $after['cursors']['100'], 'finished: the cursor moved');
+    }
+
     /** Desk 11-19: a sync past its budget stops between boards, so the lane (and parity behind it) is freed. */
     public function test_a_sync_past_its_deadline_reads_no_more_boards(): void
     {
