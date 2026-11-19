@@ -12,6 +12,7 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\JobTitle;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
@@ -368,6 +369,19 @@ class MondaySyncTest extends TestCase
         Carbon::setTestNow('2026-11-12 12:05:00');
         $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
+    }
+
+    /** Jose 11-19: an item made on Monday as "Job #N - Name" arrives as "Name", N in its column, and the clean title goes back. */
+    public function test_a_job_number_title_from_monday_is_split_and_sent_back_clean(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('31', 'Job #800020972 - Kirstin Deimel', '2026-11-12T12:00:00Z')]);
+
+        $task = $this->task('31');
+        $this->assertSame('Kirstin Deimel', $task->title);
+        $this->assertSame('800020972', $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->firstWhere('column.name', 'Workiz Job ID')?->value_text));
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $task->id)->whereJsonContains('kinds', 'title')->exists()), 'the clean title goes back to Monday');
+        $this->assertNull(JobTitle::split('Call back Mr Smith'));
     }
 
     /** Desk 11-18: a title still waiting in the outbox is never put back by Monday's older title. */

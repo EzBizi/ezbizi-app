@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\JobTitle;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
@@ -77,6 +78,9 @@ final class MondayImport
 
     /** @var array<string, User> lower-cased email => user */
     private array $people = [];
+
+    /** @var array<string, true> Monday items whose "Job #N" title was cleaned here, to send back */
+    private array $retitled = [];
 
     /** @var array<string, string> lower-cased monday email => lower-cased EzBizi email */
     private array $map = [];
@@ -168,6 +172,14 @@ final class MondayImport
                     }
                 }
             }));
+            if (! $this->dry && $this->retitled !== []) {
+                // Outside the suppression: the cleaned titles go back to Monday (live rows).
+                $this->tenant->run($org, function () {
+                    foreach (Task::query()->whereIn('external_ref', array_map(fn ($i) => 'monday:'.$i, array_keys($this->retitled)))->get() as $t) {
+                        app(MondayOutbox::class)->record($t, ['title']);
+                    }
+                });
+            }
             $this->dry ? DB::rollBack() : DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -198,7 +210,7 @@ final class MondayImport
             'files MB' => 0.0, 'files not carried' => 0, 'statuses made' => 0, 'groups made' => 0, 'columns made' => 0,
             'assignees kept as text' => 0, 'columns retyped' => 0, 'values filled' => 0, 'values not carried' => 0,
         ];
-        $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = [];
+        $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = $this->retitled = [];
         foreach ($data['people'] ?? [] as $from => $to) {
             $this->map[mb_strtolower(trim($from))] = mb_strtolower(trim($to));
         }
@@ -578,8 +590,25 @@ final class MondayImport
             $values[$column->id] = $this->valueFor($board, $column, ['from' => $item['timeline']['from'], 'to' => $item['timeline']['to']]);
         }
 
-        return [
-            'title' => mb_substr(trim($item['name']) ?: '(untitled)', 0, 255),
+        // A "Job #N - Name" title from Monday: N to its column, the title the name (Jose 11-19),
+        // and the cleaned title goes back to Monday after the import.
+        $title = trim((string) $item['name']);
+        $about = [];
+        if (($job = JobTitle::split($title)) !== null) {
+            $found = JobTitle::job($job['number']);
+            $column = $this->column($board, $job['ezbizi'] ? TaskWriter::EZBIZI_JOB_COLUMN : TaskWriter::WORKIZ_JOB_COLUMN, 'text');
+            $values[$column->id] = $job['number'];
+            $title = $job['rest'] !== '' ? $job['rest'] : ($found?->customer?->name ?? $title);
+            if ($found !== null) {
+                $about = ['about_type' => 'job', 'about_id' => $found->id];
+            }
+            if ($title !== trim((string) $item['name']) && isset($item['monday_id'])) {
+                $this->retitled[(string) $item['monday_id']] = true;
+            }
+        }
+
+        return $about + [
+            'title' => mb_substr($title ?: '(untitled)', 0, 255),
             'group' => $this->group($board, $item['group'])->name,
             'status' => $this->status($board, $item['status'] ?? null, $done),
             'priority' => isset($item['priority']) ? mb_substr($item['priority'], 0, 16) : null,
