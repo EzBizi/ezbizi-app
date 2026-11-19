@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Http\Controllers\Api\MondayWebhookController;
 use App\Jobs\SyncMondayItem;
 use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
@@ -124,6 +125,22 @@ class MondayWebhookTest extends TestCase
         $this->postJson(self::URL, $mine, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 0]);
 
         $person = $mine;
+        $person['event']['userId'] = 2;
+        $this->postJson(self::URL, $person, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+    }
+
+    /** Desk 11-19: a direct write of ours (label remap, no outbox row) registered first is an echo; unregistered it is queued. */
+    public function test_a_registered_direct_write_is_an_echo(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['external_synced_at' => '2026-11-12 09:00:00']));
+        Queue::fake();
+        $event = ['event' => ['type' => 'update_column_value', 'boardId' => 100, 'pulseId' => 11, 'userId' => 1, 'triggerTime' => '2026-11-12T10:30:20.000Z']];
+        $this->postJson(self::URL, $event, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+
+        MondayWebhookController::expectDirectWrites(['11']);
+        $this->postJson(self::URL, $event, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 0]);
+        $person = $event;
         $person['event']['userId'] = 2;
         $this->postJson(self::URL, $person, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
     }
