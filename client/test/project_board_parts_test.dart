@@ -61,7 +61,15 @@ void main() {
                   'ordered_at': '2026-11-13T09:00:00Z',
                   'late': true,
                 },
-                {'id': 'p-2', 'kind': 'stock', 'item': 'Mortar', 'quantity': 2},
+                // Merav, 2026-11-19: bought by the technician, to reimburse.
+                {
+                  'id': 'p-2',
+                  'kind': 'stock',
+                  'item': 'Mortar',
+                  'quantity': 2,
+                  'paid_by_user_id': 'u-7',
+                  'paid_by': 'Sam Tech',
+                },
               ],
             },
           ],
@@ -84,6 +92,9 @@ void main() {
               },
               {'id': 's-2', 'name': 'Round Rock Depot', 'kind': 'pickup'},
             ],
+            'technicians': [
+              {'id': 'u-7', 'name': 'Sam Tech'},
+            ],
             'totals': {'paid': 0, 'due': 0, 'total': 0, 'currency': 'USD'},
             'can_edit': true,
           },
@@ -99,7 +110,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
-        home: Scaffold(body: ProjectBoardScreen(api: api, session: session)),
+        home: Scaffold(
+          body: ProjectBoardScreen(api: api, session: session),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -136,8 +149,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("At the customer's location."), findsOneWidget);
 
+    expect(find.text('Sam Tech'), findsOneWidget);
+    final reimbursed = find.byKey(
+      const ValueKey('project-board-part-reimbursed-1'),
+    );
+    await tester.ensureVisible(reimbursed);
+    await tester.pumpAndSettle();
+    await tester.tap(reimbursed);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('project-board-parts-save')));
     await tester.pumpAndSettle();
+    expect((puts.single['parts'] as List)[1], {
+      'id': 'p-2',
+      'kind': 'stock',
+      'item': 'Mortar',
+      'quantity': 2,
+      'price_minor': null,
+      'paid_by_user_id': 'u-7',
+      'reimbursed': true,
+    });
     expect((puts.single['parts'] as List).first, {
       'id': 'p-1',
       'kind': 'pickup',
