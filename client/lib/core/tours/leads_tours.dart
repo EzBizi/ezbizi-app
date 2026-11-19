@@ -1093,7 +1093,7 @@ const Map<String, Tour> leadsTours = {
         title: 'The summary',
         body:
             'Average rating this month against last, new this month, '
-            'unanswered, and 1–2 stars still to answer. Click one to filter.',
+            'unanswered, and 1–3 stars still to answer. Click one to filter.',
       ),
       TourStep(
         anchor: 'tour-customer_experience-unanswered',
@@ -1105,8 +1105,8 @@ const Map<String, Tour> leadsTours = {
       TourStep(
         anchor: 'tour-customer_experience-rating',
         since: 3,
-        title: '1–2 stars',
-        body: 'Only the one- and two-star reviews.',
+        title: '1–3 stars',
+        body: 'Only the one-, two- and three-star reviews.',
       ),
       TourStep(
         anchor: 'reviews-more-filters',
