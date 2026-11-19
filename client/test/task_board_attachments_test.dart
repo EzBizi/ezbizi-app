@@ -493,4 +493,29 @@ void main() {
     expect(find.byKey(const Key('task-attachment-download')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('Select files picks several attachments and downloads each', (
+    tester,
+  ) async {
+    final saved = <String>[];
+    Files.debugOnDownload = (name, _) => saved.add(name);
+    await pumpBoard(tester);
+    await openTask(tester);
+    await tester.tap(find.byKey(const Key('task-attachments-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-pdf')));
+    await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-doc')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-attachments-download')));
+    await tester.pumpAndSettle();
+    expect(saved, containsAll(['quote.pdf', 'notes-for-the-crew.docx']));
+    expect(saved, isNot(contains('roof.jpg')));
+  });
+
+  testWidgets('an update body is selectable text', (tester) async {
+    await pumpBoard(tester);
+    await openTask(tester);
+    final body = find.byKey(const ValueKey('task-update-body-u1'));
+    expect(tester.widget<SelectableText>(body).data, 'Photos from the roof');
+  });
 }
