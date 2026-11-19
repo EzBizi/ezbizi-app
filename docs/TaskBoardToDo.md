@@ -40,6 +40,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 15 | **Reorder groups** on a board (drag the header, or Move up/down), saved and mirrored to Monday's group order (11-19) | Task Board | WORKING | Widget test plus a read-back on prod and Monday |
 | 16 | **Deleting a group asks for the authenticator code** (any delete of a group/board) (11-19) | Task Board | WORKING | Server refuses without a fresh code; tests; never delete_group on Monday |
 | 17 | **Same column layout on all 9 branch boards** (CT, DMV, GA, IL, MA, NJ, NW, OH, TX): one column set, one order, on both sides; e.g. DMV is missing Address (11-19) | Task Board | WORKING | Standard: Name, EzBizi, Workiz, Client, Phone, Address, Technician, Area, Reason, Resolution, Notes, Date Received, Last Contact, Resolution Date, Booked by; synonyms renamed; extras kept at the end; Monday order rebuilt after the job-id move |
+| 18 | **Task Board notifications**: Jose's "Assigned to me" and "Mentioned" are empty (11-19). Measured: 279 assignments to him in 7 days, last Task notification 11-18 20:12. His account is also the Monday connection, so Monday changes count as his own and he's never notified | Task Board | WORKING | Attribute Monday changes to the real person; fix the tab filter; test; read back for Jose |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
