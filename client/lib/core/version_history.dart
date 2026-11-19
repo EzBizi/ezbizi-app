@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0600', date: '18 Nov 2026', items: [
+      'Task Board: new tasks such as missed calls reach Monday within about a minute, even while a large update is still being sent',
+      'Task Board: a personal board no longer adds its own person to Monday a second time',
+    ]),
     VersionRelease(version: '0.0.0599', date: '18 Nov 2026', items: [
       'Task Board: the company board shows first in Team boards for everyone who can already open it',
       'Project Management: the Inbox shows how long ago each recent message came in, as Leads does',
