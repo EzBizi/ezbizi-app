@@ -2,6 +2,7 @@
 
 namespace App\Support\TimeClock;
 
+use App\Models\JobPart;
 use App\Models\PayRate;
 use App\Models\PayrollWeekLine;
 use App\Models\TimeClockDayApproval;
@@ -18,6 +19,9 @@ use Illuminate\Validation\ValidationException;
  * pay — the rate from HR's pay_rates in effect that week, the hours from the
  * shifts, the manager's bonus and deductions — with what is missing said out
  * loud. Managers approve it Sunday evening; Merav gets the company Monday.
+ *
+ * Tech expenses (Merav, 2026-11-19): parts a technician paid for that week
+ * and not yet reimbursed are added to the pay, each line shown.
  *
  * Overtime (desk, 2026-11-19): hours over 40 are shown and NOT paid extra
  * until Jose or Merav say 1.5x. Weekly pay is rate x hours, or the salary.
@@ -70,11 +74,15 @@ class TimeClockPayroll
         $lines = PayrollWeekLine::query()->with('approver:id,name')->whereIn('user_id', $people->modelKeys())
             ->whereDate('week_start', $start->toDateString())->get()->keyBy('user_id');
 
+        $expenses = JobPart::techExpenses(null, $start->copy()->utc(), $end->copy()->utc())->groupBy('user_id');
+
         $rows = [];
         foreach ($people as $person) {
             $theirs = $shifts->get($person->id, collect());
             $rate = PayRate::rateOn($person->id, $start->copy()->addDays(6)->toDateString());
-            if ($theirs->isEmpty() && $rate === null) {
+            $paidFor = $expenses->get($person->id, collect());
+            $techExpenses = round($paidFor->sum('amount_minor') / 100, 2);
+            if ($theirs->isEmpty() && $rate === null && $paidFor->isEmpty()) {
                 continue;
             }
             $line = $lines->get($person->id);
@@ -95,7 +103,10 @@ class TimeClockPayroll
                 'bonus' => $bonus,
                 'deductions' => $deductions,
                 'note' => $line?->note,
-                'pay' => $base === null ? null : round($base + $bonus - $deductions, 2),
+                'tech_expenses' => $techExpenses,
+                'expense_lines' => $paidFor->map(fn ($e) => ['job_number' => $e['job_number'], 'item' => $e['item'], 'quantity' => $e['quantity'],
+                    'amount' => round($e['amount_minor'] / 100, 2), 'paid_at' => $e['paid_at']])->values()->all(),
+                'pay' => $base === null ? null : round($base + $bonus - $deductions + $techExpenses, 2),
                 'warnings' => $this->warningsFor($person, $theirs, $rate, $start, $tz),
                 'status' => $line?->approved_at === null ? 'waiting' : 'approved',
                 'approved_by' => $line?->approver === null ? null : ['id' => $line->approver->id, 'name' => $line->approver->name],

@@ -62,7 +62,7 @@ class TimeClockPayrollController extends Controller
     {
         $week = $this->payroll->week($request->user(), $this->week($request));
 
-        return response(Xlsx::write(['Payroll' => self::table($week['rows'])]), 200, [
+        return response(Xlsx::write(['Payroll' => self::table($week['rows']), 'Tech expenses' => self::expenses($week['rows'])]), 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="payroll-'.$week['week_start'].'.xlsx"',
         ]);
@@ -76,15 +76,34 @@ class TimeClockPayrollController extends Controller
      */
     public static function table(array $rows): array
     {
-        $out = [['Name', 'Branch', 'Role', 'Basis', 'Rate', 'Per', 'Hours', 'Overtime hours', 'Bonus', 'Deductions', 'Weekly pay', 'Warnings', 'Status', 'Approved by', 'Note']];
+        $out = [['Name', 'Branch', 'Role', 'Basis', 'Rate', 'Per', 'Hours', 'Overtime hours', 'Bonus', 'Deductions', 'Tech expenses (reimburse)', 'Weekly pay', 'Warnings', 'Status', 'Approved by', 'Note']];
         foreach ($rows as $r) {
             $out[] = [$r['person']['name'], $r['person']['branch'], $r['person']['role'], $r['basis'], $r['rate'], $r['period'],
-                $r['hours'], $r['overtime_hours'], $r['bonus'], $r['deductions'], $r['pay'],
+                $r['hours'], $r['overtime_hours'], $r['bonus'], $r['deductions'], $r['tech_expenses'], $r['pay'],
                 implode('; ', array_map(fn ($w) => TimeClockPayroll::WARNINGS[$w], $r['warnings'])),
                 $r['status'] === 'approved' ? 'Approved' : 'Waiting', $r['approved_by']['name'] ?? '', $r['note'] ?? ''];
         }
         $out[] = ['Total', '', '', '', '', '', round(array_sum(array_column($rows, 'hours')), 2), '', '', '',
+            round(array_sum(array_column($rows, 'tech_expenses')), 2),
             round(array_sum(array_map(fn ($r) => $r['pay'] ?? 0, $rows)), 2)];
+
+        return $out;
+    }
+
+    /**
+     * Each tech expense on its own line, so the manager sees what the money is for.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<list<mixed>>
+     */
+    public static function expenses(array $rows): array
+    {
+        $out = [['Name', 'Branch', 'Job', 'Item', 'Quantity', 'Amount', 'Paid']];
+        foreach ($rows as $r) {
+            foreach ($r['expense_lines'] as $e) {
+                $out[] = [$r['person']['name'], $r['person']['branch'], $e['job_number'], $e['item'], $e['quantity'], $e['amount'], substr((string) $e['paid_at'], 0, 10)];
+            }
+        }
 
         return $out;
     }

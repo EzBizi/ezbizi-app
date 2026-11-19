@@ -113,7 +113,7 @@ class TimeClockPayrollSends extends Command
         if ($week['rows'] === []) {
             return;
         }
-        $sheets = ['All' => TimeClockPayrollController::table($week['rows'])];
+        $sheets = ['All' => TimeClockPayrollController::table($week['rows']), 'Tech expenses' => TimeClockPayrollController::expenses($week['rows'])];
         foreach (collect($week['rows'])->groupBy(fn ($r) => $r['person']['branch'] ?: $org->name)->sortKeys() as $branch => $rows) {
             $sheets[mb_substr(preg_replace('/[\\\\\/?*\[\]:]/', ' ', (string) $branch), 0, 31)] = TimeClockPayrollController::table($rows->values()->all());
         }

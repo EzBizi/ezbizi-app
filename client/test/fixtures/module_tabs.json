@@ -688,6 +688,7 @@
         "work_hours.approve",
         "work_hours.general.view",
         "work_hours.manage",
+        "work_hours.payroll",
         "work_hours.pto.edit",
         "work_hours.pto.request",
         "work_hours.pto.view",

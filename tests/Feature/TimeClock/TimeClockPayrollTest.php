@@ -3,6 +3,9 @@
 namespace Tests\Feature\TimeClock;
 
 use App\Mail\PayrollSheetMail;
+use App\Models\Customer;
+use App\Models\Job;
+use App\Models\JobPart;
 use App\Models\Notification;
 use App\Models\PayRate;
 use App\Models\TimeClockShift;
@@ -54,6 +57,20 @@ class TimeClockPayrollTest extends TestCase
             'week' => self::WEEK, 'bonus' => 50, 'deductions' => 20, 'note' => 'Saturday job; uniform',
         ])->assertOk();
         $this->assertSame(455, $rows()[$hourly->id]['pay']);
+
+        // A part the technician paid for that week is reimbursed in the pay, line by line;
+        // one already reimbursed is not (Merav, 2026-11-19).
+        $this->inTenant($t['org'], function () use ($t, $hourly) {
+            $job = Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => Customer::create([
+                'owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'A Customer'])->id,
+                'number' => 'JOB-1', 'title' => 'Cap', 'status' => 'Done', 'amount_minor' => 0, 'currency' => 'USD']);
+            foreach ([null, '2026-10-22 15:00'] as $reimbursed) {
+                JobPart::create(['organization_id' => $t['org']->id, 'job_id' => $job->id, 'kind' => 'part', 'item' => 'Chimney cap',
+                    'quantity' => 2, 'price_minor' => 1500, 'paid_by_user_id' => $hourly->id, 'paid_at' => '2026-10-21 15:00', 'reimbursed_at' => $reimbursed]);
+            }
+        });
+        $this->assertSame([30, 485], [$rows()[$hourly->id]['tech_expenses'], $rows()[$hourly->id]['pay']]);
+        $this->assertSame(['JOB-1', 'Chimney cap', 30], array_values(array_intersect_key($rows()[$hourly->id]['expense_lines'][0], array_flip(['job_number', 'item', 'amount']))));
 
         $this->signedInAs($manager)->postJson('/api/v1/hr/time-clock/payroll/approve-all', ['week' => self::WEEK])->assertOk();
         $this->assertSame(['approved'], $rows()->pluck('status')->unique()->values()->all());
