@@ -556,10 +556,25 @@ foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event)
         '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity)(\s|\'|$)/',
         (string) $event->command,
     );
-    $event->when(function () use ($slow) {
+    // In the slow lane a run starts whenever the last one ends (~every 3.5 min), so a job due
+    // only in minute :00/:30 fired by chance (desk 11-19: parity 16:56 -> 22:28). There it is
+    // asked every minute and fires when a due time has passed since it last fired.
+    $cron = $event->expression;
+    if ($slow && $cron !== '* * * * *' && config('ezbizi.scheduler.slow_lane')) {
+        $event->expression = '* * * * *';
+    }
+    $event->when(function () use ($slow, $cron, $event) {
         $inSlowLane = getenv('EZBIZI_SCHEDULE_LANE') === 'slow';
 
         // Flag off: the fast slots run everything and the slow lane nothing.
-        return config('ezbizi.scheduler.slow_lane') ? $slow === $inSlowLane : ! $inSlowLane;
+        if (! config('ezbizi.scheduler.slow_lane')) {
+            return ! $inSlowLane;
+        }
+        if ($slow !== $inSlowLane) {
+            return false;
+        }
+
+        return ! $slow || $cron === '* * * * *'
+            || App\Support\Scheduling\DueSinceLastRun::check((string) $event->command, $cron, $event->timezone instanceof DateTimeZone ? $event->timezone->getName() : $event->timezone, Carbon\CarbonImmutable::now());
     });
 }
