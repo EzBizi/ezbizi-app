@@ -74,6 +74,8 @@ final class TaskRecordFill
             'Last Contact Date' => $lead?->last_contact_at?->toDateString(),
             'Last Customer Contact' => $lead?->last_contact_at?->toDateString(),
             'Booked by' => $job?->created_by_label,
+            // "Date": the job's booked visit (desk for Jose, 11-19); empty without a job.
+            'Date' => $job?->scheduled_for?->toDateString(),
             'Technician' => $job?->performed_by_user_id,
             'Notes' => $lead?->summary,
             'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
