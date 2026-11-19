@@ -70,6 +70,10 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   String get accountNumberField;
   bool keepAccount(Map account) => true;
 
+  /// Under the account's name in the picker: what kind of account it is,
+  /// where a source has more than one (Rodrigo, 01a1ef57).
+  String accountDetail(Map account) => '${account[accountNumberField]}';
+
   String get emptyTitle;
   String get emptyMessage;
   String get noCampaignsText;
@@ -132,6 +136,10 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   Map<String, Map<String, dynamic>> schedules = const {};
   String? error;
   bool loading = false;
+
+  /// When these figures were read from the ad network: they are live, not
+  /// stored, so the time is the freshness (Rodrigo, 01a1ef57).
+  DateTime? readAt;
 
   final TextEditingController search = TextEditingController();
   String sortBy = 'spend';
@@ -206,6 +214,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
         if (!quiet) error = response.message;
         return;
       }
+      readAt = DateTime.now();
       campaigns = List<Map<String, dynamic>>.from(
         ((response.body['data'] as Map?)?['campaigns'] as List? ?? const [])
             .cast<Map>(),
@@ -267,14 +276,14 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   Widget scheduleChip(Map<String, dynamic> c) => all
       ? const SizedBox.shrink()
       : Align(
-    alignment: AlignmentDirectional.centerStart,
-    child: AdScheduleChip(
-      key: ValueKey('$keyPrefix-schedule-${c['id']}'),
-      schedule: schedules['${c['id']}'],
-      canManage: canManage,
-      onTap: () => _editSchedule(c),
-    ),
-  );
+          alignment: AlignmentDirectional.centerStart,
+          child: AdScheduleChip(
+            key: ValueKey('$keyPrefix-schedule-${c['id']}'),
+            schedule: schedules['${c['id']}'],
+            canManage: canManage,
+            onTap: () => _editSchedule(c),
+          ),
+        );
 
   // ── Figures ────────────────────────────────────────────────────────────
 
@@ -357,11 +366,33 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
           const Expanded(child: Center(child: CircularProgressIndicator()))
         else if (error != null)
           Expanded(
-            child: Center(
-              child: Text(error!, style: theme.textTheme.bodyMedium),
+            // What failed and where it is fixed, not a bare sentence: most
+            // failures here are a lost or missing permission on the account.
+            child: EmptyState(
+              key: ValueKey('$keyPrefix-ads-error'),
+              icon: Icons.lock_outline,
+              title: 'This account could not be read',
+              message: error!,
+              actionLabel: OpenDestination.of(context) == null
+                  ? null
+                  : 'Open Integrations',
+              actionIcon: Icons.open_in_new,
+              onAction: OpenDestination.of(context) == null
+                  ? null
+                  : () => OpenDestination.of(context)!('settings'),
             ),
           )
         else ...[
+          if (readAt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                key: ValueKey('$keyPrefix-ads-read-at'),
+                'Read live from the ad network ${formatAgo(readAt!)}. '
+                '${(campaigns ?? const []).isEmpty ? noCampaignsText : '${campaigns!.length} campaigns.'}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
           _kpis(phone),
           const SizedBox(height: 12),
           Expanded(child: phone ? _cards(theme) : _table(theme)),
@@ -394,7 +425,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
                   SearchOption(
                     value: '${a['connection_id']}',
                     label: '${a['name']}',
-                    detail: '${a[accountNumberField]}',
+                    detail: accountDetail(a),
                   ),
               ],
               onChanged: (id) {
@@ -652,7 +683,8 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
             ),
           ),
         ),
-      if (open) for (final r in inactive) draw(r),
+      if (open)
+        for (final r in inactive) draw(r),
     ];
   }
 }

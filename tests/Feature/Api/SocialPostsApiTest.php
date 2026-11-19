@@ -485,8 +485,9 @@ class SocialPostsApiTest extends TestCase
         $theirs = $this->connection($t, 'company', $premier->id, 'Premier', 'pin-b');
 
         $this->inTenant($t['org'], function () use ($t, $mine, $other, $theirs) {
-            $post = function (array $targets) use ($t) {
-                $row = SocialPost::create(['body' => 'x', 'created_by' => $t['admin']->id]);
+            $post = function (array $targets, ?string $at = null) use ($t) {
+                $row = SocialPost::create(['body' => 'x', 'created_by' => $t['admin']->id,
+                    'scheduled_for' => $at, 'scheduled_timezone' => $at ? 'America/New_York' : null]);
                 foreach ($targets as [$connection, $status]) {
                     $row->targets()->create([
                         'social_connection_id' => $connection->getKey(),
@@ -498,14 +499,17 @@ class SocialPostsApiTest extends TestCase
             for ($i = 0; $i < 22; $i++) {
                 $post([[$mine, 'sent']]);
             }
-            $post([[$mine, 'scheduled'], [$other, 'scheduled']]);
+            $post([[$mine, 'scheduled'], [$other, 'scheduled']], '2099-01-05 09:00:00');
             $post([[$mine, 'sent'], [$other, 'failed']]);
             $post([[$mine, 'queued']]);
             // Failed only at the sibling: here it reads as sent.
             $post([[$mine, 'sent'], [$theirs, 'failed']]);
             $post([[$theirs, 'failed']]);
-            // Waiting for approval has not gone out: Scheduled, never Sent.
+            // The Washington case (suggestion 01a1ef57): waiting for approval with
+            // no time. Needs approval only - never Scheduled, never Sent.
             $post([[$mine, 'awaiting_approval']]);
+            // A time is set but one account still waits for approval: not Scheduled yet.
+            $post([[$mine, 'scheduled'], [$other, 'awaiting_approval']], '2099-01-06 09:00:00');
         });
 
         $this->lookingAt($t['admin'], 'company', $t['company']->id);
@@ -515,7 +519,7 @@ class SocialPostsApiTest extends TestCase
             ->getJson(self::ENDPOINT)
             ->assertOk()
             ->assertJsonCount(20, 'data')
-            ->assertJsonPath('meta.tiles', ['scheduled' => 2, 'sent' => 23, 'failed' => 1, 'awaiting' => 1]);
+            ->assertJsonPath('meta.tiles', ['awaiting' => 2, 'ready' => 0, 'scheduled' => 1, 'past_due' => 0, 'sent' => 23, 'failed' => 1]);
 
         $failed = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=failed')
@@ -525,13 +529,16 @@ class SocialPostsApiTest extends TestCase
         $this->assertCount(1, $failed);
         $this->assertEqualsCanonicalizing(['sent', 'failed'], array_column($failed[0]['targets'], 'status'));
 
-        // Two rows, in either order: the scheduled one and the one waiting for approval.
+        // One row: the post with a time whose every account is scheduled.
         $scheduled = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=scheduled')
-            ->assertJsonCount(2, 'data')
+            ->assertJsonCount(1, 'data')
             ->json('data');
-        $this->assertEqualsCanonicalizing(['scheduled', 'awaiting_approval'],
-            array_map(fn ($p) => $p['targets'][0]['status'], $scheduled));
+        $this->assertSame(['scheduled', 'scheduled'], array_column($scheduled[0]['targets'], 'status'));
+
+        $this->signedInAs($admin)
+            ->getJson(self::ENDPOINT.'?status=awaiting')
+            ->assertJsonCount(2, 'data');
 
         // An unknown status is ignored rather than emptying the list.
         $this->signedInAs($admin)
@@ -765,7 +772,7 @@ class SocialPostsApiTest extends TestCase
         // The exact target row: a new key is a decision, not a drift.
         $this->assertSame([
             'id', 'connection_id', 'account', 'provider', 'provider_label', 'status', 'status_label',
-            'failure', 'sent_at', 'url', 'can_delete',
+            'failure', 'company', 'cta_type', 'cta_url', 'connection_status', 'sent_at', 'url', 'can_delete',
         ], array_keys($data['targets'][0]));
         $this->assertNull($data['targets'][0]['status_label']);
 

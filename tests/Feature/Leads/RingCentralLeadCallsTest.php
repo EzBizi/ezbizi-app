@@ -404,6 +404,46 @@ class RingCentralLeadCallsTest extends TestCase
         $this->inTenant($t['org'], fn () => $this->assertSame('Sasha', LeadConversation::query()->value('answered_by')));
     }
 
+    /**
+     * Desk, 2026-11-18: Bar's missed-call alert came ~6 minutes late. RingCentral
+     * keeps an ended call on its active list for minutes (measured: 9 of 10
+     * listed had stopped growing), so the call was held "In progress" a pass.
+     */
+    public function test_a_missed_call_still_on_the_active_list_but_ended_alerts_on_this_pass(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            $rc = new \App\Models\SocialConnection;
+            $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'ringcentral', 'remote_id' => '123', 'display_name' => 'RingCentral']);
+            $rc->connect(['refresh_token' => '-', 'server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+            $rc->save();
+        });
+        $call = fn (string $id, int $agoSeconds, int $duration) => ['id' => $id, 'direction' => 'Inbound',
+            'startTime' => now()->subSeconds($agoSeconds)->toIso8601String(), 'duration' => $duration,
+            'from' => ['phoneNumber' => $id === 'ended1' ? '+15550000041' : '+15550000042'], 'to' => ['phoneNumber' => '+17320000001'], 'result' => 'Missed',
+            'legs' => [['legType' => 'PstnToSip', 'result' => 'Missed', 'duration' => $duration]]];
+        \Illuminate\Support\Facades\Http::fake([
+            'rc.test/restapi/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 't', 'expires_in' => 3600]),
+            // Both still listed: one ended a minute ago, one is ringing now.
+            'rc.test/restapi/v1.0/account/~/active-calls*' => \Illuminate\Support\Facades\Http::response(['records' => [['id' => 'ended1'], ['id' => 'ringing']]]),
+            'rc.test/restapi/v1.0/account/~/phone-number*' => \Illuminate\Support\Facades\Http::response(['records' => [['phoneNumber' => '+17320000001', 'label' => 'NJ - GMB']]]),
+            'rc.test/restapi/v1.0/account/~/call-log*' => \Illuminate\Support\Facades\Http::response(['records' => [
+                $call('ended1', 100, 40),     // rang 40 s, ended a minute ago
+                $call('ringing', 50, 50),     // still reaching now
+            ]]),
+        ]);
+
+        $this->artisan('ezbizi:leads-ringcentral')->assertSuccessful();
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(\App\Support\Leads\RingCentralLeadCalls::MISSED,
+                Lead::query()->whereHas('conversations', fn ($q) => $q->where('remote_id', 'rc_ended1'))->value('source_status'), 'filed as missed, not In progress');
+            $this->assertSame(1, \App\Models\AutomationEvent::query()->where('event_key', 'lead.missed_call')->count(), 'alerted now, once');
+            $this->assertFalse(LeadConversation::query()->where('remote_id', 'rc_ringing')->exists(), 'a call still reaching now waits');
+        });
+    }
+
     /** Desk audit, 2026-11-12: Triplex holds two RingCentral accounts; the second's calls were never read. */
     public function test_every_connected_account_is_read_not_just_the_first(): void
     {

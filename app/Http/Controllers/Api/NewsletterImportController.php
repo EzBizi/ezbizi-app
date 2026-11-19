@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\SocialLibraryItem;
 use App\Models\User;
+use App\Models\WebSite;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
@@ -15,6 +16,7 @@ use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\HtmlImportConverter;
 use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Newsletter\NewsletterIdentity;
+use App\Support\Newsletter\RemoteImageFetcher;
 use App\Support\Newsletter\SvgImporter;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
@@ -269,44 +271,7 @@ class NewsletterImportController extends Controller
             throw ValidationException::withMessages(['file' => 'That file is not a PNG, JPEG, GIF or WebP picture.']);
         }
 
-        $view = ViewScope::forUser($user);
-        [$scopeType, $scopeId] = $view->isOrganization()
-            ? [SocialConnection::SCOPE_ORGANIZATION, (string) $user->organization_id]
-            : [$view->type, (string) $view->id];
-        abort_unless(OwnedScope::mayWrite($user, $user->organization_id, $scopeType, $scopeId),
-            Status::HTTP_FORBIDDEN, 'Choose a view where your assignments allow adding pictures.');
-
-        $hash = hash('sha256', $bytes);
-        $row = SocialLibraryItem::query()->where('scope_type', $scopeType)->where('scope_id', $scopeId)
-            ->where('content_hash', $hash)->first();
-        $duplicate = $row !== null;
-
-        if ($row === null) {
-            $disk = $this->files->defaultDisk();
-            $name = trim((string) $request->input('name', '')) ?: trim((string) $file->getClientOriginalName());
-            $row = SocialLibraryItem::create([
-                'scope_type' => $scopeType,
-                'scope_id' => $scopeId,
-                'name' => mb_substr($name !== '' ? $name : 'Picture.'.$extension, 0, 120),
-                'disk' => $disk,
-                'path' => $this->files->putContents($bytes, $this->files->directoryFor('social-library', (string) $user->organization_id), $extension, $disk),
-                'size' => strlen($bytes),
-                'content_hash' => $hash,
-                'created_by' => $user->getKey(),
-            ]);
-            $this->audit->log('social.library_added', $row, ['name' => $row->name, 'from' => 'newsletter'], actor: $user);
-        }
-
-        return response()->json(['data' => [
-            'id' => $row->id,
-            'name' => $row->name,
-            'kind' => 'image',
-            'size' => (int) $row->size,
-            'scope_type' => $row->scope_type,
-            'created_at' => $row->created_at?->toIso8601String(),
-            'url' => $this->publish($row, $bytes, $extension),
-            'duplicate' => $duplicate,
-        ]], $duplicate ? Status::HTTP_OK : Status::HTTP_CREATED);
+        return $this->storePicture($user, $bytes, $extension, trim((string) $request->input('name', '')) ?: trim((string) $file->getClientOriginalName()));
     }
 
     /**
@@ -415,6 +380,86 @@ class NewsletterImportController extends Controller
             'width' => imagesx($cropped),
             'height' => imagesy($cropped),
         ]], Status::HTTP_CREATED);
+    }
+
+    /**
+     * A picture on one of the company's own websites, copied into its
+     * newsletter library (a starter template's logo and photos). The guards
+     * are in RemoteImageFetcher; storage is the upload's own.
+     */
+    public function copy(Request $request, RemoteImageFetcher $fetcher): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $data = $request->validate(['url' => ['required', 'string', 'max:2000']]);
+        $view = ViewScope::forUser($user);
+        $picture = $fetcher->fetch(
+            (string) $data['url'],
+            $fetcher->allowedHosts((string) $user->organization_id, $view->companyIdsInView()),
+        );
+
+        return $this->storePicture($user, $picture['bytes'], $picture['extension'], $picture['name']);
+    }
+
+    /**
+     * Where a starter's booking button goes in this view: the branch's own
+     * market site in Web Management (<site>/booking/), or null for the
+     * template's national page.
+     */
+    public function bookingLink(Request $request): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $view = ViewScope::forUser($user);
+        $site = $view->type === ViewScope::FRANCHISE
+            ? WebSite::withoutGlobalScopes()->where('organization_id', $user->organization_id)
+                ->where('franchise_id', $view->id)->orderByDesc('has_booking')->orderBy('host')->first()
+            : null;
+
+        return response()->json(['data' => [
+            'url' => $site === null ? null : 'https://'.strtolower((string) $site->host).'/booking/',
+            'site' => $site?->host,
+        ]]);
+    }
+
+    /** One picture into the view's library, deduplicated by content, with its public address. */
+    private function storePicture(User $user, string $bytes, string $extension, string $name): JsonResponse
+    {
+        $view = ViewScope::forUser($user);
+        [$scopeType, $scopeId] = $view->isOrganization()
+            ? [SocialConnection::SCOPE_ORGANIZATION, (string) $user->organization_id]
+            : [$view->type, (string) $view->id];
+        abort_unless(OwnedScope::mayWrite($user, $user->organization_id, $scopeType, $scopeId),
+            Status::HTTP_FORBIDDEN, 'Choose a view where your assignments allow adding pictures.');
+
+        $hash = hash('sha256', $bytes);
+        $row = SocialLibraryItem::query()->where('scope_type', $scopeType)->where('scope_id', $scopeId)
+            ->where('content_hash', $hash)->first();
+        $duplicate = $row !== null;
+
+        if ($row === null) {
+            $disk = $this->files->defaultDisk();
+            $row = SocialLibraryItem::create([
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'name' => mb_substr($name !== '' ? $name : 'Picture.'.$extension, 0, 120),
+                'disk' => $disk,
+                'path' => $this->files->putContents($bytes, $this->files->directoryFor('social-library', (string) $user->organization_id), $extension, $disk),
+                'size' => strlen($bytes),
+                'content_hash' => $hash,
+                'created_by' => $user->getKey(),
+            ]);
+            $this->audit->log('social.library_added', $row, ['name' => $row->name, 'from' => 'newsletter'], actor: $user);
+        }
+
+        return response()->json(['data' => [
+            'id' => $row->id,
+            'name' => $row->name,
+            'kind' => 'image',
+            'size' => (int) $row->size,
+            'scope_type' => $row->scope_type,
+            'created_at' => $row->created_at?->toIso8601String(),
+            'url' => $this->publish($row, $bytes, $extension),
+            'duplicate' => $duplicate,
+        ]], $duplicate ? Status::HTTP_OK : Status::HTTP_CREATED);
     }
 
     /** The one public copy of a library picture, written the first time it is needed. */

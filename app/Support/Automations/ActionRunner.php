@@ -3874,7 +3874,10 @@ class ActionRunner
             : [];
 
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
+            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event)
+                // {{branch}} on a record's event: the record's branch (its Area on a task, 2026-11-17).
+                ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
+                    ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
             $text = is_scalar($value) ? (string) $value : '';
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
@@ -4004,6 +4007,13 @@ class ActionRunner
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
         $group = trim((string) ($action['group'] ?? ''));
+        // No group of exactly that name: the board's group that contains it
+        // ("Customer Relations" finds "🤝 Customer Relations Board - Adeline";
+        // Jose, 2026-11-17: the rule made a duplicate group on every board).
+        if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
+            $group = (string) ($board->groups()->orderBy('position')->get()
+                ->first(fn ($g) => str_contains(mb_strtolower($g->name), mb_strtolower($group)))?->name ?? $group);
+        }
 
         // Skip while an open task in that group has this title, or carries the
         // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.
@@ -4083,23 +4093,29 @@ class ActionRunner
                     }
                 }
             }
-            app(TaskWriter::class)->create($board, [
-                'title' => mb_substr($title, 0, 255),
+            // A long title (a whole review) is cut on a word and kept whole as the
+            // first update: the New-task bell's title has no room for it (11-18).
+            $short = mb_strlen($title) <= 120 ? $title : rtrim(preg_replace('/\s+\S*$/u', '', mb_substr($title, 0, 120)) ?: mb_substr($title, 0, 120), " ,.;:-").'…';
+            $made = app(TaskWriter::class)->create($board, [
+                'title' => $short,
                 'assignee_user_ids' => $owners->map->getKey()->all(),
                 ...($values === [] ? [] : ['values' => $values]),
                 ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
                 'about_id' => $about === false ? null : $record->getKey(),
             ], $actor, $automation?->getKey());
+            if ($short !== $title) {
+                app(TaskWriter::class)->comment($made, $actor, $title);
+            }
 
-            return 'Added the task "'.$title.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
+            return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
         });
     }
 
     private function assignTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.assign', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
 
         $stored = (string) ($action['user_field'] ?? '');
@@ -4129,7 +4145,7 @@ class ActionRunner
     private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.move_group', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $groupId = (string) ($action['group_id'] ?? '');
         if ($subject->group_id === $groupId) {
@@ -4152,7 +4168,7 @@ class ActionRunner
     {
         $type = 'task.shift_date';
         if (! $subject instanceof Task) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $column = (string) ($action['column_id'] ?? 'due');
         $amount = (int) ($action['amount'] ?? 0);
@@ -4190,7 +4206,7 @@ class ActionRunner
     {
         $type = 'task.set_value';
         if (! $subject instanceof Task) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $columnId = (string) ($action['column_id'] ?? '');
         $raw = $action['value'] ?? null;

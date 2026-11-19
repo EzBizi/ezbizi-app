@@ -827,12 +827,13 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-marketing-social-panes',
         title: 'Social Media Management',
         body:
-            'Dashboard, Compose, Calendar, Accounts, Comments and QR Codes, as your role allows.',
+            'Comments, Connections, QR codes and New post, beside the '
+            'calendar, as your role allows.',
       ),
       TourStep(
-        anchor: 'tour-marketing-social-tiles',
+        anchor: 'tour-marketing-month',
         title: 'Your posts',
-        body: 'Scheduled, Sent and Failed narrow the timeline, with counts.',
+        body: 'Each post on the day it goes out, with its networks and state.',
       ),
       TourStep(
         anchor: 'tour-marketing-new-post',
