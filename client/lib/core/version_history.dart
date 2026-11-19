@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
+      'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
+      'Task Board: deleting a group or a board asks for your authenticator code first',
+      'Notifications: Assigned to me and Mentioned show task assignments and mentions, including ones made on Monday',
+      'Task Board: changes made on Monday are no longer recorded as made by the account that connects Monday',
+    ]),
     VersionRelease(version: '0.0.0605', date: '19 Nov 2026', items: [
       'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
       'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
