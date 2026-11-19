@@ -98,9 +98,9 @@ final class MondayPush
                 $entries = MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)
                     ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
                     ->when($shards > 1, fn ($q) => $q->whereRaw('MOD(CRC32(task_id), ?) = ?', [$shards, $shard]))
-                    // Live work first (desk 11-18: a missed call waited an hour behind 7k backfill rows): a row
-                    // queued to wait (available_at well after its change: a backfill) goes after every live one.
-                    ->orderByRaw('CASE WHEN available_at IS NOT NULL AND available_at > changed_at + INTERVAL 5 MINUTE THEN 1 ELSE 0 END')
+                    // Live work first (desk 11-18: a missed call waited an hour behind 7k backfill rows). A backfill
+                    // row says so when queued; a retry's later available_at never makes a live row one (desk 11-19).
+                    ->orderBy('backfill')
                     ->orderBy('changed_at')->limit($limit)->get();
                 foreach ($entries as $entry) {
                     if ($deadline !== null && microtime(true) > $deadline) {

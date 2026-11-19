@@ -258,13 +258,30 @@ class MondayPushTest extends TestCase
         $this->inTenant($this->tenant['org'], function () {
             foreach (range(1, 3) as $i) {
                 MondayOutboxEntry::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task->id,
-                    'kinds' => ['title'], 'changed_at' => now()->subHours(5), 'available_at' => now()->subMinute()]); // backfill: deferred, now due
+                    'kinds' => ['title'], 'backfill' => true, 'changed_at' => now()->subHours(5), 'available_at' => now()->subMinute()]); // backfill, now due
             }
             app(TaskWriter::class)->create($this->board, ['title' => 'Missed call now'], $this->jose);
         });
         $this->artisan('ezbizi:monday-push', ['--limit' => 1])->assertSuccessful();
 
         $this->assertStringContainsString('create_item(', $this->mutations[0]['query'], 'the live create went first');
+    }
+
+    /** Desk 11-19: a live row whose retry moved available_at well past its change is still live, ahead of every backfill row. */
+    public function test_a_retried_live_row_still_goes_before_backfill_rows(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (range(1, 3) as $i) {
+                MondayOutboxEntry::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task->id,
+                    'kinds' => ['title'], 'backfill' => true, 'changed_at' => now()->subHours(5), 'available_at' => now()->subHours(4)]);
+            }
+            app(TaskWriter::class)->create($this->board, ['title' => 'Overbooked'], $this->jose);
+            // It hit Monday's budget once: the retry put available_at 14 minutes after its change.
+            MondayOutboxEntry::query()->whereJsonContains('kinds', 'create')->update(['attempts' => 1, 'changed_at' => now()->subMinutes(15), 'available_at' => now()->subMinute()]);
+        });
+        $this->artisan('ezbizi:monday-push', ['--limit' => 1])->assertSuccessful();
+
+        $this->assertStringContainsString('create_item(', $this->mutations[0]['query'], 'the retried live create went first');
     }
 
     /** Desk 11-18: one switch pauses every sender; nothing is lost while paused. */
