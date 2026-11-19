@@ -16,6 +16,12 @@ class VersionHistory {
     VersionRelease(version: '0.0.0605', date: '19 Nov 2026', items: [
       'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
       'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
+      'Task Board: the Date column on Customer Relations tasks shows the job booked visit',
+      'Task Board: complaint and review tasks fill the board own Area, Reason, Address, Client name and Phone from the job; Resolution is left for people',
+      'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
+      'Task Board: tasks made on Monday as Job number and name arrive with just the name, the number in its job column, on both sides',
+      'Task Board: hold the mouse wheel button and drag to move around a wide table',
+      'Task Board: the people on a task reach Monday even when one of them is not on that private Monday board',
     ]),
     VersionRelease(version: '0.0.0604', date: '19 Nov 2026', items: [
       'Task Board: a task made without a group goes to Open Tasks, never into Company Info',
