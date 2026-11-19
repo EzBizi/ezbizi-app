@@ -44,6 +44,35 @@ final class QrImage
         return Encoder::encode($text, self::level(), 'UTF-8')->getMatrix()->getWidth();
     }
 
+    /**
+     * The modules the pad touches, partly covered included: [first, last] on
+     * both axes. A long address (version 7+) puts an alignment pattern in the
+     * middle; then {@see fits()} is false and no picture is drawn.
+     *
+     * @return array{int, int}
+     */
+    public static function covered(int $n): array
+    {
+        return [(int) floor($n / 2 - self::PAD_RATIO * $n / 2), (int) ceil($n / 2 + self::PAD_RATIO * $n / 2) - 1];
+    }
+
+    /** Whether a picture can sit in the middle without hiding a function pattern. */
+    public static function fits(string $text): bool
+    {
+        $code = Encoder::encode($text, self::level(), 'UTF-8');
+        $function = $code->getVersion()->buildFunctionPattern();
+        [$first, $last] = self::covered($code->getMatrix()->getWidth());
+        for ($y = $first; $y <= $last; $y++) {
+            for ($x = $first; $x <= $last; $x++) {
+                if ($function->get($x, $y)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     /** The pad in pixels for an image $size wide: [x, y, side]. */
     public static function pad(string $text, int $size): array
     {
@@ -60,7 +89,7 @@ final class QrImage
     {
         $size = 2000;
         $bytes = (new Writer(new GDLibRenderer($size, self::MARGIN)))->writeString($text, 'UTF-8', self::level());
-        $logo = $picture === null ? false : @imagecreatefromstring($picture);
+        $logo = $picture === null || ! self::fits($text) ? false : @imagecreatefromstring($picture);
         if ($logo === false) {
             return $bytes;
         }
@@ -88,7 +117,7 @@ final class QrImage
         $size = 1000;
         $svg = (new Writer(new ImageRenderer(new RendererStyle($size, self::MARGIN), new SvgImageBackEnd)))
             ->writeString($text, 'UTF-8', self::level());
-        $info = $picture === null ? false : @getimagesizefromstring($picture);
+        $info = $picture === null || ! self::fits($text) ? false : @getimagesizefromstring($picture);
         if ($info === false || ! in_array($info['mime'] ?? '', ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
             return $svg;
         }

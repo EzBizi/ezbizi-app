@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Support\Marketing\QrImage;
 use BaconQrCode\Encoder\Encoder;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -25,11 +26,19 @@ class QrImageTest extends TestCase
         return [
             'production' => ['https://app.ezbizi.com/q/ABCDEFG'],
             'longer host' => ['https://staging.app.ezbizi.com/q/ABCDEFG'],
-            'much longer' => ['https://a-very-long-subdomain.example-ezbizi-host.com/q/ABCDEFG/xyz'],
         ];
     }
 
-    /** @dataProvider addresses */
+    /** Version 7+ has an alignment pattern in the middle: no picture rather than an unreadable code. */
+    public function test_a_long_address_whose_middle_is_a_pattern_gets_no_picture(): void
+    {
+        $url = 'https://a-very-long-subdomain.example-ezbizi-host.com/q/ABCDEFG/xyz';
+        $this->assertFalse(QrImage::fits($url));
+        $this->assertTrue(QrImage::fits('https://app.ezbizi.com/q/ABCDEFG'));
+        $this->assertStringNotContainsString('<image ', QrImage::svg($url, $this->red()));
+    }
+
+    #[DataProvider('addresses')]
     public function test_the_pad_spares_every_function_module_and_stays_within_h(string $url): void
     {
         $code = Encoder::encode($url, QrImage::level(), 'UTF-8');
@@ -38,10 +47,8 @@ class QrImageTest extends TestCase
         $function = $version->buildFunctionPattern();
 
         // Every module the pad touches at all, partly covered included.
-        $from = $n / 2 - QrImage::PAD_RATIO * $n / 2;
-        $to = $n / 2 + QrImage::PAD_RATIO * $n / 2;
-        $first = (int) floor($from);
-        $last = (int) ceil($to) - 1;
+        $this->assertTrue(QrImage::fits($url));
+        [$first, $last] = QrImage::covered($n);
         $covered = [];
         for ($y = $first; $y <= $last; $y++) {
             for ($x = $first; $x <= $last; $x++) {
@@ -109,11 +116,7 @@ class QrImageTest extends TestCase
     public function test_a_picture_is_drawn_on_a_white_pad_in_the_middle(): void
     {
         $url = 'https://app.ezbizi.com/q/ABCDEFG';
-        $red = imagecreatetruecolor(300, 100);
-        imagefill($red, 0, 0, imagecolorallocate($red, 255, 0, 0));
-        ob_start();
-        imagepng($red);
-        $picture = (string) ob_get_clean();
+        $picture = $this->red();
 
         $img = imagecreatefromstring(QrImage::png($url, $picture));
         $this->assertSame([255, 0, 0], $this->rgb($img, 1000, 1000), 'The picture is in the centre.');
@@ -129,6 +132,16 @@ class QrImageTest extends TestCase
         $this->assertStringContainsString('data:image/png;base64,', $svg);
         $this->assertStringNotContainsString('<image ', QrImage::svg($url, null));
         $this->assertStringNotContainsString('<image ', QrImage::svg($url, 'not a picture'));
+    }
+
+    private function red(): string
+    {
+        $red = imagecreatetruecolor(300, 100);
+        imagefill($red, 0, 0, imagecolorallocate($red, 255, 0, 0));
+        ob_start();
+        imagepng($red);
+
+        return (string) ob_get_clean();
     }
 
     /** @return array{int, int, int} */
