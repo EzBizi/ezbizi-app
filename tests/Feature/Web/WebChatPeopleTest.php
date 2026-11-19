@@ -48,6 +48,29 @@ class WebChatPeopleTest extends TestCase
         $this->assertNull($this->getJson('/api/v1/web/public/values?key='.$site->public_key)->json('widgets.chat.team'));
     }
 
+    /** Bar, 2026-11-18: a re-signed avatar link purged every page cache every 5 minutes. */
+    public function test_the_avatar_link_is_stable_and_serves_a_small_image(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        [$site, $t] = $this->site();
+        $chat = $this->startChat($site, 'Hi');
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->signedInAs($t['admin'])->postJson('/api/v1/me/avatar', ['photo' => UploadedFile::fake()->image('me.jpg', 800, 800)])->assertSuccessful();
+        $this->signedInAs($t['admin'])->postJson('/api/v1/leads/'.$lead->getKey().'/messages', ['text' => 'Hello'])->assertCreated();
+        auth()->forgetGuards();
+
+        $read = fn () => $this->withToken($t['site_token'])->getJson('/api/v1/web/plugin/values?host=a-1chimney.com')->json('widgets.chat.team.0.avatar');
+        $first = $read();
+        $this->travel(2)->hours();
+        $this->assertNotNull($first);
+        $this->assertSame($first, $read(), 'the same photo keeps the same link');
+
+        $this->travel(30)->days();
+        $image = $this->get($first)->assertOk();
+        $this->assertSame('image/jpeg', $image->headers->get('Content-Type'));
+        $this->assertSame([96, 96], array_slice(getimagesizefromstring($image->getContent()), 0, 2));
+    }
+
     public function test_typing_shows_both_ways_and_fades(): void
     {
         [$site, $t] = $this->site();

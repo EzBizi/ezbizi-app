@@ -334,12 +334,46 @@ class EnquiriesController extends Controller
     }
 
     /** GET /api/v1/web/chat/avatar/{user} — a dispatcher's photo, by the signed link a chat was given. */
-    public function avatar(string $user): StreamedResponse
+    public function avatar(string $user): \Symfony\Component\HttpFoundation\Response
     {
         $subject = $this->tenant->runWithoutTenant(fn () => User::query()->find($user));
         abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
 
-        return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+        // A chat header draws it at ~40 px: send ~96 px, not the 500 KB original (Bar, 2026-11-18).
+        $small = \Illuminate\Support\Facades\Cache::remember(
+            'web-chat-avatar:'.sha1($subject->avatar_path),
+            now()->addDays(30),
+            fn () => self::thumbnail((string) app(FileStore::class)->contents($subject->avatar_path)) ?? '',
+        );
+
+        if ($small === '') {
+            return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+        }
+
+        return response($small, 200, [
+            'Content-Type' => 'image/jpeg',
+            // The URL changes with the photo, so it can be cached for good.
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ]);
+    }
+
+    /** A 96 px square JPEG of [$bytes], or null when GD cannot read it. */
+    public static function thumbnail(string $bytes, int $size = 96): ?string
+    {
+        $src = $bytes === '' ? false : @imagecreatefromstring($bytes);
+        if ($src === false) {
+            return null;
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $side = min($w, $h);
+        $dst = imagecreatetruecolor($size, $size);
+        imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $src, 0, 0, intdiv($w - $side, 2), intdiv($h - $side, 2), $size, $size, $side, $side);
+        ob_start();
+        imagejpeg($dst, null, 82);
+
+        return (string) ob_get_clean();
     }
 
     /**
