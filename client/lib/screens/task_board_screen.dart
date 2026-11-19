@@ -3307,8 +3307,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     child: Listener(
       key: const Key('tasks-middle-pan'),
       onPointerDown: (e) {
-        if (e.buttons & kMiddleMouseButton != 0)
+        if (e.buttons & kMiddleMouseButton != 0) {
           setState(() => _panning = true);
+        }
       },
       onPointerUp: (_) {
         if (_panning) setState(() => _panning = false);
