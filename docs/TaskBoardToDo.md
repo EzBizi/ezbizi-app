@@ -62,6 +62,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | M5 | Merav (Project Management): parts option "paid by technician" (tech expense to reimburse) | Jobs (PM code) | WORKING | SHA |
 | M6 | Contract address per branch: A-1 branches with several offices need one picked (CT, DMV, GA, IL, NJ, OH, TX, Nationwide; New York missing). Other companies' branches have none | Merav/Jose | WAITING | Sheet sent 11-19: docs/agents/a1-branch-contract-addresses-2026-11-19.xlsx; HR fills after 0607 (MA set) |
 | P1 | A-1 Chimney texting (A2P campaign) | Phone | DONE | Campaign VERIFIED 11-19 15:16 UTC; texting on for 11 numbers; the 12th number (+19545162455) was the A-1 WhatsApp bot, bound by mistake; removed from the texting service (11 = 11) |
+| S1 | PHP critical vulnerability phpAfterShell (CVE-2026-126714, CVSS 9.2) (Jose 11-19 "check this") | Desk | MITIGATED | App server (PHP 8.2.35/8.4.27, vulnerable): session upload progress turned off 11-19, verified through FPM, site OK. Websites server (PHP 8.3.36/8.4.27): already off since the php2shell fix. SiteGround hosts no longer exist. TODO: upgrade PHP on both servers when a patched build ships, then remove the mitigation files |
 
 ## Done (measured)
 
