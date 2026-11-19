@@ -225,7 +225,7 @@ foreach (range(0, 3) as $shard) {
 // and a Monday move may not bump the item's clock), plus what Monday archived or deleted (state-confirmed):
 // every board up to 2,000 items; NW stays nightly.
 Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2000')->everyThirtyMinutes()->withoutOverlapping(25);
-Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
+Schedule::command('ezbizi:monday-parity --values')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);

@@ -397,6 +397,29 @@ final class MondayBoardReader
         return $out;
     }
 
+    /**
+     * Every item's column values on a board, by column TITLE (lowercased), as Monday shows them
+     * (the value parity check, desk 11-19: values Monday never got stayed invisible).
+     *
+     * @return array<string, array<string, string>> item id => [title => text]
+     */
+    public function valuesByItem(string $boardId): array
+    {
+        $out = [];
+        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b) { items_page(limit:200) { cursor items { id column_values { text column { title } } } } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? null;
+        while ($page !== null) {
+            foreach ($page['items'] ?? [] as $item) {
+                foreach ($item['column_values'] ?? [] as $v) {
+                    $out[(string) $item['id']][mb_strtolower(trim((string) ($v['column']['title'] ?? '')))] = trim((string) ($v['text'] ?? ''));
+                }
+            }
+            $cursor = $page['cursor'] ?? null;
+            $page = $cursor ? ($this->api->query('query($c:String!){ next_items_page(limit:200, cursor:$c) { cursor items { id column_values { text column { title } } } } }', ['c' => $cursor])['next_items_page'] ?? null) : null;
+        }
+
+        return $out;
+    }
+
     /** @return array{owners: array<string, true>, subscribers: array<string, true>} a board's people on Monday, by Monday user id */
     public function boardPeople(string $boardId): array
     {

@@ -3,12 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Jobs\PushBoardMembers;
+use App\Models\MondayOutboxEntry;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskGroup;
+use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\Monday\MondayBoardReader;
 use App\Support\Tasks\Monday\MondayClient;
 use App\Support\Tasks\Monday\MondayOutbox;
@@ -28,7 +30,7 @@ use Illuminate\Support\Facades\Log;
  */
 class MondayParity extends Command
 {
-    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated} {--gone : with --groups-only, also trash what Monday says is archived or deleted} {--max-items= : skip boards holding more Monday items than this (by our own count)}';
+    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated} {--gone : with --groups-only, also trash what Monday says is archived or deleted} {--max-items= : skip boards holding more Monday items than this (by our own count)} {--values : also compare each column value here with Monday (open tasks); with --fix, queue the ones Monday lacks or differs on} {--done : with --values, finished tasks too}';
 
     protected $description = 'Compare every Monday-mirrored board with Monday: what exists on one side only';
 
@@ -91,10 +93,11 @@ class MondayParity extends Command
                     $gone = $gone->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
-                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed + $members;
+                    $values = $this->option('values') ? $this->valueDrift($reader, $board, $mondayId, (bool) $this->option('fix')) : 0;
+                    $n = $values + count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed + $members;
                     $drift += $n;
-                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d, members differ %d',
-                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed, $members));
+                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d, members differ %d'.($this->option('values') ? ', values differ %d' : ''),
+                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed, $members, $values));
                     $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => $this->option('groups-only') ? $pushGroup : [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null, 'members' => $members];
                 }
 
@@ -143,5 +146,64 @@ class MondayParity extends Command
         }
 
         return $drift > 0 && ! $this->option('fix') ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Tasks here whose column value Monday does not show (desk 11-19: Client name and Phone
+     * filled here, empty on Monday, and no check could see it). Compared as a person reads
+     * them, by column title; a value Monday has no column for is not counted. With --fix,
+     * each task gets one deferred outbox row naming the columns that differ.
+     */
+    private function valueDrift(MondayBoardReader $reader, TaskBoard $board, string $mondayId, bool $fix): int
+    {
+        $there = $reader->valuesByItem($mondayId);
+        $norm = function (?string $s, string $type): string {
+            $s = mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string) $s)));
+            if (in_array($type, ['person', 'people', 'tags', 'dropdown'], true)) {
+                $parts = array_filter(array_map('trim', explode(',', $s)));
+                sort($parts);
+                $s = implode(',', $parts);
+            }
+            if ($type === 'date') {
+                $s = substr($s, 0, 10);
+            }
+
+            return $s;
+        };
+        $tasks = Task::query()->where('board_id', $board->id)->whereNull('parent_task_id')->where('external_ref', 'like', 'monday:%')
+            ->when(! $this->option('done'), fn ($q) => $q->whereNull('completed_at'))
+            ->with(['values.column'])->get();
+        $n = 0;
+        foreach ($tasks as $task) {
+            $item = $there[substr((string) $task->external_ref, 7)] ?? null;
+            if ($item === null) {
+                continue; // not on this board there: the item checks above report it
+            }
+            $kinds = [];
+            foreach ($task->values as $v) {
+                if ($v->column === null) {
+                    continue;
+                }
+                $title = mb_strtolower(trim($v->column->name));
+                if (! array_key_exists($title, $item)) {
+                    continue;
+                }
+                $here = $norm(ColumnConverter::words($v->column, $v), $v->column->type);
+                if ($here !== '' && $here !== $norm($item[$title], $v->column->type)) {
+                    $kinds[] = 'values:'.$v->column_id;
+                }
+            }
+            if ($kinds === []) {
+                continue;
+            }
+            $n++;
+            if ($fix) {
+                // Deferred: live rows go first (desk 11-18).
+                MondayOutboxEntry::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id,
+                    'kinds' => $kinds, 'changed_at' => now(), 'available_at' => now()->addMinutes(10)]);
+            }
+        }
+
+        return $n;
     }
 }
