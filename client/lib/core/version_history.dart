@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0602', date: '19 Nov 2026', items: [
+      'Task Board: when Monday asks EzBizi to slow down, the sync picks up where it left off a minute later instead of stopping with an error',
+    ]),
     VersionRelease(version: '0.0.0601', date: '18 Nov 2026', items: [
       'Task Board: changes made on Monday by people show here within a couple of minutes, even while EzBizi is sending a large update to Monday',
       'Task Board: a title or group changed here is no longer put back to the old Monday value before Monday has received the change',
