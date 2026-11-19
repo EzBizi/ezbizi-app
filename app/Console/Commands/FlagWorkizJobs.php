@@ -208,6 +208,28 @@ class FlagWorkizJobs extends Command
         return $name === '' ? null : (User::query()->where('is_active', true)->find(
             WorkizTeamMember::query()->where('franchise_id', $w->franchise_id)
                 ->whereRaw('LOWER(name) = ?', [$name])->value('user_id'))
-            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first());
+            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first()
+            ?? self::byFirstAndLast($name));
+    }
+
+    /**
+     * Same first and last name, a middle name either side ignored (Jose 11-19:
+     * "Sasha Solano" is "Sasha marie Solano"). Only a single active match counts.
+     */
+    public static function byFirstAndLast(string $name): ?User
+    {
+        $words = preg_split('/\s+/u', mb_strtolower(trim($name)), -1, PREG_SPLIT_NO_EMPTY);
+        if (count($words) < 2) {
+            return null;
+        }
+        [$first, $last] = [$words[0], end($words)];
+        $hits = User::query()->where('is_active', true)->where('name', 'like', $first.'%'.$last)->get()
+            ->filter(function (User $u) use ($first, $last) {
+                $w = preg_split('/\s+/u', mb_strtolower(trim((string) $u->name)), -1, PREG_SPLIT_NO_EMPTY);
+
+                return count($w) >= 2 && $w[0] === $first && end($w) === $last;
+            });
+
+        return $hits->count() === 1 ? $hits->first() : null;
     }
 }
