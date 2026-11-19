@@ -43,6 +43,18 @@ final class TaskRecordFill
     {
         $board = $task->board;
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
+        // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
+        // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
+        if ($job === null) {
+            $phoneCol = $board->columns()->where('name', 'Phone number')->first();
+            $ten = substr((string) preg_replace('/\D+/', '', (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''))), -10);
+            if (strlen($ten) === 10) {
+                $at = $task->created_at ?? now();
+                $job = Job::query()->withoutGlobalScopes()
+                    ->whereIn('customer_id', Customer::query()->withoutGlobalScopes()->tap(fn ($q) => Customer::phoneLike($q, $ten))->select('id'))
+                    ->get()->sortBy(fn (Job $j) => $j->created_at ? abs($j->created_at->diffInSeconds($at)) : PHP_INT_MAX)->first();
+            }
+        }
         $customer = $job?->customer_id ? Customer::query()->withoutGlobalScopes()->find($job->customer_id) : null;
 
         $text = trim(implode(' ', array_filter([$task->title, $lead?->summary, $lead?->category])));
@@ -56,6 +68,8 @@ final class TaskRecordFill
             'Address' => $address,
             'Client name' => $customer?->name ?? $lead?->contact_name,
             'Phone number' => $customer?->phone ?? $lead?->phone,
+            'EzBizi Job #' => $job?->number,
+            'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
         ];
 
         $set = [];

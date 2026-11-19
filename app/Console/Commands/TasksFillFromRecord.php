@@ -17,7 +17,7 @@ use Illuminate\Console\Command;
  */
 class TasksFillFromRecord extends Command
 {
-    protected $signature = 'ezbizi:tasks-fill-from-record {--org=} {--as=} {--rule=* : automation ids whose tasks to fill} {--group= : also every open task in groups whose name contains this} {--review=* : of those, the rules whose tasks are bad reviews} {--redo-reason : first clear a Reason no person has touched (ours: the rule or the Description move), so it is worked out per task} {--dry}';
+    protected $signature = 'ezbizi:tasks-fill-from-record {--org=} {--as=} {--rule=* : automation ids whose tasks to fill} {--group= : also every open task in groups whose name contains this} {--all-open : every open task on every board} {--review=* : of those, the rules whose tasks are bad reviews} {--redo-reason : first clear a Reason no person has touched (ours: the rule or the Description move), so it is worked out per task} {--dry}';
 
     protected $description = 'Fill Area, Reason, Address, Client name and Phone on rule-made tasks from their lead and job';
 
@@ -29,7 +29,8 @@ class TasksFillFromRecord extends Command
             $actor = User::query()->findOrFail($this->option('as'));
             $counts = ['tasks' => 0, 'filled' => 0, 'cells' => 0];
             Task::query()->whereNull('completed_at')->where(fn ($q) => $q->whereIn('created_by_automation_id', (array) $this->option('rule'))
-                ->when($this->option('group'), fn ($q, $g) => $q->orWhereHas('group', fn ($x) => $x->where('name', 'like', '%'.$g.'%'))))
+                ->when($this->option('group'), fn ($q, $g) => $q->orWhereHas('group', fn ($x) => $x->where('name', 'like', '%'.$g.'%')))
+                ->when($this->option('all-open'), fn ($q) => $q->orWhereNotNull('id')))
                 ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts) {
                     foreach ($tasks as $task) {
                         $counts['tasks']++;
