@@ -203,6 +203,12 @@ void main() {
     expect(log.last.$2, '/tasks/bulk');
     expect(find.text('2 tasks deleted'), findsOneWidget);
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
+
+    // It times out on its own: an action makes a SnackBar persist by default
+    // (Flutter 3.35+), and "Task deleted" stayed up for good (Jose 11-19).
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('2 tasks deleted'), findsNothing);
   });
 
   testWidgets('delete from the menu shows Undo, which restores', (

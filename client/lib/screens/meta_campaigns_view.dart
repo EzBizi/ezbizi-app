@@ -93,7 +93,8 @@ class _MetaCampaignsViewState
 
   /// Every visible row, depth-first, with its depth.
   @override
-  bool isActive((Map<String, dynamic>, int) row) => row.$1['status'] == 'ACTIVE';
+  bool isActive((Map<String, dynamic>, int) row) =>
+      row.$1['status'] == 'ACTIVE';
 
   @override
   int depthOf((Map<String, dynamic>, int) row) => row.$2;
@@ -150,6 +151,8 @@ class _MetaCampaignsViewState
     messenger.showSnackBar(
       SnackBar(
         content: Text('${node['name']} ${on ? 'on' : 'paused'}'),
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: () => _toggle(node, !on),

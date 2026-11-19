@@ -178,6 +178,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
         content: Text('$name taken out'),
         behavior: SnackBarBehavior.floating,
         width: 420,
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => _saveMembers(group, before),
@@ -407,7 +409,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               isDense: true,
               hint: 'Choose a report · ${unset.length}',
               options: [
-                for (final p in unset) SearchOption(value: p.key, label: p.label),
+                for (final p in unset)
+                  SearchOption(value: p.key, label: p.label),
               ],
               onChanged: (key) {
                 if (key != null) _create(key);

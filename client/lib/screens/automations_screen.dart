@@ -1053,6 +1053,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           SnackBar(
             key: const ValueKey('automation-live-undo'),
             content: Text('${automation['name']} is ${on ? 'on' : 'off'}.'),
+            // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+            persist: false,
             action: SnackBarAction(
               label: 'Undo',
               onPressed: () => _setActive(automation, !on, undoing: true),

@@ -226,6 +226,8 @@ class _ListPaneState extends State<_ListPane> {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text('Removed ${_rowTitle(row)}'),
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {

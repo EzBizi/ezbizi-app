@@ -814,9 +814,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return t['group_id'];
   }
 
-  void _say(String text, {SnackBarAction? action}) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(text), action: action));
+  void _say(
+    String text, {
+    SnackBarAction? action,
+  }) => ScaffoldMessenger.of(context).showSnackBar(
+    // An action makes a SnackBar persist by default (Flutter 3.35+), so "Task
+    // deleted · Undo" stayed up for good (Jose 11-19) and hid the scrollbar.
+    SnackBar(content: Text(text), action: action, persist: false),
+  );
 
   /// Drag and drop: [id] lands in [groupId] at [position] (null = the end).
   /// A picked row carries every picked row with it, in board order.
