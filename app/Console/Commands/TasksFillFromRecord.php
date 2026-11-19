@@ -28,22 +28,26 @@ class TasksFillFromRecord extends Command
         return $tenant->run($org, function () use ($fill) {
             $actor = User::query()->findOrFail($this->option('as'));
             $counts = ['tasks' => 0, 'filled' => 0, 'cells' => 0];
-            $before = \App\Models\AutomationEvent::query()->count();
+            $before = now()->subSecond();
+            $touched = [];
             $checked = false;
             Task::query()->whereNull('completed_at')->where(fn ($q) => $q->whereIn('created_by_automation_id', (array) $this->option('rule'))
                 ->when($this->option('group'), fn ($q, $g) => $q->orWhereHas('group', fn ($x) => $x->where('name', 'like', '%'.$g.'%')))
                 ->when($this->option('all-open'), fn ($q) => $q->orWhereNotNull('id')))
-                ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts, &$checked, $before) {
+                ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts, &$checked, $before, &$touched) {
                     // The first batch's events are read before the rest runs (RetardMoments 11-18): any, and it stops.
                     if (! $checked && $counts['tasks'] > 0) {
                         $checked = true;
-                        $raised = \App\Models\AutomationEvent::query()->count() - $before;
+                        $raised = \App\Models\AutomationEvent::query()->whereIn('subject_id', $touched)->where('occurred_at', '>=', $before)->count();
                         if ($raised > 0) {
                             throw new \RuntimeException("The first batch raised {$raised} automation event(s); stopped.");
                         }
                     }
                     foreach ($tasks as $task) {
                         $counts['tasks']++;
+                        if (! $checked) {
+                            $touched[] = $task->id; // the first batch's own tasks: only their events count
+                        }
                         $about = (string) $task->about_type;
                         $lead = $task->about_id && str_contains(strtolower($about), 'lead') ? Lead::query()->withoutGlobalScopes()->find($task->about_id) : null;
                         // A job: the task is about it, or names it in its "EzBizi Job #" column.

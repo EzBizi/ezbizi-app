@@ -48,7 +48,12 @@ final class TaskRecordFill
         // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
         if ($job === null) {
             $phoneCol = $board->columns()->where('name', 'Phone number')->first();
-            $ten = substr((string) preg_replace('/\D+/', '', (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''))), -10);
+            $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));
+            // A missed-call task carries the number only in its title ("NJ - PPC +17325550199").
+            if ($raw === '' && preg_match('/\+?1?\d{10}/', (string) $task->title, $m) === 1) {
+                $raw = $m[0];
+            }
+            $ten = substr((string) preg_replace('/\D+/', '', $raw), -10);
             if (strlen($ten) === 10) {
                 $at = $task->created_at ?? now();
                 $job = Job::query()->withoutGlobalScopes()
