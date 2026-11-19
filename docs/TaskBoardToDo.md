@@ -54,10 +54,10 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | B2 | Backups RED 2 nights: the 1 h limit killed the run (files grew 8.6 → 40.7 GB a night) and the off-site disk was full | Desk | WORKING | Limit raised to 6 h (4b0df0038, installed); check tonight's 03:18 UTC run |
 | B3 | Incremental file backups (each night only what changed) | Desk (helper) | WORKING | Built + 19 restore tests pass (594b2ee68, a weekly full plus nightly changes, ~25–30% of a full). Merged only after tonight's run is green, because merging installs it on the next cut. The 256 GiB archive cap was raised today (44b5a5aca) |
 | B4 | Air 75, Roofirst, Crestline Home as sub-companies of A-1 Chimney, flattened (11-19) | Desk | DONE | 9 companies now directly under A-1 Chimney (API read back); old layout saved in companies-before-flatten-2026-11-19.json |
-| B5 | Who handles complaints for the non-chimney brands (garage doors etc.)? | Jose | WAITING | Question below |
+| B5 | Who handles complaints for the non-chimney brands (garage doors etc.)? | Jose | DONE (answered) | Jose 11-19: **Bar** owns Everdoors CT and New York tasks (flags and complaints). Others use the GM fallback |
 | M1 | Merav: password minimum 12 → 8 characters | Amazon SES / auth | WORKING | Tests everywhere it's enforced |
 | M2 | Merav (HR): onboarding-incomplete warning plus an alert to the local manager; contract address = the employee's branch; Hourly Rate field loses focus while typing (bug) | HR | WORKING | SHA |
-| M3 | Merav (Payroll, W2): Sunday 5 PM each manager gets employees, rate/salary and hours to fill/approve; columns Bonus, Deductions, Weekly salary; missing-info warning; Monday morning copy to Merav | Clock In (+ HR) | WORKING | Plan first, then SHA |
+| M3 | Merav (Payroll, W2): Sunday 5 PM each manager gets employees, rate/salary and hours to fill/approve; columns Bonus, Deductions, Weekly salary; missing-info warning; Monday morning copy to Merav | Clock In (+ HR) | WORKING | Plan approved: Work Hours › Payroll tab, Sunday 5 PM bell + email to branch managers, Monday 8 AM .xlsx to Merav; overtime shown, pay unchanged (asking Jose/Merav about 1.5×) |
 | M4 | Merav (Reports/Marketing): download as Excel or CSV | Reports (+ Marketing) | WORKING | SHA |
 | M5 | Merav (Project Management): parts option "paid by technician" (tech expense to reimburse) | Jobs (PM code) | WORKING | SHA |
 | P1 | A-1 Chimney texting (A2P campaign) | Phone | DONE | Campaign VERIFIED 11-19 15:16 UTC; texting on for 11 numbers; +19545162455 on Twilio has no EzBizi row (Phone to decide) |
