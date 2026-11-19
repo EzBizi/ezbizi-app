@@ -4,7 +4,7 @@ Every Task Board and Monday ask Jose has made since the fixes began on 2026-11-1
 
 Status: **DONE** (measured) · **WORKING** (owner on it) · **WAITING** (on a person or event) · **TODO** (not started)
 
-Last updated: 2026-11-19 09:40 ET (desk)
+Last updated: 2026-11-19 10:05 ET (desk)
 
 ## Standing rules (Jose's words; never ask again)
 
@@ -16,6 +16,7 @@ Last updated: 2026-11-19 09:40 ET (desk)
 6. **Fill the board's own columns from the job.** Use Area, Reason, Client name, Phone number and Address, never an EzBizi-only copy column. **Resolution is never filled by us**; people fill it.
 7. **Missed-call tasks are the most important thing.** Every missed call gets its Outgoing Calls task within about 2 minutes, and new tasks reach Monday ahead of any backlog.
 8. **Read the Monday API docs before any Monday write.** create_item always carries a group_id; never delete_group or delete_item.
+10. **Every table scrolls sideways**: scrollbar, shift-wheel, trackpad and holding the wheel button to drag. Notices never stay up for good.
 9. **Cutoff:** in about a week (around 11-25), when Jose says so. Then turn off Monday's own automations and stop the push. Until then everything stays two-way.
 
 ## Open
@@ -30,6 +31,8 @@ Last updated: 2026-11-19 09:40 ET (desk)
 | 6 | Unknown-caller title and long titles | Automations | WORKING | Shipped 0598; desk to check today's tasks |
 | 7 | 2 "Job #" titles left: one empty "job #" (nothing to name it from); 174 number-only titles (151 are phone numbers) | — | DONE by rule | Left on purpose; Jose can say otherwise |
 | 8 | **Cutoff** | Desk | WAITING | Jose says when |
+| 9 | Sideways scroll: the scrollbar existed but the "Task deleted · Undo" notice never closed and covered it. Fixed app-wide (notices with Undo time out again; test added; ships in 0603). **Still wanted (Jose 11-19): hold the mouse wheel button and drag to scroll sideways** | Desk (notice) / Task Board (wheel-drag) | WORKING | Notice: committed, goes out in 0603. Wheel-drag: widget test plus a check on the Windows app |
+| 10 | Items staff create on Monday as "Job #N - Name" get renamed to the name live, with the number moved to the columns and pushed back to Monday (5 made 11-19, e.g. "Job #800020972 - Kirstin Deimel") | Task Board | WORKING | Fix the 5; fix the import for new ones; read back on both sides |
 
 ## Done (measured)
 
