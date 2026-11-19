@@ -200,7 +200,7 @@ class MondayParity extends Command
             if ($fix) {
                 // Deferred: live rows go first (desk 11-18).
                 MondayOutboxEntry::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id,
-                    'kinds' => $kinds, 'changed_at' => now(), 'available_at' => now()->addMinutes(10)]);
+                    'kinds' => $kinds, 'backfill' => true, 'changed_at' => now(), 'available_at' => now()->addMinutes(10)]);
             }
         }
 

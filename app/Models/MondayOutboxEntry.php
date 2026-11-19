@@ -29,11 +29,11 @@ class MondayOutboxEntry extends Model implements StatesRetention
 
     protected $table = 'monday_outbox';
 
-    protected $fillable = ['organization_id', 'task_id', 'task_update_id', 'kinds', 'state', 'attempts', 'changed_at', 'available_at', 'sent_at', 'error'];
+    protected $fillable = ['organization_id', 'task_id', 'task_update_id', 'kinds', 'backfill', 'state', 'attempts', 'changed_at', 'available_at', 'sent_at', 'error'];
 
     protected function casts(): array
     {
-        return ['kinds' => 'array', 'attempts' => 'integer', 'changed_at' => 'datetime', 'available_at' => 'datetime', 'sent_at' => 'datetime'];
+        return ['kinds' => 'array', 'backfill' => 'boolean', 'attempts' => 'integer', 'changed_at' => 'datetime', 'available_at' => 'datetime', 'sent_at' => 'datetime'];
     }
 
     public static function retention(): RetentionPolicy
