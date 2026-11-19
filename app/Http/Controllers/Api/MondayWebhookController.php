@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\SyncMondayItem;
+use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Support\Social\SocialProvider;
+use App\Support\Tasks\Monday\MondayClient;
 use App\Support\Tasks\Monday\MondayWebhookSignature;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * POST /api/v1/integrations/monday/webhook — Monday says an item changed.
@@ -76,6 +79,9 @@ class MondayWebhookController extends Controller
                 // The account the token was signed for, when Monday says which.
                 ->when(isset($claims['accountId']), fn ($q) => $q->where('remote_id', (string) $claims['accountId']))
                 ->first();
+            if ($connection !== null && ! $removal && $at !== null && $this->ourEcho($connection, $itemId, (string) ($event['userId'] ?? ''), $at)) {
+                continue;
+            }
             if ($connection !== null) {
                 // Read a little later: when the item is one MondayPush just made, Monday calls before
                 // push has stored the item id on the task, and an immediate read would make a twin.
@@ -85,6 +91,27 @@ class MondayWebhookController extends Controller
             }
         }
 
-        return response()->json(['queued' => $queued]);
+        return response()->json(['queued' => $queued, 'echo' => $queued === 0 && $targets->isNotEmpty()]);
+    }
+
+    /**
+     * Our own push coming back, decided at the door (desk 11-18: 12k echoes of a backlog push
+     * queued ahead of people's changes). Made by our API user (Monday's me) AND this item had a
+     * row of ours sent around then, or one still in flight. A person's change (another user, or
+     * no write of ours nearby) is always queued.
+     */
+    private function ourEcho(SocialConnection $connection, string $itemId, string $userId, CarbonImmutable $at): bool
+    {
+        $me = Cache::remember('monday-me:'.$connection->getKey(), 86400,
+            fn () => (string) (MondayClient::for($connection)->query('{ me { id } }')['me']['id'] ?? ''));
+        if ($me === '' || $userId !== $me) {
+            return false;
+        }
+        $taskIds = Task::query()->withoutGlobalScopes()->where('external_ref', 'monday:'.$itemId)->pluck('id');
+
+        return MondayOutboxEntry::query()->withoutGlobalScopes()->whereIn('task_id', $taskIds)
+            ->where(fn ($q) => $q->whereBetween('sent_at', [$at->subSeconds(10), $at->addSeconds(120)])
+                ->orWhere(fn ($p) => $p->where('state', MondayOutboxEntry::PENDING)->where('changed_at', '<=', $at)))
+            ->exists();
     }
 }

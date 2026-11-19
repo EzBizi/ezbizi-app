@@ -68,8 +68,11 @@ final class MondayPush
      * @param  int  $shard  with $shards > 1, only the tasks whose CRC32(task_id) % $shards is
      *                      $shard: senders in parallel on disjoint tasks, each task's rows in order
      */
-    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null, int $shard = 0, int $shards = 1): array
+    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null, int $shard = 0, int $shards = 1, ?int $seconds = null): array
     {
+        // A time budget (the shard jobs): the database queue hands a job still running after
+        // retry_after (90 s) to a second worker, which then fails it as "attempted too many times".
+        $deadline = $seconds === null ? null : microtime(true) + $seconds;
         $token = app(MondayToken::class)->for($connection);
         $this->reader = new MondayBoardReader($client ?? new MondayClient($token));
         $this->writer = $writer ?? new MondayWriter($token);
@@ -87,7 +90,7 @@ final class MondayPush
 
         try {
             // One sender per shard; the token's own lock (MondayToken) guards only its refresh.
-            return Cache::lock('monday-push:'.$connection->getKey().':'.$shard.'/'.$shards, 300)->block(5, fn () => $this->tenant->run($org, function () use ($connection, $limit, $shard, $shards, &$counts) {
+            return Cache::lock('monday-push:'.$connection->getKey().':'.$shard.'/'.$shards, 300)->block(5, fn () => $this->tenant->run($org, function () use ($connection, $limit, $shard, $shards, $deadline, &$counts) {
                 $entries = MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)
                     ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
                     ->when($shards > 1, fn ($q) => $q->whereRaw('MOD(CRC32(task_id), ?) = ?', [$shards, $shard]))
@@ -96,6 +99,9 @@ final class MondayPush
                     ->orderByRaw('CASE WHEN available_at IS NOT NULL AND available_at > changed_at + INTERVAL 5 MINUTE THEN 1 ELSE 0 END')
                     ->orderBy('changed_at')->limit($limit)->get();
                 foreach ($entries as $entry) {
+                    if ($deadline !== null && microtime(true) > $deadline) {
+                        break; // the rest are taken by the next minute's run
+                    }
                     try {
                         $outcome = $this->send($entry, $connection);
                     } catch (MondayRefused $e) {
