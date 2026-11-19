@@ -375,6 +375,25 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Desk, 11-19: a missed-call task (no lead) gets client and job from the caller's number in its title. */
+    public function test_a_missed_call_task_fills_from_the_number_in_its_title(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $name = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 1]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Sam Caller', 'phone' => '(732) 555-0199']);
+            \App\Models\Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => '{{task_title}}', 'assignee' => 'user:'.$t['admin']->id, 'fill_from_record' => true],
+                new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['task_title' => 'NJ - PPC +17325550199'],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame('Sam Caller', \App\Models\TaskColumnValue::query()->where('column_id', $name->id)->value('value_text'));
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');

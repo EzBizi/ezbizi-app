@@ -81,7 +81,8 @@ final class TaskRecordFill
             'Last Customer Contact' => $lead?->last_contact_at?->toDateString(),
             'Booked by' => $job?->created_by_label,
             // "Date": the job's booked visit (desk for Jose, 11-19); empty without a job.
-            'Date' => $job?->scheduled_for?->toDateString(),
+            // Only on a Customer Relations task: elsewhere "Date" means something else (All Calls: the call's day; 11-19 undo).
+            'Date' => str_contains(mb_strtolower((string) $task->group?->name), 'customer relations') ? $job?->scheduled_for?->toDateString() : null,
             'Technician' => $job?->performed_by_user_id,
             'Notes' => $lead?->summary,
             'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
