@@ -35,6 +35,8 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 10 | Items staff create on Monday as "Job #N - Name" get renamed to the name live, with the number moved to the columns and pushed back to Monday (5 made 11-19, e.g. "Job #800020972 - Kirstin Deimel") | Task Board | WORKING | Fix the 5; fix the import for new ones; read back on both sides |
 | 11 | Team boards: right-click → **Move up / Move down does nothing** (11-19) | Task Board | WORKING | Widget test plus a check on prod after reload |
 | 12 | Owner of rule-made tasks missing from Monday's Person column (e.g. MA › Natalie: 3 items show Person empty on Monday; EzBizi has Natalie Escobar) | Task Board | WORKING | Fix the push + backfill; read back the 3 on Monday |
+| 13 | The **Organization has its own board**: Monday's "Triplex Group - Files" (private) becomes the org's board in Team boards (11-19) | Task Board | WORKING | Same board linked, not a copy; keeps Monday's members (private); read back access and parity |
+| 14 | **A-1 Chimney's company board = Monday's "A1 - Operatrion"** (private); link them as one board, merging the EzBizi board's tasks in (11-19) | Task Board | WORKING | Nothing deleted; keeps Monday's members, not everyone; read back both sides |
 
 ## Done (measured)
 
