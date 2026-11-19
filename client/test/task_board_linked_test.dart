@@ -8,8 +8,10 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -49,6 +51,8 @@ void main() {
     'values': values ?? {},
   };
 
+  final opened = <String>[];
+
   Future<void> pumpBoard(
     WidgetTester tester, {
     Size size = const Size(2600, 900),
@@ -71,10 +75,19 @@ void main() {
         },
       ),
       task('t2', values: {'c-cost': 4800, 'c-mat': 1150})
-        ..['about'] = {'type': 'customer', 'id': 'cu1', 'label': 'Catherine Gilbert'},
+        ..['about'] = {
+          'type': 'customer',
+          'id': 'cu1',
+          'label': 'Catherine Gilbert',
+        },
       task('t3')
         ..['links'] = [
-          {'id': 'x9', 'title': 'Chimney sweep', 'board_id': 'b2', 'board_name': 'NJ'},
+          {
+            'id': 'x9',
+            'title': 'Chimney sweep',
+            'board_id': 'b2',
+            'board_name': 'NJ',
+          },
         ],
     ];
     final api = ApiClient(
@@ -117,10 +130,20 @@ void main() {
           searched.add(request.url.queryParameters['q']!);
           return json({
             'data': [
-              {'id': 'x9', 'title': 'Chimney sweep', 'board_id': 'b2', 'board_name': 'NJ'},
+              {
+                'id': 'x9',
+                'title': 'Chimney sweep',
+                'board_id': 'b2',
+                'board_name': 'NJ',
+              },
             ],
             'records': [
-              {'type': 'lead', 'id': 'l1', 'label': 'Ann Chimney', 'detail': '(732) 555-0101'},
+              {
+                'type': 'lead',
+                'id': 'l1',
+                'label': 'Ann Chimney',
+                'detail': '(732) 555-0101',
+              },
             ],
           });
         }
@@ -141,7 +164,9 @@ void main() {
               'name': 'Ohio projects',
               'can_edit': true,
               'column_order': order,
-              'builtin_columns': {'about': {'label': 'Summary', 'visible': true}},
+              'builtin_columns': {
+                'about': {'label': 'Summary', 'visible': true},
+              },
               'statuses': const [
                 {
                   'id': 's1',
@@ -208,7 +233,10 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: TaskBoardScreen(api: api, session: session),
+          body: OpenDestination(
+            open: opened.add,
+            child: TaskBoardScreen(api: api, session: session),
+          ),
         ),
       ),
     );
@@ -220,7 +248,11 @@ void main() {
   ) async {
     await pumpBoard(tester);
     expect(find.text('LINKED'), findsWidgets);
-    expect(find.text('SUMMARY'), findsNothing, reason: 'the board name is on hover only');
+    expect(
+      find.text('SUMMARY'),
+      findsNothing,
+      reason: 'the board name is on hover only',
+    );
 
     // A link: its title and its board as a chip.
     expect(find.text('Chimney sweep'), findsOneWidget);
@@ -232,6 +264,8 @@ void main() {
     await tester.pump();
     expect(DeepLinks.pending.value?.module, 'customers');
     expect(DeepLinks.pending.value?.id, 'cu1');
+    // Bug 01a1f572 (Adeline): queuing the link alone opened nothing; the screen opens too.
+    expect(opened, ['customers']);
     DeepLinks.pending.value = null;
     // Nothing yet: a quiet + Link.
     expect(find.text('+ Link'), findsOneWidget);
@@ -249,7 +283,9 @@ void main() {
     expect(find.text('NJ'), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('task-link-pick-x9')));
     await tester.pumpAndSettle();
-    expect(patches, [jsonEncode({'linked_task_id': 'x9'})]);
+    expect(patches, [
+      jsonEncode({'linked_task_id': 'x9'}),
+    ]);
   });
 
   testWidgets('the same box links a lead, which the task is then about', (
@@ -258,7 +294,10 @@ void main() {
     await pumpBoard(tester);
     await tester.tap(find.text('+ Link'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('task-link-search')), '5550101');
+    await tester.enterText(
+      find.byKey(const Key('task-link-search')),
+      '5550101',
+    );
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.text('Lead · (732) 555-0101'), findsOneWidget);

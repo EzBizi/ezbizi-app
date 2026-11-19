@@ -4667,22 +4667,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
-  /// Opens a lead (with its thread), customer or job; null for a type the
-  /// app has no screen to open from here.
-  VoidCallback? _recordOpener(Map record) {
-    final id = '${record['id']}';
-    switch (record['type']) {
-      case 'lead':
-        final openLead = OpenDestination.leadOf(context);
-        return openLead == null ? null : () => openLead(id);
-      case 'customer' || 'job':
-        final module = '${record['type']}s';
-        return () => DeepLinks.open(
-          DeepLink(module: module, type: '${record['type']}', id: id),
-        );
-    }
-    return null;
-  }
+  VoidCallback? _recordOpener(Map record) => taskRecordOpener(context, record);
 
   /// Opens [taskId] on [boardId], switching boards when it is elsewhere.
   Future<void> _goToTask(String boardId, String taskId) async {
@@ -6510,12 +6495,15 @@ class _TaskPanelState extends State<_TaskPanel> {
               PanelFieldBox(
                 icon: null,
                 readOnly: true,
-                child: Text(
-                  about,
-                  key: const Key('task-panel-about'),
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
+                child: InkWell(
+                  onTap: taskRecordOpener(context, task['about'] as Map),
+                  child: Text(
+                    about,
+                    key: const Key('task-panel-about'),
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -6908,4 +6896,27 @@ class _HideColumnsPanelState extends State<_HideColumnsPanel> {
       ],
     ),
   );
+}
+
+/// Opens a lead (with its thread), customer or job; null for a type the app
+/// has no screen to open from here. The link is queued AND its screen opened
+/// (bug 01a1f572, Adeline: "Clicking the Linked ID is not doing anything":
+/// the link was queued but nothing switched to Jobs).
+VoidCallback? taskRecordOpener(BuildContext context, Map record) {
+  final id = '${record['id']}';
+  switch (record['type']) {
+    case 'lead':
+      final openLead = OpenDestination.leadOf(context);
+      return openLead == null ? null : () => openLead(id);
+    case 'customer' || 'job':
+      final module = '${record['type']}s';
+      final go = OpenDestination.of(context);
+      return () {
+        DeepLinks.open(
+          DeepLink(module: module, type: '${record['type']}', id: id),
+        );
+        go?.call(module);
+      };
+  }
+  return null;
 }
