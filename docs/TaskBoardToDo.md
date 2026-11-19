@@ -37,6 +37,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 12 | Owner of rule-made tasks missing from Monday's Person column (e.g. MA › Natalie: 3 items show Person empty on Monday; EzBizi has Natalie Escobar) | Task Board | WORKING | Fix the push + backfill; read back the 3 on Monday |
 | 13 | The **Organization has its own board**: Monday's "Triplex Group - Files" (private) becomes the org's board in Team boards (11-19) | Task Board | WORKING | Same board linked, not a copy; keeps Monday's members (private); read back access and parity |
 | 14 | **A-1 Chimney's company board = Monday's "A1 - Operatrion"** (private); link them as one board, merging the EzBizi board's tasks in (11-19) | Task Board | WORKING | Nothing deleted; keeps Monday's members, not everyone; read back both sides |
+| 15 | **Reorder groups** on a board (drag the header, or Move up/down), saved and mirrored to Monday's group order (11-19) | Task Board | WORKING | Widget test plus a read-back on prod and Monday |
 
 ## Done (measured)
 
