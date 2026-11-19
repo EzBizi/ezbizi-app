@@ -39,10 +39,10 @@ final class TaskRecordFill
     ];
 
     /** @return array<string, string> column id => value written */
-    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false): array
+    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null): array
     {
         $board = $task->board;
-        $job = $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
+        $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
         $customer = $job?->customer_id ? Customer::query()->withoutGlobalScopes()->find($job->customer_id) : null;
 
         $text = trim(implode(' ', array_filter([$task->title, $lead?->summary, $lead?->category])));
