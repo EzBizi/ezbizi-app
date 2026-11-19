@@ -2,18 +2,21 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\Franchise;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /** Custom boards and monday-style members (inbox 0120). */
 class TaskBoardMembersTest extends TestCase
 {
     use BuildsTenants;
+    use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
     private function privateBoard(array $tenant, $owner): string
@@ -82,7 +85,7 @@ class TaskBoardMembersTest extends TestCase
         $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $id = $this->privateBoard($tenant, $owner);
         $other = $this->userWithRole($tenant, 'Other', ['tasks.view']);
-        $local = $this->userWithRole($tenant, 'Elsewhere', ['tasks.view'], onlyAt: $this->inTenant($tenant['org'], fn () => \App\Models\Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Alpha F2'])));
+        $local = $this->userWithRole($tenant, 'Elsewhere', ['tasks.view'], onlyAt: $this->inTenant($tenant['org'], fn () => Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Alpha F2'])));
         $list = $this->signedInAs($owner)->getJson("/api/v1/task-boards/{$id}/members")->assertOk();
         $mine = $list->json('data.members.0.id');
         $this->assertSame(['user_id' => $owner->id, 'name' => 'Owner', 'role' => 'owner'], array_diff_key($list->json('data.members.0'), ['id' => 1]));
@@ -148,7 +151,9 @@ class TaskBoardMembersTest extends TestCase
 
         // The name typed back (Jose, 2026-11-09), then gone from the list.
         $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Shared'])->assertStatus(422);
-        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Renamed'])->assertNoContent();
+        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Renamed'])->assertStatus(422)->assertJsonPath('code', 'no_authenticator');
+        $code = $this->authenticatorCode($owner);
+        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Renamed'] + $code)->assertNoContent();
         $this->signedInAs($owner)->getJson("/api/v1/task-boards/{$id}")->assertNotFound();
         $this->inTenant($tenant['org'], fn () => $this->assertNotNull(TaskBoard::withTrashed()->find($id)?->deleted_at));
     }

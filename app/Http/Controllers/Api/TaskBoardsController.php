@@ -19,6 +19,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskLink;
 use App\Models\TaskStatus;
 use App\Models\User;
+use App\Support\Integrations\DisconnectCode;
 use App\Support\Notes\NoteActivity;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Tasks\SensitiveTasks;
@@ -529,6 +530,12 @@ class TaskBoardsController extends Controller
         }
         $taskBoard->fill($input)->save();
 
+        // Answer with a paged board, as the board view loads it: the whole A-1 roll-up (31k rows)
+        // ran a PATCH out of memory (health sweep 11-19: Move up/down 500'd).
+        if ($request->integer('per_group') <= 0) {
+            $request->query->set('per_group', 50);
+        }
+
         return $this->show($request, $taskBoard->fresh());
     }
 
@@ -563,6 +570,8 @@ class TaskBoardsController extends Controller
         $this->authorizeManage($request->user(), $taskBoard);
         // Typed back (Jose, 2026-11-09), as a job's number is before it goes.
         abort_unless(trim((string) $request->input('confirm')) === trim($taskBoard->name), 422, 'Type the board\'s name to delete it.');
+        // A delete takes a fresh authenticator code (Jose 11-19), the integrations' step-up.
+        app(DisconnectCode::class)->require($request, 'delete this board');
         $taskBoard->delete();
 
         return response()->noContent();

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\ArchiveMondayGroup;
+use App\Jobs\MoveMondayGroup;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
@@ -9,7 +11,10 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Support\Audit\AuditLogger;
+use App\Support\Integrations\DisconnectCode;
+use App\Support\Tasks\BoardRules;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -204,9 +209,27 @@ class TaskBoardSettingsController extends Controller
     {
         $this->authorize('update', $taskBoard);
         $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
-        $row->fill($request->validate($this->groupRules(required: false)));
+        $input = $request->validate($this->groupRules(required: false));
+        $moveTo = array_key_exists('position', $input) ? (int) $input['position'] : null;
+        unset($input['position']);
+        $row->fill($input);
         $this->audit->logChange('task_board.group_updated', $row, $request->user());
         $row->save();
+        if ($moveTo !== null) {
+            // A place in the board's order (Jose 11-19: groups could not be reordered): the others
+            // renumbered around it, and Monday's twin moved after its new neighbour there.
+            $order = TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->get()->values();
+            $at = max(0, min($moveTo, $order->count()));
+            $order->splice($at, 0, [$row]);
+            foreach ($order as $i => $g) {
+                if ($g->position !== $i) {
+                    $g->forceFill(['position' => $i])->save();
+                }
+            }
+            if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+                MoveMondayGroup::dispatch((string) $taskBoard->id, (string) $row->id);
+            }
+        }
 
         return response()->json(['data' => self::presentGroup($row)]);
     }
@@ -223,6 +246,8 @@ class TaskBoardSettingsController extends Controller
         if (! $moveTo && Task::query()->where('group_id', $row->id)->exists()) {
             throw ValidationException::withMessages(['move_to' => 'This group has tasks: choose a group to move them to.']);
         }
+        // A delete takes a fresh authenticator code (Jose 11-19), the integrations' step-up.
+        app(DisconnectCode::class)->require($request, 'delete this group');
 
         // Deleted tasks move too: the group's FK would otherwise hard-delete them.
         $to = $moveTo
@@ -230,11 +255,20 @@ class TaskBoardSettingsController extends Controller
                 ?? throw ValidationException::withMessages(['move_to' => 'That group is not on this board.'])
             : TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->first();
 
+        $live = Task::query()->where('group_id', $row->id)->pluck('id');
         DB::transaction(function () use ($row, $to, $request) {
             Task::query()->withTrashed()->where('group_id', $row->id)->update(['group_id' => $to->id]);
             $this->audit->log('task_board.group_deleted', $row, actor: $request->user());
             $row->delete();
         });
+        // Monday follows: each moved task goes to its new group there; Monday's emptied group is
+        // archived (never delete_group, which deletes its items) once its items have moved.
+        foreach (Task::query()->whereIn('id', $live)->get() as $task) {
+            app(MondayOutbox::class)->record($task, ['group']);
+        }
+        if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+            ArchiveMondayGroup::dispatch((string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+        }
 
         return response()->noContent();
     }
@@ -261,10 +295,10 @@ class TaskBoardSettingsController extends Controller
     public static function presentGroup(TaskGroup $g): array
     {
         // A role group's job, under its heading (management's board rules, Jose 11-17).
-        $roles = \App\Support\Tasks\BoardRules::rolesOf((string) $g->name);
+        $roles = BoardRules::rolesOf((string) $g->name);
 
         return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position,
-            'purpose' => $roles === [] ? null : implode(' ', array_map(fn ($r) => \App\Support\Tasks\BoardRules::PURPOSE[$r], $roles))];
+            'purpose' => $roles === [] ? null : implode(' ', array_map(fn ($r) => BoardRules::PURPOSE[$r], $roles))];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

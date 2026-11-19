@@ -4,13 +4,16 @@ namespace Tests\Feature\Tasks;
 
 use App\Models\TaskBoard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /** Jose, 2026-11-09: "Removed accounts should not show up on boards, in any case they should be archived." */
 class TaskBoardArchivedTest extends TestCase
 {
     use BuildsTenants;
+    use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
     public function test_a_departed_persons_board_leaves_the_list_and_waits_under_archived(): void
@@ -57,7 +60,8 @@ class TaskBoardArchivedTest extends TestCase
         $api->deleteJson("/api/v1/task-boards/{$place->id}", ['confirm' => $place->name])->assertStatus(422);
 
         // A custom board deletes, waits under Archived, and restores.
-        $api->deleteJson("/api/v1/task-boards/{$custom}", ['confirm' => 'Spring jobs'])->assertNoContent();
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/task-boards/{$custom}", ['confirm' => 'Spring jobs'] + $code)->assertNoContent();
         $this->assertNotContains($custom, $listed());
         $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/task-boards?archived=1')->json('data'))->firstWhere('id', $custom);
         $this->assertTrue($row['deleted']);
@@ -66,8 +70,9 @@ class TaskBoardArchivedTest extends TestCase
         $this->assertContains($custom, $listed());
 
         // After 30 days the purge takes it for good.
-        $api->deleteJson("/api/v1/task-boards/{$custom}", ['confirm' => 'Spring jobs'])->assertNoContent();
-        \Illuminate\Support\Facades\DB::table('task_boards')->where('id', $custom)->update(['deleted_at' => now()->subDays(31)]);
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/task-boards/{$custom}", ['confirm' => 'Spring jobs'] + $code)->assertNoContent();
+        DB::table('task_boards')->where('id', $custom)->update(['deleted_at' => now()->subDays(31)]);
         $this->artisan('ezbizi:purge-deleted-task-boards')->assertSuccessful();
         $this->assertNull($this->inTenant($t['org'], fn () => TaskBoard::query()->withTrashed()->find($custom)));
     }

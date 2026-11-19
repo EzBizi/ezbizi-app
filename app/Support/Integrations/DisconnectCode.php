@@ -30,14 +30,15 @@ final class DisconnectCode
         private readonly TwoFactorPolicy $twoFactor,
     ) {}
 
-    public function require(Request $request): void
+    /** @param  string  $doing  what the code is for, in the refusal ("disconnect", "delete this group") */
+    public function require(Request $request, string $doing = 'disconnect'): void
     {
         $subject = $this->twoFactor->subjectFor($request->user());
 
         if (! $subject->hasTotp()) {
             $this->refuse(
                 'Set up an authenticator on your account first (My account › Security). '
-                .'Disconnecting an integration needs a code from it.',
+                .($doing === 'disconnect' ? 'Disconnecting an integration needs a code from it.' : 'You need a code from it to '.$doing.'.'),
                 'no_authenticator',
             );
         }
@@ -45,7 +46,7 @@ final class DisconnectCode
         $code = trim((string) $request->input('code', ''));
 
         if (! preg_match('/^\d{6}$/', $code)) {
-            $this->refuse('Enter the 6-digit code from your authenticator to disconnect.', 'authenticator_code_required');
+            $this->refuse('Enter the 6-digit code from your authenticator to '.$doing.'.', 'authenticator_code_required');
         }
 
         $verified = $this->attempts->verify(
