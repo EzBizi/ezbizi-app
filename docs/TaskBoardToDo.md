@@ -48,6 +48,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 22 | **Values set when a task is created never reached Monday** (e.g. MA Pamela Gignon: client and phone here, empty on Monday) (11-19) | Task Board | WORKING | 927 differing tasks queued to Monday (648 open + 279 Done; MA Resolution 140). Re-run after the drain, expecting ~0; nightly --values from 0607 |
 | 23 | Open complaint tasks had BOTH Natalie and Adeline (made before the routing split) | Task Board | DONE | 11-19: Adeline removed from 201 tasks on Natalie's 6 branch boards (CT 38, DMV 18, GA 32, MA 25, NJ 65, TX 23); 0 left with both; pushed to Monday |
 | 24 | A live task's push to Monday that hits the rate limit once gets demoted behind the backlog (an MA overbook flag waited 45+ min) (11-19) | Task Board | WORKING | Store "live" explicitly on the outbox row; test; stuck row bumped by hand |
+| 25 | Adeline: **clicking the Linked job on a task does nothing** (11-19 suggestion, approved) | Task Board | WORKING | Open the linked record on click/tap; widget test |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
