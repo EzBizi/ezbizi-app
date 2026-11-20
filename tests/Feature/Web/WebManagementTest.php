@@ -1584,10 +1584,12 @@ class WebManagementTest extends TestCase
                 'remote_id' => 'accounts/1',
                 'display_name' => 'A-1',
             ]);
-            foreach ([[5, 'loc1'], [5, 'loc2'], [4, 'loc2'], [null, 'loc1']] as $i => [$rating, $loc]) {
+            // A sub-company's reviews count toward its parent's badge, as on the Reviews screen.
+            $sub = \App\Models\Company::create(['organization_id' => $tenant['org']->id, 'parent_company_id' => $tenant['company']->id, 'name' => 'Sub']);
+            foreach ([[5, 'loc1', null], [5, 'loc2', null], [4, 'loc2', $sub->id], [null, 'loc1', null]] as $i => [$rating, $loc, $companyId]) {
                 \App\Models\Review::create([
                     'organization_id' => $tenant['org']->id,
-                    'company_id' => $tenant['company']->id,
+                    'company_id' => $companyId ?? $tenant['company']->id,
                     'connection_id' => $connection->id,
                     'remote_name' => "accounts/1/locations/$loc/reviews/$i",
                     'location_name' => "accounts/1/locations/$loc",
