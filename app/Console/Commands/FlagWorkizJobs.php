@@ -135,8 +135,11 @@ class FlagWorkizJobs extends Command
         if ($workizId !== null && $job === null) { // with a job, TaskWriter fills both job-id columns
             $values[self::textColumn($board, TaskWriter::WORKIZ_JOB_COLUMN)->id] = $workizId;
         }
+        // Short title, the whole sentence in Notes (row 6, desk 11-20: titles over 120 like the rules' cut).
+        $full = implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null]));
+        $values[self::textColumn($board, 'Notes')->id] = $full;
         $tasks->create($board, array_filter([
-            'title' => mb_substr(implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null])), 0, 255),
+            'title' => self::shortTitle($title),
             // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
             'group_id' => $group ? self::groupOn($board, $group)->id : null,
             // Who booked it, also when they have no EzBizi account (Jose 11-18).
@@ -147,6 +150,13 @@ class FlagWorkizJobs extends Command
             'assignee_user_ids' => self::owners($board, $franchise, $userIds, $can) ?: null,
         ]), null);
         $tasks->quiet = $quiet;
+    }
+
+    /** Cut on a word at 120, as the automation rules cut a long title. */
+    public static function shortTitle(string $title): string
+    {
+        return mb_strlen($title) <= 120 ? $title
+            : rtrim(preg_replace('/\s+\S*$/u', '', mb_substr($title, 0, 120)) ?: mb_substr($title, 0, 120), ' ,.;:-').'…';
     }
 
     public static function groupOn(TaskBoard $board, string $name): TaskGroup
