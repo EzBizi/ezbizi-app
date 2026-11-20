@@ -40,9 +40,16 @@ class QrCode extends Model implements StatesRetention
 
     private const LENGTH = 7;
 
+    /** The picture in the middle (Bar, 01a1f4ba): the company logo, nothing, or an upload. */
+    public const IMAGE_LOGO = 'logo';
+
+    public const IMAGE_NONE = 'none';
+
+    public const IMAGE_UPLOAD = 'upload';
+
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id',
-        'code', 'name', 'destination_url', 'created_by',
+        'code', 'name', 'destination_url', 'center_image', 'created_by',
     ];
 
     protected function casts(): array
@@ -58,7 +65,7 @@ class QrCode extends Model implements StatesRetention
     {
         return RetentionPolicy::forever(
             'A QR code the organization printed: its name, the address it currently sends '
-            .'people to and how many times it has been scanned. Each scan is logged with its '
+            .'people to, which picture sits in its middle (a media-library item, kept by that library) and how many times it has been scanned. Each scan is logged with its '
             .'time in qr_code_scans, which keeps no address, device or location. Printed codes are '
             .'deactivated rather than deleted, so it is kept for as long as the organization is.'
         );

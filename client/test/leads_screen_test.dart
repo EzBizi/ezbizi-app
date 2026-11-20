@@ -305,6 +305,52 @@ void main() {
     expect(_lastListQuery['source'], 'recovery');
   });
 
+  // Shoval, 2026-11-06: "Create under leads new tab 'Returning Client Promo'".
+  testWidgets(
+    'a named promotion is a rail tab of its own, behind the Promotions tick',
+    (tester) async {
+      await _pump(
+        tester,
+        leads: [_lead('lead-1', 'Marcus Bell')],
+        connections: _connected,
+        permissions: const [
+          'leads.view',
+          'leads.website_chat.view',
+          'leads.promotions.view',
+        ],
+        unreadBySource: const {'promo:Returning Client Promo': 2},
+        promotionTabs: const ['Returning Client Promo'],
+      );
+      final tab = find.descendant(
+        of: find.byKey(const ValueKey('source-tabs')),
+        matching: find.text('Returning Client Promo'),
+      );
+      expect(tab, findsOneWidget);
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(_lastListQuery['source'], 'promo:Returning Client Promo');
+    },
+  );
+
+  testWidgets('without the Promotions tick there is no named promotion tab', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+      promotionTabs: const ['Returning Client Promo'],
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-tabs')),
+        matching: find.text('Returning Client Promo'),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('without its tick there is no Recovery tab', (tester) async {
     await _pump(
       tester,
@@ -2202,6 +2248,7 @@ Future<void> _pump(
   Map<String, dynamic> me = _me,
   Map<String, dynamic> preferences = const {},
   Map<String, int> unreadBySource = const {},
+  List<String> promotionTabs = const [],
 }) async {
   _posts.clear();
   _patches.clear();
@@ -2362,6 +2409,7 @@ Future<void> _pump(
               'connections': connections,
               'sync_delayed_since': delayedSince,
               'unread_by_source': unreadBySource,
+              'promotion_tabs': promotionTabs,
             },
           }),
           200,
