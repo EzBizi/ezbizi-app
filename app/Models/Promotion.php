@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** A promotion text sent to the customers of Done jobs (Jose, 2026-11-06). */
-#[Fillable(['organization_id', 'jobs_from', 'jobs_to', 'body', 'media_path', 'franchise_ids', 'phones', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
+#[Fillable(['organization_id', 'name', 'jobs_from', 'jobs_to', 'body', 'media_path', 'franchise_ids', 'phones', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
 class Promotion extends Model implements StatesRetention
 {
     use BelongsToTenant;

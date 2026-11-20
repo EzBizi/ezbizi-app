@@ -410,7 +410,12 @@ final class MondayBoardReader
         while ($page !== null) {
             foreach ($page['items'] ?? [] as $item) {
                 foreach ($item['column_values'] ?? [] as $v) {
-                    $out[(string) $item['id']][mb_strtolower(trim((string) ($v['column']['title'] ?? '')))] = trim((string) ($v['text'] ?? ''));
+                    // Two columns of one title (a duplicate): the one holding a value counts.
+                    $t = mb_strtolower(trim((string) ($v['column']['title'] ?? '')));
+                    $text = trim((string) ($v['text'] ?? ''));
+                    if ($text !== '' || ! isset($out[(string) $item['id']][$t])) {
+                        $out[(string) $item['id']][$t] = $text;
+                    }
                 }
             }
             $cursor = $page['cursor'] ?? null;

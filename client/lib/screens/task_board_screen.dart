@@ -1526,10 +1526,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       if (g['id'] != null) g['id'],
   ].indexOf(id);
 
-  Future<void> _moveGroup(String id, int by) async {
-    final res = await widget.api.patch('$_groupsPath/$id', {
-      'position': _groupIndex(id) + by,
-    });
+  Future<void> _moveGroup(String id, int by) =>
+      _moveGroupTo(id, _groupIndex(id) + by);
+
+  /// To [index] among the board's groups (Move up/down, or a header dragged
+  /// onto another: Jose 11-19), saved for the board and on Monday.
+  Future<void> _moveGroupTo(String id, int index) async {
+    final res = await widget.api.patch('$_groupsPath/$id', {'position': index});
     if (!mounted) return;
     if (!res.ok) {
       ScaffoldMessenger.of(
@@ -3468,6 +3471,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
+  /// A group header another group's header can be dropped on: the dragged
+  /// group takes this one's place (row 15).
+  Widget _groupDropTarget(String? id, String? fold, Widget child) {
+    if (id == null || !_canEdit) return child;
+    final theme = Theme.of(context);
+    return DragTarget<_GroupDrag>(
+      key: ValueKey('group-drop-$fold'),
+      onWillAcceptWithDetails: (d) => d.data.id != id,
+      onAcceptWithDetails: (d) => _moveGroupTo(d.data.id, _groupIndex(id)),
+      builder: (context, over, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: over.isEmpty
+                  ? Colors.transparent
+                  : theme.colorScheme.primary,
+              width: 2,
+            ),
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
   Widget _group(BuildContext context, _Json group, {required bool cards}) {
     final theme = Theme.of(context);
     final colour = _groupColour(context, group);
@@ -3479,61 +3507,83 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final id = virtual ? null : group['id'] as String?;
     final fold = group['id'] as String?;
 
-    final header = _dropOn(
+    final header = _groupDropTarget(
       id,
-      null,
-      InkWell(
-        key: ValueKey('task-group-$fold'),
-        onTap: () =>
-            setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              // The name and count take the row; the menu sits at its end.
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      folded ? Icons.chevron_right : Icons.expand_more,
-                      color: colour,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    if (id != null && _naming == id)
-                      _groupNameField(id)
-                    else
-                      Flexible(
-                        child: Text(
-                          '${group['name']}',
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: colour,
-                            fontWeight: FontWeight.w800,
+      fold,
+      _dropOn(
+        id,
+        null,
+        InkWell(
+          key: ValueKey('task-group-$fold'),
+          onTap: () =>
+              setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                // The name and count take the row; the menu sits at its end.
+                Expanded(
+                  child: Row(
+                    children: [
+                      // Drag the header onto another to reorder (row 15, Jose 11-19).
+                      if (_canEdit && id != null)
+                        Draggable<_GroupDrag>(
+                          key: ValueKey('group-drag-$id'),
+                          data: _GroupDrag(id),
+                          feedback: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text('${group['name']}'),
+                            ),
+                          ),
+                          child: const MouseRegion(
+                            cursor: SystemMouseCursors.grab,
+                            child: Icon(Icons.drag_indicator, size: 18),
                           ),
                         ),
+                      Icon(
+                        folded ? Icons.chevron_right : Icons.expand_more,
+                        color: colour,
+                        size: 20,
                       ),
-                    const SizedBox(width: 8),
-                    Text(
-                      switch ((_totalsOf(id)?['count'] as num?)?.toInt() ??
-                          all.length) {
-                        1 => '1 task',
-                        final n => '$n tasks',
-                      },
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    // Beside the name, Monday's place: at the row's end it sat
-                    // past the screen's edge on a wide board (QA 11-16).
-                    if (_canEdit && id != null) ...[
                       const SizedBox(width: 4),
-                      _groupMenu(group, all.length),
+                      if (id != null && _naming == id)
+                        _groupNameField(id)
+                      else
+                        Flexible(
+                          child: Text(
+                            '${group['name']}',
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: colour,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      Text(
+                        switch ((_totalsOf(id)?['count'] as num?)?.toInt() ??
+                            all.length) {
+                          1 => '1 task',
+                          final n => '$n tasks',
+                        },
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      // Beside the name, Monday's place: at the row's end it sat
+                      // past the screen's edge on a wide board (QA 11-16).
+                      if (_canEdit && id != null) ...[
+                        const SizedBox(width: 4),
+                        _groupMenu(group, all.length),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -6919,4 +6969,10 @@ VoidCallback? taskRecordOpener(BuildContext context, Map record) {
       };
   }
   return null;
+}
+
+/// A group header being dragged to a new place.
+class _GroupDrag {
+  const _GroupDrag(this.id);
+  final String id;
 }

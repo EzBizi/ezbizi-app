@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Notification;
 use App\Models\Task;
+use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\WorkizJob;
@@ -89,7 +90,10 @@ class JobAddressFlagsTest extends TestCase
             $this->assertSame(3, Task::query()->whereNull('created_by_user_id')->count());
             // Desk 11-18: owned by the booker it alerts, made by EzBizi, and says what to do.
             $this->assertSame([$booker->id], $task->owners()->pluck('user_id')->all());
-            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', $task->title);
+            // Row 6 (desk 11-20): a short title; what to do lives in Notes.
+            $this->assertStringNotContainsString(' · ', $task->title);
+            $this->assertLessThanOrEqual(121, mb_strlen($task->title));
+            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', (string) $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Notes'))->value('value_text'));
             // Jose 11-18: a job's task carries both job ids as columns.
             $ids = TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->mapWithKeys(fn ($v) => [$v->column->name => $v->value_text])->all();
             $this->assertSame(['Workiz Job ID' => '101', 'EzBizi Job #' => 'J-1'], array_intersect_key($ids, array_flip(['Workiz Job ID', 'EzBizi Job #'])));
@@ -162,6 +166,41 @@ class JobAddressFlagsTest extends TestCase
             $this->assertSame($sasha->id, FlagWorkizJobs::booker($w)?->id);
             $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha Perez'));
             $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha'));
+        });
+    }
+
+    /** Row 6 (desk 11-20): a flag title over 120 is cut on a word, like a rule's. */
+    public function test_a_long_flag_title_is_cut_on_a_word(): void
+    {
+        $long = 'Address needs fixing (no house number): "'.str_repeat('Valley Lane ', 15).'"';
+        $short = FlagWorkizJobs::shortTitle($long);
+        $this->assertLessThanOrEqual(121, mb_strlen($short));
+        $this->assertStringEndsWith('…', $short);
+        $this->assertStringStartsWith('Address needs fixing (no house number)', $short);
+        $this->assertSame('Short one', FlagWorkizJobs::shortTitle('Short one'));
+    }
+
+    /** Desk 11-20: a flag task about a job arrives with the board's columns filled from the job, like a rule's. */
+    public function test_a_flag_task_arrives_filled_from_its_job(): void
+    {
+        Carbon::setTestNow('2026-11-17 10:00:00');
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $f = $alpha['franchise'];
+            $board = app(TaskBoards::class)->ensureFor($f);
+            TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 30]);
+            $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'Geri Vandaveer']);
+            $job = Job::create(['franchise_id' => $f->id, 'customer_id' => $c->id, 'number' => 'J-61210', 'title' => 'J', 'status' => 'x', 'currency' => 'USD']);
+            $w = WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => 'BAD', 'status' => 'x', 'created_by' => 'Nobody', 'payload' => [], 'synced_at' => now(),
+                'address' => 'Savin Ave', 'postal_code' => '06516', 'serial_id' => 101]);
+            $w->job_id = $job->id;
+            $w->save();
+        });
+        $this->artisan('ezbizi:flag-workiz-jobs')->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () {
+            $task = Task::query()->where('title', 'like', 'Address needs fixing%')->firstOrFail();
+            $this->assertSame('Geri Vandaveer', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Client name'))->value('value_text'));
         });
     }
 }

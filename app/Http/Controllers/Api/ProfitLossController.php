@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\SocialConnection;
 use App\Support\Reports\Airtable\AirtableBase;
 use App\Support\Reports\Airtable\AirtablePnl;
+use App\Support\Reports\Airtable\EzbiziPnl;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,8 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * sheet is maintained daily by people who are not us, so a cached P&L would be
  * wrong in the one direction nobody checks — it would look fine. It also means
  * there is no row for an automation to fire on and nothing to go stale.
+ * Once the base (or table) is cut over to EzBizi Financials, EzbiziPnl reads
+ * EzBizi's own rows instead, through the same parser.
  *
  * ── THE READER REPORTS DISAGREEMENTS, SO SO DOES THIS ───────────
  *
@@ -45,6 +48,7 @@ class ProfitLossController extends Controller
         private readonly AirtableBase $airtable,
         private readonly AirtablePnl $pnl,
         private readonly SocialConnectionAccess $access,
+        private readonly EzbiziPnl $ezbizi,
     ) {}
 
     /**
@@ -78,6 +82,15 @@ class ProfitLossController extends Controller
                 'tables' => [],
                 'unavailable' => null,
             ];
+
+            // A cut-over base is EzBizi's: its tables come from Financials,
+            // and Airtable is not asked (its token may already be revoked).
+            if (($held = $this->ezbizi->tables((string) $connection->remote_id)) !== null) {
+                $row['tables'] = $held;
+                $sources[] = $row;
+
+                continue;
+            }
 
             try {
                 $row['tables'] = $this->airtable->verify(
@@ -129,8 +142,11 @@ class ProfitLossController extends Controller
             'That Airtable connection is not one this view can read.',
         );
 
+        // Cut over: EzBizi's Financials rows, in Airtable's column names, through the same parser.
+        $held = $this->ezbizi->table((string) $connection->remote_id, $data['table']);
+
         try {
-            $rows = $this->airtable->records(
+            $rows = $held !== null ? $this->ezbizi->rows($held) : $this->airtable->records(
                 $this->tokenOf($connection),
                 (string) $connection->remote_id,
                 $data['table'],

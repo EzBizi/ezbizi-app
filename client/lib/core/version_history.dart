@@ -13,6 +13,28 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
+      'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
+      'Task Board: moving boards and folders in the sidebar saves instantly',
+      'Marketing: a promotion can send its replies to its own tab in Leads',
+    ]),
+    VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
+      'Websites: the dispatcher photo in the website chat loads again',
+      'Backups: the daily backup check runs after the nightly backup has finished',
+      'AI assistant: answers dispatcher questions from your guidelines and priced services, and the technician bot closes with a clear next step',
+      'Automations: a lead text to a number that replied STOP is skipped, not counted as a failed run',
+      'Work Hours: new Payroll tab where managers review hours and rates, with bonus, deductions and the weekly total',
+      'Task Board: every task about a job fills client, phone, address and job numbers when it is created, and a blank Monday status gets ours',
+      'Marketing: QR codes can carry the company logo or any picture in the middle, in the preview and the downloads',
+    ]),
+    VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
+      'Task Board: drag a group header onto another group to reorder the board; Monday follows',
+      'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
+    ]),
+    VersionRelease(version: '0.0.0613', date: '20 Nov 2026', items: [
+      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
+      'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
+    ]),
     VersionRelease(version: '0.0.0612', date: '19 Nov 2026', items: [
       'Reviews: the walkthrough says 1-3 stars, matching the filter',
       'Task Board: a missed-call task fills the caller details from the number even when there is no lead yet; a job date is only filled on Customer Relations tasks',

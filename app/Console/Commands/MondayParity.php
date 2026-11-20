@@ -172,7 +172,7 @@ class MondayParity extends Command
         };
         $tasks = Task::query()->where('board_id', $board->id)->whereNull('parent_task_id')->where('external_ref', 'like', 'monday:%')
             ->when(! $this->option('done'), fn ($q) => $q->whereNull('completed_at'))
-            ->with(['values.column'])->get();
+            ->with(['values.column', 'statusRow'])->get();
         $n = 0;
         foreach ($tasks as $task) {
             $item = $there[substr((string) $task->external_ref, 7)] ?? null;
@@ -181,8 +181,8 @@ class MondayParity extends Command
             }
             $kinds = [];
             foreach ($task->values as $v) {
-                if ($v->column === null) {
-                    continue;
+                if ($v->column === null || in_array($v->column->type, ['timeline', 'link'], true)) {
+                    continue; // ponytail: Monday writes these as other text ("Nov 17 - 23", the url), not a different value
                 }
                 $title = mb_strtolower(trim($v->column->name));
                 if (! array_key_exists($title, $item)) {
@@ -192,6 +192,11 @@ class MondayParity extends Command
                 if ($here !== '' && $here !== $norm($item[$title], $v->column->type)) {
                     $kinds[] = 'values:'.$v->column_id;
                 }
+            }
+            // The status too (desk 11-20: Monday blank where we hold "Not started").
+            if (array_key_exists('status', $item) && $task->statusRow !== null
+                && mb_strtolower(trim($item['status'])) !== mb_strtolower(trim((string) $task->statusRow->name))) {
+                $kinds[] = 'status';
             }
             if ($kinds === []) {
                 continue;

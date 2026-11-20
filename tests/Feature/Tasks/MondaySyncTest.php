@@ -91,6 +91,21 @@ class MondaySyncTest extends TestCase
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
     }
 
+    /** Desk 11-20: an item Monday sent with no Status gets ours, and ours goes back so Monday is not left blank. */
+    public function test_a_blank_status_from_monday_is_pushed_back(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $item = $this->mondayItem('12', 'Order a liner', '2026-11-12T12:00:00Z');
+        $item['column_values'][1]['text'] = '';
+        $item['column_values'][1]['label'] = null;
+        $item['column_values'][1]['index'] = null;
+        $item['column_values'][1]['value'] = null;
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z'), $item]);
+
+        $queued = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->whereJsonContains('kinds', 'status')->pluck('task_id')->all());
+        $this->assertSame([$this->task('12')->id], $queued, 'only the blank one');
+    }
+
     /** Desk 11-19: a board stopped part way keeps what it did; the next run reads only the rest, then moves the cursor. */
     public function test_a_board_stopped_part_way_resumes_with_the_rest(): void
     {
@@ -303,6 +318,9 @@ class MondaySyncTest extends TestCase
         $board['columns'][] = ['id' => 'text_c', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
         $board['items'][0]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => '', 'value' => null];             // empty there
         $board['items'][1]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => 'tom  garangelli', 'value' => null]; // same, as a person reads it
+        // Desk 11-20: a duplicate "Client name" column, empty, after it: the one with the value counts.
+        $board['columns'][] = ['id' => 'text_c2', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
+        $board['items'][1]['column_values'][] = ['id' => 'text_c2', 'type' => 'text', 'text' => '', 'value' => null];
         $this->monday['boards'] = ['100' => $board];
 
         $this->artisan('ezbizi:monday-parity', ['--values' => true])->expectsOutputToContain('values differ 1')->assertFailed();

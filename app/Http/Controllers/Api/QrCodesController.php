@@ -12,12 +12,15 @@ use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Time\ViewTimezone;
-use BaconQrCode\Common\ErrorCorrectionLevel;
-use BaconQrCode\Renderer\GDLibRenderer;
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
+use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\Organization;
+use App\Models\SocialLibraryItem;
+use App\Support\Files\FileStore;
+use App\Support\Marketing\QrImage;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -35,7 +38,12 @@ use Symfony\Component\HttpFoundation\Response as Status;
  */
 class QrCodesController extends Controller
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    /** The centre picture: same 2 MB and byte-checked types as a newsletter picture. */
+    private const MAX_PICTURE_BYTES = 2 * 1024 * 1024;
+
+    private const PICTURE_TYPES = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+
+    public function __construct(private readonly AuditLogger $audit, private readonly FileStore $files) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -147,6 +155,7 @@ class QrCodesController extends Controller
             'code' => QrCode::freshCode(),
             'name' => $data['name'],
             'destination_url' => $data['destination_url'],
+            'center_image' => $data['center_image'] ?? QrCode::IMAGE_LOGO,
             'created_by' => $user->getKey(),
         ]);
 
@@ -205,24 +214,118 @@ class QrCodesController extends Controller
     /**
      * The printable image. SVG is vector, which is what a vehicle wrap needs;
      * PNG is 2000px for anything that only takes pictures. Error correction H
-     * (30%) because a code on a van gets dirty and scratched.
+     * (30%) because a code on a van gets dirty and scratched, and because the
+     * centre picture (the company logo unless changed) hides ~5% of it.
      */
     public function image(Request $request, string $qrCode): Response
     {
         $qr = $this->findInView($request->user(), $qrCode);
         $png = $request->query('format') === 'png';
+        $picture = $this->picture($qr);
 
-        $renderer = $png
-            ? new GDLibRenderer(2000)
-            : new ImageRenderer(new RendererStyle(1000, 4), new SvgImageBackEnd);
-        $bytes = (new Writer($renderer))->writeString($qr->url(), 'UTF-8', ErrorCorrectionLevel::H());
-
+        $bytes = $png ? QrImage::png($qr->url(), $picture) : QrImage::svg($qr->url(), $picture);
         $name = 'qr-'.$qr->code.($png ? '.png' : '.svg');
 
         return response($bytes, 200, [
             'Content-Type' => $png ? 'image/png' : 'image/svg+xml',
             'Content-Disposition' => 'attachment; filename="'.$name.'"',
         ]);
+    }
+
+    /** GET /marketing/qr-codes/{id}/center-image: the picture alone, for the preview. 404 when none. */
+    public function centerImage(Request $request, string $qrCode): Response
+    {
+        $picture = $this->picture($this->findInView($request->user(), $qrCode));
+        $type = $picture === null ? null : $this->pictureType($picture);
+        abort_if($type === null, Status::HTTP_NOT_FOUND);
+
+        return response($picture, 200, [
+            'Content-Type' => self::PICTURE_TYPES[$type],
+            'Cache-Control' => 'private, no-cache',
+        ]);
+    }
+
+    /**
+     * POST /marketing/qr-codes/{id}/center-image (multipart `file`): any picture
+     * for the middle of the code. Checked by its bytes (PNG, JPEG, GIF, WebP),
+     * at most 2 MB, and kept in the media library of the code's place like a
+     * newsletter picture, so the same bytes twice are one library item.
+     */
+    public function uploadCenterImage(Request $request, string $qrCode): JsonResponse
+    {
+        $user = $this->mayEdit($request, 'change a QR code');
+        $qr = $this->findWritable($user, $qrCode);
+
+        $file = $request->file('file');
+        if (! $file instanceof UploadedFile || ! $file->isValid()) {
+            throw ValidationException::withMessages(['file' => 'Choose a picture of at most 2 MB.']);
+        }
+        $bytes = (string) file_get_contents((string) $file->getRealPath());
+        if (strlen($bytes) > self::MAX_PICTURE_BYTES) {
+            throw ValidationException::withMessages(['file' => 'That picture is larger than 2 MB. Choose a smaller one.']);
+        }
+        $extension = $this->pictureType($bytes);
+        if ($extension === null) {
+            throw ValidationException::withMessages(['file' => 'That file is not a PNG, JPEG, GIF or WebP picture.']);
+        }
+
+        $hash = hash('sha256', $bytes);
+        $item = SocialLibraryItem::query()->where('scope_type', $qr->scope_type)->where('scope_id', $qr->scope_id)
+            ->where('content_hash', $hash)->first();
+        if ($item === null) {
+            $disk = $this->files->defaultDisk();
+            $item = SocialLibraryItem::create([
+                'scope_type' => $qr->scope_type,
+                'scope_id' => $qr->scope_id,
+                'name' => mb_substr(trim((string) $file->getClientOriginalName()) ?: 'QR picture.'.$extension, 0, 120),
+                'disk' => $disk,
+                'path' => $this->files->putContents($bytes, $this->files->directoryFor('social-library', (string) $user->organization_id), $extension, $disk),
+                'size' => strlen($bytes),
+                'content_hash' => $hash,
+                'created_by' => $user->getKey(),
+            ]);
+            $this->audit->log('social.library_added', $item, ['name' => $item->name, 'from' => 'qr_code'], actor: $user);
+        }
+
+        $qr->forceFill(['center_image' => QrCode::IMAGE_UPLOAD, 'center_image_item_id' => $item->id]);
+        $this->audit->logChange('qr_code.updated', $qr, $user);
+        $qr->save();
+
+        return response()->json(['data' => $this->present($qr)]);
+    }
+
+    /** The bytes for the middle of the code, or null for none. */
+    private function picture(QrCode $qr): ?string
+    {
+        if ($qr->center_image === QrCode::IMAGE_NONE) {
+            return null;
+        }
+        if ($qr->center_image === QrCode::IMAGE_UPLOAD) {
+            $item = $qr->center_image_item_id === null ? null
+                : SocialLibraryItem::query()->find($qr->center_image_item_id);
+
+            return $item === null ? null : $this->files->contents($item->path, $item->disk);
+        }
+
+        // The logo the code's place shows: its company's (a branch shows its
+        // company's), else the organization's — as BrandingController does.
+        $companyId = match ($qr->scope_type) {
+            'company' => $qr->scope_id,
+            'franchise' => Franchise::query()->whereKey($qr->scope_id)->value('company_id'),
+            default => null,
+        };
+        $path = ($companyId === null ? null : Company::query()->whereKey($companyId)->value('logo_path'))
+            ?? Organization::query()->whereKey($qr->organization_id)->value('logo_path');
+
+        return $path === null ? null : $this->files->contents($path);
+    }
+
+    private function pictureType(string $bytes): ?string
+    {
+        $info = @getimagesizefromstring($bytes);
+        $type = $info === false ? false : array_search($info['mime'] ?? '', self::PICTURE_TYPES, true);
+
+        return is_string($type) ? $type : null;
     }
 
     private function mayEdit(Request $request, string $doing): User
@@ -259,6 +362,8 @@ class QrCodesController extends Controller
         return $request->validate([
             'name' => [$required, 'string', 'max:120'],
             'destination_url' => [$required, 'string', 'max:2048', 'url:http,https'],
+            // `upload` is set by uploading a picture, never by naming one here.
+            'center_image' => ['sometimes', Rule::in([QrCode::IMAGE_LOGO, QrCode::IMAGE_NONE])],
         ], [
             'destination_url.url' => 'Enter a full web address starting with https://.',
         ]);
@@ -273,6 +378,7 @@ class QrCodesController extends Controller
             'code' => $q->code,
             'url' => $q->url(),
             'destination_url' => $q->destination_url,
+            'center_image' => $q->center_image ?? QrCode::IMAGE_LOGO,
             'scans' => $q->scans,
             'last_scanned_at' => $q->last_scanned_at?->toIso8601String(),
             'active' => $q->deactivated_at === null,

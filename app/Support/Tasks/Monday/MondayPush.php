@@ -496,10 +496,19 @@ final class MondayPush
      */
     private function textColumnOn(string $boardId, string $title, ?string $after): string
     {
-        return Cache::lock('monday-column:'.$boardId.':'.mb_strtolower($title), 60)->block(30, function () use ($boardId, $title, $after) {
-            $fresh = $this->reader->writeMeta($boardId);
+        $made = 'monday-column-made:'.$boardId.':'.mb_strtolower($title);
 
-            return MondayBoardReader::columnFor($fresh, $title) ?? $this->writer->createTextColumn($boardId, $title, $after);
+        return Cache::lock('monday-column:'.$boardId.':'.mb_strtolower($title), 60)->block(30, function () use ($boardId, $title, $after, $made) {
+            // Monday's column list can lag a create by a while: the next push read it, saw no
+            // column and made another (desk 11-20: A1 had 4 "Client name" columns). The one we
+            // made is remembered and taken first.
+            if (is_string($id = Cache::get($made))) {
+                return $id;
+            }
+            $id = MondayBoardReader::columnFor($this->reader->writeMeta($boardId), $title) ?? $this->writer->createTextColumn($boardId, $title, $after);
+            Cache::put($made, $id, now()->addMinutes(10));
+
+            return $id;
         });
     }
 

@@ -1302,7 +1302,7 @@ class ActionRunner
             $sent = $bySms
                 ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
-        } catch (\App\Support\Phone\SmsCapped $capped) {
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
@@ -4464,7 +4464,7 @@ class ActionRunner
             // A booking confirmation is always sent; other rule texts count toward the daily cap.
             app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
                 automatic: true, capped: $event->event_key !== 'lead.booking_approved');
-        } catch (\App\Support\Phone\SmsCapped $capped) {
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
             return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
