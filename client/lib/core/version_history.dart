@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0613', date: '20 Nov 2026', items: [
       'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
+      'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
     ]),
     VersionRelease(version: '0.0.0612', date: '19 Nov 2026', items: [
       'Reviews: the walkthrough says 1-3 stars, matching the filter',
