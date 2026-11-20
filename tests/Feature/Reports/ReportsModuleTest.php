@@ -53,6 +53,14 @@ class ReportsModuleTest extends TestCase
             'jobs.view',
             'cancelled.view',
             'pending.view',
+            'estimates.view',
+            'tasks.view',
+            'complaints.view',
+            'dispatch.view',
+            'accounting.view',
+            'recruiting.view',
+            'techs.view',
+            'tech_checks.view',
             'workspace.view',
         ], $module->actions);
     }
