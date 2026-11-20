@@ -254,6 +254,35 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Eric via Jose, 2026-11-20: a dispatcher logs a complaint with only name and job number; the AI adds an update, never a twin. */
+    public function test_a_dispatchers_complaint_by_job_number_gets_the_ai_update_and_a_missed_one_is_still_made(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => '🤝 Customer Relations Board - Natalie', 'position' => 9]);
+            $jobCol = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'EzBizi Job #', 'type' => 'text', 'position' => 1]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Joe', 'phone' => '+13307153809']);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            $dispatcher = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'Joe .', 'group' => '🤝 Customer Relations Board - Natalie',
+                'values' => [$jobCol->id => $job->number]], $t['admin']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $step = ['type' => 'task.create', 'title' => '{{summary}}', 'assignee' => 'user:'.$t['admin']->id, 'group' => 'Customer Relations',
+                'dedupe' => '{{phone}}', 'dedupe_days' => 7, 'on_duplicate' => 'comment', 'duplicate_note' => 'AI review also flagged this call: {{summary}}'];
+            $call = fn (string $phone) => new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => ['phone' => $phone, 'summary' => 'Paid half, wants a date']],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run($step, $call('+13307153809'), null, automation: $rule);
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame(1, Task::query()->count(), 'no AI twin of the dispatcher\'s task');
+            $this->assertStringContainsString('Paid half, wants a date', (string) $dispatcher->updates()->value('body'));
+
+            $missed = app(ActionRunner::class)->run($step, $call('+12164097375'), null, automation: $rule);
+            $this->assertTrue($missed['ok'], $missed['detail']);
+            $this->assertSame(2, Task::query()->count(), 'a complaint nobody logged is still added');
+        });
+    }
+
     /** Desk for Jose, 2026-11-17: the caller replied or booked, so the untouched call-back task closes itself. */
     public function test_the_callers_untouched_call_back_task_is_closed_with_a_note(): void
     {
