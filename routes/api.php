@@ -1112,6 +1112,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
+        Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
+        Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
         Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
