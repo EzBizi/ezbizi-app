@@ -161,6 +161,7 @@ class WorkizJob extends Model implements HoldsPersonalData
         // `Attachments` at all (WorkizV2::job), and must not empty them.
         if (! array_key_exists('Attachments', $attributes['payload']) && isset($held->payload['Attachments'])) {
             $attributes['payload']['Attachments'] = $held->payload['Attachments'];
+            $attributes['payload']['AttachmentsReadAt'] = $held->payload['AttachmentsReadAt'] ?? null;
         }
 
         unset($attributes['address'], $attributes['unit'], $attributes['city'], $attributes['state'],
