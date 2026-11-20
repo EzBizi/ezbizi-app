@@ -96,21 +96,4 @@ class TaskBoardFoldersTest extends TestCase
         $this->assertArrayHasKey('groups', $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['name' => 'Partners 2'])->assertOk()->json('data'));
     }
 
-    /** Jose 11-20: Favorite boards, each person's own. */
-    public function test_a_favorite_is_the_persons_own(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-        $maker = $this->userWithRole($tenant, 'Maker', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
-        $other = $this->userWithRole($tenant, 'Other', ['tasks.view', 'tasks.edit', 'tasks.create_boards'], 'other@ezbizi.test');
-        $board = $this->signedInAs($maker)->postJson('/api/v1/task-boards', [
-            'name' => 'Partners', 'visibility' => 'main', 'franchise_id' => $tenant['franchise']->id,
-        ])->assertCreated()->json('data.id');
-        $starred = fn ($u) => collect($this->signedInAs($u)->getJson('/api/v1/task-boards')->json('data'))->firstWhere('id', $board)['favorite'] ?? null;
-
-        $this->signedInAs($maker)->putJson("/api/v1/task-boards/{$board}/favorite")->assertOk();
-        $this->assertTrue($starred($maker));
-        $this->assertFalse($starred($other), 'not someone else\'s');
-        $this->signedInAs($maker)->deleteJson("/api/v1/task-boards/{$board}/favorite")->assertOk();
-        $this->assertFalse($starred($maker));
-    }
 }

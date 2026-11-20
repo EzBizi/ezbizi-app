@@ -1067,8 +1067,6 @@ Route::prefix('v1')
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}', [TaskBoardsController::class, 'destroy']);
-        Route::put('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
-        Route::delete('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
         Route::post('task-boards/{taskBoard}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
