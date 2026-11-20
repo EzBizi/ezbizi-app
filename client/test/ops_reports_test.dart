@@ -212,6 +212,16 @@ void main() {
                 'photos': 1,
                 'misses': ['eta'],
               },
+              {
+                'job_id': 'job-10',
+                'number': 'JOB-60002',
+                'client': 'Lee Park',
+                'job_type': 'Sweep',
+                'start': '2026-11-11T14:00:00Z',
+                'closed_at': null,
+                'photos': null,
+                'misses': ['eta'],
+              },
             ],
           };
         }
@@ -308,6 +318,9 @@ void main() {
     expect(asked.last.queryParameters['tech'], 'Sam Okafor');
     expect(asked.last.queryParameters['check'], 'eta');
     expect(find.textContaining('Kelly Harmon'), findsOneWidget);
+    // Photos never read from Workiz: unknown, not zero.
+    expect(find.textContaining('photos not read'), findsOneWidget);
+    expect(find.textContaining('0 photos'), findsNothing);
     // Not checked (no inspection types listed): no chip for it.
     expect(find.byKey(const ValueKey('tech-check-inspection')), findsNothing);
 
