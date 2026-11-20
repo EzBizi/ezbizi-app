@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
+      'Websites: the dispatcher photo in the website chat loads again',
+      'Backups: the daily backup check runs after the nightly backup has finished',
+    ]),
     VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
       'Task Board: drag a group header onto another group to reorder the board; Monday follows',
       'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
