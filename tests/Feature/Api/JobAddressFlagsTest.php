@@ -89,7 +89,10 @@ class JobAddressFlagsTest extends TestCase
             $this->assertSame(3, Task::query()->whereNull('created_by_user_id')->count());
             // Desk 11-18: owned by the booker it alerts, made by EzBizi, and says what to do.
             $this->assertSame([$booker->id], $task->owners()->pluck('user_id')->all());
-            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', $task->title);
+            // Row 6 (desk 11-20): a short title; what to do lives in Notes.
+            $this->assertStringNotContainsString(' · ', $task->title);
+            $this->assertLessThanOrEqual(121, mb_strlen($task->title));
+            $this->assertStringEndsWith(' · Fix the address in Workiz so the tech can find it', (string) $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Notes'))->value('value_text'));
             // Jose 11-18: a job's task carries both job ids as columns.
             $ids = TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->mapWithKeys(fn ($v) => [$v->column->name => $v->value_text])->all();
             $this->assertSame(['Workiz Job ID' => '101', 'EzBizi Job #' => 'J-1'], array_intersect_key($ids, array_flip(['Workiz Job ID', 'EzBizi Job #'])));
@@ -163,5 +166,16 @@ class JobAddressFlagsTest extends TestCase
             $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha Perez'));
             $this->assertNull(FlagWorkizJobs::byFirstAndLast('Sasha'));
         });
+    }
+
+    /** Row 6 (desk 11-20): a flag title over 120 is cut on a word, like a rule's. */
+    public function test_a_long_flag_title_is_cut_on_a_word(): void
+    {
+        $long = 'Address needs fixing (no house number): "'.str_repeat('Valley Lane ', 15).'"';
+        $short = FlagWorkizJobs::shortTitle($long);
+        $this->assertLessThanOrEqual(121, mb_strlen($short));
+        $this->assertStringEndsWith('…', $short);
+        $this->assertStringStartsWith('Address needs fixing (no house number)', $short);
+        $this->assertSame('Short one', FlagWorkizJobs::shortTitle('Short one'));
     }
 }

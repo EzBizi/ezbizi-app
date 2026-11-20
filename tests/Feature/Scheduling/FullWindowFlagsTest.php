@@ -86,7 +86,7 @@ class FullWindowFlagsTest extends TestCase
         $this->inTenant($alpha['org'], function () {
             $task = Task::query()->with('group')->where('title', 'like', '8-11 AM already had 2 of 1 when it was moved there%')->firstOrFail();
             $this->assertSame('Overbooked', $task->group->name);
-            $this->assertStringEndsWith(' · booked by Ana Ruiz', $task->title);
+            $this->assertStringEndsWith(' · booked by Ana Ruiz', (string) $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Notes'))->value('value_text'));
             $this->assertSame('Ana Ruiz', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Booked by'))->value('value_text'));
         });
     }
