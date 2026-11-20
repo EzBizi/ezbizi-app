@@ -27,6 +27,7 @@ import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
 import 'reports/job_status_report.dart';
 import 'reports/jobs_report.dart';
+import 'reports/ops_reports.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
@@ -103,6 +104,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'Meta',
     'Thumbtack',
     'Jobs',
+    'Office',
+    'Technicians',
   };
 
   /// Reports · Builder · Experimental. The builder is a DESTINATION now
@@ -522,12 +525,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
       // Jobs as a family (design 199, Shoval 2026-11-18): Overview (every
       // job created, Jose 2026-11-11) · Cancelled · Pending, each its own
       // grant, drawn when any of them is.
-      if (_mayOpen('jobs') || _mayOpen('cancelled') || _mayOpen('pending'))
+      if (_mayOpen('jobs') ||
+          _mayOpen('cancelled') ||
+          _mayOpen('pending') ||
+          _mayOpen('estimates'))
         (
           'Jobs',
           Icons.work_outline,
-          () => _JobsFamily(
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-jobs'),
             session: widget.session,
+            name: 'jobs',
             tabs: [
               if (_mayOpen('jobs'))
                 (
@@ -572,6 +581,62 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         widget.session.me?.display ?? DisplayFormats.fallback,
                   ),
                 ),
+              if (_mayOpen('estimates'))
+                (
+                  'estimates',
+                  'Estimates',
+                  Icons.request_quote_outlined,
+                  () => _ops(estimatesSpec, canExport),
+                ),
+            ],
+          ),
+        ),
+      // Office (design 199, Shoval 2026-11-18): the office's own numbers.
+      if (const [
+        'tasks',
+        'complaints',
+        'dispatch',
+        'accounting',
+        'recruiting',
+      ].any(_mayOpen))
+        (
+          'Office',
+          Icons.apartment_outlined,
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-office'),
+            session: widget.session,
+            name: 'office',
+            tabs: [
+              for (final (key, spec) in [
+                ('tasks', tasksSpec),
+                ('complaints', complaintsSpec),
+                ('dispatch', dispatchSpec),
+                ('accounting', accountingSpec),
+                ('recruiting', recruitingSpec),
+              ])
+                if (_mayOpen(key))
+                  (key, spec.title, spec.icon, () => _ops(spec, canExport)),
+            ],
+          ),
+        ),
+      // Technicians (design 199): each tech's jobs and the AI's checks.
+      if (_mayOpen('techs') || _mayOpen('tech_checks'))
+        (
+          'Technicians',
+          Icons.engineering_outlined,
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-techs'),
+            session: widget.session,
+            name: 'techs',
+            tabs: [
+              for (final (key, spec) in [
+                ('techs', techsSpec),
+                ('tech_checks', techChecksSpec),
+              ])
+                if (_mayOpen(key))
+                  (key, spec.title, spec.icon, () => _ops(spec, canExport)),
             ],
           ),
         ),
@@ -594,6 +659,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
     ];
   }
+
+  Widget _ops(OpsSpec spec, bool canExport) => OpsReport(
+    key: ValueKey('ops-${spec.key}'),
+    api: widget.api,
+    span: _span,
+    spec: spec,
+    canExport: canExport,
+    formats: widget.session.me?.display ?? DisplayFormats.fallback,
+  );
 
   /// Whether this person may open one of Reports' own tabs.
   ///
@@ -1487,21 +1561,29 @@ class SavedReportSummary {
 
 /// A family of report tabs drawn as one tab with its own strip (design 199,
 /// option 1): the sub-tab last opened is kept for the person.
-class _JobsFamily extends StatefulWidget {
-  const _JobsFamily({required this.session, required this.tabs});
+class _Family extends StatefulWidget {
+  const _Family({
+    super.key,
+    required this.session,
+    required this.name,
+    required this.tabs,
+  });
 
   final Session session;
+
+  /// jobs, office or techs: its strip's key and its preference.
+  final String name;
   final List<(String, String, IconData, Widget Function())> tabs;
 
   @override
-  State<_JobsFamily> createState() => _JobsFamilyState();
+  State<_Family> createState() => _FamilyState();
 }
 
-class _JobsFamilyState extends State<_JobsFamily> {
-  static const _pref = 'reports.jobs_tab';
+class _FamilyState extends State<_Family> {
+  String get _pref => 'reports.${widget.name}_tab';
 
   late String _sub =
-      widget.session.me?.preferences[_pref] as String? ?? 'overview';
+      widget.session.me?.preferences[_pref] as String? ?? widget.tabs.first.$1;
 
   @override
   Widget build(BuildContext context) {
@@ -1513,7 +1595,7 @@ class _JobsFamilyState extends State<_JobsFamily> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
-          key: const ValueKey('reports-jobs-tabs'),
+          key: ValueKey('reports-${widget.name}-tabs'),
           level: TabLevel.secondary,
           labels: [for (final t in tabs) (t.$2, t.$3)],
           selected: at,
@@ -1524,7 +1606,7 @@ class _JobsFamilyState extends State<_JobsFamily> {
         ),
         Expanded(
           child: KeyedSubtree(
-            key: ValueKey('reports-jobs-${tabs[at].$1}'),
+            key: ValueKey('reports-${widget.name}-${tabs[at].$1}'),
             child: tabs[at].$4(),
           ),
         ),

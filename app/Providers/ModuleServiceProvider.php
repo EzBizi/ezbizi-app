@@ -4652,6 +4652,17 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
                     new TabDefinition('cancelled', 'Cancelled', within: 'Jobs'),
                     new TabDefinition('pending', 'Pending', within: 'Jobs'),
+                    // The rest of Shoval's operations reports (2026-11-18, design
+                    // 199), each its own grant, in three groups with no grant of
+                    // their own (server 3c06e5ea7).
+                    new TabDefinition('estimates', 'Estimates', within: 'Jobs'),
+                    new TabDefinition('tasks', 'Tasks', within: 'Office'),
+                    new TabDefinition('complaints', 'Complaints', within: 'Office'),
+                    new TabDefinition('dispatch', 'Dispatch', within: 'Office'),
+                    new TabDefinition('accounting', 'Accounting weekly', within: 'Office'),
+                    new TabDefinition('recruiting', 'Recruiting', within: 'Office'),
+                    new TabDefinition('techs', 'Tech report', within: 'Technicians'),
+                    new TabDefinition('tech_checks', 'AI checks', within: 'Technicians'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),
