@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
+      'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
+      'HR: recruiting data behind the scenes (applicants, interviews, recruiting spend) for the coming Recruiting screen and report',
+    ]),
     VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
       'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
       'Task Board: clicking a task highlights it and opens its updates beside the board',
