@@ -129,8 +129,10 @@ class MondayPushTest extends TestCase
                     str_contains($q, 'create_update(') => ['create_update' => ['id' => '901']],
                     str_contains($q, 'create_group(') => ['create_group' => ['id' => 'g_new']],
                     str_contains($q, 'create_column(') => (function () use ($vars) {
-                        // Monday now has it: the next read lists it.
-                        $this->extraColumns[(string) $vars['b']][] = ['id' => 'text_new', 'title' => $vars['t'], 'type' => 'text', 'settings_str' => '{}'];
+                        // Monday now has it: the next read lists it (unless Monday's list lags).
+                        if (! $this->columnsLag) {
+                            $this->extraColumns[(string) $vars['b']][] = ['id' => 'text_new', 'title' => $vars['t'], 'type' => 'text', 'settings_str' => '{}'];
+                        }
 
                         return ['create_column' => ['id' => 'text_new']];
                     })(),
@@ -159,6 +161,8 @@ class MondayPushTest extends TestCase
             }]);
         }]);
     }
+
+    private bool $columnsLag = false;
 
     private function values(int $i = 0): array
     {
@@ -191,6 +195,27 @@ class MondayPushTest extends TestCase
             app(TaskWriter::class)->update($other->fresh(), ['values' => [$col->id => '800021104']], $this->jose);
         });
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $this->assertCount(1, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_column(')));
+    }
+
+    /** Desk 11-20: Monday's column list lagged a create, and each later push made another "Client name" (A1 had 4). */
+    public function test_a_column_made_is_not_made_again_while_mondays_list_lags(): void
+    {
+        $this->columnsLag = true;
+        $col = $this->inTenant($this->tenant['org'], function () {
+            $col = TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 20]);
+            app(TaskWriter::class)->update($this->task, ['values' => [$col->id => 'Tine']], $this->jose);
+
+            return $col;
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->inTenant($this->tenant['org'], function () use ($col) {
+            $other = app(TaskWriter::class)->create($this->board, ['title' => 'Second'], $this->jose);
+            $other->forceFill(['external_ref' => 'monday:12'])->saveQuietly();
+            app(TaskWriter::class)->update($other->fresh(), ['values' => [$col->id => 'Pam']], $this->jose);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful(); // a later run: a fresh read that still lacks it
 
         $this->assertCount(1, collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_column(')));
     }

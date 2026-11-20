@@ -679,6 +679,26 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Row 15: a group header dragged onto another takes its place, saved',
+    (tester) async {
+      await pump(tester);
+      final handle = find.byKey(const ValueKey('group-drag-g2'));
+      final target = find.byKey(const ValueKey('group-drop-g1'));
+      expect(handle, findsOneWidget);
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await tester.pump(const Duration(milliseconds: 50));
+      await gesture.moveTo(tester.getCenter(target));
+      await tester.pump(const Duration(milliseconds: 50));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final patch = log.lastWhere(
+        (l) => l.$1 == 'PATCH' && l.$2 == '/task-boards/b-1/groups/g2',
+      );
+      expect((patch.$3 as Map)['position'], 0, reason: "g1's place");
+    },
+  );
+
   // -- Built-in columns (Jose, 2026-10-20) --
 
   Map<String, dynamic> customised() => {
