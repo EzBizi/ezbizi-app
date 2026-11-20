@@ -179,6 +179,7 @@ use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\ReportDraftsController;
 use App\Http\Controllers\Api\ReportGoalsController;
 use App\Http\Controllers\Api\ReportPeriodController;
+use App\Http\Controllers\Api\RecruitingController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReportWorkspaceController;
 use App\Http\Controllers\Api\ReviewLinkEventsController;
@@ -2373,6 +2374,19 @@ Route::prefix('v1')
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
         Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
         Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        // The applicant pipeline (Shoval, 2026-11-20); hr.view reads, hr.edit writes, in the controller.
+        Route::get('hr/applicants', [RecruitingController::class, 'index']);
+        Route::post('hr/applicants', [RecruitingController::class, 'store']);
+        Route::get('hr/applicants/{applicant}', [RecruitingController::class, 'show']);
+        Route::patch('hr/applicants/{applicant}', [RecruitingController::class, 'update']);
+        Route::delete('hr/applicants/{applicant}', [RecruitingController::class, 'destroy']);
+        Route::post('hr/applicants/{applicant}/interviews', [RecruitingController::class, 'storeInterview']);
+        Route::patch('hr/applicant-interviews/{interview}', [RecruitingController::class, 'updateInterview']);
+        Route::delete('hr/applicant-interviews/{interview}', [RecruitingController::class, 'destroyInterview']);
+        Route::get('hr/recruiting-spend', [RecruitingController::class, 'spend']);
+        Route::post('hr/recruiting-spend', [RecruitingController::class, 'storeSpend']);
+        Route::patch('hr/recruiting-spend/{spend}', [RecruitingController::class, 'updateSpend']);
+        Route::delete('hr/recruiting-spend/{spend}', [RecruitingController::class, 'destroySpend']);
         Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
         Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
