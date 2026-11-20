@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * and stage, their interviews, and recruiting spend per month and position —
  * what the Recruiting report reads.
  *
- * Read with `hr.view`, written with `hr.edit`. Rows are limited to the branches
+ * Read with `hr.recruiting.view` (its tab's grant; design 201), written with `hr.edit`. Rows are limited to the branches
  * in the reader's current view; a row with no branch only to someone who
  * reaches the whole organization, as with unplaced people on Records.
  */
@@ -40,7 +40,7 @@ class RecruitingController extends Controller
     /** GET /api/v1/hr/applicants?position=&stage=&source=&franchise_id=&from=&to=&search= */
     public function index(Request $request): JsonResponse
     {
-        $this->gate($request, 'hr.view', 'see applicants');
+        $this->gate($request, 'hr.recruiting.view', 'see applicants');
 
         $filtered = $this->visible(Applicant::query(), $request->user())
             ->when($request->query('position'), fn ($q, $v) => $q->where('position', $v))
@@ -74,7 +74,7 @@ class RecruitingController extends Controller
     /** GET /api/v1/hr/applicants/{applicant} — with its interviews. */
     public function show(Request $request, Applicant $applicant): JsonResponse
     {
-        $this->gate($request, 'hr.view', 'see applicants');
+        $this->gate($request, 'hr.recruiting.view', 'see applicants');
         $this->assertVisible($applicant, $request->user());
 
         return response()->json(['data' => $this->present($applicant->load('interviews')) + [
@@ -174,7 +174,7 @@ class RecruitingController extends Controller
     /** GET /api/v1/hr/recruiting-spend?from=YYYY-MM&to=YYYY-MM&position= */
     public function spend(Request $request): JsonResponse
     {
-        $this->gate($request, 'hr.view', 'see recruiting spend');
+        $this->gate($request, 'hr.recruiting.view', 'see recruiting spend');
 
         $rows = $this->visible(RecruitingSpend::query(), $request->user())
             ->when($request->query('from'), fn ($q, $v) => $q->where('month', '>=', $v.'-01'))
