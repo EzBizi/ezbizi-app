@@ -83,11 +83,19 @@ final class SiteLists
      */
     public static function reviewSummary(WebSite $site): array
     {
-        return \Illuminate\Support\Facades\Cache::remember('web-review-summary:'.$site->company_id, 3600, function () use ($site): array {
-            $row = Review::query()
+        return \Illuminate\Support\Facades\Cache::remember('web-review-summary-v2:'.$site->company_id, 3600, function () use ($site): array {
+            // One review once (desk 11-20): a Google location synced through two connections
+            // (the manager account and the location's own) stores every review twice, under
+            // two resource names that end in the same review id. Count each id once.
+            $unique = Review::query()
                 ->where('company_id', $site->company_id)
                 ->whereNotNull('rating')
-                ->selectRaw('count(*) as n, avg(rating) as a')
+                ->whereNull('removed_at')
+                ->selectRaw("max(rating) as r")
+                ->groupByRaw("case when remote_name like '%/reviews/%' then concat(coalesce(source, ''), ':', substring_index(remote_name, '/reviews/', -1)) else id end");
+
+            $row = \Illuminate\Support\Facades\DB::query()->fromSub($unique, 'u')
+                ->selectRaw('count(*) as n, avg(r) as a')
                 ->first();
 
             return ['count' => (int) ($row->n ?? 0), 'average' => round((float) ($row->a ?? 0), 1)];

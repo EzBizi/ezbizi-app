@@ -1596,6 +1596,17 @@ class WebManagementTest extends TestCase
                     'reviewed_at' => now()->subDays($i),
                 ]);
             }
+            // The same review synced through a second account (the manager account) is one review.
+            \App\Models\Review::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'connection_id' => $connection->id,
+                'remote_name' => 'accounts/2/locations/loc1/reviews/0',
+                'location_name' => 'accounts/2/locations/loc1',
+                'reviewer_name' => 'R0',
+                'rating' => 5,
+                'reviewed_at' => now(),
+            ]);
         });
 
         $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()
