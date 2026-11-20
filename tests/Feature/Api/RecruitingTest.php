@@ -56,6 +56,14 @@ class RecruitingTest extends TestCase
             'amount' => 450, 'franchise_id' => $t['franchise']->id])->assertCreated()->assertJsonPath('data.month', '2026-11');
         $this->assertSame('450.00', $hr->getJson('/api/v1/hr/recruiting-spend?from=2026-11&to=2026-11')->json('data.0.amount'));
 
+        // Counts over the filtered set, and hires for cost per hire.
+        $hr->patchJson("/api/v1/hr/applicants/{$id}", ['stage' => 'hired'])->assertOk();
+        $meta = $hr->getJson('/api/v1/hr/applicants?position=technician')->json('meta');
+        $this->assertSame([1, 1, 1], [$meta['relevant'], $meta['interviewed'], $meta['hired']]);
+        $this->assertIsInt($meta['median_first_response_minutes']);
+        $this->assertSame(['technician' => 1], $hr->getJson('/api/v1/hr/recruiting-spend?from=2026-01&to=2030-12')->json('meta.hires'));
+        $hr->patchJson("/api/v1/hr/applicants/{$id}", ['stage' => 'phone_screen'])->assertOk();
+
         // Filters.
         $this->assertCount(1, $hr->getJson('/api/v1/hr/applicants?position=technician&stage=phone_screen')->json('data'));
         $this->assertCount(0, $hr->getJson('/api/v1/hr/applicants?position=dispatcher')->json('data'));

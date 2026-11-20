@@ -48,6 +48,12 @@ final class TaskRecordFill
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
         // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
         // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
+        // No job, but the task carries its Workiz number (desk 11-20: CT Debby Bloom, 200024600): that job.
+        if ($job === null && ($wzCol = $board->columns()->where('name', TaskWriter::WORKIZ_JOB_COLUMN)->first()) !== null
+            && ($wz = trim((string) $task->values()->where('column_id', $wzCol->id)->value('value_text'))) !== '') {
+            $jobId = WorkizJob::query()->where('serial_id', $wz)->orWhere('remote_id', $wz)->value('job_id');
+            $job = $jobId ? Job::query()->withoutGlobalScopes()->find($jobId) : null;
+        }
         if ($job === null) {
             $phoneCol = $board->columns()->where('name', 'Phone number')->first();
             $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));

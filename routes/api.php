@@ -1067,8 +1067,6 @@ Route::prefix('v1')
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}', [TaskBoardsController::class, 'destroy']);
-        Route::put('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
-        Route::delete('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
         Route::post('task-boards/{taskBoard}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
@@ -1112,6 +1110,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
+        Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
+        Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
         Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
@@ -1247,6 +1248,7 @@ Route::prefix('v1')
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [ComplaintsController::class, 'index']);
+        Route::post('complaints', [ComplaintsController::class, 'store']);
         Route::get('complaints/{complaint}', [ComplaintsController::class, 'show']);
         Route::patch('complaints/{complaint}', [ComplaintsController::class, 'update']);
         Route::post('complaints/{complaint}/notes', [ComplaintsController::class, 'addNote']);

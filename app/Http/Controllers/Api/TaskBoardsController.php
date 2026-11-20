@@ -86,9 +86,7 @@ class TaskBoardsController extends Controller
             ->sortBy(fn (TaskBoard $b) => [array_search($b->kind, self::ORDER, true), $b->name])
             ->values();
 
-        $favorites = array_map('strval', (array) (((array) ($user->preferences ?? []))['task_board_favorites'] ?? []));
-
-        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived, $favorites) {
+        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived) {
             $owner = $b->kind === TaskBoard::KIND_USER
                 ? $b->owner
                 : $b->members->firstWhere('role', TaskBoardMember::OWNER)?->user;
@@ -109,8 +107,6 @@ class TaskBoardsController extends Controller
                 'folder_id' => $b->folder_id,
                 'colour' => $b->colour,
                 'position' => $b->position,
-                // Starred by this person (Jose 11-20: Favorite boards), theirs alone.
-                'favorite' => in_array((string) $b->id, $favorites, true),
                 'open_for_me' => (int) $b->open_for_me,
                 'can_edit' => $this->boards->canEdit($user, $b),
                 'my_role' => $role,
@@ -573,22 +569,6 @@ class TaskBoardsController extends Controller
         }
 
         return $saved;
-    }
-
-    /** PUT/DELETE task-boards/{id}/favorite: this person's star on a board they can see (Jose 11-20). */
-    public function favorite(Request $request, TaskBoard $taskBoard): JsonResponse
-    {
-        $this->authorize('view', $taskBoard);
-        $user = $request->user();
-        $prefs = (array) ($user->preferences ?? []);
-        $stars = array_values(array_diff((array) ($prefs['task_board_favorites'] ?? []), [(string) $taskBoard->id]));
-        if ($request->isMethod('put')) {
-            $stars[] = (string) $taskBoard->id;
-        }
-        $prefs['task_board_favorites'] = $stars;
-        $user->forceFill(['preferences' => $prefs])->save();
-
-        return response()->json(['data' => ['id' => $taskBoard->id, 'favorite' => $request->isMethod('put')]]);
     }
 
     public function destroy(Request $request, TaskBoard $taskBoard): Response

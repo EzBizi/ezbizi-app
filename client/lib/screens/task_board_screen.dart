@@ -320,6 +320,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     with WidgetsBindingObserver {
   List<_Json> _boards = const [];
   int _selected = 0;
+
+  /// The task last clicked: its row stays blue (design 200, 2; Jose 11-20,
+  /// Monday's selected item).
+  String? _openId;
+
+  /// The task in the panel docked beside the board, on a wide screen.
+  _Json? _dockTask;
+  List<Future<void>> _dockSaves = [];
+
+  /// Set by the layout: wide enough to dock the task panel (1100, as the
+  /// Social planner's inspector).
+  bool _dockWide = false;
   _Json? _board;
   bool _loading = true;
   String? _error;
@@ -345,6 +357,28 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   String _view = 'table';
   String _query = '';
   final Set<String?> _folded = {};
+
+  /// The task being dragged: its row stays behind as a faint ghost.
+  String? _draggingId;
+
+  /// The groups that were folded before a group drag folded them all.
+  Set<String?>? _foldedBeforeDrag;
+
+  void _foldAllForDrag() => setState(() {
+    _foldedBeforeDrag = {..._folded};
+    _folded.addAll([for (final g in _shownGroups()) g['id'] as String?]);
+  });
+
+  void _unfoldAfterDrag() {
+    final before = _foldedBeforeDrag;
+    if (before == null || !mounted) return;
+    setState(() {
+      _folded
+        ..clear()
+        ..addAll(before);
+      _foldedBeforeDrag = null;
+    });
+  }
 
   /// Filter, sort and person filter in force (Jose, 2026-11-09).
   ListQuery _filter = const ListQuery();
@@ -2318,6 +2352,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   Future<void> _openTask(_Json task) async {
+    setState(() => _openId = task['id'] as String?);
+    if (_dockWide && _view == 'table') {
+      // Beside the board, which stays live (no scrim); another row swaps it.
+      final before = _dockSaves;
+      setState(() {
+        _dockTask = task;
+        _dockSaves = [];
+      });
+      unawaited(
+        WidgetsBinding.instance.endOfFrame
+            .then((_) => Future.wait(before))
+            .then((_) async {
+              if (mounted && before.isNotEmpty) await _load();
+            }),
+      );
+      return;
+    }
     final people = _people;
     final groups = _groups(_board!);
     final group = groups.firstWhere(
@@ -2343,6 +2394,56 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     // after it lands, or the row shows the old words (Jose, 2026-11-16).
     await Future.wait(saves);
     if (mounted) await _load();
+  }
+
+  /// The docked panel's ✕ or Esc: the blue clears, and the board is read
+  /// once what was typed has saved.
+  Future<void> _closeDock() async {
+    final saves = _dockSaves;
+    setState(() {
+      _dockTask = null;
+      _openId = null;
+      _dockSaves = [];
+    });
+    // The panel saves what is still typed as it goes, in the frame that
+    // removes it: wait for that frame, then for the saves.
+    await WidgetsBinding.instance.endOfFrame;
+    await Future.wait(saves);
+    if (mounted) await _load();
+  }
+
+  Widget _dockedPanel(_Json task) {
+    final groups = _groups(_board!);
+    final group = groups.firstWhere(
+      (g) => g['id'] == task['group_id'],
+      orElse: () => groups.last,
+    );
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            unawaited(_closeDock()),
+      },
+      child: Focus(
+        child: SizedBox(
+          key: const Key('task-dock'),
+          width: 440,
+          child: _TaskPanel(
+            key: ValueKey('task-dock-${task['id']}'),
+            api: widget.api,
+            formats: _formats,
+            taskId: task['id'] as String,
+            board: _board!,
+            where: '${group['name']}',
+            people: _people,
+            unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
+            subtasks: _subtasksOf(task),
+            saves: _dockSaves,
+            docked: true,
+            onClose: () => unawaited(_closeDock()),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -2427,11 +2528,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         );
         if (_boards.isEmpty) return board;
         if (cards) return _choosing ? _choosingPane(context) : board;
+        _dockWide = constraints.maxWidth >= 1100;
+        final dock = _dockWide && _view == 'table' ? _dockTask : null;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _tree(docked: true),
             Expanded(child: board),
+            if (dock != null && _board != null) ...[
+              const VerticalDivider(width: 1),
+              _dockedPanel(dock),
+            ],
           ],
         );
       },
@@ -2454,6 +2561,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     },
     onDropTask: _canEdit ? _dropOnBoard : null,
     api: widget.api,
+    session: widget.session,
     canArrange: widget.session.me?.can('tasks.create_boards') ?? false,
     onArranged: _load,
     onNewBoard: (widget.session.me?.can('tasks.create_boards') ?? false)
@@ -3354,7 +3462,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   // ── Table (and cards on a phone) ───────────────────────────────
 
   Widget _tableView(BuildContext context, {required bool cards}) {
-    final list = _tableList(context, cards: cards);
+    // The board's page, a step darker than its groups (design 200, 1).
+    final list = ColoredBox(
+      key: const Key('tasks-board-canvas'),
+      color: EzBiziTheme.boardCanvas(context),
+      child: _tableList(context, cards: cards),
+    );
     if (cards) return list;
     // The bulk bar floats over the rows' foot, Monday's way: put above the
     // table it pushed every row down under the pointer (QA 11-16, #28).
@@ -3530,6 +3643,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                         Draggable<_GroupDrag>(
                           key: ValueKey('group-drag-$id'),
                           data: _GroupDrag(id),
+                          // Every group folds to its header while one moves,
+                          // so the whole board fits; what was open opens
+                          // again after (design 200, 4; Jose 11-20).
+                          onDragStarted: _foldAllForDrag,
+                          onDragEnd: (_) => _unfoldAfterDrag(),
                           feedback: Material(
                             elevation: 4,
                             borderRadius: BorderRadius.circular(6),
@@ -3564,8 +3682,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                         ),
                       const SizedBox(width: 8),
                       Text(
-                        switch ((_totalsOf(id)?['count'] as num?)?.toInt() ??
-                            all.length) {
+                        // What is shown (Jose 11-20: CT › Company Info said
+                        // "5 tasks" with a filter hiding all five); the
+                        // server's whole count only while nothing is hidden.
+                        switch (shown.length < all.length
+                            ? shown.length
+                            : (_totalsOf(id)?['count'] as num?)?.toInt() ??
+                                  all.length) {
                           1 => '1 task',
                           final n => '$n tasks',
                         },
@@ -3800,7 +3923,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }) => DecoratedBox(
     key: key,
     decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
+      // A group is a card on the board's darker page (design 200, 1).
+      color: EzBiziTheme.boardGroup(context),
       border: border,
       borderRadius: radius,
     ),
@@ -4273,234 +4397,240 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       InkWell(
         key: ValueKey('task-${t['id']}'),
         onTap: () => _openTask(t),
+        hoverColor: Colors.transparent,
         onSecondaryTapDown: sub
             ? null
             : (d) => _rowRightClick(t, d.globalPosition),
-        child: _pickTint(
-          context,
-          '${t['id']}',
-          SizedBox(
-            height: 38,
-            // The colour strip and the Task cell stay put when the row
-            // scrolls sideways (QA 11-16, #26).
-            child: PinnedRow(
-              sideways: _sideways,
-              edge: theme.dividerColor,
-              children: [
-                Container(
-                  width: 6,
-                  color: sub ? colour.withValues(alpha: 0.4) : colour,
-                ),
-                SizedBox(
-                  width: _w('task'),
-                  child: Padding(
-                    padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
-                    child: Row(
-                      children: [
-                        if (!sub && _canEdit) ...[
-                          SizedBox(width: 18, child: _dragHandle(context, t)),
-                          SizedBox(
-                            width: 32,
-                            // A toggle, not a Checkbox: the board's own
-                            // checkbox columns are the Checkboxes on a row.
-                            child: IconButton(
-                              key: ValueKey('task-pick-${t['id']}'),
-                              tooltip: 'Select',
-                              padding: EdgeInsets.zero,
-                              iconSize: 18,
-                              isSelected: _picked.contains(t['id']),
-                              icon: const Icon(Icons.check_box_outline_blank),
-                              selectedIcon: const Icon(Icons.check_box),
-                              onPressed: () => _pick(t['id'] as String),
+        child: _RowShade(
+          key: ValueKey('task-shade-${t['id']}'),
+          selected: _openId == t['id'],
+          ghost: _draggingId == t['id'],
+          child: _pickTint(
+            context,
+            '${t['id']}',
+            SizedBox(
+              height: 38,
+              // The colour strip and the Task cell stay put when the row
+              // scrolls sideways (QA 11-16, #26).
+              child: PinnedRow(
+                sideways: _sideways,
+                edge: theme.dividerColor,
+                children: [
+                  Container(
+                    width: 6,
+                    color: sub ? colour.withValues(alpha: 0.4) : colour,
+                  ),
+                  SizedBox(
+                    width: _w('task'),
+                    child: Padding(
+                      padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
+                      child: Row(
+                        children: [
+                          if (!sub && _canEdit) ...[
+                            SizedBox(width: 18, child: _dragHandle(context, t)),
+                            SizedBox(
+                              width: 32,
+                              // A toggle, not a Checkbox: the board's own
+                              // checkbox columns are the Checkboxes on a row.
+                              child: IconButton(
+                                key: ValueKey('task-pick-${t['id']}'),
+                                tooltip: 'Select',
+                                padding: EdgeInsets.zero,
+                                iconSize: 18,
+                                isSelected: _picked.contains(t['id']),
+                                icon: const Icon(Icons.check_box_outline_blank),
+                                selectedIcon: const Icon(Icons.check_box),
+                                onPressed: () => _pick(t['id'] as String),
+                              ),
                             ),
-                          ),
-                        ],
-                        if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
-                        if (!sub) _subtaskToggle(t),
-                        Flexible(
-                          child: Text(
-                            taskTitle(t),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: sub
-                                  ? FontWeight.w500
-                                  : FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (t['rolled_up_from'] case final Map from)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6),
+                          ],
+                          if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
+                          if (!sub) _subtaskToggle(t),
+                          Flexible(
                             child: Text(
-                              '${from['board_name']}',
-                              key: ValueKey('task-from-${t['id']}'),
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                              taskTitle(t),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: sub
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
                               ),
                             ),
                           ),
-                        if (!sub) _subtaskCountChip(context, t),
-                      ],
+                          if (t['rolled_up_from'] case final Map from)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Text(
+                                '${from['board_name']}',
+                                key: ValueKey('task-from-${t['id']}'),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          if (!sub) _subtaskCountChip(context, t),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                ..._inOrder({
-                  if (shown('creator'))
-                    'creator': _cell(
-                      context,
-                      _w('creator'),
-                      _creatorCell(context, t),
-                    ),
-                  if (shown('owner'))
-                    'owner': _cell(
-                      context,
-                      _w('owner'),
-                      _canEdit
-                          ? _ownerMenu(t, _ownerFaces(t, owners))
-                          : _ownerFaces(t, owners),
-                    ),
-                  if (shown('status'))
-                    'status': SizedBox(
-                      width: _w('status'),
-                      child: _statusCell(context, t),
-                    ),
-                  if (shown('created'))
-                    'created': _cell(
-                      context,
-                      _w('created'),
-                      Text(
-                        _createdLabel(t['created_at'], _formats),
-                        key: ValueKey('task-created-${t['id']}'),
-                        maxLines: 1,
+                  ..._inOrder({
+                    if (shown('creator'))
+                      'creator': _cell(
+                        context,
+                        _w('creator'),
+                        _creatorCell(context, t),
                       ),
-                    ),
-                  if (shown('due'))
-                    'due': _cell(
-                      context,
-                      _w('due'),
-                      _dueCell(
-                        t,
+                    if (shown('owner'))
+                      'owner': _cell(
+                        context,
+                        _w('owner'),
+                        _canEdit
+                            ? _ownerMenu(t, _ownerFaces(t, owners))
+                            : _ownerFaces(t, owners),
+                      ),
+                    if (shown('status'))
+                      'status': SizedBox(
+                        width: _w('status'),
+                        child: _statusCell(context, t),
+                      ),
+                    if (shown('created'))
+                      'created': _cell(
+                        context,
+                        _w('created'),
                         Text(
-                          _dueLabel(t['due_on'], _formats),
+                          _createdLabel(t['created_at'], _formats),
+                          key: ValueKey('task-created-${t['id']}'),
                           maxLines: 1,
-                          style: late
-                              ? TextStyle(
-                                  color: theme.colorScheme.error,
-                                  fontWeight: FontWeight.w700,
-                                )
-                              : null,
                         ),
                       ),
-                    ),
-                  for (final c in boardColumns(_board))
-                    'c:${c.id}': c.type == 'status'
-                        ? _rangeCell(
-                            t,
-                            c,
-                            SizedBox(
-                              width: _w('c:${c.id}'),
-                              child: ColumnCell(
-                                column: c,
-                                value: columnValue(t, c),
-                                taskDone: _isDone(_board, t),
-                                people: _people,
-                                formats: _formats,
-                                onChanged: _canEdit
-                                    ? (v) => _setValue(t, c.id, v)
-                                    : null,
-                                onAddOption: _canEdit
-                                    ? (label) => _addOption(c, label)
-                                    : null,
-                                onEditOptions: _canEdit
-                                    ? () => _editColumn(c)
-                                    : null,
-                                onMenu: _statusMenu,
-                                api: widget.api,
-                                onAutoAssign: _canEdit && c.type == 'status'
-                                    ? () => _suggestLabel(t, c.id)
-                                    : null,
-                              ),
-                            ),
-                          )
-                        : _rangeCell(
-                            t,
-                            c,
-                            _cell(
-                              context,
-                              _w('c:${c.id}'),
-                              ColumnCell(
-                                column: c,
-                                value: columnValue(t, c),
-                                taskDone: _isDone(_board, t),
-                                people: _people,
-                                formats: _formats,
-                                onChanged: _canEdit
-                                    ? (v) => _setValue(t, c.id, v)
-                                    : null,
-                                onAddOption: _canEdit
-                                    ? (label) => _addOption(c, label)
-                                    : null,
-                                onEditOptions: _canEdit
-                                    ? () => _editColumn(c)
-                                    : null,
-                                onMenu: _statusMenu,
-                                api: widget.api,
-                                boardId: '${_board!['id']}',
-                                onFilter: () =>
-                                    _filterTo(c.id, _valueOf(c.id, t)),
-                                // Dependency: this board's other tasks; Connect
-                                // starts from them too.
-                                tasks:
-                                    c.type == 'connect' ||
-                                        c.type == 'dependency'
-                                    ? [
-                                        for (final o in _tasks)
-                                          if (o['id'] != t['id'])
-                                            ('${o['id']}', taskTitle(o)),
-                                      ]
-                                    : null,
-                                onAddFile: _canEdit && c.type == 'files'
-                                    ? () => _addFileTo(t, c)
-                                    : null,
-                                onAutoAssign: _canEdit && c.type == 'status'
-                                    ? () => _suggestLabel(t, c.id)
-                                    : null,
-                              ),
-                            ),
+                    if (shown('due'))
+                      'due': _cell(
+                        context,
+                        _w('due'),
+                        _dueCell(
+                          t,
+                          Text(
+                            _dueLabel(t['due_on'], _formats),
+                            maxLines: 1,
+                            style: late
+                                ? TextStyle(
+                                    color: theme.colorScheme.error,
+                                    fontWeight: FontWeight.w700,
+                                  )
+                                : null,
                           ),
-                  if (shown('about'))
-                    'about': _cell(
-                      context,
-                      _w('about'),
-                      _linkedCell(context, t, about),
-                    ),
-                  if (shown('updates'))
-                    'updates': _cell(
-                      context,
-                      _w('updates'),
-                      updates == 0
-                          ? const SizedBox.shrink()
-                          : Row(
-                              children: [
-                                unreadNotesBadge(
-                                  Icon(
-                                    Icons.chat_bubble_outline,
-                                    size: 14,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                  t['unread_notes'],
-                                  key: ValueKey('task-unread-${t['id']}'),
+                        ),
+                      ),
+                    for (final c in boardColumns(_board))
+                      'c:${c.id}': c.type == 'status'
+                          ? _rangeCell(
+                              t,
+                              c,
+                              SizedBox(
+                                width: _w('c:${c.id}'),
+                                child: ColumnCell(
+                                  column: c,
+                                  value: columnValue(t, c),
+                                  taskDone: _isDone(_board, t),
+                                  people: _people,
+                                  formats: _formats,
+                                  onChanged: _canEdit
+                                      ? (v) => _setValue(t, c.id, v)
+                                      : null,
+                                  onAddOption: _canEdit
+                                      ? (label) => _addOption(c, label)
+                                      : null,
+                                  onEditOptions: _canEdit
+                                      ? () => _editColumn(c)
+                                      : null,
+                                  onMenu: _statusMenu,
+                                  api: widget.api,
+                                  onAutoAssign: _canEdit && c.type == 'status'
+                                      ? () => _suggestLabel(t, c.id)
+                                      : null,
                                 ),
-                                const SizedBox(width: 4),
-                                Text('$updates'),
-                              ],
+                              ),
+                            )
+                          : _rangeCell(
+                              t,
+                              c,
+                              _cell(
+                                context,
+                                _w('c:${c.id}'),
+                                ColumnCell(
+                                  column: c,
+                                  value: columnValue(t, c),
+                                  taskDone: _isDone(_board, t),
+                                  people: _people,
+                                  formats: _formats,
+                                  onChanged: _canEdit
+                                      ? (v) => _setValue(t, c.id, v)
+                                      : null,
+                                  onAddOption: _canEdit
+                                      ? (label) => _addOption(c, label)
+                                      : null,
+                                  onEditOptions: _canEdit
+                                      ? () => _editColumn(c)
+                                      : null,
+                                  onMenu: _statusMenu,
+                                  api: widget.api,
+                                  boardId: '${_board!['id']}',
+                                  onFilter: () =>
+                                      _filterTo(c.id, _valueOf(c.id, t)),
+                                  // Dependency: this board's other tasks; Connect
+                                  // starts from them too.
+                                  tasks:
+                                      c.type == 'connect' ||
+                                          c.type == 'dependency'
+                                      ? [
+                                          for (final o in _tasks)
+                                            if (o['id'] != t['id'])
+                                              ('${o['id']}', taskTitle(o)),
+                                        ]
+                                      : null,
+                                  onAddFile: _canEdit && c.type == 'files'
+                                      ? () => _addFileTo(t, c)
+                                      : null,
+                                  onAutoAssign: _canEdit && c.type == 'status'
+                                      ? () => _suggestLabel(t, c.id)
+                                      : null,
+                                ),
+                              ),
                             ),
-                    ),
-                }),
-                // Under the headings' +, so every column lines up.
-                if (_canEdit) SizedBox(width: _widths.add),
-              ],
+                    if (shown('about'))
+                      'about': _cell(
+                        context,
+                        _w('about'),
+                        _linkedCell(context, t, about),
+                      ),
+                    if (shown('updates'))
+                      'updates': _cell(
+                        context,
+                        _w('updates'),
+                        updates == 0
+                            ? const SizedBox.shrink()
+                            : Row(
+                                children: [
+                                  unreadNotesBadge(
+                                    Icon(
+                                      Icons.chat_bubble_outline,
+                                      size: 14,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    t['unread_notes'],
+                                    key: ValueKey('task-unread-${t['id']}'),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text('$updates'),
+                                ],
+                              ),
+                      ),
+                  }),
+                  // Under the headings' +, so every column lines up.
+                  if (_canEdit) SizedBox(width: _widths.add),
+                ],
+              ),
             ),
           ),
         ),
@@ -5065,22 +5195,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       onDragStarted: () {
         _dragCancelled = false;
         HardwareKeyboard.instance.addHandler(_dragKey);
+        setState(() => _draggingId = t['id'] as String?);
       },
       onDragUpdate: (d) => _autoScroll(d.globalPosition),
       onDragEnd: (_) {
         HardwareKeyboard.instance.removeHandler(_dragKey);
-        if (_dragCancelled) setState(() {});
+        setState(() => _draggingId = null);
       },
-      feedback: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(8),
-        color: theme.colorScheme.surface,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(
-            _picked.contains(t['id']) && _picked.length > 1
-                ? '${_picked.length} tasks'
-                : taskTitle(t),
+      // A lifted, tilted card, as Monday's (design 200, 4).
+      feedback: Transform.rotate(
+        angle: -0.025,
+        child: Material(
+          elevation: 10,
+          borderRadius: BorderRadius.circular(8),
+          color: EzBiziTheme.boardRowHover(context),
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Text(
+              _picked.contains(t['id']) && _picked.length > 1
+                  ? '${_picked.length} tasks'
+                  : taskTitle(t),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
           ),
         ),
       ),
@@ -5806,6 +5945,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 /// board allows, with its updates under it.
 class _TaskPanel extends StatefulWidget {
   const _TaskPanel({
+    super.key,
+    this.docked = false,
+    this.onClose,
     required this.api,
     required this.formats,
     required this.taskId,
@@ -5819,6 +5961,10 @@ class _TaskPanel extends StatefulWidget {
 
   /// Every save the panel makes, so the board reads after the last one.
   final List<Future<void>>? saves;
+
+  /// Beside the board rather than over it; [onClose] then closes it.
+  final bool docked;
+  final VoidCallback? onClose;
 
   /// Its subtasks as the board has them, for the panel's checklist.
   final List<_Json> subtasks;
@@ -6144,7 +6290,7 @@ class _TaskPanelState extends State<_TaskPanel> {
     final res = await widget.api.delete('/tasks/${widget.taskId}');
     if (!mounted) return;
     if (res.ok) {
-      Navigator.of(context).pop();
+      widget.onClose != null ? widget.onClose!() : Navigator.of(context).pop();
     } else {
       setState(() => _saveError = res.reason);
     }
@@ -6227,6 +6373,8 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   Widget _panel(BuildContext context) {
     return SidePanel(
+      docked: widget.docked,
+      onClose: widget.onClose,
       title:
           '${widget.board['kind'] == 'user' ? 'My board' : widget.board['name']}',
       subtitle: widget.where,
@@ -6975,4 +7123,57 @@ VoidCallback? taskRecordOpener(BuildContext context, Map record) {
 class _GroupDrag {
   const _GroupDrag(this.id);
   final String id;
+}
+
+/// A table row's own shade (design 200; Jose 11-20, Monday side by side):
+/// one step lighter than its group, one more under the pointer, and blue
+/// with a blue edge while it is the task last opened. Selected wins.
+class _RowShade extends StatefulWidget {
+  const _RowShade({
+    super.key,
+    required this.selected,
+    required this.child,
+    this.ghost = false,
+  });
+
+  final bool selected;
+
+  /// The row being dragged, left behind faint.
+  final bool ghost;
+  final Widget child;
+
+  @override
+  State<_RowShade> createState() => _RowShadeState();
+}
+
+class _RowShadeState extends State<_RowShade> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: widget.selected ? Border.all(color: scheme.primary) : null,
+        ),
+        child: ColoredBox(
+          color: widget.selected
+              ? Color.alphaBlend(
+                  scheme.primary.withValues(alpha: 0.18),
+                  EzBiziTheme.boardRow(context),
+                )
+              : _hover
+              ? EzBiziTheme.boardRowHover(context)
+              : EzBiziTheme.boardRow(context),
+          // Always an Opacity, so starting a drag does not rebuild the row's
+          // subtree and lose the drag that started it.
+          child: Opacity(opacity: widget.ghost ? 0.35 : 1, child: widget.child),
+        ),
+      ),
+    );
+  }
 }
