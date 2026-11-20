@@ -84,13 +84,15 @@ class _VersionsState extends State<_Versions> {
     });
   }
 
-  Future<void> _restore() async {
+  /// [part]: 'all' (default), 'html' or 'blocks', so either design comes
+  /// back alone without touching the other.
+  Future<void> _restore([String part = 'all']) async {
     final picked = _picked;
     if (picked == null) return;
     setState(() => _restoring = true);
     final response = await widget.api.post(
       '/newsletters/${widget.id}/revisions/$picked/restore',
-      {'revision': widget.revision},
+      {'revision': widget.revision, 'part': part},
     );
     if (!mounted) return;
     if (!response.ok || response.data is! Map) {
@@ -121,6 +123,20 @@ class _VersionsState extends State<_Versions> {
           child: const Text('Close'),
         ),
         const SizedBox(width: 8),
+        if (widget.canRestore && picked != null && !current) ...[
+          OutlinedButton(
+            key: const ValueKey('newsletter-version-restore-html'),
+            onPressed: _restoring ? null : () => _restore('html'),
+            child: const Text('Restore HTML only'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            key: const ValueKey('newsletter-version-restore-blocks'),
+            onPressed: _restoring ? null : () => _restore('blocks'),
+            child: const Text('Restore blocks only'),
+          ),
+          const SizedBox(width: 8),
+        ],
         if (widget.canRestore)
           FilledButton(
             key: const ValueKey('newsletter-version-restore'),
