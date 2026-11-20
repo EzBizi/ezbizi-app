@@ -74,6 +74,26 @@ final class SiteLists
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * Every rated review of the site's company, across all its Google
+     * locations: what [ezbizi_reviews] prints and its aggregateRating says.
+     * Cached for an hour; the plugin purges its pages when it changes.
+     *
+     * @return array{count: int, average: float}
+     */
+    public static function reviewSummary(WebSite $site): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('web-review-summary:'.$site->company_id, 3600, function () use ($site): array {
+            $row = Review::query()
+                ->where('company_id', $site->company_id)
+                ->whereNotNull('rating')
+                ->selectRaw('count(*) as n, avg(rating) as a')
+                ->first();
+
+            return ['count' => (int) ($row->n ?? 0), 'average' => round((float) ($row->a ?? 0), 1)];
+        });
+    }
+
     public static function reviews(WebSite $site): array
     {
         return Review::query()
