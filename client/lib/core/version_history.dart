@@ -20,6 +20,7 @@ class VersionHistory {
       'Automations: a lead text to a number that replied STOP is skipped, not counted as a failed run',
       'Work Hours: new Payroll tab where managers review hours and rates, with bonus, deductions and the weekly total',
       'Task Board: every task about a job fills client, phone, address and job numbers when it is created, and a blank Monday status gets ours',
+      'Marketing: QR codes can carry the company logo or any picture in the middle, in the preview and the downloads',
     ]),
     VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
       'Task Board: drag a group header onto another group to reorder the board; Monday follows',
