@@ -40,6 +40,7 @@ import 'task_board_pinned.dart';
 import 'task_board_person_card.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
+import 'task_board_reminders.dart';
 import 'task_board_sensitive.dart';
 
 typedef _Json = Map<String, dynamic>;
@@ -6733,6 +6734,15 @@ class _TaskPanelState extends State<_TaskPanel> {
                 ),
               ),
           ],
+          // Shoval's list for switching Monday off (2026-11-20): a reminder
+          // of one's own, rung once on the bell.
+          const Divider(height: 24),
+          TaskReminders(
+            key: ValueKey('task-reminders-${widget.taskId}'),
+            api: widget.api,
+            taskId: widget.taskId,
+            formats: widget.formats,
+          ),
           const Divider(height: 24),
           Text(
             updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
