@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0621', date: '20 Nov 2026', items: [
+      'Workiz: photos and files of finished jobs are read every 10 minutes, so reports and AI checks see them',
+      'Reports: AI checks show Not checked when the photos or calls of a job were never read, instead of counting a miss',
+      'Reports: the AI checks drill-down says photos not read instead of 0 photos for those jobs',
+    ]),
     VersionRelease(version: '0.0.0620', date: '20 Nov 2026', items: [
       'Reports: Estimates under Jobs, and new Office (Tasks, Complaints, Dispatch, Accounting weekly, Recruiting) and Technicians (Tech report, AI checks) tabs',
       'Newsletter: Custom HTML and Blocks are kept as two separate designs; switching views never loses either one, and Use this design picks which one is sent',
