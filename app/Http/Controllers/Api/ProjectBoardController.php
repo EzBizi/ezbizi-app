@@ -999,7 +999,35 @@ class ProjectBoardController extends Controller
                 'pending' => $m['due'],
                 'total' => $m['total'] ?? 0,
                 'currency' => $job->currency,
+                'job_cost' => $job->job_cost_minor,
+                'production' => (bool) $job->production_job,
+                'total_cost' => self::totalCost($job->job_cost_minor, (bool) $job->production_job, (int) ($m['total'] ?? 0)),
             ] : []),
         ];
+    }
+
+    /** Monday's Total Cost: the job cost, plus 10% of the job's amount for a production job. */
+    public static function totalCost(?int $cost, bool $production, int $amount): ?int
+    {
+        if ($cost === null && ! $production) {
+            return null;
+        }
+
+        return (int) $cost + ($production ? intdiv($amount + 5, 10) : 0);
+    }
+
+    /** PATCH /api/v1/project-board/jobs/{job}/cost: Job Cost and Production job (desk, 2026-11-20). */
+    public function cost(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        abort_unless($request->user()->hasPermission('jobs.financials'), Response::HTTP_FORBIDDEN, 'Job costs need Financials.');
+        $input = $request->validate(['job_cost_minor' => ['present', 'nullable', 'integer', 'min:0', 'max:100000000000'],
+            'production' => ['required', 'boolean']]);
+        $job->forceFill(['job_cost_minor' => $input['job_cost_minor'], 'production_job' => $input['production']])->save();
+        app(AuditLogger::class)->log('job.cost_set', $job, actor: $request->user());
+        $total = (int) (JobMoney::of([$job->id])[$job->id]['total'] ?? 0);
+
+        return response()->json(['data' => ['job_cost' => $job->job_cost_minor, 'production' => $job->production_job,
+            'total_cost' => self::totalCost($job->job_cost_minor, $job->production_job, $total)]]);
     }
 }

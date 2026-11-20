@@ -117,6 +117,8 @@ class Job extends Model implements StatesRetention
             // area alone once it is (see its migration).
             'service_area_chosen_at' => 'datetime',
             'schedule_proposal' => 'array',
+            'job_cost_minor' => 'integer',
+            'production_job' => 'boolean',
         ];
     }
 
