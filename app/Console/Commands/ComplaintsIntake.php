@@ -50,7 +50,8 @@ class ComplaintsIntake extends Command
                     if ($complaint?->wasRecentlyCreated) {
                         $opened++;
                         // A backfill is history, not news: no rule fires on it.
-                        ! $this->option('since') && $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])]);
+                        ! $this->option('since') && $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])
+            + ['title' => \App\Support\CustomerExperience\ComplaintBoardMirror::title($complaint)]]);
                     }
                 });
             });

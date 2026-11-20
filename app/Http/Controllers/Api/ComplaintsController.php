@@ -135,7 +135,8 @@ class ComplaintsController extends Controller
         $complaint->forceFill(['id' => $id, 'source_type' => 'manual', 'source_id' => $id]);
         \App\Support\CustomerExperience\ComplaintTriage::apply($complaint)->save();
         $audit->log('complaint.created', $complaint);
-        $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])], $user);
+        $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])
+            + ['title' => \App\Support\CustomerExperience\ComplaintBoardMirror::title($complaint)]], $user);
 
         return $this->one($complaint)->setStatusCode(201);
     }
