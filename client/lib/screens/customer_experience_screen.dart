@@ -132,7 +132,8 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
     // registry's TabDefinition('complaints'), so its own grant.
     if (me.can('customer_experience.complaints.view'))
       (
-        'Complaints',
+        // Shoval via Jose, 2026-11-20 (design 202).
+        'Reviews & Complaints',
         Icons.report_problem_outlined,
         () => ComplaintsTab(api: widget.api, session: widget.session),
       ),

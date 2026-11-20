@@ -3385,7 +3385,8 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view', 'complaints.manage'],
                 actionLabels: ['view' => 'Customer Experience (tick a part below)', 'complaints.manage' => 'Work complaints (status, owner, notes)'],
                 tabs: [
-                    new TabDefinition('complaints', 'Complaints'),
+                    // Shoval via Jose, 2026-11-20 (design 202): the board Adeline and the GMs work.
+                    new TabDefinition('complaints', 'Reviews & Complaints'),
                 ],
                 auditActionPrefixes: ['complaint'],
                 subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),

@@ -65,6 +65,13 @@ class ComplaintsController extends Controller
         $counts = (clone $query)->reorder()->toBase()->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
         $counts = collect(Complaint::STATUSES)->mapWithKeys(fn ($s) => [$s => (int) ($counts[$s] ?? 0)]);
 
+        // The open priority ones under the same filters, soonest due first,
+        // whatever page or status is shown (design 202: "Due within 24 h").
+        $due = (clone $query)->where('priority', true)->whereIn('status', Complaint::OPEN)
+            ->with(['owner:id,name', 'franchise:id,name'])->withCount('notes')
+            ->reorder()->orderBy('due_at')->limit(20)->get();
+        $dueSources = $this->sources($due);
+
         $query->with(['owner:id,name', 'franchise:id,name'])->withCount('notes');
         $status = $request->query('status', 'open');
         match (true) {
@@ -81,6 +88,7 @@ class ComplaintsController extends Controller
             'meta' => [
                 ...$this->pageMeta($page),
                 'counts' => [...$counts->all(), 'open' => $counts['new'] + $counts['in_progress'], 'all' => $counts->sum()],
+                'due' => $due->map(fn (Complaint $c) => $this->present($c, $dueSources))->values()->all(),
                 // Who the owner picker can name, for those who may set one (Scheduling's shape).
                 'people' => $user->hasPermission(self::MANAGE)
                     ? User::query()->where('organization_id', $user->organization_id)->where('is_active', true)
@@ -114,7 +122,11 @@ class ComplaintsController extends Controller
             'client' => ['nullable', 'boolean'],
         ]);
         $franchise = isset($input['franchise_id']) ? \App\Models\Franchise::query()->find($input['franchise_id']) : null;
-        abort_if($franchise !== null && ! $user->canActOnFranchise($franchise), 403, Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add complaints', $franchise->name)->message());
+        // An if, not abort_if: abort_if builds its message first, and with no branch
+        // `$franchise->name` read null and every branchless complaint was a 500.
+        if ($franchise !== null && ! $user->canActOnFranchise($franchise)) {
+            abort(403, Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add complaints', $franchise->name)->message());
+        }
         $id = (string) \Illuminate\Support\Str::uuid7();
         $complaint = new Complaint(['organization_id' => $user->organization_id, 'company_id' => $franchise?->company_id,
             'franchise_id' => $franchise?->id, 'kind' => $input['kind'], 'status' => 'new', 'title' => $input['title'],

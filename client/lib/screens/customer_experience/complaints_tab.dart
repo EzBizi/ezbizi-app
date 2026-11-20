@@ -2,6 +2,8 @@ import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
@@ -12,10 +14,12 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/open_destination.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 
 /// Customer Experience › Complaints (Jose, 2026-10-20): every bad review, bad
@@ -64,11 +68,42 @@ const _segments = [
   ('all', 'All'),
 ];
 
+/// Kind chips, in Shoval's order (design 202): what came from Google,
+/// the website, a call, then what came by letter or was typed in.
 const _kinds = {
-  'bad_review': 'Bad review',
-  'bad_rating': 'Bad rating',
-  'call_complaint': 'Complaint call',
+  'bad_review': 'Google',
+  'bad_rating': 'Website',
+  'call_complaint': 'Call',
+  'bbb': 'BBB',
+  'attorney_general': 'Attorney General',
+  'lawsuit': 'Lawsuit',
+  'other': 'Other',
 };
+
+/// What "+ New complaint" can enter by hand (the server's list).
+const _handKinds = {
+  'bbb': 'BBB',
+  'attorney_general': 'Attorney General',
+  'lawsuit': 'Lawsuit',
+  'other': 'Other (Yelp, a letter…)',
+};
+
+/// "5 h left", "40 min left", "Overdue 2 h": the clock on a priority one.
+(String, bool)? dueClock(Object? dueIso, {DateTime? now}) {
+  final due = DateTime.tryParse('${dueIso ?? ''}');
+  if (due == null) return null;
+  final left = due.difference((now ?? DateTime.now()).toUtc());
+  String span(Duration d) {
+    final m = d.inMinutes.abs();
+    if (m < 60) return '$m min';
+    if (m < 48 * 60) return '${(m / 60).floor()} h';
+    return '${(m / 1440).floor()} d';
+  }
+
+  return left.isNegative
+      ? ('Overdue ${span(left)}', true)
+      : ('${span(left)} left', false);
+}
 
 const _removed = 'Removed at the source';
 const _nameless = 'No name given';
@@ -84,6 +119,10 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, int> _counts = {};
   List<Map<String, dynamic>> _people = [];
+
+  /// Open priority complaints under the filters, soonest due first, from the
+  /// server whatever page or status is shown (design 202).
+  List<Map<String, dynamic>> _due = [];
   int _total = 0;
   int _page = 1;
   int _request = 0;
@@ -209,6 +248,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
           '${e.key}': (e.value as num?)?.toInt() ?? 0,
       };
       _people = _maps(meta['people']);
+      _due = _maps(meta['due']);
       final open = _open;
       if (open != null) {
         final fresh = _rows.where((r) => r['id'] == open['id']);
@@ -308,6 +348,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
       row['rating'] == null ? 'Review' : '★${row['rating']} Review',
     'bad_rating' => 'Rating',
     'call_complaint' => 'Call',
+    final String k when _kinds.containsKey(k) => _kinds[k]!,
     _ => '${row['kind'] ?? ''}',
   };
 
@@ -315,6 +356,9 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
     'bad_review' => Icons.reviews_outlined,
     'bad_rating' => Icons.sentiment_dissatisfied_outlined,
     'call_complaint' => Icons.phone_outlined,
+    'bbb' => Icons.verified_outlined,
+    'attorney_general' => Icons.account_balance_outlined,
+    'lawsuit' => Icons.gavel_outlined,
     _ => Icons.report_outlined,
   };
 
@@ -332,6 +376,41 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
 
   String _stamp(Object? iso) =>
       formatStamp(iso, '—', formats: widget.session.me!.display);
+
+  /// Client / Not a client, or nothing when nobody could tell.
+  Widget? _client(Map<String, dynamic> row) => switch (row['client_status']) {
+    'client' => StatusPill(
+      'Client',
+      key: ValueKey('complaint-client-${row['id']}'),
+      tone: Tone.ok,
+      dense: true,
+    ),
+    'not_client' => StatusPill(
+      'Not a client',
+      key: ValueKey('complaint-client-${row['id']}'),
+      dense: true,
+    ),
+    _ => null,
+  };
+
+  /// A priority one's clock, red once it is overdue; null for the rest and
+  /// for one already closed.
+  Widget? _clock(Map<String, dynamic> row) {
+    if (row['priority'] != true ||
+        row['status'] == 'solved' ||
+        row['status'] == 'not_solvable') {
+      return null;
+    }
+    final clock = dueClock(row['due_at']);
+    if (clock == null) return null;
+    return StatusPill(
+      clock.$1,
+      key: ValueKey('complaint-due-${row['id']}'),
+      tone: Tone.bad,
+      solid: clock.$2,
+      dense: true,
+    );
+  }
 
   Widget _pill(Map<String, dynamic> row) {
     final s = complaintStatuses[row['status']];
@@ -409,6 +488,8 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
           children: [
             _header(theme, narrow),
             _filters(theme),
+            _kindChips(),
+            if (_due.isNotEmpty) _dueStrip(theme, narrow),
             if (_notice != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -506,6 +587,22 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
         children: [
           Expanded(child: left),
           const SizedBox(width: 12),
+          if (_manage) ...[
+            narrow
+                ? IconButton.filled(
+                    key: const ValueKey('complaints-new'),
+                    tooltip: 'New complaint',
+                    onPressed: _newComplaint,
+                    icon: const Icon(Icons.add),
+                  )
+                : FilledButton.icon(
+                    key: const ValueKey('complaints-new'),
+                    onPressed: _newComplaint,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New complaint'),
+                  ),
+            const SizedBox(width: 12),
+          ],
           SegmentedButton<bool>(
             key: const ValueKey('tour-complaints-view'),
             showSelectedIcon: false,
@@ -562,16 +659,6 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _picker<String?>(
-            key: const ValueKey('complaints-kind'),
-            value: _kind,
-            options: [
-              const SearchOption(value: null, label: 'Any kind'),
-              for (final e in _kinds.entries)
-                SearchOption(value: e.key, label: e.value),
-            ],
-            onChanged: (v) => _kind = v,
-          ),
-          _picker<String?>(
             key: const ValueKey('complaints-owner'),
             value: _owner,
             width: 160,
@@ -620,6 +707,101 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
         ],
       ),
     );
+  }
+
+  /// All · Google · Website · Call · BBB · Attorney General · Lawsuit · Other.
+  Widget _kindChips() => SingleChildScrollView(
+    key: const ValueKey('complaints-kinds'),
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: Row(
+      children: [
+        for (final (key, label) in [
+          (null, 'All kinds'),
+          for (final e in _kinds.entries) (e.key, e.value),
+        ])
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: ChoiceChip(
+              key: ValueKey('complaints-kind-${key ?? 'all'}'),
+              showCheckmark: false,
+              label: Text(label),
+              selected: _kind == key,
+              onSelected: (_) => _refilter(() => _kind = key),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  /// Design 202: the open priority ones on top, soonest due first.
+  Widget _dueStrip(ThemeData theme, bool narrow) {
+    final bad = ToneColours.of(context, Tone.bad);
+    return Container(
+      key: const ValueKey('complaints-due'),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      decoration: BoxDecoration(
+        color: bad.fill,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'DUE WITHIN 24 H · ${_due.length}',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: bad.ink,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+            ),
+          ),
+          for (final row in _due)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Material(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  key: ValueKey('complaint-due-row-${row['id']}'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _openRow(row),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    child: Row(
+                      children: [
+                        ?_clock(row),
+                        const SizedBox(width: 10),
+                        Expanded(child: _from(theme, row)),
+                        if (!narrow) ...[
+                          Text(
+                            [_kindText(row), ?_branchOf(row)].join(' · '),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        ?_client(row),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _newComplaint() async {
+    final made = await showSidePanel<bool>(
+      context,
+      builder: (_) =>
+          _NewComplaintPanel(api: widget.api, session: widget.session),
+    );
+    if (made == true && mounted) await _load();
   }
 
   Widget _body(ThemeData theme, bool narrow) {
@@ -715,6 +897,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
                 cell(2, Text('CAME IN', style: head)),
                 cell(2, Text('KIND', style: head)),
                 cell(3, Text('FROM', style: head)),
+                cell(2, Text('CLIENT', style: head)),
                 cell(5, Text('WHAT THEY SAID', style: head)),
                 cell(2, Text('BRANCH', style: head)),
                 cell(2, Text('OWNER', style: head)),
@@ -740,7 +923,26 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
               children: [
                 cell(2, Text(_came(row), style: small)),
                 cell(2, _kindLine(theme, row)),
-                cell(3, _from(theme, row)),
+                cell(
+                  3,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _from(theme, row),
+                      if (_clock(row) case final c?) ...[
+                        const SizedBox(height: 3),
+                        c,
+                      ],
+                    ],
+                  ),
+                ),
+                cell(
+                  2,
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _client(row) ?? Text('—', style: small),
+                  ),
+                ),
                 cell(
                   5,
                   Text(
@@ -800,6 +1002,10 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
                 _pill(row),
               ],
             ),
+            if (_clock(row) != null || _client(row) != null) ...[
+              const SizedBox(height: 4),
+              Wrap(spacing: 6, children: [?_clock(row), ?_client(row)]),
+            ],
             const SizedBox(height: 4),
             Row(
               children: [
@@ -1050,8 +1256,42 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
               _kindLine(theme, row),
               if (_branchOf(row) != null) Text(_branchOf(row)!, style: small),
               _pill(row),
+              ?_clock(row),
+              ?_client(row),
             ],
           ),
+          if (row['google_report'] case {
+            'url': final String url,
+            'evidence': final String evidence,
+          }) ...[
+            _section(theme, 'Not a client: report it to Google'),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                evidence,
+                key: const ValueKey('complaint-google-evidence'),
+                style: small,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const ValueKey('complaint-report-google'),
+                onPressed: () => _reportOnGoogle(url, evidence),
+                icon: const Icon(Icons.flag_outlined, size: 18),
+                label: const Text('Report on Google'),
+              ),
+            ),
+            Text(
+              "Opens Google's review report form and copies the reason above.",
+              style: small,
+            ),
+          ],
           const SizedBox(height: 6),
           Text('Came in ${_stamp(row['raised_at'])}', style: small),
           if (row['solved_at'] != null)
@@ -1187,6 +1427,31 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
 
   /// Where it came from, by the app's own ways there. Left out when the source
   /// is gone, or when this person could not open it anyway.
+  /// Google has no API to report a review: the evidence is copied, and its
+  /// form opens for the person to paste it and send.
+  Future<void> _reportOnGoogle(String url, String evidence) async {
+    await Clipboard.setData(ClipboardData(text: evidence));
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // No browser to hand it to: the snackbar gives the address instead.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          opened
+              ? "Copied. Paste it into Google's form."
+              : "Copied. Google's form did not open: $url",
+        ),
+      ),
+    );
+  }
+
   Widget? _source(Map<String, dynamic> row) {
     if (_gone(row)) return null;
     final source = (row['source'] as Map?) ?? const {};
@@ -1221,6 +1486,175 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
           icon: const Icon(Icons.open_in_new, size: 18),
           label: Text(label),
         ),
+      ),
+    );
+  }
+}
+
+/// "+ New complaint" (design 202): BBB, Attorney General, a lawsuit, or
+/// anything else that came by letter or a site with no API, typed in.
+class _NewComplaintPanel extends StatefulWidget {
+  const _NewComplaintPanel({required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<_NewComplaintPanel> createState() => _NewComplaintPanelState();
+}
+
+class _NewComplaintPanelState extends State<_NewComplaintPanel> {
+  String _kind = 'bbb';
+  final _title = TextEditingController();
+  final _summary = TextEditingController();
+  final _came = TextEditingController();
+  String? _branch;
+  bool? _client;
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _summary.dispose();
+    _came.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_title.text.trim().isEmpty) {
+      setState(() => _error = 'Give it a title: who, and what it is about.');
+      return;
+    }
+    final at = parseWallDateTime(_came.text);
+    setState(() => _busy = true);
+    final r = await widget.api.post('/complaints', {
+      'kind': _kind,
+      'title': _title.text.trim(),
+      if (_summary.text.trim().isNotEmpty) 'summary': _summary.text.trim(),
+      'franchise_id': ?_branch,
+      if (at != null)
+        'raised_at': DateTime(
+          at.day.year,
+          at.day.month,
+          at.day.day,
+          at.hour,
+          at.minute,
+        ).toUtc().toIso8601String(),
+      'client': ?_client,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      setState(() {
+        _busy = false;
+        _error = r.reason;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = widget.session.me;
+    final branches = me == null ? const [] : branchOptionsInView(me);
+    final priority = const {
+      'bbb',
+      'attorney_general',
+      'lawsuit',
+    }.contains(_kind);
+    return SidePanel(
+      key: const ValueKey('complaints-new-panel'),
+      title: 'New complaint',
+      actions: [
+        FilledButton(
+          key: const ValueKey('complaints-new-save'),
+          onPressed: _busy ? null : _save,
+          child: const Text('Add complaint'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null) ...[
+            Text(
+              _error!,
+              key: const ValueKey('complaints-new-error'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            const SizedBox(height: 8),
+          ],
+          SearchPickerField<String>(
+            key: const ValueKey('complaints-new-kind'),
+            label: 'Kind',
+            value: _kind,
+            options: [
+              for (final e in _handKinds.entries)
+                SearchOption(value: e.key, label: e.value),
+            ],
+            onChanged: (v) => setState(() => _kind = v ?? 'bbb'),
+          ),
+          if (priority)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Priority: due 24 hours after it came in.',
+                key: const ValueKey('complaints-new-priority'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ToneColours.of(context, Tone.bad).ink,
+                ),
+              ),
+            ),
+          const SizedBox(height: 10),
+          TextField(
+            key: const ValueKey('complaints-new-title'),
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Title'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            key: const ValueKey('complaints-new-summary'),
+            controller: _summary,
+            minLines: 3,
+            maxLines: 8,
+            decoration: const InputDecoration(labelText: 'What it says'),
+          ),
+          const SizedBox(height: 10),
+          if (branches.isNotEmpty) ...[
+            SearchPickerField<String?>(
+              key: const ValueKey('complaints-new-branch'),
+              label: 'Branch',
+              value: _branch,
+              options: [
+                const SearchOption(value: null, label: 'Not one branch'),
+                for (final b in branches)
+                  SearchOption(value: b.id, label: b.label),
+              ],
+              onChanged: (v) => setState(() => _branch = v),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (me != null)
+            CalendarDayField(
+              key: const ValueKey('complaints-new-came'),
+              controller: _came,
+              formats: me.display,
+              label: 'Came in (empty: now)',
+              withTime: true,
+            ),
+          const SizedBox(height: 10),
+          SearchPickerField<bool?>(
+            key: const ValueKey('complaints-new-client'),
+            label: 'A client?',
+            value: _client,
+            options: const [
+              SearchOption(value: null, label: "Don't know"),
+              SearchOption(value: true, label: 'Client'),
+              SearchOption(value: false, label: 'Not a client'),
+            ],
+            onChanged: (v) => setState(() => _client = v),
+          ),
+        ],
       ),
     );
   }
