@@ -42,8 +42,7 @@ class RecruitingController extends Controller
     {
         $this->gate($request, 'hr.view', 'see applicants');
 
-        $rows = $this->visible(Applicant::query(), $request->user())
-            ->withCount('interviews')
+        $filtered = $this->visible(Applicant::query(), $request->user())
             ->when($request->query('position'), fn ($q, $v) => $q->where('position', $v))
             ->when($request->query('stage'), fn ($q, $v) => $q->where('stage', $v))
             ->when($request->query('source'), fn ($q, $v) => $q->where('source', $v))
@@ -51,13 +50,23 @@ class RecruitingController extends Controller
             ->when($request->query('from'), fn ($q, $v) => $q->where('applied_at', '>=', $v))
             ->when($request->query('to'), fn ($q, $v) => $q->where('applied_at', '<', date('Y-m-d', strtotime($v.' +1 day'))))
             ->when($request->query('search'), fn ($q, $v) => $q->where(fn ($s) => $s
-                ->where('name', 'like', "%{$v}%")->orWhere('phone', 'like', "%{$v}%")->orWhere('email', 'like', "%{$v}%")))
-            ->orderByDesc('applied_at')
+                ->where('name', 'like', "%{$v}%")->orWhere('phone', 'like', "%{$v}%")->orWhere('email', 'like', "%{$v}%")));
+
+        $rows = (clone $filtered)->withCount('interviews')->orderByDesc('applied_at')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+
+        // Over the whole filtered set, not the page (UI-UX, 2026-11-20: the chips).
+        $waits = (clone $filtered)->whereNotNull('first_response_at')->get(['applied_at', 'first_response_at'])
+            ->map(fn (Applicant $a) => max(0, (int) $a->applied_at->diffInMinutes($a->first_response_at)))->sort()->values();
 
         return response()->json([
             'data' => collect($rows->items())->map(fn (Applicant $a) => $this->present($a))->all(),
-            'meta' => ['total' => $rows->total(), 'last_page' => $rows->lastPage(), 'page' => $rows->currentPage()],
+            'meta' => ['total' => $rows->total(), 'last_page' => $rows->lastPage(), 'page' => $rows->currentPage(),
+                'relevant' => (clone $filtered)->where('relevant', true)->count(),
+                'interviewed' => (clone $filtered)->has('interviews')->count(),
+                'hired' => $this->hired(clone $filtered)->count(),
+                'median_first_response_minutes' => $waits->isEmpty() ? null : (int) $waits->median(),
+            ],
             'lists' => $this->lists($request->user()),
         ]);
     }
@@ -173,7 +182,18 @@ class RecruitingController extends Controller
             ->when($request->query('position'), fn ($q, $v) => $q->where('position', $v))
             ->orderByDesc('month')->orderBy('position')->get();
 
-        return response()->json(['data' => $rows->map(fn ($r) => $this->presentSpend($r))->all()]);
+        // Hires per position over the same months, for cost per hire (UI-UX, 2026-11-20).
+        $hires = $this->hired($this->visible(Applicant::query(), $request->user()))
+            ->when($request->query('from'), fn ($q, $v) => $q->where('applied_at', '>=', $v.'-01'))
+            ->when($request->query('to'), fn ($q, $v) => $q->where('applied_at', '<', date('Y-m-01', strtotime($v.'-01 +1 month'))))
+            ->when($request->query('position'), fn ($q, $v) => $q->where('position', $v))
+            ->selectRaw('position, count(*) as n')->groupBy('position')->pluck('n', 'position')
+            ->map(fn ($n) => (int) $n);
+
+        return response()->json([
+            'data' => $rows->map(fn ($r) => $this->presentSpend($r))->all(),
+            'meta' => ['hires' => (object) $hires->all()],
+        ]);
     }
 
     /** POST /api/v1/hr/recruiting-spend */
@@ -216,6 +236,12 @@ class RecruitingController extends Controller
     }
 
     // ── shared ───────────────────────────────────────────────────
+
+    /** Hired: moved to the "hired" stage, or linked to the account they became. */
+    private function hired(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->where('stage', 'hired')->orWhereNotNull('hired_user_id'));
+    }
 
     private function gate(Request $request, string $permission, string $verb): User
     {
