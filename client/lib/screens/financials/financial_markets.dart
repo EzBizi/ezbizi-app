@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../widgets/list_search.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import 'financial_cells.dart';
 
@@ -115,18 +116,22 @@ class _FinancialMarketsTabState extends State<FinancialMarketsTab> {
         onChanged: (t) => setState(() => _q = t.trim()),
         hint: 'Market',
       ),
-      DropdownButton<String>(
-        key: const Key('financials-markets-period'),
-        value: _period,
-        items: [
-          for (final p in marketPeriods(DateTime.now()).keys)
-            DropdownMenuItem(value: p, child: Text(p)),
-        ],
-        onChanged: (p) {
-          if (p == null) return;
-          setState(() => _period = p);
-          _load();
-        },
+      SizedBox(
+        width: 180,
+        child: SearchPickerField<String>(
+          key: const Key('financials-markets-period'),
+          isDense: true,
+          value: _period,
+          options: [
+            for (final p in marketPeriods(DateTime.now()).keys)
+              SearchOption(value: p, label: p),
+          ],
+          onChanged: (p) {
+            if (p == null) return;
+            setState(() => _period = p);
+            _load();
+          },
+        ),
       ),
       OutlinedButton.icon(
         key: const Key('financials-markets-match'),
@@ -407,24 +412,20 @@ class _MarketMapsPanelState extends State<_MarketMapsPanel> {
                       ),
                       SizedBox(
                         width: 200,
-                        child: DropdownButton<String?>(
+                        child: SearchPickerField<String>(
                           key: Key('financials-market-map-${m['id']}'),
-                          isExpanded: true,
+                          isDense: true,
+                          allowClear: true,
+                          hint: 'No market',
                           value: m['franchise_id'] as String?,
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('No market'),
-                            ),
+                          options: [
                             for (final f in _franchises)
-                              DropdownMenuItem<String?>(
+                              SearchOption(
                                 value: f['id'] as String,
-                                child: Text(
-                                  branchLabelOf(
-                                    widget.me,
-                                    f['id'] as String,
-                                    '${f['name']}',
-                                  ),
+                                label: branchLabelOf(
+                                  widget.me,
+                                  f['id'] as String,
+                                  '${f['name']}',
                                 ),
                               ),
                             // Mapped to a branch outside this view: shown, not offered.
@@ -432,12 +433,10 @@ class _MarketMapsPanelState extends State<_MarketMapsPanel> {
                                 !_franchises.any(
                                   (f) => f['id'] == m['franchise_id'],
                                 ))
-                              DropdownMenuItem<String?>(
+                              SearchOption(
                                 value: m['franchise_id'] as String,
+                                label: '${m['franchise'] ?? 'Another branch'}',
                                 enabled: false,
-                                child: Text(
-                                  '${m['franchise'] ?? 'Another branch'}',
-                                ),
                               ),
                           ],
                           onChanged: widget.canEdit ? (v) => _set(m, v) : null,
