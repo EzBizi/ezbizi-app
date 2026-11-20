@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialMarketsController;
 use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
@@ -1372,6 +1373,12 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
+        Route::middleware('permission:financials.markets.view')->group(function (): void {
+            Route::get('financials/markets', [FinancialMarketsController::class, 'index']);
+            Route::get('financials/markets/maps', [FinancialMarketsController::class, 'maps']);
+            Route::patch('financials/markets/maps/{map}', [FinancialMarketsController::class, 'updateMap']);
         });
         // Results (ACE): drawn inside Financials; the controller checks each action.
         Route::middleware('permission:financial_results.view')->group(function (): void {

@@ -240,6 +240,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // A person's edit on a Reviews & Complaints card comes back to the complaint (CX, 2026-11-20).
+        \App\Support\Tasks\ModuleBoard::listen('complaint:', [\App\Support\CustomerExperience\ComplaintBoardMirror::class, 'heard']);
+
         /*
          * Sanctum resolves a bearer token to the account that issued it, and
          * that lookup necessarily happens before any tenant is in context — the

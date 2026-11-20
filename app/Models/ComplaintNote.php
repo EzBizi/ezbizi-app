@@ -24,6 +24,12 @@ class ComplaintNote extends Model implements StatesRetention
 
     public const UPDATED_AT = null;
 
+    /** Each note is an update on the complaint's Task Board card too. */
+    protected static function booted(): void
+    {
+        static::created(fn (ComplaintNote $n) => \App\Support\CustomerExperience\ComplaintBoardMirror::note($n));
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

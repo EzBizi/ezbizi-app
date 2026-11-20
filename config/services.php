@@ -120,6 +120,21 @@ return [
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/monday/callback',
     ],
 
+    /*
+     * QuickBooks Online (Intuit Developer, app "EzBizi"): Connect QuickBooks
+     * (QuickBooksOAuth), read only, scope com.intuit.quickbooks.accounting. The
+     * redirect URI registered on the app must be
+     * APP_URL/api/v1/social/quickbooks/callback. environment: sandbox | production
+     * (which API host the realm lives on; the keys differ per environment).
+     */
+    'quickbooks' => [
+        'client_id' => env('QUICKBOOKS_CLIENT_ID'),
+        'client_secret' => env('QUICKBOOKS_CLIENT_SECRET'),
+        'environment' => env('QUICKBOOKS_ENVIRONMENT', 'production'),
+        'redirect' => env('QUICKBOOKS_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/quickbooks/callback',
+    ],
+
     'pinterest' => [
         'client_id' => env('PINTEREST_CLIENT_ID'),
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),

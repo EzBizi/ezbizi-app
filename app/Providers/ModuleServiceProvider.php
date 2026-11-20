@@ -612,6 +612,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // and contract in one table. New, so held by no role until
                     // ticked; administrators by identity.
                     new TabDefinition('payroll', 'Payroll'),
+                    // Recruiting (design 201; Shoval, 2026-11-20): applicants,
+                    // interviews and spend. Its own tab grant, as every HR tab
+                    // (hr.view alone opens no tab); writes are hr.edit. New,
+                    // so held by no role until ticked; administrators hold it.
+                    new TabDefinition('recruiting', 'Recruiting'),
                 ],
                 triggers: [
                     /*
@@ -2578,6 +2583,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('bases', 'Home'),
                     new TabDefinition('bills', 'Bills'),
+                    // Expenses per market from QuickBooks, closing rate, cost per closed job (Shoval, 11-20).
+                    new TabDefinition('markets', 'Markets'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],
@@ -3380,7 +3387,8 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view', 'complaints.manage'],
                 actionLabels: ['view' => 'Customer Experience (tick a part below)', 'complaints.manage' => 'Work complaints (status, owner, notes)'],
                 tabs: [
-                    new TabDefinition('complaints', 'Complaints'),
+                    // Shoval via Jose, 2026-11-20 (design 202): the board Adeline and the GMs work.
+                    new TabDefinition('complaints', 'Reviews & Complaints'),
                 ],
                 auditActionPrefixes: ['complaint'],
                 subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),

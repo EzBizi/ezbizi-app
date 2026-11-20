@@ -65,7 +65,7 @@
             "label": "Customer Experience",
             "parent": null,
             "tabs": [
-                "Complaints"
+                "Reviews & Complaints"
             ]
         },
         "customers": {
@@ -114,6 +114,7 @@
             "tabs": [
                 "Home",
                 "Bills",
+                "Markets",
                 "Settings"
             ]
         },
@@ -147,7 +148,8 @@
                 "Contracts",
                 "Invitations",
                 "Onboarding",
-                "Payroll"
+                "Payroll",
+                "Recruiting"
             ]
         },
         "inspection": {
@@ -485,6 +487,7 @@
         "financials.create",
         "financials.delete",
         "financials.edit",
+        "financials.markets.view",
         "financials.settings.view",
         "financials.view",
         "fleet_management.assign",
@@ -514,6 +517,7 @@
         "hr.pay.view",
         "hr.payroll.view",
         "hr.records.view",
+        "hr.recruiting.view",
         "hr.security.reset",
         "hr.view",
         "inspection.archive",

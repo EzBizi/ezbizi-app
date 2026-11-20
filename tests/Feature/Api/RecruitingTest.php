@@ -79,7 +79,7 @@ class RecruitingTest extends TestCase
             'name' => 'Bo', 'position' => 'technician', 'franchise_id' => $other->id,
         ])->assertCreated()->json('data.id');
 
-        $branchHr = $this->userWithRole($t, 'Branch HR', ['hr.view', 'hr.edit'], onlyAt: $t['franchise']);
+        $branchHr = $this->userWithRole($t, 'Branch HR', ['hr.recruiting.view', 'hr.edit'], onlyAt: $t['franchise']);
         $this->signedInAs($branchHr)->getJson("/api/v1/hr/applicants/{$theirs}")->assertNotFound();
         $this->assertCount(0, $this->signedInAs($branchHr)->getJson('/api/v1/hr/applicants')->json('data'));
         // Not for another branch, and not without one.
@@ -90,8 +90,12 @@ class RecruitingTest extends TestCase
         $this->signedInAs($branchHr)->postJson('/api/v1/hr/applicants', ['name' => 'Cy', 'position' => 'technician',
             'franchise_id' => $t['franchise']->id])->assertCreated();
 
-        $reader = $this->userWithRole($t, 'Reader', ['hr.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['hr.recruiting.view']);
         $this->signedInAs($reader)->getJson('/api/v1/hr/applicants')->assertOk();
+        // The tab's grant, not HR's: hr.view alone reads no applicant and no spend.
+        $hrOnly = $this->userWithRole($t, 'HR without Recruiting', ['hr.view']);
+        $this->signedInAs($hrOnly)->getJson('/api/v1/hr/applicants')->assertForbidden();
+        $this->signedInAs($hrOnly)->getJson('/api/v1/hr/recruiting-spend')->assertForbidden();
         $this->signedInAs($reader)->postJson('/api/v1/hr/applicants', ['name' => 'Di', 'position' => 'technician'])
             ->assertForbidden();
         $this->signedInAs($this->userWithRole($t, 'Nobody', ['customers.view']))

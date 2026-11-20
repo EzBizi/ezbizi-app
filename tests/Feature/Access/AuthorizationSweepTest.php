@@ -194,6 +194,7 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/email/workspaces/{connection}/people' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
         'GET api/v1/email/workspaces/{connection}/people/{address}/signature' => '404: needs a live provider (Google/WordPress/Meta) the test cannot reach',
         'GET api/v1/users/{user}/avatar' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/marketing/qr-codes/{qrCode}/center-image' => '404: abort(404) when the code has no centre picture, which the builder does not upload',
         'GET api/v1/staff/suggestions/{suggestion}/files/{index}' => '403: EzBizi staff-only endpoint; no tenant admin can open it',
     ];
 
