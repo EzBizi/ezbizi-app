@@ -181,8 +181,8 @@ class MondayParity extends Command
             }
             $kinds = [];
             foreach ($task->values as $v) {
-                if ($v->column === null) {
-                    continue;
+                if ($v->column === null || in_array($v->column->type, ['timeline', 'link'], true)) {
+                    continue; // ponytail: Monday writes these as other text ("Nov 17 - 23", the url), not a different value
                 }
                 $title = mb_strtolower(trim($v->column->name));
                 if (! array_key_exists($title, $item)) {

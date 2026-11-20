@@ -303,6 +303,9 @@ class MondaySyncTest extends TestCase
         $board['columns'][] = ['id' => 'text_c', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
         $board['items'][0]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => '', 'value' => null];             // empty there
         $board['items'][1]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => 'tom  garangelli', 'value' => null]; // same, as a person reads it
+        // Desk 11-20: a duplicate "Client name" column, empty, after it: the one with the value counts.
+        $board['columns'][] = ['id' => 'text_c2', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
+        $board['items'][1]['column_values'][] = ['id' => 'text_c2', 'type' => 'text', 'text' => '', 'value' => null];
         $this->monday['boards'] = ['100' => $board];
 
         $this->artisan('ezbizi:monday-parity', ['--values' => true])->expectsOutputToContain('values differ 1')->assertFailed();
