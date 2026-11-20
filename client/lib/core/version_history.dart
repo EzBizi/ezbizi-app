@@ -22,7 +22,7 @@ class VersionHistory {
       'Reports: Overview, Cancelled and Pending now sit together under one Jobs tab',
       'Task Board: Remind me in the task panel sets a reminder with a time and a note',
       'HR: certifications on each person (number, issuer, expiry) feed the expiring certifications alerts',
-      'Websites: the rating badge shows the real review count and average from EzBizi and keeps itself up to date',
+      'Websites: the rating badge shows the real review count and average from EzBizi (each review counted once) and keeps itself up to date',
     ]),
     VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
       'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
