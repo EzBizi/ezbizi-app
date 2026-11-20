@@ -2008,3 +2008,108 @@ Effort estimate: formula functions (7 + comparison + nested refs) ~1-2 days with
 |---|---|---|
 | Grid view (`viw3BhreDjWEiTA9e`) | grid | |
 | Previous Weeks (`viwvc3Uj2x7vEV9Mu`) | grid | |
+
+---
+
+## Airtable view settings read from the UI (read-only), 2026-11-20
+Toolbar label "Hide fields"/"Sort"/"Color" with no count = none set.
+
+### Disputes And Refunds › Refunds (footer: Sum on Total Jobs, Refund Amount, Tech Part, External Part)
+- Main Table: filter OR of 3: [Open/Close Job is Open AND Refund Status unchecked] OR [Open/Close Job is Closed AND Deduction Status unchecked AND Refund Status unchecked] OR [Open/Close Job is empty]. Group Company Name First→Last. Sort none. Hidden none. Colour none.
+- Deduction List: filter AND-group [Open/Close Job is Closed AND Refund Status checked AND Deduction Status unchecked]. Group Company Name First→Last. Sort/hidden/colour none.
+- Open Jobs: filter Open/Close Job is not Closed. Group Company Name First→Last. Sort/hidden/colour none.
+- Closed Jobs: filter Open/Close Job is not Open AND Deduction Status checked. Group Company Name First→Last. Sort/hidden/colour none.
+
+### Disputes And Refunds › Disputes (footer sums on money columns)
+- Main Table: filter OR of 2: [Open/Close Job is Open AND Submitted Ev… unchecked] OR [Open/Close Job is Closed AND Deduction Status unchecked AND Submitted Ev… unchecked] (plus an empty top-level group). Group Company Name First→Last. Sort/hidden/colour none.
+- Deduction List: filter AND-group [Open/Close Job is Closed AND Deduction Status unchecked]. Group Company Name. Rest none.
+- Open Jobs: filter Open/Close Job is not Closed OR Dispute Decision is "Dispute Accepted" (OR a blank "Date is exact date" condition, inert). Group Company Name. Rest none.
+- Closed Jobs: filter Open/Close Job is not Open AND Deduction Status checked. Group Company Name. Rest none.
+
+### Disputes And Refunds › Checks Returns
+- Main Table: filter [AND-group: Open/Close Job is Closed AND Deduction Status unchecked] OR Open/Close Job is empty. Group Company Name First→Last. Sort Type First→Last (auto-sort on). Hidden/colour none.
+- Open Jobs: filter Open/Close Job is not Closed. Group Company Name. Rest none.
+- Closed Jobs: filter Open/Close Job is not Open AND Deduction Status checked. Group Company Name. Rest none.
+
+### Disputes And Refunds › Debt & Loans
+- Open Debt/Loans: filter Refund/ Credit Complete unchecked. Group Type First→Last. Colour: rows where Type is Credit = cyan/teal. Sort/hidden none.
+- Closed Debt: filter Refund/ Credit Complete checked. No group. Sort/hidden/colour none.
+
+### Technicians Payrolls › Example (footer: Sum on money columns + Balance)
+- Grid view: no filter. Group Company Name First→Last. Sort/hidden/colour none.
+- Form: form view (fields only).
+- Summary View: no filter. Group Company Name First→Last. 7 hidden fields: shows only Week, Technicians, Balance (Sum). Sort/colour none.
+### Technicians Payrolls › Table 1 copy (0 rows)
+- Grid view: nothing set.
+
+### Invoices System › Weekly Data (footer: Blank "Empty" count; Sum on Total Jobs and money/number columns)
+- Grid view: nothing set (manual order; a hand-entered totals row 10).
+- Previous Weeks: filter Invoice Date is before "one week ago" (relative, PST). Group Week (formula) A→Z. Column order differs: …Google charges LS, Royalties Payment, Total, Note, Marketing Expenses, Invoices. Sort/hidden/colour none.
+- Monthly: nothing set; manual row order (totals row 9 above MA). Same column order as Previous Weeks.
+### Invoices System › Companies — Grid view: nothing set (manual order).
+### Invoices System › Invoices — Grid view: nothing set.
+### Invoices System › Weekly HQ Expenses
+- Grid view: filter Date is after "one week ago" (PST). Nothing else.
+- Previous Weeks: filter Date is before "one week ago" (PST). Group Week (formula) A→Z. Sort Date Latest→Earliest (auto). Hidden/colour none.
+### Invoices System › Ave Office expenses per job
+- Grid view: filter Date is after "one week ago" (PST). Group WEEK (formula) A→Z. Rest none.
+- Previous weeks: filter Date is before "one week ago" (PST). Sort Date Latest→Earliest. No group.
+### Invoices System › Reviews and office lease cost (Monthly)
+- Grid view: filter Date is after "one week ago" (PST). Rest none.
+- Previous weeks: filter Date is before "one week ago" (PST). Sort Date Latest→Earliest. No group.
+### Invoices System › Monthly Billings
+- Grid view: filter Date is after "one week ago" (PST). Rest none.
+- Previous weeks: filter Date is before "one week ago" (PST). Group Company name First→Last. Sort Date Latest→Earliest.
+### Invoices System › Marketing Performance (ANGI SWEEP), (ace) Daily, (ace) weekly — same pattern in all three
+- Grid view: filter DATE is after "one week ago" (PST). Group Week (formula) A→Z, then Service Area First→Last. Sort none.
+- Previous weeks: filter DATE is before "one week ago" (PST). Group Service Area First→Last. Sort DATE Latest→Earliest (auto).
+- Footers: Sum on every numeric/money column. Hidden/colour none.
+
+### Deposit Jobs Tracker (one table per market; footers Sum on Total Amount, Amount Paid, Outstanding Balance)
+Pattern per table: 
+- Current Week: filter Status Of Job is not Closed AND Current Week (formula) is "Current Week". No group. Sort Status Of Job <dir>, then Date Latest→Earliest. Colour: Status Of Job is Closed = red.
+- Previous weeks Jobs: filter Status Of Job is not Closed AND Current Week is "Previous Weeks". Group Technician First→Last. Sort Status Of Job <dir>, then Date Latest→Earliest. Colour: Status Of Job is Closed = red.
+- Closed Jobs: filter Status Of Job is Closed. Nothing else.
+- NJ: <dir> = Last→First (both views); Current Week view in NJ ALSO grouped by Technician First→Last.
+- CT: <dir> = First→Last.
+- TX: <dir> = First→Last.
+- OH: views named "This Week Jobs", "Previous Weeks Jobs", "Closed Jobs". This Week Jobs IS grouped by Technician First→Last. <dir> = First→Last. Colour has a 2nd blue rule with an empty condition (Date is exact date, blank — inert) in both views.
+- GA: views "Current Week Jobs", "Previous Weeks Jobs", "Closed Jobs". <dir> = First→Last. Previous Weeks Jobs hides 1 field: Current Week. Current Week Jobs not grouped.
+- IL: views "Current Week Jobs", "Previous Weeks Jobs", "Closed Jobs". Previous Weeks Jobs: hides Current Week; sort is Date Latest→Earliest FIRST, then Status Of Job First→Last. Current Week Jobs: not grouped; sort Status First→Last, Date Latest→Earliest. Closed Jobs: ALSO grouped by Technician First→Last.
+- DMV: views "Current Week Jobs", "Previous Weeks Jobs", "Closed Jobs". <dir> = First→Last. Colour rule (Status Of Job is Closed) is BLUE, not red. Extra text column "Field 11". Current Week Jobs not grouped.
+- NY: same as DMV (views Current/Previous Weeks Jobs/Closed Jobs; <dir> First→Last; colour BLUE; Field 11 column; Current Week Jobs not grouped).
+- MA: same as DMV/NY (blue colour, Field 11, <dir> First→Last, Current Week Jobs not grouped).
+- NW: <dir> First→Last; colour red. Previous Weeks Jobs is NOT grouped (filter order: Current Week is "Previous Weeks" AND Status Of Job is not Closed). Current Week Jobs not grouped.
+- Everdoors: colour red. Previous Weeks Jobs: NOT grouped; filter Current Week is "Previous Weeks" AND Status Of Job is not Closed; sort Status First→Last, Date Latest→Earliest, Technician First→Last (3 sorts). Current Week Jobs: not grouped, sort Status First→Last, Date Latest→Earliest. Closed Jobs: Status Of Job is Closed.
+
+### Repair Teams (one table per market; footers Sum on money/number columns)
+- NJ Current Week: filter Current Week (formula) is "Current" AND (blank "Date is exact date" — inert). Group Team First→Last. Sort/hidden/colour none.
+- NJ Previous Weeks: filter Current Week is "Old". Group Week - Dates (formula) Z→A, then Team First→Last. Hidden: Current Week. Sort/colour none.
+- CT Current Week: filter Current Week is "Current". Group Team First→Last. Rest none.
+- CT Previous Weeks: filter Current Week is "Old". Group Week - Dates Z→A, Team First→Last. Sort Date Latest→Earliest. Hidden: Current Week, Attachment.
+- OHIO Current Week: filter Current Week is "Current". Group Team First→Last. Rest none.
+- OHIO Previous Weeks: filter Current Week is "Old". Group Week - Dates Z→A, Team First→Last, Technician First→Last (3 levels). Hidden: Current Week. Sort/colour none. (OHIO has extra "Tech Name" column.)
+- TX Current Week: filter Current Week is "Current". Group Team First→Last. Rest none.
+- TX Previous Weeks: filter Current Week is "Old". Group Week - Dates Z→A, Team First→Last. Hidden: Current Week, Attachment. Sort/colour none.
+- IL Current Week: filter Current Week is "Current". Group Team First→Last. Rest none.
+- IL Previous Weeks: filter Current Week is "Old". Group Week - Dates A→Z (not Z→A), Team First→Last, Technician First→Last. Hidden: Current Week, Attachment. (IL has extra "Technician" column.)
+- GA Current Week: filter Current Week is "Current". Group Team First→Last. Rest none.
+- GA Previous Weeks: filter Current Week is "Old". Group Week - Dates A→Z, Team First→Last. Hidden: Current Week, Attachment. Sort/colour none.
+- DMV Current Week: filter Current Week is "Current Week" (text differs from other markets' "Current"). Group Team First→Last. Rest none.
+- DMV Previous Weeks: filter Current Week is "Old". Group Week - Dates A→Z, Team First→Last. Hidden: Current Week, Attachment.
+- MA Current Week: filter Current Week is "Current Week". Group Team First→Last. Rest none.
+- MA Previous Weeks: filter Current Week is "Old". Group Week - Dates A→Z, Team First→Last. Hidden: Current Week, Attachment.
+
+### Profit And Loss (one table per market; footers Sum on money columns)
+- NJ Grid view: filter Date is after "one week ago" (PST). Group Week (formula) A→Z. Sort/hidden/colour none.
+- NJ Previous Weeks: filter Date is before "one week ago" (PST). Group Week A→Z. Sort/hidden/colour none.
+- CT, TX, OH, IL, GA, DMV, WA, NW, NY, MA: identical to NJ (Grid view: Date after "one week ago" PST, group Week A→Z; Previous Weeks: Date before "one week ago" PST, group Week A→Z). No sort/hidden/colour on any.
+
+### Gaps this adds to the rebuild list
+- Relative-date filters ("one week ago", PST) — 30+ views.
+- Nested AND-groups inside OR (Disputes & Refunds main views).
+- Group by formula fields (Week, Week - Dates, WEEK) with A→Z / Z→A, up to 3 group levels.
+- Conditional row colours (Status Of Job is Closed → red or blue; Type is Credit → teal).
+- Per-view hidden fields; per-view column order; per-view manual row order (Invoices › Weekly Data Monthly).
+- Group-header and footer Sum aggregates on every money column.
+- Formula-text filters (Current Week is "Current"/"Current Week"/"Old"/"Previous Weeks" — values differ by market).
