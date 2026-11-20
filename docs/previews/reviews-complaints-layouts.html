@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reviews and Complaints</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;
+--ok:#1d7a3e;--okf:#dcf2e3;--cau:#8a5a00;--cauf:#fdf0d3;--bad:#a12a2a;--badf:#f9dede;--info:#1e5aa8;--infof:#dde9f9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--cau:#f0c46a;--cauf:#3a2e12;--bad:#f09a9a;--badf:#3a1a1a;--info:#9cc2f2;--infof:#18263a}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.cx-lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.cx-opt{margin-bottom:28px}.cx-opt>h2{font-size:15px;margin:0 0 2px}.cx-opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.cx-rec{color:var(--pri)}
+.cx-win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cx-tabs{display:flex;gap:16px;padding:10px 16px 0;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.cx-tabs span{padding-bottom:8px}.cx-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.cx-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px}
+.cx-search{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--mut);width:220px}
+.cx-pick{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--mut);font-size:12px}
+.cx-sp{flex:1}.cx-btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px;white-space:nowrap;display:inline-block}
+.cx-fill{background:var(--pri);color:#fff}.cx-out{border:1px solid var(--line);color:var(--pri)}
+.cx-kinds{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 10px}
+.cx-kinds span{border-radius:16px;padding:4px 11px;font-size:12px;border:1px solid var(--line);color:var(--mut)}.cx-kinds .on{background:var(--prif);color:var(--pri);border-color:transparent;font-weight:600}
+.cx-due{margin:0 16px 10px;border:1px solid var(--badf);background:var(--badf);border-radius:10px;padding:8px 10px}
+.cx-due h4{margin:0 0 6px;font-size:12px;color:var(--bad);text-transform:uppercase;letter-spacing:.05em}
+.cx-due-row{display:flex;gap:10px;align-items:center;background:var(--card);border-radius:8px;padding:7px 9px;margin-top:5px}
+.cx-pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap}
+.c{background:var(--cauf);color:var(--cau)}.k{background:var(--okf);color:var(--ok)}.x{background:var(--badf);color:var(--bad)}.i{background:var(--infof);color:var(--info)}.n{background:var(--bg);color:var(--mut)}
+.cx-red{background:var(--bad);color:#fff}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.mut{color:var(--mut);font-size:11.5px}
+.cx-split{display:flex}.cx-split>div:first-child{flex:1;min-width:0}
+.cx-pane{width:330px;border-left:1px solid var(--line);padding:14px}
+.cx-pane h3{margin:0;font-size:15px}
+.cx-lab{font-size:11px;color:var(--mut);margin:10px 0 3px}
+.cx-in{border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+.cx-ev{background:var(--bg);border-radius:8px;padding:8px;font-size:12px}
+.cx-phones{display:flex;flex-wrap:wrap;gap:24px}
+.cx-ph{width:375px}.cx-ph>h2{font-size:15px;margin:0 0 2px}.cx-ph>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.cx-scr{width:375px;height:700px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.cx-ttl{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.cx-body{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.cx-rc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.cx-row{display:flex;gap:8px;align-items:center}
+</style></head><body>
+<h1>202 · Customer Experience › Reviews &amp; Complaints</h1>
+<p class="cx-lead">Customer Experience asked (Shoval via Jose, 11-20; server 22e04f82d). Complaints becomes <b>Reviews &amp; Complaints</b>, the board Adeline and the GMs work from. What's new: BBB, Attorney General and lawsuit complaints are <b>priority</b>, due 24 h after they come in. Each complaint gets a Client / Not a client mark. "New complaint" is for things entered by hand. A Google review from someone who isn't a client gets a one-click <b>Report on Google</b>: Google's API can't report a review, so the button opens Google's Reviews Management Tool and copies the evidence. The list, board, filters and side pane stay as they are.</p>
+
+<div class="cx-opt"><h2>1 · A "Due within 24 h" strip on top, badges on every row <span class="cx-rec">(recommended)</span></h2>
+<p>Open priority complaints sit in a red-edged strip above the list, soonest first. Each shows time left ("5 h left"), and the time turns solid red once it's overdue. They also stay in the list. Kind chips sit under the filters: All · Google · Website · Call · BBB · AG · Lawsuit · Other. Rows get a Client / Not a client badge and, on priority ones, the same clock.<br>"New complaint" opens a side panel with kind, title, summary, branch, when it came in and Client yes/no. Picking BBB, AG or Lawsuit says it'll be due in 24 h. In the pane, a not-a-client Google review shows the evidence and a <b>Report on Google</b> button (it opens Google and copies the evidence, then says "Copied, paste it in Google's form").</p>
+<div class="cx-win">
+<div class="cx-tabs"><span>Reviews</span><span class="on">Reviews &amp; Complaints</span><span>Business Profile</span></div>
+<div class="cx-bar"><span class="cx-search">🔍 Customer, job, words</span><span class="cx-pick">Owner ▾</span><span class="cx-pick">Company · Branch ▾</span><span class="cx-pick">📅 Last 30 days</span><span class="cx-pick">Open ▾</span><span class="cx-sp"></span><span class="cx-btn cx-out">List · Board</span><span class="cx-btn cx-fill">+ New complaint</span></div>
+<div class="cx-kinds"><span class="on">All</span><span>Google</span><span>Website</span><span>Call</span><span>BBB · 1</span><span>Attorney General · 1</span><span>Lawsuit</span><span>Other</span></div>
+<div class="cx-due"><h4>⚑ Due within 24 h · 2</h4>
+<div class="cx-due-row"><span class="cx-pill cx-red">Overdue 2 h</span><b>BBB complaint #1182</b><span class="mut">Brian Tull · Akron · came in yesterday 9:10 AM</span><span class="cx-sp"></span><span class="cx-pill k">Client</span><span class="mut">Natalie</span></div>
+<div class="cx-due-row"><span class="cx-pill x">5 h left</span><b>Attorney General letter</b><span class="mut">Columbus · came in today 11:20 AM</span><span class="cx-sp"></span><span class="cx-pill n">Not a client</span><span class="mut">Adeline</span></div></div>
+<div class="cx-split"><div><table><tr><th>Complaint</th><th>Kind</th><th>Client</th><th>Branch</th><th>Owner</th><th>Status</th><th>Came in</th></tr>
+<tr style="background:var(--prif)"><td><b>"Never showed up, no call"</b> ★2<div class="mut">Janice Gadson</div></td><td>Google review</td><td><span class="cx-pill n">Not a client</span></td><td>Columbus</td><td>Adeline</td><td><span class="cx-pill c">Open</span></td><td>Today 8:03 AM</td></tr>
+<tr><td><b>BBB complaint #1182</b> <span class="cx-pill cx-red">Overdue 2 h</span><div class="mut">Brian Tull</div></td><td>BBB</td><td><span class="cx-pill k">Client</span></td><td>Akron</td><td>Natalie</td><td><span class="cx-pill c">Open</span></td><td>Yesterday</td></tr>
+<tr><td><b>Bad call: billing</b><div class="mut">Carlos Ruiz · (216) •••-9650</div></td><td>Call</td><td><span class="cx-pill k">Client</span></td><td>Cleveland</td><td>Natalie</td><td><span class="cx-pill i">Working</span></td><td>Nov 17</td></tr></table></div>
+<div class="cx-pane"><h3>Janice Gadson</h3><div class="mut">Google review ★2 · Columbus · today 8:03 AM</div><div style="margin-top:6px"><span class="cx-pill n">Not a client</span></div>
+<div class="cx-lab">The review</div><div class="cx-ev">"Never showed up, no call."</div>
+<div class="cx-lab">Why it can be reported</div><div class="cx-ev">No customer, job or call with this name or number in 24 months.</div>
+<div style="margin-top:10px"><span class="cx-btn cx-fill">⚑ Report on Google</span></div><div class="mut" style="margin-top:4px">Opens Google's Reviews Management Tool and copies the evidence.</div>
+<div class="cx-lab">Status · Owner</div><div class="cx-in">Open ▾ · Adeline ▾</div></div></div></div></div>
+
+<div class="cx-opt"><h2>2 · Priority as a sort and a red column</h2>
+<p>There's no strip. The list sorts priority first, with a "Due" column that turns red when overdue. It's calmer, but a BBB complaint looks like any other row until you read the column.</p>
+<div class="cx-win"><div class="cx-bar"><span class="cx-search">🔍 Customer, job, words</span><span class="cx-sp"></span><span class="cx-btn cx-fill">+ New complaint</span></div>
+<table><tr><th>Complaint</th><th>Kind</th><th>Due</th><th>Client</th><th>Status</th></tr><tr><td><b>BBB complaint #1182</b></td><td>BBB</td><td><span class="cx-pill cx-red">Overdue 2 h</span></td><td><span class="cx-pill k">Client</span></td><td>Open</td></tr><tr><td><b>Attorney General letter</b></td><td>AG</td><td><span class="cx-pill x">5 h left</span></td><td><span class="cx-pill n">Not a client</span></td><td>Open</td></tr><tr><td><b>"Never showed up"</b></td><td>Google</td><td class="mut">—</td><td><span class="cx-pill n">Not a client</span></td><td>Open</td></tr></table></div></div>
+
+<div class="cx-opt"><h2>3 · A Priority column on the board</h2>
+<p>The board gets its own leftmost "Priority · 24 h" column. That's strong on the board, but in List view priority is just a badge.</p>
+<div class="cx-win" style="padding:12px"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"><div style="background:var(--badf);border-radius:10px;padding:8px"><b style="color:var(--bad)">⚑ Priority · 2</b><div class="cx-rc" style="margin-top:6px"><span class="cx-pill cx-red">Overdue 2 h</span><br><b>BBB #1182</b></div><div class="cx-rc" style="margin-top:6px"><span class="cx-pill x">5 h left</span><br><b>AG letter</b></div></div><div style="background:var(--bg);border-radius:10px;padding:8px"><b>Open · 14</b><div class="cx-rc" style="margin-top:6px"><b>"Never showed up"</b></div></div><div style="background:var(--bg);border-radius:10px;padding:8px"><b>Working · 6</b></div><div style="background:var(--bg);border-radius:10px;padding:8px"><b>Solved · 40</b></div></div></div></div>
+
+<div class="cx-phones">
+<div class="cx-ph"><h2>4 · The strip first, then cards <span class="cx-rec">(recommended)</span></h2><p>The due strip sits on top as compact cards with their clocks. The kind chips scroll sideways, then the cards follow, each with its Client badge. New complaint is a + in the header and opens full screen. Report on Google is in the opened review.</p>
+<div class="cx-scr"><div class="cx-ttl">Reviews &amp; Complaints</div><div class="cx-body">
+<div class="cx-row"><span class="cx-search" style="flex:1;width:auto">🔍 Customer, words</span><span class="cx-btn cx-fill">+</span></div>
+<div class="cx-kinds" style="padding:0;flex-wrap:nowrap;overflow:hidden"><span class="on">All</span><span>Google</span><span>BBB · 1</span><span>AG · 1</span><span>Lawsuit</span></div>
+<div class="cx-due" style="margin:0"><h4>⚑ Due within 24 h · 2</h4><div class="cx-due-row"><span class="cx-pill cx-red">Overdue 2 h</span><b>BBB #1182</b></div><div class="cx-due-row"><span class="cx-pill x">5 h left</span><b>AG letter</b></div></div>
+<div class="cx-rc"><div class="cx-row"><b style="flex:1">Janice Gadson</b><span class="cx-pill n">Not a client</span></div><div class="mut">Google ★2 · Columbus · 8:03 AM</div><div>"Never showed up, no call"</div></div>
+<div class="cx-rc"><div class="cx-row"><b style="flex:1">Carlos Ruiz</b><span class="cx-pill k">Client</span></div><div class="mut">Call · Cleveland · Nov 17</div></div></div></div></div>
+<div class="cx-ph"><h2>5 · A Priority tab</h2><p>The phone gets two chips, Priority and Everything. Priority is clear, but it's one more tap to see the rest.</p>
+<div class="cx-scr"><div class="cx-ttl">Reviews &amp; Complaints</div><div class="cx-body"><div class="cx-kinds" style="padding:0"><span class="on">⚑ Priority · 2</span><span>Everything</span></div><div class="cx-rc"><span class="cx-pill cx-red">Overdue 2 h</span> <b>BBB #1182</b></div><div class="cx-rc"><span class="cx-pill x">5 h left</span> <b>AG letter</b></div></div></div></div>
+<div class="cx-ph"><h2>6 · A red banner only</h2><p>A one-line banner reads "2 due within 24 h ›", and tapping it filters the list. It's smallest, but the clocks are hidden until you tap.</p>
+<div class="cx-scr"><div class="cx-ttl">Reviews &amp; Complaints</div><div class="cx-body"><div class="cx-due" style="margin:0"><b style="color:var(--bad)">⚑ 2 due within 24 h ›</b></div><div class="cx-rc"><b>Janice Gadson</b><div class="mut">Google ★2</div></div><div class="cx-rc"><b>Carlos Ruiz</b><div class="mut">Call</div></div></div></div></div>
+</div>
+</body></html>
