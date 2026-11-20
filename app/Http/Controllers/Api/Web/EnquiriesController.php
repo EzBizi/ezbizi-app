@@ -340,11 +340,19 @@ class EnquiriesController extends Controller
         abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
 
         // A chat header draws it at ~40 px: send ~96 px, not the 500 KB original (Bar, 2026-11-18).
-        $small = \Illuminate\Support\Facades\Cache::remember(
-            'web-chat-avatar:'.sha1($subject->avatar_path),
-            now()->addDays(30),
-            fn () => self::thumbnail((string) app(FileStore::class)->contents($subject->avatar_path)) ?? '',
-        );
+        // Base64 in the cache: the production store is the database `cache`
+        // table, whose text column refused raw JPEG bytes (SQLSTATE 1366, 500 on
+        // every avatar, 2026-11-19). A cache failure still serves the original.
+        try {
+            $small = (string) base64_decode((string) \Illuminate\Support\Facades\Cache::remember(
+                'web-chat-avatar-b64:'.sha1($subject->avatar_path),
+                now()->addDays(30),
+                fn () => base64_encode(self::thumbnail((string) app(FileStore::class)->contents($subject->avatar_path)) ?? ''),
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+            $small = '';
+        }
 
         if ($small === '') {
             return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');

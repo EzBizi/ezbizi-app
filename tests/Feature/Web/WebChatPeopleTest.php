@@ -52,6 +52,8 @@ class WebChatPeopleTest extends TestCase
     public function test_the_avatar_link_is_stable_and_serves_a_small_image(): void
     {
         Storage::fake(config('filesystems.default'));
+        // Production's store: a text column that refused raw JPEG bytes (2026-11-19).
+        config(['cache.default' => 'database']);
         [$site, $t] = $this->site();
         $chat = $this->startChat($site, 'Hi');
         $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
