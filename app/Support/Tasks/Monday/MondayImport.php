@@ -82,6 +82,9 @@ final class MondayImport
     /** @var array<string, true> Monday items whose "Job #N" title was cleaned here, to send back */
     private array $retitled = [];
 
+    /** @var array<string, true> items Monday sent with no Status: our default goes back (desk 11-20) */
+    private array $blankStatus = [];
+
     /** @var array<string, string> lower-cased monday email => lower-cased EzBizi email */
     private array $map = [];
 
@@ -174,11 +177,17 @@ final class MondayImport
                     }
                 }
             }));
-            if (! $this->dry && $this->retitled !== []) {
-                // Outside the suppression: the cleaned titles go back to Monday (live rows).
+            if (! $this->dry && ($this->retitled !== [] || $this->blankStatus !== [])) {
+                // Outside the suppression: the cleaned titles, and the status we gave an item Monday
+                // left blank (Monday showed an empty cell, we "Not started"), go back as live rows.
                 $this->tenant->run($org, function () {
-                    foreach (Task::query()->whereIn('external_ref', array_map(fn ($i) => 'monday:'.$i, array_keys($this->retitled)))->get() as $t) {
-                        app(MondayOutbox::class)->record($t, ['title']);
+                    $ids = array_unique([...array_keys($this->retitled), ...array_keys($this->blankStatus)]);
+                    foreach (Task::query()->whereIn('external_ref', array_map(fn ($i) => 'monday:'.$i, $ids))->get() as $t) {
+                        $id = substr((string) $t->external_ref, 7);
+                        app(MondayOutbox::class)->record($t, array_values(array_filter([
+                            isset($this->retitled[$id]) ? 'title' : null,
+                            isset($this->blankStatus[$id]) ? 'status' : null,
+                        ])));
                     }
                 });
             }
@@ -212,7 +221,7 @@ final class MondayImport
             'files MB' => 0.0, 'files not carried' => 0, 'statuses made' => 0, 'groups made' => 0, 'columns made' => 0,
             'assignees kept as text' => 0, 'columns retyped' => 0, 'values filled' => 0, 'values not carried' => 0,
         ];
-        $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = $this->retitled = [];
+        $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = $this->retitled = $this->blankStatus = [];
         foreach ($data['people'] ?? [] as $from => $to) {
             $this->map[mb_strtolower(trim($from))] = mb_strtolower(trim($to));
         }
@@ -610,6 +619,10 @@ final class MondayImport
             if ($title !== trim((string) $item['name']) && isset($item['monday_id'])) {
                 $this->retitled[(string) $item['monday_id']] = true;
             }
+        }
+
+        if (trim((string) ($item['status'] ?? '')) === '' && isset($item['monday_id'])) {
+            $this->blankStatus[(string) $item['monday_id']] = true;
         }
 
         return $about + [

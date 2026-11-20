@@ -884,6 +884,10 @@ class ModuleServiceProvider extends ServiceProvider
                     // adjusting are `work_hours.approve`; without it the tab
                     // reads only.
                     new TabDefinition('approval', 'Daily approval'),
+                    // Payroll (design 198, 2026-11-19): the week's pay, approved
+                    // per person. Its grant is the `payroll` action itself, the
+                    // same gate as every payroll endpoint.
+                    new TabDefinition('payroll', 'Payroll', action: 'payroll'),
                     // Registry order is the roles editor's order: keep it the
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),

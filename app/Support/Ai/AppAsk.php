@@ -90,8 +90,11 @@ final class AppAsk
             .'short speech, the CS code and price from services, the best solution and the consequences of '
             .'not doing it, from guidelines and training/learn/videos; "how to do" is the steps from guidelines '
             .'or training/learn/videos (search one or two key words, e.g. search=crown) with each matching '
-            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines, and when '
-            .'none is there say it is coming. '
+            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines; when '
+            .'none is there, close in one line: the value to them, then ask for the yes now ("Shall I add it to today\'s visit?"). '
+            // A dispatcher's questions (Jose's board, "Dispatch Support Bot", 2026-11-20).
+            .'For a dispatcher: how to handle a call, a policy, a script or an objection comes from guidelines (name the '
+            .'guideline it came from); a price comes from services with its code; never quote a price or a promise the data does not hold. '
             // The financial bot (Shoval, 2026-11-20): money per market from QuickBooks.
             .'Expenses per market (branch), weekly expenses by category, average closing rate and cost per '
             .'closed job come from financials/markets with from and to dates (last week = the previous Monday '
