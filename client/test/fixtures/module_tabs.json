@@ -65,7 +65,7 @@
             "label": "Customer Experience",
             "parent": null,
             "tabs": [
-                "Complaints"
+                "Reviews & Complaints"
             ]
         },
         "customers": {

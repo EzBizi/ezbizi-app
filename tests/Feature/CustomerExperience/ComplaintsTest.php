@@ -238,4 +238,18 @@ class ComplaintsTest extends TestCase
         $this->assertSame([1, 3], $steps, 'halfway once; at 41 h straight to last call');
         $this->assertSame(3, $c->fresh()->alerted_level);
     }
+
+    public function test_the_list_carries_every_open_priority_complaint_whatever_status_is_shown(): void
+    {
+        $admin = $this->signedInAs($this->t['admin']);
+        $admin->postJson('/api/v1/complaints', ['kind' => 'bbb', 'title' => 'BBB #1182'])->assertCreated();
+        $admin->postJson('/api/v1/complaints', ['kind' => 'other', 'title' => 'Yelp: rude'])->assertCreated();
+        $done = $admin->postJson('/api/v1/complaints', ['kind' => 'lawsuit', 'title' => 'Settled'])->assertCreated()->json('data.id');
+        $admin->patchJson("/api/v1/complaints/{$done}", ['status' => 'solved'])->assertOk();
+
+        // Design 202's strip: open and priority only, on the Solved list too.
+        $due = $admin->getJson('/api/v1/complaints?status=solved')->assertOk()->json('meta.due');
+        $this->assertSame(['BBB #1182'], array_column($due, 'title'));
+        $this->assertNotNull($due[0]['due_at']);
+    }
 }
