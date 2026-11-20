@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
+      'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
+    ]),
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',
       'Backups: the daily backup check runs after the nightly backup has finished',
