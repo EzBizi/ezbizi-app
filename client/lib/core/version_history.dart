@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0620', date: '20 Nov 2026', items: [
+      'Reports: Estimates under Jobs, and new Office (Tasks, Complaints, Dispatch, Accounting weekly, Recruiting) and Technicians (Tech report, AI checks) tabs',
+      'Newsletter: Custom HTML and Blocks are kept as two separate designs; switching views never loses either one, and Use this design picks which one is sent',
+      'Newsletter: the two previews in Create editable copy are framed',
+      'Complaint alerts name who complained',
+      'Grok: photo search finds jobs by every word across job type, title and description (for example chimney crown repair)',
+      'Roles: an Administrator can change roles from any company view, not only the organization view',
+    ]),
     VersionRelease(version: '0.0.0619', date: '20 Nov 2026', items: [
       'Reviews: each Google review is stored and counted once, even when two Google accounts can see the same location',
       'Reviews: EzBizi keeps the review total and rating of each Google listing exactly as Google reports them',
