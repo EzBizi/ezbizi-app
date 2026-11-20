@@ -526,6 +526,9 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 
 // Task Board: a task past its due date raises task.overdue, once per task.
 Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+// Shoval 11-13 (Monday off): reminders and week-quiet nudges, and one morning summary per owner.
+Schedule::command('ezbizi:tasks-nudges')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:tasks-daily-digest')->dailyAt('08:00')->timezone('America/New_York')->withoutOverlapping(30);
 // Task Board: the board rules' week, moved and flagged by person, to Administrators (Jose 11-17).
 Schedule::command('ezbizi:tasks-misfiled-report')->weeklyOn(1, '09:00')->timezone('America/New_York');
 // Task Board: a due date or date column that is today/tomorrow raises task.date_arrived, once per date

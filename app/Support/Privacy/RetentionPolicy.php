@@ -75,7 +75,7 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 56 tables this governs today are `a1leads_review_events`
+     * The 57 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `a1leads_reviews` (updated_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
@@ -93,7 +93,7 @@ final class RetentionPolicy
      * `phone_callbacks` (created_at), `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),
      * `phone_messages` (created_at), `promotion_texts` (created_at), `promotions` (created_at), `qr_code_scans` (scanned_at), `report_batch_files` (created_at),
      * `scheduling_helper_bookings` (date), `scheduling_reschedule_offers` (created_at),
-     * `staff_messages` (created_at),
+     * `staff_messages` (created_at), `task_reminders` (created_at),
      * `vehicle_positions` (recorded_at), `whatsapp_contacts` (updated_at), `whatsapp_pending_reports` (created_at),
      * `whatsapp_report_batches` (created_at), `whatsapp_messages` (created_at) and
      * `workiz_calls` (called_at). It said
