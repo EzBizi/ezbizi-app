@@ -16,6 +16,9 @@ class VersionHistory {
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',
       'Backups: the daily backup check runs after the nightly backup has finished',
+      'AI assistant: answers dispatcher questions from your guidelines and priced services, and the technician bot closes with a clear next step',
+      'Automations: a lead text to a number that replied STOP is skipped, not counted as a failed run',
+      'Work Hours: new Payroll tab where managers review hours and rates, with bonus, deductions and the weekly total',
     ]),
     VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
       'Task Board: drag a group header onto another group to reorder the board; Monday follows',

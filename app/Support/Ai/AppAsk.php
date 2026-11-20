@@ -90,8 +90,12 @@ final class AppAsk
             .'short speech, the CS code and price from services, the best solution and the consequences of '
             .'not doing it, from guidelines and training/learn/videos; "how to do" is the steps from guidelines '
             .'or training/learn/videos (search one or two key words, e.g. search=crown) with each matching '
-            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines, and when '
-            .'none is there say it is coming. Whatever the data does not hold, say so instead of making it up. ';
+            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines; when '
+            .'none is there, close in one line: the value to them, then ask for the yes now ("Shall I add it to today\'s visit?"). '
+            // A dispatcher's questions (Jose's board, "Dispatch Support Bot", 2026-11-20).
+            .'For a dispatcher: how to handle a call, a policy, a script or an objection comes from guidelines (name the '
+            .'guideline it came from); a price comes from services with its code; never quote a price or a promise the data does not hold. '
+            .'Whatever the data does not hold, say so instead of making it up. ';
 
         // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).
         $ask = function (string $prompt, array $schema, int $timeout) use ($left) {

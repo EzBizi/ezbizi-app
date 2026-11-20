@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task Board polish</title>
+<style>
+:root{--pg:#f3f6f9;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--pg:#0e1115;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.tb-lead{margin:0 0 18px;color:var(--mut);max-width:1040px}
+h2{font-size:15px;margin:22px 0 4px}h2 .n{color:var(--pri)}
+.tb-row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;max-width:1220px}
+.tb-opt h3{font-size:13px;margin:0 0 3px}.tb-opt p{margin:0 0 6px;color:var(--mut);font-size:12px}
+.tb-rec{color:var(--pri)}
+/* a dark board mock, as Jose sees it */
+.m{--bg:#121417;--grp:#1b1f24;--row:#1f242a;--rowh:#262c33;--sel:#13324a;--selb:#2f80ed;--edge:#2b3137;--tx:#e6e9ec;--mu:#8d98a3;--or:#ff7a3d;--bl:#4aa3ff;
+background:var(--bg);color:var(--tx);border-radius:10px;padding:10px;font-size:12px;border:1px solid #2a2f35;overflow:hidden}
+.m .g{border-radius:8px;overflow:hidden}
+.m .gh{display:flex;align-items:center;gap:6px;padding:6px 8px;color:var(--or);font-weight:700}
+.m .gh .c{color:var(--mu);font-weight:400}
+.m .r{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--edge);border-left:4px solid var(--or)}
+.m .r .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m .pill{border-radius:3px;padding:2px 8px;font-size:11px;font-weight:600;color:#fff}
+.gr{background:#2fa25a}.or{background:#f2a33a}.bl{background:#3f8cf0}.rd{background:#e2445c}
+.m .side{width:150px;flex:none;padding:6px;border-right:1px solid var(--edge)}
+.m .side div{padding:4px 6px;border-radius:5px;color:var(--mu);display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden}
+.m .side .on{background:#1e4f6b;color:#fff}
+.m .side .h{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding-top:8px}
+.m .flex{display:flex;gap:0}
+.m .pane{width:210px;flex:none;border-left:1px solid var(--edge);padding:8px;background:var(--grp)}
+.m .pane .tabs{display:flex;gap:10px;border-bottom:1px solid var(--edge);margin:6px 0;color:var(--mu)}
+.m .pane .tabs .on{color:var(--bl);border-bottom:2px solid var(--bl)}
+.m .note{background:var(--row);border-radius:6px;padding:6px;margin-top:6px;color:var(--mu)}
+.m .ghost{opacity:.5}
+.m .drop{height:0;border-top:2px solid var(--bl);margin:0 8px}
+.m .feed{box-shadow:0 6px 18px rgba(0,0,0,.5);background:var(--rowh);border-radius:6px;transform:rotate(-1.5deg)}
+.m .star{color:#f5c542}
+.ph{width:300px;height:430px;border-radius:18px;border:1px solid #2a2f35;padding:8px}
+.ph .bar{font-weight:700;padding:4px 2px 8px}
+</style></head><body>
+<h1>200 · Task Board › the polish of Monday</h1>
+<p class="tb-lead">Jose, 11-20, put Task Board and Monday side by side. Read broadly, he wants it to feel as finished as Monday. He made seven points, and the desk found one bug: CT › Company Info reads "5 tasks" and shows none, because the count includes trashed tasks. That bug is fixed on the server, with no options. The mocks are dark because that's how Jose uses it, and the light theme gets the same steps. Each point has three options; the recommended one is built at once (standing rule 2026-11-03).</p>
+
+<h2><span class="n">1</span> · Contrast: the page and the rows</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>A · Three steps: page, group card, row <span class="tb-rec">(recommended)</span></h3><p>The page goes darker, each group sits on a raised card with a rounded edge, and rows are a step lighter than the card with a hairline between them. It's Monday's "board on a canvas".</p>
+<div class="m" style="--bg:#0b0d10"><div class="g" style="background:var(--grp)"><div class="gh">⌄ Open Tasks <span class="c">28 tasks</span></div>
+<div class="r" style="background:var(--row)"><span class="t">Returning Client Promotion Texts</span><span class="pill gr">Done</span></div><div class="r" style="background:var(--row)"><span class="t">Project Management Board</span><span class="pill rd">Stuck</span></div></div>
+<div class="g" style="background:var(--grp);margin-top:10px"><div class="gh" style="color:#a25ddc">⌄ Waiting <span class="c">4 tasks</span></div><div class="r" style="background:var(--row);border-left-color:#a25ddc"><span class="t">Replace Air Table</span><span class="pill bl">Received</span></div></div></div></div>
+<div class="tb-opt"><h3>B · Rows only lighter</h3><p>Groups stay flat on the page, and only the rows lift a step. It's quieter, but groups still blur into each other.</p>
+<div class="m"><div class="gh">⌄ Open Tasks <span class="c">28 tasks</span></div><div class="r" style="background:var(--row)"><span class="t">Returning Client Promotion Texts</span><span class="pill gr">Done</span></div><div class="r" style="background:var(--row)"><span class="t">Project Management Board</span><span class="pill rd">Stuck</span></div><div class="gh" style="color:#a25ddc;margin-top:8px">⌄ Waiting <span class="c">4 tasks</span></div><div class="r" style="background:var(--row);border-left-color:#a25ddc"><span class="t">Replace Air Table</span><span class="pill bl">Received</span></div></div></div>
+<div class="tb-opt"><h3>C · Zebra rows</h3><p>Every other row is shaded. It's easy to follow across a wide board, but it's busier than Monday and fights the status colours.</p>
+<div class="m"><div class="gh">⌄ Open Tasks <span class="c">28 tasks</span></div><div class="r" style="background:#1a1e23"><span class="t">Returning Client Promotion Texts</span><span class="pill gr">Done</span></div><div class="r" style="background:#23282e"><span class="t">Project Management Board</span><span class="pill rd">Stuck</span></div><div class="r" style="background:#1a1e23"><span class="t">Workiz Training</span><span class="pill or">Working</span></div></div></div>
+</div>
+
+<h2><span class="n">2</span> · Clicking a task: selected + Updates beside the board</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>A · Blue row + docked panel on Updates <span class="tb-rec">(recommended)</span></h3><p>Clicking a row turns it blue (fill plus a blue edge) and docks the task panel at the right, opened on Updates. The board stays live beside it with no scrim. Clicking another row swaps the panel, and Esc or ✕ closes it and clears the blue. Below 1100 px the panel overlays, as it does today.</p>
+<div class="m"><div class="flex"><div style="flex:1;min-width:0"><div class="g" style="background:var(--grp)"><div class="r" style="background:var(--row)"><span class="t">Returning Client Promotion Texts</span></div><div class="r" style="background:var(--sel);box-shadow:inset 0 0 0 1px var(--selb)"><span class="t"><b>Project Management Board</b></span></div><div class="r" style="background:var(--row)"><span class="t">Workiz Training</span></div></div></div>
+<div class="pane"><b>Project Management Board</b><div class="tabs"><span class="on">Updates · 3</span><span>Files</span><span>Activity</span></div><div class="note">Write an update…</div><div class="note"><b style="color:#e6e9ec">Shoval</b> · 2h<br>Columns done, waiting on stages.</div></div></div></div></div>
+<div class="tb-opt"><h3>B · Blue row + overlay panel</h3><p>As today, but the row stays blue under the scrim and the panel opens on Updates. You can't see the board while reading.</p>
+<div class="m" style="position:relative"><div class="r" style="background:var(--row)"><span class="t">Returning Client…</span></div><div class="r" style="background:var(--sel)"><span class="t">Project Management Board</span></div><div class="r" style="background:var(--row)"><span class="t">Workiz Training</span></div><div style="position:absolute;inset:0;background:rgba(0,0,0,.45)"></div><div style="position:absolute;right:0;top:0;bottom:0;width:55%;background:var(--grp);padding:8px">Updates · 3<div class="note">…</div></div></div></div>
+<div class="tb-opt"><h3>C · Row expands in place</h3><p>The updates open under the row, inside the table. Nothing covers the board, but long threads push every row below it down.</p>
+<div class="m"><div class="r" style="background:var(--sel)"><span class="t">Project Management Board</span></div><div style="background:var(--grp);padding:6px 10px 6px 18px;border-left:4px solid var(--selb)"><div class="note">Shoval · 2h — Columns done…</div><div class="note">Write an update…</div></div><div class="r" style="background:var(--row)"><span class="t">Workiz Training</span></div></div></div>
+</div>
+
+<h2><span class="n">3</span> · Hover</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>A · The row lifts one step <span class="tb-rec">(recommended)</span></h3><p>The whole row shifts to the hover shade, and the drag handle and ⋯ only show on hover, as on Monday. The selected blue wins over hover.</p>
+<div class="m"><div class="r" style="background:var(--row)"><span class="t" style="padding-left:16px">Returning Client Promotion Texts</span></div><div class="r" style="background:var(--rowh)"><span style="color:var(--mu)">⠿ ⋯</span><span class="t">Project Management Board</span></div><div class="r" style="background:var(--row)"><span class="t" style="padding-left:16px">Workiz Training</span></div></div></div>
+<div class="tb-opt"><h3>B · Hover tint, handles always on</h3><p>The same shade, with today's ⠿ ☐ ⋯ always drawn. Busier at rest.</p>
+<div class="m"><div class="r" style="background:var(--row)"><span style="color:var(--mu)">⠿ ☐ ⋯</span><span class="t">Returning Client…</span></div><div class="r" style="background:var(--rowh)"><span style="color:var(--mu)">⠿ ☐ ⋯</span><span class="t">Project Management Board</span></div></div></div>
+<div class="tb-opt"><h3>C · Outline only</h3><p>A thin outline, with no fill change. It's subtle and hard to see on a dark board.</p>
+<div class="m"><div class="r" style="background:var(--row)"><span class="t">Returning Client…</span></div><div class="r" style="background:var(--row);box-shadow:inset 0 0 0 1px #3a424b"><span class="t">Project Management Board</span></div></div></div>
+</div>
+
+<h2><span class="n">4</span> · Dragging tasks and groups</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>A · Lifted card + a blue drop line; groups fold while one moves <span class="tb-rec">(recommended)</span></h3><p>Grab ⠿ (or anywhere on the row's empty edge). The dragged row lifts as a tilted card, its place stays as a faint ghost, and a blue line shows where it lands, in any group. Grabbing a group header folds every group to its header, which shows the colour bar, name and count, so the whole board fits. Dropping puts the group in place and opens back what was open before.</p>
+<div class="m"><div class="g" style="background:var(--grp)"><div class="gh">› Open Tasks <span class="c">28</span></div></div><div class="drop" style="margin:6px 8px"></div><div class="g feed" style="padding:2px"><div class="gh" style="color:#a25ddc">⠿ › Waiting <span class="c">4</span></div></div><div class="g ghost" style="background:var(--grp);margin-top:6px"><div class="gh" style="color:#a25ddc">› Waiting</div></div><div class="g" style="background:var(--grp);margin-top:6px"><div class="gh" style="color:#2fa25a">› Done <span class="c">112</span></div></div></div></div>
+<div class="tb-opt"><h3>B · Drop line only, groups stay open</h3><p>Today's drag with a clearer line. Moving a group past a long one means scrolling while dragging.</p>
+<div class="m"><div class="gh">⌄ Open Tasks</div><div class="r" style="background:var(--row)"><span class="t">Returning Client…</span></div><div class="drop"></div><div class="r" style="background:var(--row)"><span class="t">Workiz Training</span></div><div class="r" style="background:var(--row)"><span class="t">…24 more rows</span></div></div></div>
+<div class="tb-opt"><h3>C · "Move to…" menu only</h3><p>No dragging at all: ⋯ › Move to group / position. It's precise, but it isn't what Monday does.</p>
+<div class="m"><div class="r" style="background:var(--row)"><span class="t">Project Management Board</span><span style="color:var(--mu)">⋯</span></div><div style="background:var(--grp);border-radius:6px;padding:6px;margin:4px 0 0 40%">Move to group ›<br>Move up · Move down</div></div></div>
+</div>
+
+<h2><span class="n">5 · 6 · 7</span> · The sidebar: instant order, folders, Favorites, no "N open"</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>A · Favorites on top, drag everything, no counts <span class="tb-rec">(recommended)</span></h3><p>A ☆ on hover stars a board, and starred boards show under <b>Favorites</b> (yours only), in the order you drag them. Boards and folders drag with a blue line, and the new order shows the moment you drop. The board list keeps it until the server agrees, so there's no ~1 min wait. The "N open" counts are gone.</p>
+<div class="m"><div class="side" style="width:auto"><div class="h">★ Favorites</div><div class="on"><span class="star">★</span> Personal Task Board</div><div><span class="star">★</span> CT - Connecticut</div><div class="h">Team boards</div><div>▦ A-1 Chimney</div><div style="background:#1e242b">⠿ ▦ GA - Georgia <span style="margin-left:auto">☆</span></div><div class="drop" style="margin:2px 4px"></div><div>▦ DMV</div><div class="h">Folders</div><div>⌄ 📁 A1 Chimney</div><div style="padding-left:18px">⌄ 📁 Office Management</div></div></div></div>
+<div class="tb-opt"><h3>B · Pin icon instead of a section</h3><p>Starred boards rise to the top of their own section, with no separate Favorites heading. It saves space, but favorites spread across sections.</p>
+<div class="m"><div class="side" style="width:auto"><div class="h">Team boards</div><div><span class="star">★</span> CT - Connecticut</div><div>▦ A-1 Chimney</div><div>▦ GA - Georgia</div><div class="h">My boards</div><div><span class="star">★</span> Personal Task Board</div></div></div></div>
+<div class="tb-opt"><h3>C · Favorites as a filter</h3><p>A "★ Favorites only" switch at the top hides every other board. It's clean, but it needs a toggle to reach anything else.</p>
+<div class="m"><div class="side" style="width:auto"><div style="border:1px solid #2b3137">☑ ★ Favorites only</div><div><span class="star">★</span> Personal Task Board</div><div><span class="star">★</span> CT - Connecticut</div></div></div></div>
+</div>
+
+<h2>Phone</h2>
+<div class="tb-row3">
+<div class="tb-opt"><h3>4 · Same steps, full-screen task <span class="tb-rec">(recommended)</span></h3><p>The same three shades. Tapping a task opens it full screen on Updates, and back returns to the board with that row still blue. Long-press drags a task, and long-press on a group header folds the groups to move it. There's no hover on touch.</p>
+<div class="m ph"><div class="bar">Open Tasks · 28</div><div class="g" style="background:var(--grp)"><div class="r" style="background:var(--row)"><span class="t">Returning Client Promotion…</span><span class="pill gr">Done</span></div><div class="r" style="background:var(--sel);box-shadow:inset 0 0 0 1px var(--selb)"><span class="t">Project Management Board</span><span class="pill rd">Stuck</span></div><div class="r" style="background:var(--row)"><span class="t">Workiz Training</span><span class="pill or">Working</span></div></div><div class="g" style="background:var(--grp);margin-top:10px"><div class="gh" style="color:#a25ddc">⌄ Waiting <span class="c">4</span></div></div></div></div>
+<div class="tb-opt"><h3>5 · Bottom sheet for the task</h3><p>The task opens as a half-height sheet over the board, with Updates first. A long thread is cramped.</p>
+<div class="m ph" style="position:relative"><div class="bar">Open Tasks</div><div class="r" style="background:var(--sel)"><span class="t">Project Management Board</span></div><div style="position:absolute;left:0;right:0;bottom:0;height:55%;background:var(--grp);border-radius:14px 14px 0 0;padding:10px">Updates · 3<div class="note">Shoval · 2h…</div></div></div></div>
+<div class="tb-opt"><h3>6 · Kanban first on phone</h3><p>The phone opens on Kanban columns instead of the table. That's a bigger change than Jose asked for.</p>
+<div class="m ph"><div class="bar">Kanban</div><div style="display:flex;gap:6px"><div style="flex:1;background:var(--grp);border-radius:6px;padding:4px">Working<div class="note">Workiz Training</div></div><div style="flex:1;background:var(--grp);border-radius:6px;padding:4px">Stuck<div class="note">PM Board</div></div></div></div></div>
+</div>
+</body></html>
