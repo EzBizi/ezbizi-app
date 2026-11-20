@@ -498,7 +498,7 @@ void main() {
   // UI queue 84: in the organization view the tabs wrapped into four rows,
   // twenty of them "Main · 0".
   testWidgets('the picker groups boards under their company, so two Mains '
-      'are told apart, with my open count on each', (tester) async {
+      'are told apart, and no open count', (tester) async {
     await pumpBoard(tester);
 
     expect(
@@ -510,7 +510,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Main'), findsNWidgets(2));
-    expect(find.text('2 open'), findsOneWidget);
+    // No "N open" (Jose 11-20, design 200: Monday shows none).
+    expect(find.text('2 open'), findsNothing);
     // Companies in alphabetical order, each Main under its own.
     final everdoors = tester
         .getTopLeft(
