@@ -2574,6 +2574,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('bases', 'Home'),
                     new TabDefinition('bills', 'Bills'),
+                    // Expenses per market from QuickBooks, closing rate, cost per closed job (Shoval, 11-20).
+                    new TabDefinition('markets', 'Markets'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],
