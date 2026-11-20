@@ -2,6 +2,7 @@ import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/session.dart';
 import '../core/theme.dart';
 
 import '../core/device_key_store_io.dart'
@@ -35,10 +36,14 @@ class BoardTree extends StatefulWidget {
     this.api,
     this.canArrange = false,
     this.onArranged,
+    this.session,
   });
 
   /// Reads the organization's folders; null: no folders (older callers).
   final ApiClient? api;
+
+  /// Whose favorites (`task_board.favorites`, theirs alone; design 200).
+  final Session? session;
 
   /// May make folders, colour and move boards (tasks.create_boards).
   final bool canArrange;
@@ -198,19 +203,121 @@ class _BoardTreeState extends State<BoardTree> {
       ..insert(at < 0 ? siblings.length : at, boardId);
     final api = widget.api;
     if (api == null) return;
+    // The new order shows at once (Jose 11-20: it took about a minute, one
+    // awaited PATCH per board): the rows are renumbered here, then the
+    // writes go out together and the list is read back once they land.
+    final writes = <Future<ApiResponse>>[];
     for (final (i, id) in order.indexed) {
       final b = widget.boards.where((x) => '${x['id']}' == id).firstOrNull;
+      if (b == null) continue;
       if (id == boardId) {
-        await api.patch('/task-boards/$id', {
-          'folder_id': folder,
-          'position': i,
-        });
-      } else if (b?['position'] != i) {
-        await api.patch('/task-boards/$id', {'position': i});
+        b['folder_id'] = folder;
+        b['position'] = i;
+        writes.add(
+          api.patch('/task-boards/$id', {'folder_id': folder, 'position': i}),
+        );
+      } else if (b['position'] != i) {
+        b['position'] = i;
+        writes.add(api.patch('/task-boards/$id', {'position': i}));
       }
     }
+    setState(() {});
+    final answers = await Future.wait(writes);
     if (!mounted) return;
+    final refused = answers.where((r) => !r.ok).firstOrNull;
+    if (refused != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(refused.reason)));
+    }
     widget.onArranged?.call();
+  }
+
+  Widget _folderDraggable(String id, String name, Widget child) =>
+      widget.canArrange && widget.api != null
+      ? Draggable<String>(
+          key: ValueKey('folder-drag-$id'),
+          data: 'folder:$id',
+          feedback: Material(
+            elevation: 6,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(padding: const EdgeInsets.all(8), child: Text(name)),
+          ),
+          childWhenDragging: Opacity(opacity: 0.4, child: child),
+          child: child,
+        )
+      : child;
+
+  /// Drops folder [folderId] just before [before], among that folder's
+  /// siblings; shown at once, as boards are.
+  Future<void> _reorderFolder(
+    String folderId,
+    Map<String, dynamic> before,
+  ) async {
+    final api = widget.api;
+    if (api == null) return;
+    final parent = before['parent_id'];
+    final siblings = [
+      for (final f in _folders)
+        if (f['parent_id'] == parent && '${f['id']}' != folderId) f,
+    ]..sort(_byPlace);
+    final at = siblings.indexWhere((f) => f['id'] == before['id']);
+    final order = [for (final f in siblings) '${f['id']}']
+      ..insert(at < 0 ? siblings.length : at, folderId);
+    final writes = <Future<ApiResponse>>[];
+    for (final (i, id) in order.indexed) {
+      final f = _folders.where((x) => '${x['id']}' == id).firstOrNull;
+      if (f == null) continue;
+      if (id == folderId) {
+        f['parent_id'] = parent;
+        f['position'] = i;
+        writes.add(
+          api.patch('/task-board-folders/$id', {
+            'parent_id': parent,
+            'position': i,
+          }),
+        );
+      } else if (f['position'] != i) {
+        f['position'] = i;
+        writes.add(api.patch('/task-board-folders/$id', {'position': i}));
+      }
+    }
+    setState(() {});
+    final answers = await Future.wait(writes);
+    if (!mounted) return;
+    final refused = answers.where((r) => !r.ok).firstOrNull;
+    if (refused != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(refused.reason)));
+    }
+    await _loadFolders();
+  }
+
+  /// This person's starred boards, in their order.
+  List<String> get _favorites => [
+    for (final id
+        in (widget.session?.me?.preferences['task_board.favorites'] as List?) ??
+            const [])
+      '$id',
+  ];
+
+  void _saveFavorites(List<String> ids) {
+    widget.session?.setPreference('task_board.favorites', ids);
+    setState(() {});
+  }
+
+  void _toggleFavorite(String id) {
+    final now = _favorites;
+    _saveFavorites(now.contains(id) ? (now..remove(id)) : [...now, id]);
+  }
+
+  /// A starred board dropped on another takes its place in Favorites.
+  void _moveFavorite(String id, String before) {
+    final now = _favorites..remove(id);
+    final at = now.indexOf(before);
+    now.insert(at < 0 ? now.length : at, id);
+    _saveFavorites(now);
   }
 
   /// The arranged order (shared: task_boards.position), and with none set a
@@ -365,35 +472,39 @@ class _BoardTreeState extends State<BoardTree> {
                 },
               ),
             )
-          : InkWell(
-              key: ValueKey('tasks-fold-folder:$id'),
-              onTap: searching ? null : () => _fold('folder:$id'),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(6 + indent, 6, 10, 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      open ? Icons.arrow_drop_down : Icons.arrow_right,
-                      size: 20,
-                      color: colour,
-                    ),
-                    Icon(
-                      open ? Icons.folder_open : Icons.folder,
-                      size: 18,
-                      color: colour,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${f['name']}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: _colour(f['colour']),
+          : _folderDraggable(
+              id,
+              '${f['name']}',
+              InkWell(
+                key: ValueKey('tasks-fold-folder:$id'),
+                onTap: searching ? null : () => _fold('folder:$id'),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(6 + indent, 6, 10, 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        open ? Icons.arrow_drop_down : Icons.arrow_right,
+                        size: 20,
+                        color: colour,
+                      ),
+                      Icon(
+                        open ? Icons.folder_open : Icons.folder,
+                        size: 18,
+                        color: colour,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${f['name']}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: _colour(f['colour']),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -401,9 +512,12 @@ class _BoardTreeState extends State<BoardTree> {
         DragTarget<String>(
           key: ValueKey('folder-drop-$id'),
           onWillAcceptWithDetails: (d) =>
-              widget.canArrange && d.data.startsWith('board:'),
-          onAcceptWithDetails: (d) =>
-              _patchBoard(d.data.substring(6), {'folder_id': id}),
+              widget.canArrange &&
+              (d.data.startsWith('board:') ||
+                  d.data.startsWith('folder:') && d.data != 'folder:$id'),
+          onAcceptWithDetails: (d) => d.data.startsWith('folder:')
+              ? _reorderFolder(d.data.substring(7), f)
+              : _patchBoard(d.data.substring(6), {'folder_id': id}),
           builder: (context, hovering, _) => DecoratedBox(
             decoration: BoxDecoration(
               border: hovering.isEmpty
@@ -710,8 +824,32 @@ class _BoardTreeState extends State<BoardTree> {
                       ),
                     ),
                   ),
-                  if ((b['open_for_me'] ?? 0) != 0)
-                    Text('${b['open_for_me']} open', style: muted),
+                  // No "N open" (Jose 11-20: Monday shows none).
+                  if (widget.session != null)
+                    InkWell(
+                      key: ValueKey('board-star-$id'),
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _toggleFavorite(id),
+                      child: Tooltip(
+                        message: _favorites.contains(id)
+                            ? 'Remove from Favorites'
+                            : 'Add to Favorites',
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Icon(
+                            _favorites.contains(id)
+                                ? Icons.star
+                                : Icons.star_border,
+                            size: 16,
+                            color: _favorites.contains(id)
+                                ? theme.colorScheme.tertiary
+                                : theme.colorScheme.onSurfaceVariant.withValues(
+                                    alpha: 0.45,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -720,12 +858,19 @@ class _BoardTreeState extends State<BoardTree> {
       );
     }
 
-    Widget board(int i, {double indent = 0, String? from, String? label}) {
+    Widget board(
+      int i, {
+      double indent = 0,
+      String? from,
+      String? label,
+      bool favorite = false,
+    }) {
       final b = boards[i];
       final on = i == widget.selected;
       final text = label ?? _name(b);
       final drop = widget.onDropTask;
-      final arrange = widget.canArrange && widget.api != null;
+      // Favorites are one's own: anybody arranges them.
+      final arrange = favorite || widget.canArrange && widget.api != null;
       Widget draggable(Widget w) => arrange && b['deleted'] != true
           ? Draggable<String>(
               key: ValueKey('tasks-board-drag-${b['id']}'),
@@ -749,7 +894,9 @@ class _BoardTreeState extends State<BoardTree> {
               ? arrange && d.data != 'board:${b['id']}'
               : drop != null && !on,
           onAcceptWithDetails: (d) => d.data.startsWith('board:')
-              ? _reorder(d.data.substring(6), b)
+              ? favorite
+                    ? _moveFavorite(d.data.substring(6), '${b['id']}')
+                    : _reorder(d.data.substring(6), b)
               : drop!(i, d.data),
           builder: (context, hovering, _) => DecoratedBox(
             decoration: BoxDecoration(
@@ -964,7 +1111,22 @@ class _BoardTreeState extends State<BoardTree> {
     }
     final names = people.keys.toList()..sort();
 
+    final favourites = [
+      for (final id in _favorites)
+        if (boards.indexWhere((b) => '${b['id']}' == id) case final i
+            when i >= 0 && matches(i))
+          i,
+    ];
     final rows = <Widget>[
+      ...group('favorites', 'Favorites', asHeader: true, [
+        // Its own subtree: the same board is listed again below, with the
+        // same keys, and two siblings may not share one.
+        for (final i in favourites)
+          KeyedSubtree(
+            key: ValueKey('favorite-${boards[i]['id']}'),
+            child: board(i, favorite: true),
+          ),
+      ]),
       if (personal >= 0 && matches(personal))
         board(personal, label: 'Personal Task Board'),
       if (mine.any(matches)) header('My boards'),
