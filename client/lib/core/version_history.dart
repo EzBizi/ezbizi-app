@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
+      'Task Board: drag a group header onto another group to reorder the board; Monday follows',
+      'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
+    ]),
     VersionRelease(version: '0.0.0613', date: '20 Nov 2026', items: [
       'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
       'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
