@@ -143,6 +143,16 @@ class PreferenceRegistry
                 'default' => [],
             ],
 
+            /*
+             * Reports › Jobs: the sub-tab last opened (design 199).
+             */
+            'reports.jobs_tab' => [
+                'label' => 'Reports › Jobs tab',
+                'type' => 'enum',
+                'default' => 'overview',
+                'options' => ['overview', 'cancelled', 'pending'],
+            ],
+
             'notifications.companies' => [
                 'label' => 'Notify me about',
                 'type' => 'ids',

@@ -327,11 +327,16 @@
                 "Marketing Reports",
                 "Meta",
                 "Thumbtack",
-                "Jobs",
-                "Cancelled jobs",
-                "Pending jobs",
+                "Overview",
+                "Cancelled",
+                "Pending",
                 "Workspace"
-            ]
+            ],
+            "within": {
+                "Overview": "Jobs",
+                "Cancelled": "Jobs",
+                "Pending": "Jobs"
+            }
         },
         "reviews": {
             "label": "Reviews",
