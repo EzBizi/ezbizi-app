@@ -8,7 +8,9 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\WorkizJob;
 use App\Support\Settings\SettingsResolver;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The board's own columns from the record a task is about (Jose, 2026-11-19:
@@ -39,7 +41,7 @@ final class TaskRecordFill
     ];
 
     /** @return array<string, string> column id => value written */
-    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
+    public function fill(Task $task, ?Lead $lead, ?User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
     {
         $writer ??= app(TaskWriter::class);
         $board = $task->board;
@@ -86,7 +88,7 @@ final class TaskRecordFill
             'Date' => str_contains(mb_strtolower((string) $task->group?->name), 'customer relations') ? $job?->scheduled_for?->toDateString() : null,
             'Technician' => $job?->performed_by_user_id,
             'Notes' => $lead?->summary,
-            'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
+            'Workiz Job ID' => $job ? (string) (WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
         ];
 
         $set = [];
@@ -119,7 +121,7 @@ final class TaskRecordFill
             try {
                 $writer->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
                 $set[$columnId] = $userId;
-            } catch (\Illuminate\Validation\ValidationException) {
+            } catch (ValidationException) {
             }
         }
 

@@ -120,6 +120,14 @@ class TaskWriter
                 $this->writeValues($task, $input['values'], $actor);
             }
 
+            // A task about a job gets every board column the job can fill, whoever wrote it
+            // (desk 11-20: flag and overbooked tasks arrived with no client, phone or address).
+            // Only empty cells; not while the Monday sync writes what Monday already has.
+            if (! $this->syncing && $parent === null && $task->about_type === 'job' && $task->about_id !== null
+                && ($job = Job::query()->find($task->about_id)) !== null) {
+                app(TaskRecordFill::class)->fill($task, null, $actor, job: $job, writer: $this);
+            }
+
             if ($automationId !== null && $parent === null) {
                 $this->linkTwins($task);
             }
