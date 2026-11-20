@@ -1290,6 +1290,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'thumbtack': 'Leads and messages from Thumbtack.',
     'workiz': 'Jobs and calls from Workiz, for reports.',
     'airtable': 'A base read by Profit & Loss.',
+    'quickbooks': 'Expenses per market, read into Financials.',
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
     'telegram': 'Your staff Tech Assistant bot on Telegram.',

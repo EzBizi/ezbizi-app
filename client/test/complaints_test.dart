@@ -9,7 +9,9 @@ import 'package:ezbizi_client/screens/customer_experience/complaints_tab.dart';
 import 'package:ezbizi_client/screens/customer_experience_screen.dart';
 import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -61,7 +63,13 @@ void main() {
     }
     expect(find.text('Quinn Harlow'), findsOneWidget);
     expect(find.text('★2 Review'), findsOneWidget);
-    expect(find.text('Call'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('complaint-row-c-2')),
+        matching: find.text('Call'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Elm Ridge'), findsOneWidget);
     expect(find.text('Nobody'), findsWidgets);
   });
@@ -71,11 +79,10 @@ void main() {
   ) async {
     await _pump(tester);
 
-    tester
-        .widget<SearchPickerField<String?>>(
-          find.byKey(const ValueKey('complaints-kind')),
-        )
-        .onChanged!('call_complaint');
+    // Kind chips (design 202), not a picker.
+    await tester.tap(
+      find.byKey(const ValueKey('complaints-kind-call_complaint')),
+    );
     await tester.pumpAndSettle();
     expect(_lists.last.queryParameters['kind'], 'call_complaint');
 
@@ -269,7 +276,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, container: true);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Complaints'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Reviews & Complaints'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('complaint-row-c-1')));
     await tester.pumpAndSettle();
@@ -286,13 +293,21 @@ void main() {
     expect(calls.map(_path), contains('/reviews/rv-9'));
   });
 
-  testWidgets('the Complaints chip rides on its own grant', (tester) async {
+  testWidgets('the Reviews & Complaints chip rides on its own grant', (
+    tester,
+  ) async {
     await _pump(tester, container: true, view: false);
-    expect(find.widgetWithText(ChoiceChip, 'Complaints'), findsNothing);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Reviews & Complaints'),
+      findsNothing,
+    );
     expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
 
     await _pump(tester, container: true);
-    expect(find.widgetWithText(ChoiceChip, 'Complaints'), findsOneWidget);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Reviews & Complaints'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('each status has its own empty state', (tester) async {
@@ -365,6 +380,92 @@ void main() {
       reason: errors.map((e) => e.exceptionAsString()).join(' | '),
     );
   });
+  // ── Design 202: Reviews & Complaints ──────────────────────────────
+
+  testWidgets('202: priority ones sit on top with their clock; a client '
+      'badge on every row that has one', (tester) async {
+    _dueIn = const Duration(hours: 5, minutes: 20);
+    addTearDown(() => _dueIn = null);
+    await _pump(tester);
+
+    final strip = find.byKey(const ValueKey('complaints-due'));
+    expect(strip, findsOneWidget);
+    expect(
+      find.descendant(of: strip, matching: find.text('5 h left')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('complaint-client-c-9')), findsWidgets);
+    expect(
+      tester
+          .widget<StatusPill>(
+            find.byKey(const ValueKey('complaint-client-c-1')).first,
+          )
+          .label,
+      'Not a client',
+    );
+  });
+
+  testWidgets('202: past due reads Overdue, solid', (tester) async {
+    _dueIn = const Duration(hours: -2, minutes: -5);
+    addTearDown(() => _dueIn = null);
+    await _pump(tester);
+    final pill = tester.widget<StatusPill>(
+      find.byKey(const ValueKey('complaint-due-c-9')).first,
+    );
+    expect(pill.label, 'Overdue 2 h');
+    expect(pill.solid, isTrue);
+  });
+
+  testWidgets('202: Report on Google copies the evidence', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('complaint-row-c-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('complaint-report-google')));
+    await tester.pumpAndSettle();
+    expect(copied, contains('Quinn Harlow'));
+  });
+
+  testWidgets('202: + New complaint posts the kind and title; BBB says it is '
+      'due in 24 h', (tester) async {
+    _posted.clear();
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('complaints-new')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('complaints-new-priority')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('complaints-new-title')),
+      'BBB #2001',
+    );
+    await tester.tap(find.byKey(const ValueKey('complaints-new-save')));
+    await tester.pumpAndSettle();
+    expect(_posted.single['kind'], 'bbb');
+    expect(_posted.single['title'], 'BBB #2001');
+    expect(_posted.single.containsKey('franchise_id'), isFalse);
+  });
+
+  testWidgets('202: without manage there is no New complaint', (tester) async {
+    await _pump(tester, manage: false);
+    expect(find.byKey(const ValueKey('complaints-new')), findsNothing);
+  });
 }
 
 // ------------------------------------------------------------------ harness
@@ -416,6 +517,31 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+/// Design 202: posted by + New complaint.
+final _posted = <Map<String, dynamic>>[];
+
+Map<String, dynamic> _bbb(Duration fromNow) => {
+  'id': 'c-9',
+  'kind': 'bbb',
+  'status': 'new',
+  'title': 'BBB #1182',
+  'summary': 'Filed with the BBB.',
+  'rating': null,
+  'branch': {'id': 'fr-1', 'name': 'Elm Ridge'},
+  'owner': null,
+  'raised_at': '2026-10-19T14:40:00Z',
+  'updated_at': '2026-10-19T14:40:00Z',
+  'solved_at': null,
+  'note_count': 0,
+  'source': {'type': 'manual', 'id': 'c-9'},
+  'client_status': 'client',
+  'priority': true,
+  'due_at': DateTime.now().toUtc().add(fromNow).toIso8601String(),
+};
+
+/// When the priority one is due, from now; null: none.
+Duration? _dueIn;
+
 final _rows = <Map<String, dynamic>>[
   {
     'id': 'c-1',
@@ -431,6 +557,12 @@ final _rows = <Map<String, dynamic>>[
     'solved_at': null,
     'note_count': 0,
     'source': {'type': 'review', 'id': 'rv-9'},
+    // Design 202: a stranger's Google review carries the report.
+    'client_status': 'not_client',
+    'google_report': {
+      'url': 'https://support.google.com/business/workflow/9945796',
+      'evidence': 'No customer, job or call matches "Quinn Harlow".',
+    },
   },
   {
     'id': 'c-2',
@@ -534,11 +666,19 @@ MockClientHandler _handler({
       });
     }
 
+    if (path == '/complaints' && request.method == 'POST') {
+      _posted.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({
+        'data': <String, dynamic>{'id': 'c-new'},
+      });
+    }
     if (path == '/complaints') {
-      final rows = empty ? <Map<String, dynamic>>[] : store;
+      final due = _dueIn;
+      final rows = [if (!empty) ...store, if (!empty && due != null) _bbb(due)];
       return _json({
         'data': rows,
         'meta': {
+          'due': [if (!empty && due != null) _bbb(due)],
           'total': total ?? rows.length,
           'per_page': 50,
           'current_page':

@@ -29,6 +29,7 @@ use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\SocialOAuthSignIns;
+use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\YouTubeOAuth;
 use App\Support\Tenancy\TenantContext;
@@ -207,6 +208,11 @@ class SocialAuthController extends Controller
             }
 
             $grant = $oauth->exchange($code, $signIn->code_verifier);
+
+            // Intuit names the company on the callback (?realmId=), not in the token response.
+            if ($oauth instanceof QuickBooksOAuth) {
+                $grant = $oauth->withRealm($grant, (string) request()->query('realmId', ''));
+            }
 
             if ($oauth->provider() === SocialProvider::GoogleAds) {
                 return $this->finishGoogle($user, $signIn, $grant);
@@ -445,6 +451,13 @@ class SocialAuthController extends Controller
                         $setup['monday']['as'] = (string) $user->getKey();
                         $connection->forceFill(['setup' => $setup])->save();
                         QueuedCommand::dispatch(['ezbizi:monday-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
+                    }
+
+                    // QuickBooks: its expenses are read now, every class and location
+                    // matched to a branch by name (QuickBooksSync), not at the next run.
+                    if ($provider === SocialProvider::QuickBooks) {
+                        QueuedCommand::dispatch(['ezbizi:quickbooks-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
                             ->afterCommit();
                     }
 
