@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.32
+ * Version:           1.26.33
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.32';
+const EZBIZI_VERSION = '1.26.33';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -619,6 +619,43 @@ function ezbizi_is_link_key($key) {
 }
 
 add_shortcode('ezbizi', 'ezbizi_shortcode');
+
+/**
+ * [ezbizi_rating] - the rating badge from EzBizi's real review count and
+ * average (every rated review of the company, all locations), never a typed
+ * number (Jose, 2026-11-20). The plugin's refresh purges the page cache when
+ * either value changes. Attributes: format="badge" (default, with microdata),
+ * "count", "average" or "schema" (a JSON-LD aggregateRating block).
+ */
+function ezbizi_rating_shortcode($atts = array()) {
+    $atts = shortcode_atts(array('format' => 'badge', 'name' => ''), $atts, 'ezbizi_rating');
+    $payload = ezbizi_payload();
+    $sum = isset($payload['review_summary']) && is_array($payload['review_summary']) ? $payload['review_summary'] : null;
+    if ($sum === null || empty($sum['count'])) {
+        return '';
+    }
+    $count = number_format((int) $sum['count']);
+    $avg = number_format((float) $sum['average'], 1);
+    switch ($atts['format']) {
+        case 'count':
+            return esc_html($count);
+        case 'average':
+            return esc_html($avg);
+        case 'schema':
+            $name = $atts['name'] !== '' ? $atts['name'] : get_bloginfo('name');
+            return '<script type="application/ld+json">' . wp_json_encode(array(
+                '@context' => 'https://schema.org',
+                '@type' => 'LocalBusiness',
+                'name' => $name,
+                'aggregateRating' => array('@type' => 'AggregateRating', 'ratingValue' => $avg, 'reviewCount' => (int) $sum['count'], 'bestRating' => '5'),
+            )) . '</script>';
+    }
+
+    return '<span class="ezbizi-reviews" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">'
+        . '<span itemprop="ratingValue">' . esc_html($avg) . '</span> Stars - Based on <span itemprop="reviewCount">'
+        . esc_html($count) . '</span> Reviews</span>';
+}
+add_shortcode('ezbizi_rating', 'ezbizi_rating_shortcode');
 
 // No scrollbar on a phone (Jose, 2026-10-08: A-1's theme draws a thick yellow
 // one); a computer keeps the theme's.
