@@ -93,6 +93,8 @@ class PromotionsController extends Controller
             'phones' => ['required', 'array', 'min:1'],
             'phones.*' => ['string'],
             'media_path' => ['nullable', 'string'],
+            // The Leads tab its answers land in (Shoval, 2026-11-06).
+            'name' => ['nullable', 'string', 'max:60'],
         ]);
         $media = $this->ownMedia($in['media_path'] ?? null);
 
@@ -101,6 +103,7 @@ class PromotionsController extends Controller
         abort_if($phones === [], 422, 'None of those customers had a Done job in those dates.');
 
         $promotion = Promotion::create([
+            'name' => filled($in['name'] ?? null) ? trim($in['name']) : null,
             'jobs_from' => $from->toDateString(), 'jobs_to' => $to->toDateString(), 'body' => trim($in['body']), 'media_path' => $media,
             'franchise_ids' => $franchises->pluck('id')->all(), 'phones' => $phones, 'recipients' => count($phones), 'sent_by' => $user->id,
         ]);

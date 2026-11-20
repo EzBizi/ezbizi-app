@@ -98,6 +98,36 @@ class ComplaintsController extends Controller
         return $this->one($complaint);
     }
 
+    /**
+     * POST /complaints {kind, title, summary?, franchise_id?, raised_at?, client?} — one that came by letter,
+     * phone or a site with no API (BBB, Attorney General, a lawsuit, Yelp), entered by hand (Shoval, 2026-11-20).
+     */
+    public function store(Request $request, EventEmitter $events, AuditLogger $audit): JsonResponse
+    {
+        $user = $this->must($request, self::MANAGE, 'add complaints');
+        $input = $request->validate([
+            'kind' => ['required', Rule::in(['bbb', 'attorney_general', 'lawsuit', 'other'])],
+            'title' => ['required', 'string', 'max:255'],
+            'summary' => ['nullable', 'string', 'max:5000'],
+            'franchise_id' => ['nullable', 'uuid', Rule::exists('franchises', 'id')->where('organization_id', $user->organization_id)],
+            'raised_at' => ['nullable', 'date', 'before_or_equal:now'],
+            'client' => ['nullable', 'boolean'],
+        ]);
+        $franchise = isset($input['franchise_id']) ? \App\Models\Franchise::query()->find($input['franchise_id']) : null;
+        abort_if($franchise !== null && ! $user->canActOnFranchise($franchise), 403, Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add complaints', $franchise->name)->message());
+        $id = (string) \Illuminate\Support\Str::uuid7();
+        $complaint = new Complaint(['organization_id' => $user->organization_id, 'company_id' => $franchise?->company_id,
+            'franchise_id' => $franchise?->id, 'kind' => $input['kind'], 'status' => 'new', 'title' => $input['title'],
+            'summary' => $input['summary'] ?? null, 'raised_at' => isset($input['raised_at']) ? \Carbon\Carbon::parse($input['raised_at']) : now(),
+            'client_status' => array_key_exists('client', $input) && $input['client'] !== null ? ($input['client'] ? 'client' : 'not_client') : null]);
+        $complaint->forceFill(['id' => $id, 'source_type' => 'manual', 'source_id' => $id]);
+        \App\Support\CustomerExperience\ComplaintTriage::apply($complaint)->save();
+        $audit->log('complaint.created', $complaint);
+        $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])], $user);
+
+        return $this->one($complaint)->setStatusCode(201);
+    }
+
     /** PATCH /complaints/{complaint} {status?, owner_user_id?} */
     public function update(Request $request, Complaint $complaint, AuditLogger $audit, EventEmitter $events): JsonResponse
     {
@@ -164,8 +194,10 @@ class ComplaintsController extends Controller
             $source instanceof Lead => [$source->contact_name,
                 $c->kind === 'call_complaint' ? ($this->callSummary($sources['calls'][$c->source_id] ?? collect(), $c) ?? $source->summary) : $source->summary,
                 $source->phone],
-            default => [null, null, null],
+            // Email and hand-entered complaints keep their own words (Shoval, 2026-11-20).
+            default => [$c->title, $c->summary, null],
         };
+        $own = in_array($c->source_type, ['email', 'manual'], true);
 
         return [
             'id' => $c->id, 'kind' => $c->kind, 'status' => $c->status,
@@ -173,12 +205,22 @@ class ComplaintsController extends Controller
             // A caller who never gave a name still has a number (desk, 2026-10-20).
             'phone' => $phone,
             // Only when the review or lead itself is gone: a nameless one is not.
-            'source_missing' => $source === null,
+            'source_missing' => $source === null && ! $own,
             'branch' => $c->franchise?->only(['id', 'name']),
             'owner' => $c->owner?->only(['id', 'name']),
             'raised_at' => $c->raised_at?->toIso8601String(), 'updated_at' => $c->updated_at?->toIso8601String(),
             'solved_at' => $c->solved_at?->toIso8601String(), 'note_count' => (int) ($c->notes_count ?? 0),
             'source' => ['type' => $c->source_type, 'id' => $c->source_id],
+            'client_status' => $c->client_status,
+            'priority' => (bool) $c->priority,
+            'due_at' => $c->due_at?->toIso8601String(),
+            // Google has no API to report a review (v4 reviews: list, get, updateReply, deleteReply only), so a
+            // review from someone who is not a client carries the evidence and the one link a person clicks.
+            'google_report' => $source instanceof Review && $c->client_status === 'not_client' && ($source->source ?? 'google') === 'google' ? [
+                'url' => 'https://support.google.com/business/workflow/9945796',
+                'evidence' => 'No customer, job or call matches "'.($source->reviewer_name ?? 'this reviewer')
+                    .'" at this business, so it looks like the review is not from a customer. Reason to choose: Conflict of interest / not a real experience.',
+            ] : null,
         ];
     }
 

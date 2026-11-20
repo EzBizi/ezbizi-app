@@ -530,6 +530,12 @@ class TaskBoardsController extends Controller
         }
         $taskBoard->fill($input)->save();
 
+        // Arranging the list (order, folder, colour) answers with just that: a reorder sends one PATCH
+        // per sibling, and each answered with the whole board, so a move showed after ~1 min (Jose 11-20).
+        if (array_diff(array_keys($request->except(['per_group'])), ['folder_id', 'colour', 'position']) === []) {
+            return response()->json(['data' => $taskBoard->only(['id', 'folder_id', 'colour', 'position'])]);
+        }
+
         // Answer with a paged board, as the board view loads it: the whole A-1 roll-up (31k rows)
         // ran a PATCH out of memory (health sweep 11-19: Move up/down 500'd).
         if ($request->integer('per_group') <= 0) {

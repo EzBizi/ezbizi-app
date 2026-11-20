@@ -13,12 +13,31 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
+      'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
+      'Task Board: clicking a task highlights it and opens its updates beside the board',
+      'Task Board: drag tasks and groups (groups fold while you drag one); boards and folders reorder instantly',
+      'Task Board: star a board to keep it in Favorites at the top; the open counts are gone from the sidebar',
+      'Complaints: marked client or not-a-client; BBB and Attorney General emails open as Priority complaints with deadline alerts; complaints can be added by hand',
+      'Task Board: a morning digest of your open, due and overdue tasks; a bell when a task goes overdue or has had no update for 7 days (each can be switched off)',
+      'Task Board: tasks with only a Workiz job number now fill client, phone and address too',
+      'Automations: new templates for client complaints, Priority deadlines and BBB/Attorney General email',
+      'Project Management: Job Cost, Production Job and Total Cost columns, plus Sale Date and Schedule Date',
+    ]),
+    VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
+      'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
+      'Task Board: moving boards and folders in the sidebar saves instantly',
+      'Marketing: a promotion can send its replies to its own tab in Leads',
+      'Task Board: a complaint the AI hears on a call is not added again when a dispatcher already logged it; its summary goes on that task instead',
+    ]),
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',
       'Backups: the daily backup check runs after the nightly backup has finished',
       'AI assistant: answers dispatcher questions from your guidelines and priced services, and the technician bot closes with a clear next step',
       'Automations: a lead text to a number that replied STOP is skipped, not counted as a failed run',
       'Work Hours: new Payroll tab where managers review hours and rates, with bonus, deductions and the weekly total',
+      'Task Board: every task about a job fills client, phone, address and job numbers when it is created, and a blank Monday status gets ours',
+      'Marketing: QR codes can carry the company logo or any picture in the middle, in the preview and the downloads',
     ]),
     VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
       'Task Board: drag a group header onto another group to reorder the board; Monday follows',

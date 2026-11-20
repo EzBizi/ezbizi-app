@@ -132,6 +132,17 @@ class PreferenceRegistry
              * record that sits in no company (an organization-wide alert)
              * reaches everyone regardless. NotificationDispatcher reads it.
              */
+            /*
+             * Task Board's starred boards, in the order this person dragged
+             * them (design 200; Jose 2026-11-20, Monday's Favorites). Theirs
+             * alone; an id that names no board is simply not drawn.
+             */
+            'task_board.favorites' => [
+                'label' => 'Favorite boards',
+                'type' => 'ids',
+                'default' => [],
+            ],
+
             'notifications.companies' => [
                 'label' => 'Notify me about',
                 'type' => 'ids',

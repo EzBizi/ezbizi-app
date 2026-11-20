@@ -179,6 +179,7 @@ use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\ReportDraftsController;
 use App\Http\Controllers\Api\ReportGoalsController;
 use App\Http\Controllers\Api\ReportPeriodController;
+use App\Http\Controllers\Api\RecruitingController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReportWorkspaceController;
 use App\Http\Controllers\Api\ReviewLinkEventsController;
@@ -1044,6 +1045,7 @@ Route::prefix('v1')
         Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
+        Route::patch('project-board/jobs/{job}/cost', [ProjectBoardController::class, 'cost']);
         Route::get('project-board/tech-expenses', [ProjectBoardController::class, 'techExpenses']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
@@ -1109,6 +1111,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
+        Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
+        Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
         Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
@@ -1244,6 +1249,7 @@ Route::prefix('v1')
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [ComplaintsController::class, 'index']);
+        Route::post('complaints', [ComplaintsController::class, 'store']);
         Route::get('complaints/{complaint}', [ComplaintsController::class, 'show']);
         Route::patch('complaints/{complaint}', [ComplaintsController::class, 'update']);
         Route::post('complaints/{complaint}/notes', [ComplaintsController::class, 'addNote']);
@@ -2378,6 +2384,19 @@ Route::prefix('v1')
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
         Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
         Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        // The applicant pipeline (Shoval, 2026-11-20); hr.view reads, hr.edit writes, in the controller.
+        Route::get('hr/applicants', [RecruitingController::class, 'index']);
+        Route::post('hr/applicants', [RecruitingController::class, 'store']);
+        Route::get('hr/applicants/{applicant}', [RecruitingController::class, 'show']);
+        Route::patch('hr/applicants/{applicant}', [RecruitingController::class, 'update']);
+        Route::delete('hr/applicants/{applicant}', [RecruitingController::class, 'destroy']);
+        Route::post('hr/applicants/{applicant}/interviews', [RecruitingController::class, 'storeInterview']);
+        Route::patch('hr/applicant-interviews/{interview}', [RecruitingController::class, 'updateInterview']);
+        Route::delete('hr/applicant-interviews/{interview}', [RecruitingController::class, 'destroyInterview']);
+        Route::get('hr/recruiting-spend', [RecruitingController::class, 'spend']);
+        Route::post('hr/recruiting-spend', [RecruitingController::class, 'storeSpend']);
+        Route::patch('hr/recruiting-spend/{spend}', [RecruitingController::class, 'updateSpend']);
+        Route::delete('hr/recruiting-spend/{spend}', [RecruitingController::class, 'destroySpend']);
         Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
         Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
@@ -2667,6 +2686,8 @@ Route::prefix('v1')
             Route::post('marketing/qr-codes/{qrCode}/deactivate', [QrCodesController::class, 'deactivate']);
             Route::post('marketing/qr-codes/{qrCode}/reactivate', [QrCodesController::class, 'reactivate']);
             Route::get('marketing/qr-codes/{qrCode}/image', [QrCodesController::class, 'image']);
+            Route::get('marketing/qr-codes/{qrCode}/center-image', [QrCodesController::class, 'centerImage']);
+            Route::post('marketing/qr-codes/{qrCode}/center-image', [QrCodesController::class, 'uploadCenterImage']);
             Route::get('marketing/qr-codes/{qrCode}/stats', [QrCodesController::class, 'stats']);
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);

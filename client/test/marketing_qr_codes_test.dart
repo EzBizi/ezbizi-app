@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/marketing/qr_codes_tab.dart';
@@ -342,6 +343,56 @@ void main() {
     expect(find.text('Scan history'), findsWidgets);
   });
 
+  // Bar, 01a1f4ba: "Be able to add the company logo or any other image to
+  // QR Codes". The logo is in the middle by default, on the card and the
+  // preview; No picture takes it out; Upload sends any picture.
+  testWidgets('the company logo sits in the middle of the code; No picture '
+      'and Upload change it', (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    Finder centre(String id) => find.descendant(
+      of: find.byKey(ValueKey('qr-image:$id')),
+      matching: find.byKey(const Key('qr-center-picture')),
+    );
+    expect(centre('q-1'), findsOneWidget);
+    final card = tester.getSize(find.byKey(const ValueKey('qr-image:q-1')));
+    final pad = tester.getSize(centre('q-1'));
+    expect(pad.width / card.width, closeTo(0.22, 0.01));
+
+    await tester.tap(find.byKey(const ValueKey('qr-preview:q-1')));
+    await tester.pumpAndSettle();
+    final preview = find.byKey(const Key('qr-preview-image'));
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.byKey(const Key('qr-center-picture')),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('qr-picture-none')));
+    await tester.pumpAndSettle();
+    expect(server.puts.last, {'center_image': 'none'});
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.byKey(const Key('qr-center-picture')),
+      ),
+      findsNothing,
+    );
+    expect(centre('q-1'), findsNothing);
+
+    Files.debugPickBytes = (_) async =>
+        PickedBytes('badge.png', _Server._png.toList());
+    addTearDown(() => Files.debugPickBytes = null);
+    await tester.tap(find.byKey(const Key('qr-picture-upload')));
+    await tester.pumpAndSettle();
+    expect(server.uploads, ['q-1']);
+    expect(centre('q-1'), findsOneWidget);
+    expect(find.text('Your picture · change'), findsOneWidget);
+  });
+
   testWidgets('on a phone the cards stack and Change says what it changes', (
     tester,
   ) async {
@@ -591,7 +642,13 @@ class _Server {
   /// Whether the server sends each code's last 30 days.
   final bool month;
   final List<String> images = [];
+  final List<String> uploads = [];
   Map<String, Object?> me = const {};
+
+  /// A 1x1 PNG: the company logo, as the server sends it.
+  static final _png = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  );
 
   static Map<String, Object?> _row(
     String id,
@@ -639,10 +696,30 @@ class _Server {
       return http.Response.bytes([60, 115, 118, 103, 62], 200);
     }
 
+    final centre = RegExp(
+      r'/marketing/qr-codes/([^/]+)/center-image$',
+    ).firstMatch(path);
+    if (centre != null) {
+      final row = rows.firstWhere((r) => r['id'] == centre.group(1));
+      if (request.method == 'POST') {
+        uploads.add(centre.group(1)!);
+        row['center_image'] = 'upload';
+        return _json({'data': row});
+      }
+      return row['center_image'] == 'none'
+          ? _json({'message': 'Not found.'}, 404)
+          : http.Response.bytes(_png, 200);
+    }
+
     final one = RegExp(r'/marketing/qr-codes/([^/]+)$').firstMatch(path);
     if (one != null && request.method == 'PUT') {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       puts.add(body);
+      if (body['center_image'] is String) {
+        final row = rows.firstWhere((r) => r['id'] == one.group(1));
+        row['center_image'] = body['center_image'];
+        return _json({'data': row});
+      }
       final to = body['destination_url'] as String;
       if (!to.startsWith('https://')) return _refused;
       final row = rows.firstWhere((r) => r['id'] == one.group(1));

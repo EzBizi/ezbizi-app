@@ -80,4 +80,20 @@ class TaskBoardFoldersTest extends TestCase
         $this->signedInAs($reader)->getJson('/api/v1/task-board-group-colours')
             ->assertExactJson(['data' => ['company:A1 Chimney' => '#00c875']]);
     }
+
+    /** Jose 11-20: a reorder showed after ~1 min, each PATCH answering with the whole board. Arranging answers light. */
+    public function test_arranging_a_board_answers_with_just_its_place(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $maker = $this->userWithRole($tenant, 'Maker', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
+        $board = $this->signedInAs($maker)->postJson('/api/v1/task-boards', [
+            'name' => 'Partners', 'visibility' => 'main', 'franchise_id' => $tenant['franchise']->id,
+        ])->assertCreated()->json('data.id');
+
+        $answer = $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['position' => 3])->assertOk()->json('data');
+        $this->assertSame(['id' => $board, 'folder_id' => null, 'colour' => null, 'position' => 3], $answer);
+        // A rename still answers with the board.
+        $this->assertArrayHasKey('groups', $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['name' => 'Partners 2'])->assertOk()->json('data'));
+    }
+
 }

@@ -3389,9 +3389,17 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'complaint.opened',
                         label: 'Complaint opened',
-                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, or a call '
-                            .'heard as a complaint was added to Complaints. It carries the kind and, for a '
-                            .'review, the rating.',
+                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, a call '
+                            .'heard as a complaint, a BBB or Attorney General email, or one entered by hand was '
+                            .'added to Complaints. It carries the kind, the rating for a review, client_status '
+                            .'(client or not_client), priority and due_at.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'complaint.due_alert',
+                        label: 'Priority complaint nearing its deadline',
+                        description: 'An open Priority complaint (BBB, Attorney General, lawsuit) reached a step: '
+                            .'1 halfway (12 hours in), 2 due (24 hours), 3 last call (40 hours, 8 before 48). It '
+                            .'carries step, label, hours_open, kind, title and due_at.',
                     ),
                     new TriggerDefinition(
                         key: 'complaint.status_changed',

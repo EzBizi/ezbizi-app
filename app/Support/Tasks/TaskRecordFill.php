@@ -8,7 +8,9 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\WorkizJob;
 use App\Support\Settings\SettingsResolver;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The board's own columns from the record a task is about (Jose, 2026-11-19:
@@ -39,13 +41,19 @@ final class TaskRecordFill
     ];
 
     /** @return array<string, string> column id => value written */
-    public function fill(Task $task, ?Lead $lead, User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
+    public function fill(Task $task, ?Lead $lead, ?User $actor, bool $review = false, ?Job $job = null, ?TaskWriter $writer = null): array
     {
         $writer ??= app(TaskWriter::class);
         $board = $task->board;
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
         // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
         // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
+        // No job, but the task carries its Workiz number (desk 11-20: CT Debby Bloom, 200024600): that job.
+        if ($job === null && ($wzCol = $board->columns()->where('name', TaskWriter::WORKIZ_JOB_COLUMN)->first()) !== null
+            && ($wz = trim((string) $task->values()->where('column_id', $wzCol->id)->value('value_text'))) !== '') {
+            $jobId = WorkizJob::query()->where('serial_id', $wz)->orWhere('remote_id', $wz)->value('job_id');
+            $job = $jobId ? Job::query()->withoutGlobalScopes()->find($jobId) : null;
+        }
         if ($job === null) {
             $phoneCol = $board->columns()->where('name', 'Phone number')->first();
             $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));
@@ -86,7 +94,7 @@ final class TaskRecordFill
             'Date' => str_contains(mb_strtolower((string) $task->group?->name), 'customer relations') ? $job?->scheduled_for?->toDateString() : null,
             'Technician' => $job?->performed_by_user_id,
             'Notes' => $lead?->summary,
-            'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
+            'Workiz Job ID' => $job ? (string) (WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,
         ];
 
         $set = [];
@@ -119,7 +127,7 @@ final class TaskRecordFill
             try {
                 $writer->update($task->load('board'), ['values' => [$columnId => $userId]], $actor);
                 $set[$columnId] = $userId;
-            } catch (\Illuminate\Validation\ValidationException) {
+            } catch (ValidationException) {
             }
         }
 
