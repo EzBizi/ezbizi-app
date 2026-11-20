@@ -151,6 +151,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Empty draws no counts rather than zeros.
   Map<String, int> _unreadBySource = const {};
 
+  /// Named promotions (`promotion_tabs`), newest first: each a tab after
+  /// Promotions holding the answers to it, keyed `promo:<name>` (Shoval,
+  /// 2026-11-06: "Create under leads new tab 'Returning Client Promo'").
+  List<String> _promotionTabs = const [];
+
   /// A phone's sources page is open in place of the list (design 30, 5).
   bool _choosingSource = false;
 
@@ -258,7 +263,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// The same, for All, which never holds job applicants.
   Iterable<String> _allKeysOf(String source) =>
-      _keysOf(source).where((k) => k != 'job_applicant' && k != 'recovery');
+      _keysOf(source).where(
+        (k) =>
+            k != 'job_applicant' && k != 'recovery' && !k.startsWith('promo:'),
+      );
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -303,8 +311,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// one endpoint cannot be gated by hiding a chip.
   List<(String, String, IconData)> get _visibleSources => [
     for (var i = 0; i < _sourceChips.length; i++)
-      if (_maySee(_sourceChips[i].$1))
+      if (_maySee(_sourceChips[i].$1)) ...[
         (_sourceChips[i].$1, _labelOf(_sourceChips[i]), _sourceIcons[i]),
+        if (_sourceChips[i].$1 == 'promotions')
+          for (final name in _promotionTabs)
+            ('promo:$name', name, Icons.campaign_outlined),
+      ],
   ];
 
   /// A role without Forms sees "Job applicants", not a Forms tab holding
@@ -316,6 +328,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
+      (source.startsWith('promo:') && _maySee('promotions')) ||
       (_groups[source]?.any((m) => _maySee(m.$1)) ?? false) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
@@ -506,6 +519,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
       };
       _dispatchers = [
         for (final d in meta['dispatchers'] as List? ?? const []) '$d',
+      ];
+      _promotionTabs = [
+        for (final n in meta['promotion_tabs'] as List? ?? const []) '$n',
       ];
     });
 
@@ -1383,7 +1399,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ),
           ),
         ),
-        for (final s in _visibleSources.where((s) => s.$1 != 'job_applicant'))
+        for (final s in _visibleSources.where(
+          (s) => s.$1 != 'job_applicant' && !s.$1.startsWith('promo:'),
+        ))
           FilterChip(
             key: ValueKey('all-source-${s.$1}'),
             tooltip: _allLeftOut.contains(s.$1)
