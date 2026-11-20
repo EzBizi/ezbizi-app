@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Http\Controllers\Api\TechnicianReportController;
 use App\Models\Complaint;
 use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\SchedulingTechnician;
@@ -38,8 +39,8 @@ class TechnicianReportTest extends TestCase
                 if ($workiz !== []) {
                     WorkizJob::query()->create(['franchise_id' => $f->id, 'job_id' => $j->id, 'remote_id' => 'W'.$number, 'serial_id' => '90'.$number,
                         'status' => $status, 'booked_at' => '2026-11-01 09:00:00', 'scheduled_for' => $workiz['start'], 'closed_at' => $workiz['closed'],
-                        'payload' => ['Phone' => $workiz['phone'], 'Attachments' => array_fill(0, $workiz['photos'], ['Name' => 'Mobile upload']),
-                            'JobTotalPrice' => $workiz['total']], 'synced_at' => now()]);
+                        'payload' => array_filter(['Phone' => $workiz['phone'], 'JobTotalPrice' => $workiz['total'],
+                            'Attachments' => $workiz['photos'] === null ? null : array_fill(0, $workiz['photos'], ['Name' => 'Mobile upload'])], fn ($v) => $v !== null), 'synced_at' => now()]);
                 }
 
                 return $j;
@@ -65,6 +66,14 @@ class TechnicianReportTest extends TestCase
                     'attachable_id' => $redo->id, 'disk' => 'local', 'path' => "p{$i}.jpg", 'original_name' => "p{$i}.jpg", 'mime' => 'image/jpeg',
                     'size_bytes' => 10, 'checksum' => str_repeat('a', 64), 'created_at' => now(), 'updated_at' => now()]);
             }
+            // Only Workiz's list has read it: no file list, so its photos are not checked.
+            $job('6', 'Done', 'Chimney Sweep', null, [$ron], ['start' => '2026-11-10 16:00:00', 'closed' => '2026-11-10 18:00:00',
+                'phone' => null, 'photos' => null, 'total' => 100]);
+            // A branch none of whose calls are read: calling ahead is not checked there.
+            $quiet = Franchise::create(['company_id' => $t['company']->id, 'name' => 'Quiet']);
+            $eve = SchedulingTechnician::create(['franchise_id' => $quiet->id, 'name' => 'Eve']);
+            $job('7', 'Done', 'Chimney Sweep', null, [$eve], ['start' => '2026-11-10 11:00:00', 'closed' => '2026-11-10 12:00:00',
+                'phone' => '2125550107', 'photos' => 3, 'total' => 100], ['franchise_id' => $quiet->id]);
             // Not counted: before the dates, and not done.
             $job('4', 'Done', 'Chimney Sweep', '2026-11-01 15:00:00', [$ron]);
             $job('5', 'Canceled', 'Chimney Sweep', '2026-11-10 15:00:00', [$ron]);
@@ -73,11 +82,12 @@ class TechnicianReportTest extends TestCase
         $dates = '?from=2026-11-10&to=2026-11-10';
 
         $checks = collect($as->getJson('/api/v1/reports/tech-checks'.$dates)->assertOk()->json('data.rows'))->keyBy('tech');
-        $this->assertSame(['tech' => 'Ron', 'jobs' => 2, 'eta_missed' => 1, 'close_missed' => 1, 'inspection_missed' => null, 'photos_missed' => 1], $checks['Ron']);
+        $this->assertSame(['tech' => 'Ron', 'jobs' => 3, 'eta_missed' => 1, 'close_missed' => 1, 'inspection_missed' => null, 'photos_missed' => 1], $checks['Ron']);
         $this->assertSame(['tech' => 'Sam', 'jobs' => 2, 'eta_missed' => 1, 'close_missed' => 1, 'inspection_missed' => null, 'photos_missed' => 1], $checks['Sam']);
+        $this->assertSame(['tech' => 'Eve', 'jobs' => 1, 'eta_missed' => null, 'close_missed' => 0, 'inspection_missed' => null, 'photos_missed' => 0], $checks['Eve']);
 
         $report = collect($as->getJson('/api/v1/reports/technicians'.$dates)->assertOk()->json('data.rows'))->keyBy('tech');
-        $this->assertSame([50000, 1, 0], [$report['Ron']['revenue_minor'], $report['Ron']['complaints'], $report['Ron']['redo']]);
+        $this->assertSame([60000, 1, 0], [$report['Ron']['revenue_minor'], $report['Ron']['complaints'], $report['Ron']['redo']]);
         $this->assertSame([29000, 1, 1], [$report['Sam']['revenue_minor'], $report['Sam']['complaints'], $report['Sam']['redo']]);
 
         // The jobs behind one cell.
