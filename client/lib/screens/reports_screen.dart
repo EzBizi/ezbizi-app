@@ -25,6 +25,7 @@ import 'reports/report_dates.dart';
 import 'reports/report_range.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
+import 'reports/job_status_report.dart';
 import 'reports/jobs_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
@@ -526,6 +527,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => JobsReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Jobs cancelled and jobs pending, by the business's statuses (Shoval, 2026-11-18).
+      if (_mayOpen('cancelled'))
+        (
+          'Cancelled jobs',
+          Icons.event_busy_outlined,
+          () => JobStatusReport(
+            key: const ValueKey('report-cancelled'),
+            api: widget.api,
+            span: _span,
+            pending: false,
+            canExport: canExport,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      if (_mayOpen('pending'))
+        (
+          'Pending jobs',
+          Icons.pending_actions_outlined,
+          () => JobStatusReport(
+            key: const ValueKey('report-pending'),
+            api: widget.api,
+            span: _span,
+            pending: true,
             canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),

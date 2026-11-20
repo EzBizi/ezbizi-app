@@ -542,6 +542,25 @@ const Map<String, Tour> operationsTours = {
   'hr/Onboarding/Contract': _onboardingContract,
 
   // ── Human Resources › Payroll ────────────────────────────────────────
+  'hr/Recruiting': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-recruiting-tabs',
+        title: 'Applicants and spend',
+        body:
+            'Applicants: everyone who applied, by stage. Spend: what each '
+            'position cost each month.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-recruiting-search',
+        title: 'Find someone',
+        body:
+            'Search by name, phone or email; narrow by position, stage, '
+            'source, branch and dates. Click a person to see and change them.',
+      ),
+    ],
+  ),
   'hr/Payroll': Tour(
     version: 1,
     steps: [

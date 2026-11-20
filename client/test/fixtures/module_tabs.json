@@ -147,7 +147,8 @@
                 "Contracts",
                 "Invitations",
                 "Onboarding",
-                "Payroll"
+                "Payroll",
+                "Recruiting"
             ]
         },
         "inspection": {
@@ -326,6 +327,8 @@
                 "Meta",
                 "Thumbtack",
                 "Jobs",
+                "Cancelled jobs",
+                "Pending jobs",
                 "Workspace"
             ]
         },
@@ -512,6 +515,7 @@
         "hr.pay.view",
         "hr.payroll.view",
         "hr.records.view",
+        "hr.recruiting.view",
         "hr.security.reset",
         "hr.view",
         "inspection.archive",
@@ -623,6 +627,7 @@
         "project_board.view",
         "reports.build",
         "reports.builder.view",
+        "reports.cancelled.view",
         "reports.correct",
         "reports.experimental.view",
         "reports.export",
@@ -631,6 +636,7 @@
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.pending.view",
         "reports.scoring.view",
         "reports.scoring_weights",
         "reports.settings",
