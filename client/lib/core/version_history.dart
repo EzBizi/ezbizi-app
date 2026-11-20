@@ -16,6 +16,7 @@ class VersionHistory {
     VersionRelease(version: '0.0.0619', date: '20 Nov 2026', items: [
       'Reviews: each Google review is stored and counted once, even when two Google accounts can see the same location',
       'Reviews: EzBizi keeps the review total and rating of each Google listing exactly as Google reports them',
+      'Task Board: flag tasks (address to fix, overbooked) go to the person who booked the job; the field manager only when the booker has no account',
     ]),
     VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
       'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
