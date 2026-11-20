@@ -214,6 +214,8 @@ Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverl
 // Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
 // minutes (Monday's date filter, since each board's cursor), webhooks in between.
 Schedule::command('ezbizi:monday-sync --max-seconds=900')->everyTenMinutes()->withoutOverlapping(20);
+// The board's own columns on any task, ours or from Monday, from whatever identifier it carries (Jose, 2026-11-20).
+Schedule::command('ezbizi:tasks-fill-from-record --all-open --done --since=15')->everyTenMinutes()->withoutOverlapping(20);
 // Nightly: every board listed (a subitem-only change can miss Monday's date filter); only changed items are read.
 // Both run in the slow lane (2026-11-16: the poll took ~4 min of a 5-min fast slot and the slot timed out).
 // QuickBooks -> Financials > Markets (Shoval, 11-20): what changed every six hours, 400 days by date nightly. Read only. Slow lane.
