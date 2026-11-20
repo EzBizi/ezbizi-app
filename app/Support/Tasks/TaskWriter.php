@@ -165,6 +165,7 @@ class TaskWriter
                 $input['values'] = ($input['values'] ?? []) + $this->jobValues($task, $input['about_type'] ?? $task->about_type, $input['about_id'] ?? $task->about_id);
             }
             app(MondayOutbox::class)->record($task, self::mondayKinds($input));
+            ModuleBoard::changed($task, self::mondayKinds($input));
             $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
             if (empty($input['group_id']) && isset($input['group'])) {
@@ -604,6 +605,7 @@ class TaskWriter
             ]);
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
+            ModuleBoard::changed($task, ['update'], $update);
 
             return $update;
         });
