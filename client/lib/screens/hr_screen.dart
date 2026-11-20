@@ -10,6 +10,7 @@ import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/payroll_tab.dart';
+import 'hr/recruiting_tab.dart';
 import 'hr/records_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
@@ -170,6 +171,13 @@ class _HrScreenState extends State<HrScreen> {
       'Payroll',
       Icons.payments_outlined,
       () => PayrollTab(api: widget.api, session: widget.session),
+    ),
+    // Design 201 (Shoval, 2026-11-20): applicants, interviews and spend.
+    (
+      'recruiting',
+      'Recruiting',
+      Icons.person_search_outlined,
+      () => RecruitingTab(api: widget.api, session: widget.session),
     ),
   ];
 
