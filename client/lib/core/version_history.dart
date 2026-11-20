@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
+      'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
+      'Task Board: clicking a task highlights it and opens its updates beside the board',
+      'Task Board: drag tasks and groups (groups fold while you drag one); boards and folders reorder instantly',
+      'Task Board: star a board to keep it in Favorites at the top; the open counts are gone from the sidebar',
+    ]),
     VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
       'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
       'Task Board: moving boards and folders in the sidebar saves instantly',
