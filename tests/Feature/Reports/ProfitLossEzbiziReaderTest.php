@@ -56,8 +56,11 @@ class ProfitLossEzbiziReaderTest extends TestCase
         $airtable = $this->screen();
 
         $this->cutOver();
-        Http::fake(['api.airtable.com/*' => Http::response([], 500)]); // reading Airtable now would be a 502
+        $sent = count(Http::recorded());
         $ezbizi = $this->screen();
+
+        // Cut over, Airtable is not asked at all (fakes stack, so a second fake would prove nothing).
+        $this->assertCount($sent, Http::recorded());
 
         $this->assertSame(self::WEEKS, $ezbizi['']['weeks']);
         $this->assertEquals($airtable, $ezbizi);
