@@ -1246,6 +1246,7 @@ Route::prefix('v1')
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [ComplaintsController::class, 'index']);
+        Route::post('complaints', [ComplaintsController::class, 'store']);
         Route::get('complaints/{complaint}', [ComplaintsController::class, 'show']);
         Route::patch('complaints/{complaint}', [ComplaintsController::class, 'update']);
         Route::post('complaints/{complaint}/notes', [ComplaintsController::class, 'addNote']);

@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * complaint - and how far handling it has got.
  */
 #[Fillable(['organization_id', 'company_id', 'franchise_id', 'kind', 'source_type', 'source_id', 'status',
-    'owner_user_id', 'rating', 'raised_at', 'solved_at'])]
+    'owner_user_id', 'rating', 'raised_at', 'solved_at', 'client_status', 'priority', 'due_at', 'title', 'summary'])]
 class Complaint extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -28,7 +28,10 @@ class Complaint extends Model implements StatesRetention
 
     use HasUuids;
 
-    public const KINDS = ['bad_review', 'bad_rating', 'call_complaint'];
+    public const KINDS = ['bad_review', 'bad_rating', 'call_complaint', 'bbb', 'attorney_general', 'lawsuit', 'other'];
+
+    /** Shoval 2026-11-20: these are Priority and want an answer within a day (two at most). */
+    public const PRIORITY_KINDS = ['bbb', 'attorney_general', 'lawsuit'];
 
     public const STATUSES = ['new', 'in_progress', 'solved', 'not_solvable'];
 
@@ -37,7 +40,8 @@ class Complaint extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['raised_at' => 'datetime', 'solved_at' => 'datetime', 'rating' => 'integer'];
+        return ['raised_at' => 'datetime', 'solved_at' => 'datetime', 'rating' => 'integer',
+            'priority' => 'boolean', 'due_at' => 'datetime'];
     }
 
     public function owner(): BelongsTo
@@ -60,9 +64,10 @@ class Complaint extends Model implements StatesRetention
         // No words or names are copied here: they are read from the review or
         // lead, so erasing the customer there erases them from this list too.
         return RetentionPolicy::forever(
-            'That a complaint was raised, its status and who worked it - ids and dates only, the '
-            .'words the customer used stay on the review or lead. The record of how the business answered '
-            .'an unhappy customer; deleted with the organization.'
+            'That a complaint was raised, its status and who worked it. For a review, rating or call the '
+            .'words stay on the review or lead; a complaint that came by email or was entered by hand keeps '
+            .'its title and summary here. The record of how the business answered an unhappy customer; '
+            .'deleted with the organization.'
         );
     }
 }
