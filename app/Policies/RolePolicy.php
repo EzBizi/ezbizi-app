@@ -5,7 +5,6 @@ namespace App\Policies;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\Refusal;
-use App\Support\Scoping\ViewScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -54,19 +53,20 @@ class RolePolicy
     }
 
     /**
-     * Roles belong to the organization, so writing one needs the organization
-     * view and authority there (authz sweep, 2026-11-17: a franchise-scoped user
-     * edited and deleted roles; AGENTS.md: a company view cannot modify the
-     * organization).
+     * Roles belong to the organization, so writing one needs authority there
+     * (authz sweep, 2026-11-17: a franchise-scoped user edited and deleted
+     * roles). Authority, not the view the switcher stands in: a role is the same
+     * record from every view, so an Administrator standing in A-1 Chimney edits
+     * it as well (Jose 2026-11-20: refusing that "is a bug").
      */
     private function atOrganization(User $user): bool
     {
-        return ViewScope::forUser($user)->isOrganization() && $user->canActOnOrganization($user->organization);
+        return $user->canActOnOrganization($user->organization);
     }
 
     private function notAtOrganization(): Response
     {
-        return Response::deny('Roles belong to the whole organization. Switch to the organization view to change them.');
+        return Response::deny('Roles belong to the whole organization, and only somebody who works at the organization level can change them.');
     }
 
     public function update(User $user, Role $role): Response
