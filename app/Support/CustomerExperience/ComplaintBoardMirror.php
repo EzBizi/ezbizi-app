@@ -96,7 +96,8 @@ final class ComplaintBoardMirror
         }
     }
 
-    private static function title(Complaint $c): string
+    /** "BBB: case 77", "Google review: Dana Whitfield · 2★": also the {{title}} automations show. */
+    public static function title(Complaint $c): string
     {
         $who = $c->title;
         if ($who === null && $c->source_type === 'review') {
