@@ -298,7 +298,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Cancelled jobs': Tour(
+  'reports/Cancelled': Tour(
     version: 1,
     steps: [
       TourStep(
@@ -329,7 +329,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Pending jobs': Tour(
+  'reports/Pending': Tour(
     version: 1,
     steps: [
       TourStep(
@@ -360,7 +360,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Jobs': Tour(
+  'reports/Overview': Tour(
     version: 1,
     steps: [
       TourStep(

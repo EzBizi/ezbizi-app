@@ -202,6 +202,24 @@ void main() {
             'data': {...task, 'updates': <dynamic>[]},
           });
         }
+        if (path == '/tasks/t1/reminders' && request.method == 'GET') {
+          return json({
+            'data': [
+              {
+                'id': 'r1',
+                'remind_at': '2099-01-05T14:30:00Z',
+                'note': 'Call the supplier',
+                'sent_at': null,
+              },
+              {
+                'id': 'r0',
+                'remind_at': '2026-01-05T14:30:00Z',
+                'note': 'Rung already',
+                'sent_at': '2026-01-05T14:30:10Z',
+              },
+            ],
+          });
+        }
         return json({'data': <dynamic>[]});
       }),
     );
@@ -465,5 +483,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 task'), findsNothing);
     expect(find.text('0 tasks'), findsOneWidget);
+  });
+
+  testWidgets('Remind me: the pending reminder is listed, a new one posts '
+      'its time, and one is removed (Shoval 11-20)', (tester) async {
+    await pump(tester);
+    expect(find.textContaining('Call the supplier'), findsOneWidget);
+    expect(find.textContaining('Rung already'), findsNothing);
+
+    final remind = find.byKey(const ValueKey('task-remind-me'));
+    await tester.ensureVisible(remind);
+    await tester.tap(remind);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('task-remind-when')),
+        matching: find.byType(TextField),
+      ),
+      '2099-01-06 09:30',
+    );
+    final save = find.byKey(const ValueKey('task-remind-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final posted = log.lastWhere(
+      (e) => e.$1 == 'POST' && e.$2 == '/tasks/t1/reminders',
+    );
+    expect((posted.$3 as Map)['remind_at'], startsWith('2099-01-0'));
+
+    final remove = find.byKey(const ValueKey('task-reminder-remove-r1'));
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    expect(
+      log.any((e) => e.$1 == 'DELETE' && e.$2 == '/tasks/t1/reminders/r1'),
+      isTrue,
+    );
   });
 }

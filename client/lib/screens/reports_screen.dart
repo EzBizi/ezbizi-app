@@ -519,43 +519,60 @@ class _ReportsScreenState extends State<ReportsScreen> {
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
-      // Every job created in the dates, with both ids (Jose, 2026-11-11).
-      if (_mayOpen('jobs'))
+      // Jobs as a family (design 199, Shoval 2026-11-18): Overview (every
+      // job created, Jose 2026-11-11) · Cancelled · Pending, each its own
+      // grant, drawn when any of them is.
+      if (_mayOpen('jobs') || _mayOpen('cancelled') || _mayOpen('pending'))
         (
           'Jobs',
           Icons.work_outline,
-          () => JobsReport(
-            api: widget.api,
-            span: _span,
-            canExport: canExport,
-            formats: widget.session.me?.display ?? DisplayFormats.fallback,
-          ),
-        ),
-      // Jobs cancelled and jobs pending, by the business's statuses (Shoval, 2026-11-18).
-      if (_mayOpen('cancelled'))
-        (
-          'Cancelled jobs',
-          Icons.event_busy_outlined,
-          () => JobStatusReport(
-            key: const ValueKey('report-cancelled'),
-            api: widget.api,
-            span: _span,
-            pending: false,
-            canExport: canExport,
-            formats: widget.session.me?.display ?? DisplayFormats.fallback,
-          ),
-        ),
-      if (_mayOpen('pending'))
-        (
-          'Pending jobs',
-          Icons.pending_actions_outlined,
-          () => JobStatusReport(
-            key: const ValueKey('report-pending'),
-            api: widget.api,
-            span: _span,
-            pending: true,
-            canExport: canExport,
-            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          () => _JobsFamily(
+            session: widget.session,
+            tabs: [
+              if (_mayOpen('jobs'))
+                (
+                  'overview',
+                  'Overview',
+                  Icons.work_outline,
+                  () => JobsReport(
+                    api: widget.api,
+                    span: _span,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+              if (_mayOpen('cancelled'))
+                (
+                  'cancelled',
+                  'Cancelled',
+                  Icons.event_busy_outlined,
+                  () => JobStatusReport(
+                    key: const ValueKey('report-cancelled'),
+                    api: widget.api,
+                    span: _span,
+                    pending: false,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+              if (_mayOpen('pending'))
+                (
+                  'pending',
+                  'Pending',
+                  Icons.pending_actions_outlined,
+                  () => JobStatusReport(
+                    key: const ValueKey('report-pending'),
+                    api: widget.api,
+                    span: _span,
+                    pending: true,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+            ],
           ),
         ),
       // Pick a report, preview it, export, approve or send it (takeover
@@ -1466,4 +1483,52 @@ class SavedReportSummary {
   /// The rules whose current version sends it, for a reader who may see
   /// rules; null for everybody else, which is not the same as none.
   final List<Map<String, dynamic>>? sentBy;
+}
+
+/// A family of report tabs drawn as one tab with its own strip (design 199,
+/// option 1): the sub-tab last opened is kept for the person.
+class _JobsFamily extends StatefulWidget {
+  const _JobsFamily({required this.session, required this.tabs});
+
+  final Session session;
+  final List<(String, String, IconData, Widget Function())> tabs;
+
+  @override
+  State<_JobsFamily> createState() => _JobsFamilyState();
+}
+
+class _JobsFamilyState extends State<_JobsFamily> {
+  static const _pref = 'reports.jobs_tab';
+
+  late String _sub =
+      widget.session.me?.preferences[_pref] as String? ?? 'overview';
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = widget.tabs;
+    if (tabs.isEmpty) return const SizedBox.shrink();
+    var at = tabs.indexWhere((t) => t.$1 == _sub);
+    if (at < 0) at = 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TabBarLike(
+          key: const ValueKey('reports-jobs-tabs'),
+          level: TabLevel.secondary,
+          labels: [for (final t in tabs) (t.$2, t.$3)],
+          selected: at,
+          onSelected: (i) {
+            setState(() => _sub = tabs[i].$1);
+            widget.session.setPreference(_pref, tabs[i].$1);
+          },
+        ),
+        Expanded(
+          child: KeyedSubtree(
+            key: ValueKey('reports-jobs-${tabs[at].$1}'),
+            child: tabs[at].$4(),
+          ),
+        ),
+      ],
+    );
+  }
 }

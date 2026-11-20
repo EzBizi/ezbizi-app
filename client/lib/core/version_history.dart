@@ -19,6 +19,10 @@ class VersionHistory {
       'Reports: new Cancelled jobs tab (cancelled share by reason, source and technician) and Pending jobs tab (every waiting job, oldest first); Settings › Lists sets which statuses count',
       'HR: new Recruiting tab with applicants, stages, interviews and recruiting spend per position, including cost per hire',
       'Financials: QuickBooks Online connection and a Markets view with expenses and closing rate per market (available once QuickBooks is connected)',
+      'Reports: Overview, Cancelled and Pending now sit together under one Jobs tab',
+      'Task Board: Remind me in the task panel sets a reminder with a time and a note',
+      'HR: certifications on each person (number, issuer, expiry) feed the expiring certifications alerts',
+      'Websites: the rating badge shows the real review count and average from EzBizi and keeps itself up to date',
     ]),
     VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
       'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
