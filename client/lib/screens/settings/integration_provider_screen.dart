@@ -880,7 +880,11 @@ class IntegrationConnection {
     'google_business_profile' ||
     'thumbtack' ||
     'facebook_ads' => 'leads',
-    'airtable' || 'workiz' || 'workiz_web' || 'ringcentral' => 'reporting',
+    'airtable' ||
+    'workiz' ||
+    'workiz_web' ||
+    'ringcentral' ||
+    'quickbooks' => 'reporting',
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' || 'telegram' => 'messaging',

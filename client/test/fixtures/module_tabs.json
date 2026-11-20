@@ -114,6 +114,7 @@
             "tabs": [
                 "Home",
                 "Bills",
+                "Markets",
                 "Settings"
             ]
         },
@@ -486,6 +487,7 @@
         "financials.create",
         "financials.delete",
         "financials.edit",
+        "financials.markets.view",
         "financials.settings.view",
         "financials.view",
         "fleet_management.assign",

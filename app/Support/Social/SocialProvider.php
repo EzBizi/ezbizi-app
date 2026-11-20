@@ -124,6 +124,11 @@ enum SocialProvider: string
     // 2026-11-12). Read only. Connected through the "EzBizi" Monday app.
     case Monday = 'monday';
 
+    // The tenant's QuickBooks Online company, read for expenses per market
+    // (Shoval, Monday board 2026-11-20: weekly expenses, closing rate and cost
+    // per market). Read only. realmId is the remote id.
+    case QuickBooks = 'quickbooks';
+
     public function label(): string
     {
         return match ($this) {
@@ -149,6 +154,7 @@ enum SocialProvider: string
             self::Telegram => 'Telegram',
             self::Ekomi => 'eKomi',
             self::Monday => 'Monday',
+            self::QuickBooks => 'QuickBooks',
         };
     }
 
@@ -206,6 +212,7 @@ enum SocialProvider: string
             self::Telegram => 'telegram',
             self::Ekomi => 'ekomi',
             self::Monday => 'monday',
+            self::QuickBooks => 'quickbooks',
         };
     }
 
@@ -279,7 +286,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday, self::QuickBooks];
     }
 
     /**
@@ -450,6 +457,9 @@ enum SocialProvider: string
             // The Task Board is what it feeds; whoever may make boards may bring Monday's.
             self::Monday => 'tasks.create_boards',
 
+            // Its expenses land in Financials; whoever edits Financials may bring the books.
+            self::QuickBooks => 'financials.edit',
+
             default => 'marketing.edit',
         };
     }
@@ -498,6 +508,7 @@ enum SocialProvider: string
             self::Telegram => 'connect a Telegram bot',
             self::Ekomi => 'connect an eKomi account',
             self::Monday => 'connect Monday',
+            self::QuickBooks => 'connect QuickBooks',
             default => 'connect a social account',
         };
     }
@@ -646,6 +657,12 @@ enum SocialProvider: string
             self::Monday => sprintf(
                 '%s is connected to EzBizi. You can close this window — the boards brought over from '
                 .'Monday now take its changes on the Task Board.',
+                $name,
+            ),
+
+            self::QuickBooks => sprintf(
+                '%s is connected to EzBizi. You can close this window — its expenses are being read '
+                .'into Financials › Markets.',
                 $name,
             ),
 

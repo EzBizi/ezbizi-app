@@ -29,6 +29,7 @@ final class ProviderFeaturesCounter implements DependentCounter
             'google_ads' => [Feature::breaks('Marketing › Ads: Google Ads spend and leads stop updating')],
             'facebook_ads' => [Feature::breaks('Marketing › Ads: Facebook Ads spend and leads stop updating')],
             'thumbtack' => [Feature::breaks('Leads › Thumbtack: new Thumbtack leads stop arriving and replies cannot be sent')],
+            'quickbooks' => [Feature::breaks('Financials › Markets: QuickBooks expenses stop updating; what was read stays')],
             'ringcentral' => [Feature::degrades('Reports › Calls: RingCentral call history stops updating')],
             default => [],
         };
