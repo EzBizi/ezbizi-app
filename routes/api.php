@@ -1759,6 +1759,8 @@ Route::prefix('v1')
             ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
         Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
             ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
+        // Estimates from both stores, texted and answered derived (Shoval, 2026-11-18).
+        Route::get('reports/estimates', [\App\Http\Controllers\Api\EstimatesReportController::class, 'show'])->middleware('permission:reports.estimates.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
