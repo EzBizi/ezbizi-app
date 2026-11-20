@@ -29,6 +29,7 @@ use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -170,6 +171,10 @@ final class MondayImport
                                     $this->task($board, $sub + ['group' => $item['group']], $parent, $actor);
                                 }
                             });
+                        } catch (UniqueConstraintViolationException $e) {
+                            // Another run (a webhook's job, the scheduled pass) wrote this item's row a moment
+                            // earlier: its import stands, this one rolled back (health sweep 11-20: 3 x 1062).
+                            $this->counts['items taken by a parallel run'] = ($this->counts['items taken by a parallel run'] ?? 0) + 1;
                         } catch (\Throwable $e) {
                             report($e);
                             $this->counts['items failed'] = ($this->counts['items failed'] ?? 0) + 1;
