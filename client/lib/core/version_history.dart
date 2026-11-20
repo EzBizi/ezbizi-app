@@ -19,6 +19,8 @@ class VersionHistory {
       'Task Board: drag tasks and groups (groups fold while you drag one); boards and folders reorder instantly',
       'Task Board: star a board to keep it in Favorites at the top; the open counts are gone from the sidebar',
       'Complaints: marked client or not-a-client; BBB and Attorney General emails open as Priority complaints with deadline alerts; complaints can be added by hand',
+      'Task Board: a morning digest of your open, due and overdue tasks; a bell when a task goes overdue or has had no update for 7 days (each can be switched off)',
+      'Task Board: tasks with only a Workiz job number now fill client, phone and address too',
     ]),
     VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
       'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
