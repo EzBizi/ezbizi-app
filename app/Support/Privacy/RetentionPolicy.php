@@ -87,7 +87,7 @@ final class RetentionPolicy
      * `device_tokens` (last_registered_at),
      * `email_verifications` (created_at), `field_alerts` (created_at),
      * `field_geocodes` (updated_at), `field_locations` (recorded_at),
-     * `field_presences` (last_seen_at), `financial_adjustments` (date), `financial_bills` (period_to), `financial_charge_sheets` (period_to), `financial_parity_checks` (day), `financial_repair_weeks` (week_start), `financial_results` (date), `invitations` (created_at), `invoices` (issued_on),
+     * `field_presences` (last_seen_at), `financial_adjustments` (date), `financial_bills` (period_to), `financial_charge_sheets` (period_to), `financial_expenses` (txn_date), `financial_parity_checks` (day), `financial_repair_weeks` (week_start), `financial_results` (date), `invitations` (created_at), `invoices` (issued_on),
      * `monday_outbox` (created_at), `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
      * `phone_callbacks` (created_at), `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),

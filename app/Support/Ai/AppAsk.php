@@ -95,6 +95,10 @@ final class AppAsk
             // A dispatcher's questions (Jose's board, "Dispatch Support Bot", 2026-11-20).
             .'For a dispatcher: how to handle a call, a policy, a script or an objection comes from guidelines (name the '
             .'guideline it came from); a price comes from services with its code; never quote a price or a promise the data does not hold. '
+            // The financial bot (Shoval, 2026-11-20): money per market from QuickBooks.
+            .'Expenses per market (branch), weekly expenses by category, average closing rate and cost per '
+            .'closed job come from financials/markets with from and to dates (last week = the previous Monday '
+            .'to Sunday); amounts there are in cents. '
             .'Whatever the data does not hold, say so instead of making it up. ';
 
         // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).

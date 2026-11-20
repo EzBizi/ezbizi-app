@@ -129,6 +129,7 @@ final class ConnectionLiveness
                 fn (string $t) => Http::timeout(self::TIMEOUT)->get('https://api.telegram.org/bot'.$t.'/getMe')),
             SocialProvider::Mailchimp->value => fn (SocialConnection $c) => self::mailchimp($c),
             SocialProvider::Monday->value => fn (SocialConnection $c) => self::monday($c),
+            SocialProvider::QuickBooks->value => fn (SocialConnection $c) => self::quickBooks($c),
         ];
     }
 
@@ -326,6 +327,23 @@ final class ConnectionLiveness
         return $c->status === SocialConnection::STATUS_BROKEN
             ? Liveness::refused((string) ($c->status_reason ?: self::sentence($c->providerLabel())))
             : Liveness::unknown('The renewal failed without a refusal.');
+    }
+
+    /**
+     * QuickBooks: the company itself (CompanyInfo), with a token renewed
+     * under QuickBooksToken's lock (Intuit rotates the refresh token).
+     */
+    private static function quickBooks(SocialConnection $c): Liveness
+    {
+        try {
+            $name = app(\App\Support\Financials\QuickBooks\QuickBooksClient::class)->companyName($c);
+        } catch (\App\Support\Financials\QuickBooks\QuickBooksRefused $e) {
+            return Liveness::refused($e->getMessage());
+        } catch (\Throwable $e) {
+            return Liveness::unknown('QuickBooks did not answer: '.mb_substr($e->getMessage(), 0, 160));
+        }
+
+        return $name !== null ? Liveness::alive() : Liveness::unknown('QuickBooks answered without naming the company.');
     }
 
     private static function stored(SocialConnection $c, string $key): ?string
