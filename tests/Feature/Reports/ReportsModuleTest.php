@@ -74,7 +74,7 @@ class ReportsModuleTest extends TestCase
 
         // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental");
         // Scoring added 2026-10-13 (Administrators and Lead Managers).
-        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Scoring', 'Marketing Reports', 'Meta', 'Thumbtack', 'Jobs', 'Cancelled jobs', 'Pending jobs', 'Workspace'], $labels);
+        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Scoring', 'Marketing Reports', 'Meta', 'Thumbtack', 'Overview', 'Cancelled', 'Pending', 'Workspace'], $labels);
     }
 
     /**

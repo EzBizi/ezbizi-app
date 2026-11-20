@@ -45,10 +45,21 @@ void main() {
       // (Marketing › Social Media Management › Compose).
       final within =
           (module?['within'] as Map?)?.cast<String, String>() ?? const {};
+      final allTabs = ((module?['tabs'] as List?) ?? const []).cast<String>();
+      // A group with no grant of its own (Reports › Jobs: Overview ·
+      // Cancelled · Pending, design 199) is one chip in the strip, at its
+      // first member's place, and holds its members' strip.
+      final groups = {
+        for (final v in within.values)
+          if (!allTabs.contains(v)) v,
+      };
       final declared = [
-        for (final tab
-            in ((module?['tabs'] as List?) ?? const []).cast<String>())
-          if (!within.containsKey(tab)) tab,
+        for (final tab in allTabs)
+          if (!within.containsKey(tab))
+            tab
+          else if (groups.contains(within[tab]) &&
+              allTabs.firstWhere((t) => within[t] == within[tab]) == tab)
+            within[tab]!,
       ];
 
       // A parent screen draws its child modules (Jobs › Estimates) in the same
@@ -189,6 +200,27 @@ void main() {
               '_knownDrift.',
         );
         return;
+      }
+
+      for (final group in groups) {
+        if (!shown.contains(group)) continue;
+        await tester.tap(
+          find.descendant(
+            of: find.byType(TabBarLike).first,
+            matching: find.widgetWithText(ChoiceChip, group),
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+        expect(
+          _strip(tester, 1),
+          [
+            for (final MapEntry(:key, :value) in within.entries)
+              if (value == group) key,
+          ],
+          reason:
+              'Tabs inside the $group group and their TabDefinitions disagree.',
+        );
       }
 
       expect(

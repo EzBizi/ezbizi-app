@@ -4642,10 +4642,13 @@ class ModuleServiceProvider extends ServiceProvider
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
-                    new TabDefinition('jobs', 'Jobs'),
+                    // Drawn inside one "Jobs" tab with its own strip (design 199,
+                    // Shoval 2026-11-18): Overview · Cancelled · Pending. Each
+                    // keeps its grant; "Jobs" is a group with none of its own.
+                    new TabDefinition('jobs', 'Overview', within: 'Jobs'),
                     // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
-                    new TabDefinition('cancelled', 'Cancelled jobs'),
-                    new TabDefinition('pending', 'Pending jobs'),
+                    new TabDefinition('cancelled', 'Cancelled', within: 'Jobs'),
+                    new TabDefinition('pending', 'Pending', within: 'Jobs'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),
