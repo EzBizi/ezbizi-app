@@ -323,9 +323,14 @@ class BusinessProfileReviews
         $reviewer = (array) ($raw['reviewer'] ?? []);
 
         return DB::transaction(function () use ($connection, $location, $raw, $name, $reviewer) {
+            // The review id is the identity: a listing reached through its own account and a manager
+            // account comes back under two names (desk, 2026-11-20: every A-1 review stored twice).
+            $key = substr($name, strrpos($name, '/') + 1);
             $review = Review::query()
                 ->where('organization_id', $connection->organization_id)
-                ->where('remote_name', $name)
+                ->where(fn ($q) => $q->where('remote_name', $name)
+                    ->orWhere(fn ($k) => $k->where('source', Review::SOURCE_GOOGLE)->where('review_key', $key)))
+                ->orderByRaw('remote_name = ? desc', [$name])
                 ->first();
 
             $created = $review === null;
@@ -362,10 +367,12 @@ class BusinessProfileReviews
                         : null),
                     'connection_id'   => $connection->getKey(),
                     'remote_name'     => $name,
+                    'review_key'      => $key,
                     ...$fromGoogle,
                 ]);
             } else {
                 $review->fill($fromGoogle);
+                $review->review_key ??= $key;
                 // Left behind by a disconnected account: the one that returns it now replies to it.
                 $review->connection_id ??= $connection->getKey();
             }
