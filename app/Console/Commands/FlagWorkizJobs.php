@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
 use App\Models\TaskGroup;
 use App\Models\User;
@@ -13,6 +14,7 @@ use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Jobs\JobAddress;
 use App\Support\Notifications\NotificationDispatcher;
+use App\Support\People\NameMatch;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
@@ -147,9 +149,29 @@ class FlagWorkizJobs extends Command
             'about_type' => $job ? 'job' : null,
             'about_id' => $job?->id,
             'source' => 'flags',
-            'assignee_user_ids' => self::owners($board, $franchise, $userIds, $can) ?: null,
+            'assignee_user_ids' => self::owners($board, $franchise, self::seat($board, $userIds, $can), $can) ?: null,
         ]), null);
         $tasks->quiet = $quiet;
+    }
+
+    /**
+     * The booker owns the flag even when not yet on the board (Jose 11-20: "tag the person who
+     * booked it"): they become a member first. Returns $userIds; $can gains them.
+     *
+     * @param  list<?string>  $userIds
+     * @param  list<string>  $can
+     */
+    public static function seat(TaskBoard $board, array $userIds, array &$can): array
+    {
+        foreach (array_filter($userIds) as $id) {
+            if (! in_array((string) $id, $can, true) && User::query()->where('is_active', true)->whereKey($id)->exists()) {
+                TaskBoardMember::query()->firstOrCreate(['board_id' => $board->id, 'user_id' => $id],
+                    ['organization_id' => $board->organization_id, 'role' => TaskBoardMember::MEMBER]);
+                $can[] = (string) $id;
+            }
+        }
+
+        return $userIds;
     }
 
     /** Cut on a word at 120, as the automation rules cut a long title. */
@@ -214,32 +236,22 @@ class FlagWorkizJobs extends Command
     public static function booker(WorkizJob $w): ?User
     {
         $name = mb_strtolower(trim((string) $w->created_by));
-
-        return $name === '' ? null : (User::query()->where('is_active', true)->find(
-            WorkizTeamMember::query()->where('franchise_id', $w->franchise_id)
-                ->whereRaw('LOWER(name) = ?', [$name])->value('user_id'))
-            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first()
-            ?? self::byFirstAndLast($name));
-    }
-
-    /**
-     * Same first and last name, a middle name either side ignored (Jose 11-19:
-     * "Sasha Solano" is "Sasha marie Solano"). Only a single active match counts.
-     */
-    public static function byFirstAndLast(string $name): ?User
-    {
-        $words = preg_split('/\s+/u', mb_strtolower(trim($name)), -1, PREG_SPLIT_NO_EMPTY);
-        if (count($words) < 2) {
+        if ($name === '') {
             return null;
         }
-        [$first, $last] = [$words[0], end($words)];
-        $hits = User::query()->where('is_active', true)->where('name', 'like', $first.'%'.$last)->get()
-            ->filter(function (User $u) use ($first, $last) {
-                $w = preg_split('/\s+/u', mb_strtolower(trim((string) $u->name)), -1, PREG_SPLIT_NO_EMPTY);
+        // The Workiz team member's linked user in any branch, own branch first (desk 11-20: links sat on
+        // another branch), then the exact name, then the same person spelled differently (NameMatch).
+        $linked = WorkizTeamMember::query()->whereRaw('LOWER(name) = ?', [$name])->whereNotNull('user_id')
+            ->orderByRaw('franchise_id = ? desc', [$w->franchise_id])->value('user_id');
 
-                return count($w) >= 2 && $w[0] === $first && end($w) === $last;
-            });
+        return ($linked ? User::query()->where('is_active', true)->find($linked) : null)
+            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first()
+            ?? self::byFirstAndLast($name);
+    }
 
-        return $hits->count() === 1 ? $hits->first() : null;
+    /** The same person spelled differently (Jose 11-19 "Sasha Solano" is "Sasha marie Solano"; NameMatch). */
+    public static function byFirstAndLast(string $name): ?User
+    {
+        return NameMatch::find($name);
     }
 }
