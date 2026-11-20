@@ -134,6 +134,15 @@ final class ListRegistry
                 ['reports.pending_statuses', 'Pending job statuses', ['Pending'],
                     'Reports › Pending jobs lists the jobs in these statuses, oldest first. Upper or lower case does not matter.'],
             ]),
+            // Reports › Complaints' targets (Shoval, 2026-11-18: "up to 48 resulting, up to 24 hours to call").
+            new ListDefinition(
+                key: 'reports.complaint_targets', label: 'Complaint targets, in hours', module: 'reports',
+                columns: [['key' => 'target', 'label' => 'Target (contact or solve)'], ['key' => 'hours', 'label' => 'Hours']],
+                defaults: [['key' => 'contact', 'value' => ['target' => 'contact', 'hours' => 24]], ['key' => 'solve', 'value' => ['target' => 'solve', 'hours' => 48]]],
+                help: 'Reports › Complaints counts a complaint as on time when the customer was first contacted within the contact '
+                    .'hours of it being raised, and when it was closed within the solve hours.',
+                editPermission: 'reports.settings',
+            ),
             new ListDefinition(
                 key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',
                 columns: [['key' => 'role', 'label' => 'Role']],
