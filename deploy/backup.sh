@@ -411,6 +411,8 @@ install -d -m 0700 /var/backups/ezbizi
 DEST=/var/backups/ezbizi
 # Jose 2026-11-19: 7 nights on the app box, 3 off-site for the private files
 # (40 GB a night by then), and ONE month-first copy kept beyond those.
+# find -mtime +N matches files at least N+1 whole days old, so the prunes use
+# N-1: KEEP_LOCAL_DAYS=7 keeps 7 nights, not 8 (desk 11-20: 11-13 survived).
 KEEP_LOCAL_DAYS=7
 KEEP_REMOTE_FILES_DAYS=3
 KEEP_MONTHLY_DAYS=32
@@ -652,8 +654,8 @@ if [[ "$published" == true && -r "$REMOTE_KEY" ]]; then
   # Pruned on the remote too. A backup destination that only ever grows is one
   # that eventually fills a disk belonging to somebody else's website.
   ssh -i "$REMOTE_KEY" -o BatchMode=yes "$REMOTE_HOST" \
-      "find $REMOTE_DIR -type f -mtime +$KEEP_REMOTE_DAYS ! -name '*-01.*' ! -name '*-01T*' -delete;
-       find $REMOTE_DIR -type f -name 'private-files-*' -mtime +$KEEP_REMOTE_FILES_DAYS ! -name '*-01T*' -delete;
+      "find $REMOTE_DIR -type f -mtime +$((KEEP_REMOTE_DAYS - 1)) ! -name '*-01.*' ! -name '*-01T*' -delete;
+       find $REMOTE_DIR -type f -name 'private-files-*' -mtime +$((KEEP_REMOTE_FILES_DAYS - 1)) ! -name '*-01T*' -delete;
        find $REMOTE_DIR -type f -name '*-01T*' -mtime +$KEEP_MONTHLY_DAYS -delete" \
       2>/dev/null || errors+=("offsite-prune")
 elif [[ "$published" == true ]]; then
@@ -667,7 +669,7 @@ fi
 # Only after a clean run. Deleting a fortnight-old backup on the strength of a
 # night that produced nothing is how a bad week becomes an unrecoverable one.
 if [[ ${#errors[@]} -eq 0 ]]; then
-  find "$DEST" -type f -mtime +$KEEP_LOCAL_DAYS \
+  find "$DEST" -type f -mtime +$((KEEP_LOCAL_DAYS - 1)) \
       ! -name '*-01.*' ! -name '*-01T*' -delete 2>/dev/null
   # One month-first only (Jose 11-19): the older one goes once a newer exists.
   find "$DEST" -type f -name '*-01T*' -mtime +$KEEP_MONTHLY_DAYS -delete 2>/dev/null
