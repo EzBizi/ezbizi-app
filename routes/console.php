@@ -484,6 +484,8 @@ Schedule::command('ezbizi:review-backlog')->dailyAt('15:00')->withoutOverlapping
 Schedule::command('ezbizi:gbp-weekly-posts')->dailyAt('13:00')->withoutOverlapping(120);
 // The funnel's "Reviewed" step: which review each link produced (Jose, 2026-11-09).
 Schedule::command('ezbizi:review-link-matches')->hourlyAt(40)->withoutOverlapping(30);
+// Priority complaints (BBB, Attorney General, lawsuits): halfway, due and last-call alerts (Shoval, 2026-11-20).
+Schedule::command('ezbizi:complaint-due-alerts')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);

@@ -75,6 +75,29 @@ class EzBiziTheme {
       ? const Color(0xFF1E262E)
       : const Color(0xFFE9EDF1);
 
+  /// A board's three steps, as Monday (design 200, 1; Jose 11-20: ours was
+  /// too flat): the page behind the groups, a group's card, and its rows a
+  /// step lighter again; [boardRowHover] one more step under the pointer.
+  static Color boardCanvas(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF080B0F)
+      : const Color(0xFFE8EDF2);
+
+  static Color boardGroup(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF151B21)
+      : const Color(0xFFF6F8FA);
+
+  static Color boardRow(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF1B2229)
+      : Colors.white;
+
+  static Color boardRowHover(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF252D35)
+      : const Color(0xFFEDF2F7);
+
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.
   static Color clockIn(BuildContext context) =>

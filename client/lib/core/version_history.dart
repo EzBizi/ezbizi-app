@@ -13,6 +13,19 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
+      'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
+      'Task Board: clicking a task highlights it and opens its updates beside the board',
+      'Task Board: drag tasks and groups (groups fold while you drag one); boards and folders reorder instantly',
+      'Task Board: star a board to keep it in Favorites at the top; the open counts are gone from the sidebar',
+      'Complaints: marked client or not-a-client; BBB and Attorney General emails open as Priority complaints with deadline alerts; complaints can be added by hand',
+    ]),
+    VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
+      'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
+      'Task Board: moving boards and folders in the sidebar saves instantly',
+      'Marketing: a promotion can send its replies to its own tab in Leads',
+      'Task Board: a complaint the AI hears on a call is not added again when a dispatcher already logged it; its summary goes on that task instead',
+    ]),
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',
       'Backups: the daily backup check runs after the nightly backup has finished',

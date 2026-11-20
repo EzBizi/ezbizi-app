@@ -74,6 +74,9 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
 
   final _body = TextEditingController();
   final _testTo = TextEditingController();
+
+  /// The Leads tab the answers land in; empty keeps them in Promotions.
+  final _name = TextEditingController();
   PickedBytes? _picture;
   String? _picturePath;
 
@@ -108,7 +111,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
   @override
   void dispose() {
     _live?.cancel();
-    for (final c in [_amountMin, _amountMax, _search, _body, _testTo]) {
+    for (final c in [_amountMin, _amountMax, _search, _body, _testTo, _name]) {
       c.dispose();
     }
     super.dispose();
@@ -679,6 +682,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
       'from': formatCalendarDay(_from!),
       'to': formatCalendarDay(_to!),
       'body': _body.text.trim(),
+      if (_name.text.trim().isNotEmpty) 'name': _name.text.trim(),
       'phones': [for (final r in chosen) r['phone']],
       if (_picturePath != null) 'media_path': _picturePath,
     });
@@ -894,6 +898,17 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
                 : 'Sends from ${senders.join(', ')}',
             key: const ValueKey('promotions-sender'),
             style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('promotions-name'),
+            controller: _name,
+            maxLength: 60,
+            decoration: const InputDecoration(
+              labelText: 'Leads tab',
+              helperText:
+                  'Replies land in a Leads tab of this name. Empty: Leads › Promotions.',
+            ),
           ),
           const SizedBox(height: 8),
           TextField(

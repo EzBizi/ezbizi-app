@@ -256,6 +256,14 @@ class LeadsController extends Controller
         if (($recovery = (clone $query)->whereRaw(self::UNREAD_SQL)->whereNotNull('leads.recovery_at')->reorder()->count()) > 0) {
             $unreadBySource['recovery'] = $recovery;
         }
+        // A named promotion is a tab of its own, keyed promo:<name> (Shoval, 2026-11-06).
+        $promotionTabs = self::promotionTabs();
+        if ($promotionTabs !== []) {
+            (clone $query)->whereRaw(self::UNREAD_SQL)->reorder()->where('leads.source', Lead::SOURCE_PROMOTIONS)
+                ->whereIn('leads.lead_type', $promotionTabs)->groupBy('leads.lead_type')
+                ->select(DB::raw('leads.lead_type AS name'))->selectRaw('COUNT(*) AS n')->toBase()->pluck('n', 'name')
+                ->each(fn ($n, $name) => $unreadBySource->put(self::PROMO_TAB.$name, (int) $n));
+        }
 
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
@@ -482,6 +490,8 @@ class LeadsController extends Controller
                 ...$this->pageMeta($leads),
                 'connections' => $this->connectionState(),
                 'unread_by_source' => (object) $unreadBySource->all(),
+                // Named promotions, newest first: one Leads tab each, where their answers land.
+                'promotion_tabs' => $promotionTabs,
                 // The dispatcher filter's choices: who answered this reader's leads.
                 'dispatchers' => self::scopeToReader(Lead::query(), $user)->whereNotNull('leads.dispatcher')
                     ->distinct()->orderBy('leads.dispatcher')->limit(200)->pluck('leads.dispatcher')->all(),
@@ -723,8 +733,28 @@ class LeadsController extends Controller
         return $reading;
     }
 
+    /** The source key of a named promotion's Leads tab: promo:<name>. */
+    private const PROMO_TAB = 'promo:';
+
+    /**
+     * The names of this organization's named promotions of the last 90 days,
+     * newest first: each one a Leads tab holding the answers to it.
+     *
+     * @return list<string>
+     */
+    private static function promotionTabs(): array
+    {
+        return \App\Models\Promotion::query()->whereNotNull('name')->where('created_at', '>=', now()->subDays(90))
+            ->orderByDesc('created_at')->pluck('name')->unique()->take(8)->values()->all();
+    }
+
     private static function whereKind($query, string $key): void
     {
+        if (str_starts_with($key, self::PROMO_TAB)) {
+            $query->where('leads.source', Lead::SOURCE_PROMOTIONS)->where('leads.lead_type', substr($key, strlen(self::PROMO_TAB)));
+
+            return;
+        }
         match ($key) {
             Lead::KIND_LS_CALL => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'PHONE_CALL'),
