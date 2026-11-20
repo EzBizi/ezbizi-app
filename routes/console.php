@@ -389,13 +389,14 @@ Schedule::command('ezbizi:prune-screenshots')->dailyAt('04:10')->withoutOverlapp
 // the two monitoring prunes never contend for the same tables' locks.
 Schedule::command('ezbizi:prune-devices')->dailyAt('04:30')->withoutOverlapping();
 
-// Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
-// slow night is not reported as a missing one.
+// Backup health (§18 Phase 0 item 5). At 09:30 UTC: after the backup unit's 6 h
+// ceiling (03:17 + 6 h), so the check never reads a run still in progress. At 05:00
+// it read 11-20's run two minutes before its restore check finished (health sweep).
 //
 // Hourly rather than daily would be noise; daily is enough because the alert is
 // about a subsystem that stopped, not about an incident in progress. What makes
 // it useful is that a MISSING verdict counts as a failure — see the command.
-Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('05:00');
+Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('09:30');
 
 // Training pass expiry (2026-08-28-training-module, task 10). At 04:10 — after
 // the data-expiry sweep at 03:50 and clear of the Twilio cost job at 04:20, so
