@@ -50,7 +50,8 @@ final class TaskRecordFill
             $phoneCol = $board->columns()->where('name', 'Phone number')->first();
             $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));
             // A missed-call task carries the number only in its title ("NJ - PPC +17325550199").
-            if ($raw === '' && preg_match('/\+?1?\d{10}/', (string) $task->title, $m) === 1) {
+            // In any format: "+17325550199", "(346) 877-6377", "-917-841-8827." (Outgoing Calls, 11-20).
+            if ($raw === '' && preg_match('/(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}/', (string) $task->title, $m) === 1) {
                 $raw = $m[0];
             }
             $ten = substr((string) preg_replace('/\D+/', '', $raw), -10);

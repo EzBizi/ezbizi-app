@@ -104,7 +104,7 @@ class TaskRecordFillTest extends TestCase
             $name = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 1]);
             $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Sam Caller', 'phone' => '(732) 555-0199']);
             Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
-            $task = app(TaskWriter::class)->create($board, ['title' => 'NJ - PPC +17325550199'], $t['admin']);
+            $task = app(TaskWriter::class)->create($board, ['title' => '(732) 555-0199'], $t['admin']);
 
             $set = app(TaskRecordFill::class)->fill($task->load('board'), null, $t['admin']);
             $this->assertSame([$name->id => 'Sam Caller'], array_intersect_key($set, [$name->id => 1]), json_encode([$set, \App\Models\Job::query()->withoutGlobalScopes()->count(), $task->title]));
