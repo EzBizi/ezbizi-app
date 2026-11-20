@@ -140,6 +140,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
   final TextEditingController _when = TextEditingController();
   List<Map<String, dynamic>> _blocks = [];
   String? _htmlOverride;
+  String _activeDesign = 'blocks';
 
   /// The brand applied to the open newsletter (P1b), or null.
   Map<String, dynamic>? _brand;
@@ -346,6 +347,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
     _when.text = n.scheduledFor ?? '';
     _blocks = n.blocks.map((b) => Map<String, dynamic>.from(b)).toList();
     _htmlOverride = n.htmlOverride;
+    _activeDesign = n.activeDesign;
     _brand = n.brand;
     _audienceId = n.audienceId;
     _revision = n.revision;
@@ -376,6 +378,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
     'preheader': _preheader.text,
     'blocks': _blocks,
     'html_override': _htmlOverride,
+    'active_design': _activeDesign,
   };
 
   bool _differs(Map<String, dynamic> content) =>
@@ -542,8 +545,10 @@ class _NewsletterTabState extends State<NewsletterTab> {
           ? 'Untitled'
           : _subject.text.trim(),
       'blocks': _blocks,
-      // Always sent: the server keeps what it holds only when this is absent.
+      // An empty HTML no longer clears it (01a1f9ed): the server keeps both
+      // designs, and only active_design ("Use this design") picks what goes out.
       'html_override': _htmlOverride,
+      'active_design': _activeDesign,
       'brand': _brand,
       'audience_id': _audienceId,
       'name': _name.text.trim(),
@@ -1047,6 +1052,12 @@ class _NewsletterTabState extends State<NewsletterTab> {
       viewName: _viewName,
       company: widget.session.me?.organization.name ?? 'EzBizi',
       initialHtml: _htmlOverride,
+      initialActiveDesign: _activeDesign,
+      onActiveDesign: (design) {
+        setState(() => _activeDesign = design);
+        _touched();
+      },
+      onEditableCopy: (_) => _reloadOpen(),
       scheduledTimezone: _selected?.scheduledTimezone,
       session: widget.session,
       sendingRefusedBecause: _sendingRefusedBecause,
@@ -1209,6 +1220,7 @@ class _Newsletter {
     this.scheduledFor,
     this.scheduledTimezone,
     this.htmlOverride,
+    this.activeDesign = 'blocks',
     this.brand,
     this.revision = 1,
     this.lastTest,
@@ -1234,6 +1246,9 @@ class _Newsletter {
 
   /// The whole-mailing HTML, when somebody wrote one instead of blocks.
   final String? htmlOverride;
+
+  /// 'html' or 'blocks': the design preview, test and send render.
+  final String activeDesign;
 
   /// The brand applied to it (P1b), or null.
   final Map<String, dynamic>? brand;
@@ -1264,6 +1279,7 @@ class _Newsletter {
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
       htmlOverride: json['html_override'] as String?,
+      activeDesign: json['active_design'] as String? ?? ((json['html_override'] as String? ?? '').isNotEmpty ? 'html' : 'blocks'),
       brand: json['brand'] is Map ? Map<String, dynamic>.from(json['brand'] as Map) : null,
       revision: (json['revision'] as num?)?.toInt() ?? 1,
       lastTest: NewsletterLastTest.fromJson(json['last_test']),
