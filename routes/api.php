@@ -1748,6 +1748,11 @@ Route::prefix('v1')
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
         Route::get('reports/jobs', [\App\Http\Controllers\Api\JobsReportController::class, 'show'])->middleware('permission:reports.jobs.view');
+        // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+        Route::get('reports/cancelled', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
+        Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);

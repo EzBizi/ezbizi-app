@@ -123,6 +123,17 @@ final class ListRegistry
                 ['reports.tags_not_created', 'Tags left out of jobs created', ['PAID - ESTIMATED', 'PAID - ESTIMATED (BY SUB)'],
                     'Jobs with one of these tags are not counted in the jobs created texts.'],
             ]),
+            // Which job statuses Reports › Cancelled jobs and Pending jobs list (Shoval, 2026-11-18).
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: $list[0], label: $list[1], module: 'reports', columns: [['key' => 'status', 'label' => 'Job status']],
+                defaults: array_map(fn (string $status) => ['key' => $status, 'value' => ['status' => $status]], $list[2]),
+                help: $list[3], editPermission: 'reports.settings',
+            ), [
+                ['reports.cancelled_statuses', 'Cancelled job statuses', ['Canceled', 'Cancelled'],
+                    'Reports › Cancelled jobs lists the jobs in these statuses. Upper or lower case does not matter.'],
+                ['reports.pending_statuses', 'Pending job statuses', ['Pending'],
+                    'Reports › Pending jobs lists the jobs in these statuses, oldest first. Upper or lower case does not matter.'],
+            ]),
             new ListDefinition(
                 key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',
                 columns: [['key' => 'role', 'label' => 'Role']],

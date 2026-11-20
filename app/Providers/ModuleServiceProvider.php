@@ -4626,6 +4626,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
                     new TabDefinition('jobs', 'Jobs'),
+                    // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+                    new TabDefinition('cancelled', 'Cancelled jobs'),
+                    new TabDefinition('pending', 'Pending jobs'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),
