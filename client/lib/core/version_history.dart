@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
       'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
+      'Customer Experience: Complaints is now Reviews & Complaints, with a Due within 24 h strip, a Client or Not a client badge, + New complaint, and Report on Google for reviews from non-clients',
       'Reports: new Cancelled jobs tab (cancelled share by reason, source and technician) and Pending jobs tab (every waiting job, oldest first); Settings › Lists sets which statuses count',
       'HR: new Recruiting tab with applicants, stages, interviews and recruiting spend per position, including cost per hire',
     ]),
