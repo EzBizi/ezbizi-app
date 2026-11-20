@@ -969,6 +969,9 @@ class HrPeopleController extends Controller
             ...$user->addressParts(),
             'gender' => $user->gender,
             'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
+            // How far ahead a certification is "expiring" (the HR overview's
+            // own setting), so the record's warn tag says the same thing.
+            'certification_warn_days' => (int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
             // Only whether it is on file; the photo itself is a reveal on the onboarding.
