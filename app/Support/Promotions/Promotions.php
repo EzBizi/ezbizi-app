@@ -237,7 +237,8 @@ final class Promotions
             'contact_name' => $text->contact_name,
             'phone' => $fromE164,
             'phone_digits' => Lead::digits($fromE164),
-            'lead_type' => 'Promotion',
+            // A named promotion's answers get a Leads tab of that name (LeadsController::whereKind).
+            'lead_type' => Promotion::query()->whereKey($text->promotion_id)->value('name') ?: 'Promotion',
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
