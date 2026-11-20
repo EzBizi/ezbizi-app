@@ -23,7 +23,7 @@ class NewsletterRevision extends Model implements StatesRetention
     public const UPDATED_AT = null;
 
     protected $fillable = [
-        'organization_id', 'newsletter_id', 'revision', 'blocks', 'html_override', 'subject', 'name',
+        'organization_id', 'newsletter_id', 'revision', 'blocks', 'html_override', 'active_design', 'subject', 'name',
         'preheader', 'author_id', 'restore_point', 'label', 'restored_from',
     ];
 
@@ -39,6 +39,12 @@ class NewsletterRevision extends Model implements StatesRetention
             .'saved it. The newest 50 per newsletter are kept (plus versions marked as restore points), and '
             .'they go with the newsletter when it is deleted.'
         );
+    }
+
+    /** As `Newsletter::designHtml`: the HTML this revision rendered, or null for its blocks. */
+    public function designHtml(): ?string
+    {
+        return Newsletter::htmlFor($this->active_design, $this->html_override);
     }
 
     public function newsletter(): BelongsTo

@@ -2637,6 +2637,7 @@ Route::prefix('v1')
             Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
             Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
             Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            Route::post('newsletters/{newsletter}/editable-copy', [NewslettersController::class, 'editableCopy']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
             // A starter's picture copied from the company's own website (SSRF-guarded).

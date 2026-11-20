@@ -15,6 +15,8 @@ import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../core/api_client.dart';
 import 'newsletter_blocks.dart';
 import 'newsletter_brand_saved.dart';
@@ -72,6 +74,9 @@ class NewsletterEditor extends StatefulWidget {
     required this.viewName,
     required this.company,
     this.initialHtml,
+    this.initialActiveDesign,
+    this.onActiveDesign,
+    this.onEditableCopy,
     required this.scheduledTimezone,
     required this.session,
     required this.sendingRefusedBecause,
@@ -188,6 +193,15 @@ class NewsletterEditor extends StatefulWidget {
   /// The custom HTML already saved, which opens the HTML box filled.
   final String? initialHtml;
 
+  /// 'html' or 'blocks': the saved design preview, test and send render.
+  final String? initialActiveDesign;
+
+  /// "Use this design": the only way the active design changes.
+  final ValueChanged<String>? onActiveDesign;
+
+  /// The draft after "Create editable copy" saved blocks beside the HTML.
+  final ValueChanged<Map<String, dynamic>>? onEditableCopy;
+
   /// The clock this mailing is already filed against, when it is already
   /// scheduled. Null on a draft, where nothing has picked a clock yet.
   final String? scheduledTimezone;
@@ -281,10 +295,21 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   bool _importing = false;
 
   /// What was there before the last import or switch, for Undo.
-  ({String html, List<Map<String, dynamic>> blocks, bool htmlMode})? _undo;
+  ({String html, List<Map<String, dynamic>> blocks, bool htmlMode, String active})? _undo;
 
-  /// Custom HTML is what goes out whenever it is set, whichever pane is open.
-  bool get _htmlActive => _html.text.trim().isNotEmpty;
+  /// The design that goes out: changed only by "Use this design", never by
+  /// switching views (suggestion 01a1f9ed). Both designs are kept.
+  String _active = 'blocks';
+
+  bool get _hasHtml => _html.text.trim().isNotEmpty;
+
+  /// Custom HTML goes out when it is the active design and has content.
+  bool get _htmlActive => _active == 'html' && _hasHtml;
+
+  void _useDesign(String design) {
+    setState(() => _active = design);
+    widget.onActiveDesign?.call(design);
+  }
 
   /// The server's preflight for the saved revision; null until it answers.
   NewsletterReadiness? _readiness;
@@ -329,6 +354,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           Map<String, dynamic>.from(jsonDecode(jsonEncode(b)) as Map),
       ],
       htmlMode: _htmlMode,
+      active: _active,
     );
   }
 
@@ -341,6 +367,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       _selected = null;
     });
     widget.onHtml(html);
+    // Applying an import is an explicit choice of the design it made.
+    _useDesign('html');
   }
 
   /// Before an import replaces the content (P1c): what is on screen is saved,
@@ -361,26 +389,53 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       widget.blocks
         ..clear()
         ..addAll(blocks);
-      _html.clear();
       _htmlMode = false;
       _importing = false;
       _selected = null;
     });
-    widget.onHtml('');
     widget.onChanged();
+    _useDesign('blocks');
   }
 
-  /// Back to blocks clears the HTML, so the blocks are what goes out. The
-  /// HTML is kept for Undo rather than silently discarded.
+  /// Switching views is navigation: the HTML stays saved and stays the
+  /// active design until "Use this design" says otherwise.
   void _switchToBlocks() {
-    final hadHtml = _htmlActive;
     setState(() {
-      if (hadHtml) _snapshot();
-      _html.clear();
       _htmlMode = false;
       _selected = null;
     });
-    if (hadHtml) widget.onHtml('');
+  }
+
+  /// "Create editable copy": the server converts the HTML, the side panel
+  /// shows the original beside the blocks and what will not carry over, and
+  /// only Create copy saves the blocks. The HTML stays active.
+  Future<void> _editableCopy() async {
+    final api = widget.api;
+    final id = widget.newsletterId;
+    if (api == null || id == null) return;
+    await widget.onSaveNow?.call();
+    final r = await api.post('/newsletters/$id/editable-copy', {});
+    if (!mounted) return;
+    if (!r.ok || r.data is! Map) {
+      _say(r.reason);
+      return;
+    }
+    final data = Map<String, dynamic>.from(r.data as Map);
+    final create = await showSidePanel<bool>(
+      context,
+      builder: (_) => EditableCopyPanel(preview: data),
+    );
+    if (create != true || !mounted) return;
+    final made = await api.post('/newsletters/$id/editable-copy', {
+      'confirm': true,
+      'revision': widget.revision,
+    });
+    if (!mounted) return;
+    if (!made.ok || made.data is! Map) {
+      _say(made.reason);
+      return;
+    }
+    widget.onEditableCopy?.call(Map<String, dynamic>.from(made.data as Map));
   }
 
   void _restore() {
@@ -397,6 +452,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     });
     widget.onHtml(undo.html);
     widget.onChanged();
+    _useDesign(undo.active);
   }
 
   @override
@@ -410,10 +466,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     if (widget.readOnlyBecause != null) _step = NewsletterStep.review;
     _scheduling = widget.when.text.trim().isNotEmpty;
     final html = widget.initialHtml ?? '';
-    if (html.isNotEmpty) {
-      _html.text = html;
-      _htmlMode = true;
-    }
+    _active = widget.initialActiveDesign ?? (html.isNotEmpty ? 'html' : 'blocks');
+    if (html.isNotEmpty) _html.text = html;
+    _htmlMode = _active == 'html' && html.isNotEmpty;
     _resolve();
     _loadLists();
     _loadSections();
@@ -492,6 +547,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       final html = widget.initialHtml ?? '';
       if (_html.text != html) _html.text = html;
       if (html.isEmpty && _htmlMode) _htmlMode = false;
+      final active = widget.initialActiveDesign;
+      if (active != null) _active = active;
       if (_selected != null && _selected! >= widget.blocks.length) _selected = null;
       _pendingCrop = null;
     }
@@ -568,7 +625,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     if (widget.subject.text.trim().isEmpty) {
       return 'A newsletter needs a subject line — it is the first thing anybody sees.';
     }
-    if (widget.blocks.isEmpty && !_htmlActive) {
+    if (widget.blocks.isEmpty && !_hasHtml) {
       return 'There is nothing in this newsletter yet.';
     }
     if (_scheduling && _scheduleProblem != null) return _scheduleProblem;
@@ -1909,7 +1966,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
-  bool get _emptyContent => widget.blocks.isEmpty && !_htmlActive;
+  bool get _emptyContent => widget.blocks.isEmpty && !_hasHtml;
 
   /// The opened email: subject and sender as the mail client shows them,
   /// then the email itself. Blocks are drawn by the same renderer layout as
@@ -2779,7 +2836,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       'templates' => NewsletterTemplateGallery(
         company: widget.viewName,
         useLabel: 'Use in this draft',
-        note: widget.blocks.isEmpty && !_htmlActive
+        note: widget.blocks.isEmpty && !_hasHtml
             ? null
             : 'Replaces this draft’s content. Undo or Version history brings it back.',
         api: widget.api,
@@ -2922,6 +2979,34 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     final Widget body;
     if (_htmlMode) {
       body = _htmlPane(context, bounded: bounded);
+    } else if (widget.blocks.isEmpty && _htmlActive) {
+      final readOnly = Column(
+        key: const ValueKey('newsletter-blocks-readonly'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(Studio.grid),
+            child: Wrap(
+              spacing: Studio.grid,
+              runSpacing: Studio.grid,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  "This draft's design is Custom HTML. Make an editable copy to work in blocks.",
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-editable-copy'),
+                  onPressed: _locked || widget.api == null ? null : _editableCopy,
+                  icon: const Icon(Icons.copy_all_outlined, size: 16),
+                  label: const Text('Create editable copy'),
+                ),
+              ],
+            ),
+          ),
+          if (bounded) Expanded(child: _serverView()) else SizedBox(height: 520, child: _serverView()),
+        ],
+      );
+      body = bounded ? Expanded(child: readOnly) : readOnly;
     } else if (_serverPreview) {
       body = bounded
           ? Expanded(child: _serverView())
@@ -3066,6 +3151,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   Widget _modeBar(BuildContext context) {
     final theme = Theme.of(context);
     final active = _htmlActive ? 'custom HTML' : 'the blocks';
+    final viewIsActive = _htmlMode == _htmlActive;
+    final mayUseOpenView = _htmlMode ? _hasHtml : true;
 
     return Container(
       key: const ValueKey('newsletter-mode'),
@@ -3103,6 +3190,22 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                         })
                       : _switchToBlocks(),
           ),
+          StatusPill(
+            _htmlActive ? 'Active: Custom HTML' : 'Active: Blocks',
+            key: const ValueKey('newsletter-active-design'),
+            tone: viewIsActive ? Tone.ok : Tone.neutral,
+          ),
+          if (!viewIsActive && !_locked && mayUseOpenView)
+            Tooltip(
+              message: _htmlMode
+                  ? 'Sends this custom HTML instead of the blocks. The blocks stay saved.'
+                  : 'Sends the blocks instead of the custom HTML. The HTML stays saved.',
+              child: OutlinedButton(
+                key: const ValueKey('newsletter-use-design'),
+                onPressed: () => _useDesign(_htmlMode ? 'html' : 'blocks'),
+                child: const Text('Use this design'),
+              ),
+            ),
           Text(
             'Sending: $active',
             key: const ValueKey('newsletter-mode-active'),
@@ -4354,6 +4457,75 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             widget.onChanged();
           },
         ),
+      ),
+    );
+  }
+}
+
+/// "Create editable copy" (suggestion 01a1f9ed): the original HTML design
+/// beside the blocks it converts to, and what will not carry over. Pops true
+/// on Create copy; nothing is saved before that.
+class EditableCopyPanel extends StatelessWidget {
+  const EditableCopyPanel({super.key, required this.preview});
+
+  final Map<String, dynamic> preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final lost = [
+      for (final l in (preview['lost'] as List? ?? const [])) '$l',
+      for (final i in (preview['issues'] as List? ?? const []))
+        if (i is Map && i['message'] != null) '${i['message']}',
+    ];
+    Widget pane(String title, String html, Key key) => Column(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: Studio.grid),
+        SizedBox(height: 420, child: MessageHtmlView(html: html, ownHtml: true)),
+      ],
+    );
+    final original = pane('Original (Custom HTML)', '${preview['original_html'] ?? ''}',
+        const ValueKey('editable-copy-original'));
+    final copy = pane('Editable copy (blocks)', '${preview['preview_html'] ?? ''}',
+        const ValueKey('editable-copy-blocks'));
+
+    return SidePanel(
+      title: 'Create editable copy',
+      subtitle: 'The original stays the active design until you choose "Use this design".',
+      width: 900,
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('editable-copy-create'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Create copy'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LayoutBuilder(
+            builder: (context, c) => c.maxWidth < 600
+                ? Column(children: [original, const SizedBox(height: Studio.grid * 2), copy])
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: original),
+                      const SizedBox(width: Studio.grid * 2),
+                      Expanded(child: copy),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: Studio.grid * 2),
+          Text("Won't carry over", style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: Studio.grid),
+          if (lost.isEmpty)
+            const Text('Everything converts to editable blocks.')
+          else
+            for (final l in lost) Text('• $l', key: ValueKey('editable-copy-lost-$l')),
+        ],
       ),
     );
   }
