@@ -552,6 +552,33 @@ const Map<String, Tour> assistTours = {
       ),
     ],
   ),
+  'work_hours/Payroll': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-payroll',
+        title: 'Payroll',
+        body:
+            'One week of pay for the people in your view: hours, rate, bonus, '
+            'deductions and tech expenses make the weekly pay.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-payroll-summary',
+        title: 'The week at a glance',
+        body:
+            'People, hours, pay, who is still waiting for approval, and who '
+            'has a warning such as no pay rate or a shift still open.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-payroll-rows',
+        title: 'Each person',
+        body:
+            'Bonus and deductions save when you leave the field; changing '
+            'them takes the approval back off. Hours over 40 show as OT and '
+            'are not paid. Open Tech expenses to see each part paid for.',
+      ),
+    ],
+  ),
   'work_hours/Settings': Tour(
     version: 1,
     steps: [
