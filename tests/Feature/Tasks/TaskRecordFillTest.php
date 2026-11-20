@@ -111,4 +111,30 @@ class TaskRecordFillTest extends TestCase
             $this->assertSame('Sam Caller', \App\Models\TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $name->id)->value('value_text'));
         });
     }
+
+    /** Jose, 2026-11-20: a Monday item with only a name, a job number or a phone cell is filled from any of them. */
+    public function test_the_job_comes_from_any_identifier_on_the_task(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $col = fn ($name) => TaskColumn::query()->create(['board_id' => $board->id, 'name' => $name, 'type' => 'text', 'position' => 1]);
+            [$jobNo, $phone, $client] = [$col('EzBizi Job #'), $col('Phone number'), $col('Client name')];
+            $c = fn ($name, $ph) => Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => $name, 'phone' => $ph]);
+            $j = fn ($cust) => Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $cust->id]);
+            $byNo = $j($c('Sabrina Laler', '+17065550001'));
+            $byPhone = $j($c('Deb Sykes', '+17065739530'));
+            $byName = $j($c('Cindy Miljenovich', '+12526220136'));
+            $j($c('John Smith', '+15550000001'));
+            $j($c('John Smith', '+15550000002'));
+            $w = app(TaskWriter::class);
+            $fill = app(TaskRecordFill::class);
+
+            $this->assertSame($byNo->id, $fill->jobFor($w->create($board, ['title' => 'x', 'values' => [$jobNo->id => $byNo->number]], $t['admin']))?->id);
+            $this->assertSame($byPhone->id, $fill->jobFor($w->create($board, ['title' => 'call back', 'values' => [$phone->id => '706.573.9530']], $t['admin']))?->id, 'the Phone number cell');
+            $this->assertSame($byName->id, $fill->jobFor($w->create($board, ['title' => 'Cindy Miljenovich'], $t['admin']))?->id, 'one customer with that name');
+            $this->assertNull($fill->jobFor($w->create($board, ['title' => 'x', 'values' => [$client->id => 'John Smith']], $t['admin'])), 'two John Smiths: left empty');
+            $this->assertNull($fill->jobFor($w->create($board, ['title' => 'Eric Sundby'], $t['admin'])), 'no such customer');
+        });
+    }
 }

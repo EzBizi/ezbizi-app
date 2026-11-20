@@ -17,21 +17,33 @@ use Illuminate\Console\Command;
  */
 class TasksFillFromRecord extends Command
 {
-    protected $signature = 'ezbizi:tasks-fill-from-record {--org=} {--as=} {--rule=* : automation ids whose tasks to fill} {--group= : also every open task in groups whose name contains this} {--all-open : every open task on every board} {--review=* : of those, the rules whose tasks are bad reviews} {--redo-reason : first clear a Reason no person has touched (ours: the rule or the Description move), so it is worked out per task} {--dry}';
+    protected $signature = 'ezbizi:tasks-fill-from-record {--org=} {--as=} {--rule=* : automation ids whose tasks to fill} {--group= : also every open task in groups whose name contains this} {--all-open : every open task on every board} {--done : completed tasks too (after the open ones)} {--since= : only tasks created or changed in the last N minutes (the scheduled pass)} {--review=* : of those, the rules whose tasks are bad reviews} {--redo-reason : first clear a Reason no person has touched (ours: the rule or the Description move), so it is worked out per task} {--dry}';
 
     protected $description = 'Fill Area, Reason, Address, Client name and Phone on rule-made tasks from their lead and job';
 
     public function handle(TenantContext $tenant, TaskRecordFill $fill): int
     {
-        $org = Organization::withoutGlobalScopes()->findOrFail($this->option('org'));
+        // No --org: every organization (the scheduled pass, 11-20: items from Monday too).
+        foreach ($this->option('org') ? [Organization::withoutGlobalScopes()->findOrFail($this->option('org'))] : Organization::withoutGlobalScopes()->get() as $org) {
+            $tenant->run($org, fn () => $this->fillOrg($fill));
+        }
 
-        return $tenant->run($org, function () use ($fill) {
-            $actor = User::query()->findOrFail($this->option('as'));
+        return self::SUCCESS;
+    }
+
+    private function fillOrg(TaskRecordFill $fill): void
+    {
+        {
+            // ponytail: without --as, the organization's first person writes the fill.
+            $actor = $this->option('as') ? User::query()->findOrFail($this->option('as')) : User::query()->oldest()->first();
+            if ($actor === null) {
+                return;
+            }
             $counts = ['tasks' => 0, 'filled' => 0, 'cells' => 0];
             $before = now()->subSecond();
             $touched = [];
             $checked = false;
-            Task::query()->whereNull('completed_at')->where(fn ($q) => $q->whereIn('created_by_automation_id', (array) $this->option('rule'))
+            Task::query()->when(! $this->option('done'), fn ($q) => $q->whereNull('completed_at'))->when($this->option('since'), fn ($q, $m) => $q->where('updated_at', '>=', now()->subMinutes((int) $m)))->where(fn ($q) => $q->whereIn('created_by_automation_id', (array) $this->option('rule'))
                 ->when($this->option('group'), fn ($q, $g) => $q->orWhereHas('group', fn ($x) => $x->where('name', 'like', '%'.$g.'%')))
                 ->when($this->option('all-open'), fn ($q) => $q->orWhereNotNull('id')))
                 ->with('board')->chunkById(200, function ($tasks) use ($fill, $actor, &$counts, &$checked, $before, &$touched) {
@@ -50,12 +62,7 @@ class TasksFillFromRecord extends Command
                         }
                         $about = (string) $task->about_type;
                         $lead = $task->about_id && str_contains(strtolower($about), 'lead') ? Lead::query()->withoutGlobalScopes()->find($task->about_id) : null;
-                        // A job: the task is about it, or names it in its "EzBizi Job #" column.
                         $job = $task->about_id && str_contains(strtolower($about), 'job') ? \App\Models\Job::query()->withoutGlobalScopes()->find($task->about_id) : null;
-                        $jobCol = $task->board->columns()->where('name', 'like', 'EzBizi Job%')->first();
-                        if ($job === null && $jobCol !== null && ($no = trim((string) $task->values()->where('column_id', $jobCol->id)->value('value_text'))) !== '') {
-                            $job = \App\Models\Job::query()->withoutGlobalScopes()->where('number', $no)->orWhere('number', 'JOB-'.preg_replace('/^JOB-/i', '', $no))->first();
-                        }
                         $review = in_array($task->created_by_automation_id, (array) $this->option('review'), true);
                         if ($this->option('dry')) {
                             continue;
@@ -73,8 +80,6 @@ class TasksFillFromRecord extends Command
                     }
                 });
             $this->info(json_encode($counts));
-
-            return self::SUCCESS;
-        });
+        }
     }
 }
