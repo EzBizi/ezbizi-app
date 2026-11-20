@@ -83,7 +83,14 @@ final class SiteLists
      */
     public static function reviewSummary(WebSite $site): array
     {
-        return \Illuminate\Support\Facades\Cache::remember('web-review-summary-v2:'.$site->company_id, 3600, function () use ($site): array {
+        return \Illuminate\Support\Facades\Cache::remember('web-review-summary-v3:'.$site->company_id, 3600, function () use ($site): array {
+            // Google's own per-listing totals when the sync has read them (Jose 11-20:
+            // the badge equals Google, 13,583 for A-1); else the unique count below.
+            $google = \App\Support\CustomerExperience\GoogleReviewTotals::forCompany((string) $site->company_id);
+            if ($google['count'] > 0 && $google['average'] !== null) {
+                return ['count' => $google['count'], 'average' => round((float) $google['average'], 1)];
+            }
+
             // One review once (desk 11-20): a Google location synced through two connections
             // (the manager account and the location's own) stores every review twice, under
             // two resource names that end in the same review id. Count each id once.
