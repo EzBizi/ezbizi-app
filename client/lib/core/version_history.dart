@@ -18,7 +18,6 @@ class VersionHistory {
       'Task Board: moving boards and folders in the sidebar saves instantly',
       'Marketing: a promotion can send its replies to its own tab in Leads',
       'Task Board: a complaint the AI hears on a call is not added again when a dispatcher already logged it; its summary goes on that task instead',
-      'Financials: QuickBooks Online connection and a Markets view with expenses and closing rate per market (available once QuickBooks is connected)',
     ]),
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',
