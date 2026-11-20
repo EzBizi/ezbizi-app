@@ -7,6 +7,7 @@ use App\Models\EmploymentEvent;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
+use App\Models\PersonCertification;
 use App\Models\TimeClockDay;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -249,6 +250,22 @@ final class HrOverview
                     'date' => $date,
                 ]);
             }
+        }
+
+        // Certifications recorded on the person (Jose, 2026-11-20).
+        $held = PersonCertification::query()->with('user:id,name')
+            ->whereIn('user_id', $this->inView($places)->select('users.id'))
+            ->whereNotNull('expires_on')->whereDate('expires_on', '<=', $until)
+            ->whereDate('expires_on', '>=', Carbon::parse($today)->subYear()->toDateString())->get();
+        foreach ($held as $c) {
+            $date = $c->expires_on->toDateString();
+            $rows->push([
+                'user_id' => $c->user_id,
+                'name' => $c->user?->name ?? 'Somebody',
+                'certification' => $c->name,
+                'state' => $date < $today ? 'lapsed' : 'expiring',
+                'date' => $date,
+            ]);
         }
 
         return $rows->sortBy('date')->values();

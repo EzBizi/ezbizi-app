@@ -12,6 +12,7 @@ use App\Models\HrNote;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
+use App\Models\PersonCertification;
 use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
@@ -988,6 +989,9 @@ class HrPeopleController extends Controller
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
                 ->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'certifications' => PersonCertification::query()->where('user_id', $user->id)
+                ->orderByRaw('expires_on is null')->orderBy('expires_on')->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'equipment' => HeldEquipment::query()->where('user_id', $user->id)
                 ->orderByRaw('returned_on is not null')->orderBy('name')->get()
