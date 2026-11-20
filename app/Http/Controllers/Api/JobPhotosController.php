@@ -30,9 +30,10 @@ final class JobPhotosController
             ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
             ->where('status', 'Done')
             // "crown" is a title or description word on A-1 jobs, not a job type, so the type matches both
-            ->when($request->query('job_type'), fn ($q, $t) => $q->where(fn ($w) => $w
-                ->where('job_type', 'like', '%'.$t.'%')->orWhere('title', 'like', '%'.$t.'%')
-                ->orWhere('description', 'like', '%'.$t.'%')))
+            // Every word somewhere in type, title or description: the assistant asks for
+            // "chimney crown repair", which no single column holds (prod, 2026-11-20).
+            ->when($request->query('job_type'), fn ($q, $t) => collect(preg_split('/\s+/', trim($t)))->filter()
+                ->each(fn ($word) => $q->whereRaw("CONCAT_WS(' ', job_type, title, description) LIKE ?", ['%'.$word.'%'])))
             ->when($request->query('search'), fn ($q, $s) => $q->where(fn ($w) => $w
                 ->where('title', 'like', '%'.$s.'%')->orWhere('description', 'like', '%'.$s.'%')))
             ->whereHas('workizJob', fn ($q) => $q->whereRaw("json_length(json_extract(payload, '$.Attachments')) > 1"))
