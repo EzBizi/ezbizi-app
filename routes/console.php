@@ -218,6 +218,9 @@ Schedule::command('ezbizi:monday-sync --max-seconds=900')->everyTenMinutes()->wi
 Schedule::command('ezbizi:tasks-fill-from-record --all-open --done --since=15')->everyTenMinutes()->withoutOverlapping(20);
 // Nightly: every board listed (a subitem-only change can miss Monday's date filter); only changed items are read.
 // Both run in the slow lane (2026-11-16: the poll took ~4 min of a 5-min fast slot and the slot timed out).
+// QuickBooks -> Financials > Markets (Shoval, 11-20): what changed every six hours, 400 days by date nightly. Read only. Slow lane.
+Schedule::command('ezbizi:quickbooks-sync')->everySixHours(17)->withoutOverlapping(60);
+Schedule::command('ezbizi:quickbooks-sync --full')->dailyAt('04:10')->timezone('America/New_York')->withoutOverlapping(120);
 Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 // Desk 11-18: four parallel senders, each on its own share of tasks (a task's rows stay in order),
@@ -486,6 +489,8 @@ Schedule::command('ezbizi:review-backlog')->dailyAt('15:00')->withoutOverlapping
 Schedule::command('ezbizi:gbp-weekly-posts')->dailyAt('13:00')->withoutOverlapping(120);
 // The funnel's "Reviewed" step: which review each link produced (Jose, 2026-11-09).
 Schedule::command('ezbizi:review-link-matches')->hourlyAt(40)->withoutOverlapping(30);
+// Priority complaints (BBB, Attorney General, lawsuits): halfway, due and last-call alerts (Shoval, 2026-11-20).
+Schedule::command('ezbizi:complaint-due-alerts')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
@@ -528,6 +533,9 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 
 // Task Board: a task past its due date raises task.overdue, once per task.
 Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+// Shoval 11-13 (Monday off): reminders and week-quiet nudges, and one morning summary per owner.
+Schedule::command('ezbizi:tasks-nudges')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:tasks-daily-digest')->dailyAt('08:00')->timezone('America/New_York')->withoutOverlapping(30);
 // Task Board: the board rules' week, moved and flagged by person, to Administrators (Jose 11-17).
 Schedule::command('ezbizi:tasks-misfiled-report')->weeklyOn(1, '09:00')->timezone('America/New_York');
 // Task Board: a due date or date column that is today/tomorrow raises task.date_arrived, once per date
@@ -556,7 +564,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity|quickbooks-sync)(\s|\'|$)/',
         (string) $event->command,
     );
     // In the slow lane a run starts whenever the last one ends (~every 3.5 min), so a job due

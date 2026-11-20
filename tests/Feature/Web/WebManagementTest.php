@@ -1568,6 +1568,64 @@ class WebManagementTest extends TestCase
         );
     }
 
+    /** Jose, 2026-11-20: the badge is the company's real total, every location, never a typed number. */
+    public function test_the_plugin_gets_the_companys_real_review_total_and_average(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $connection = \App\Models\SocialConnection::create([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => \App\Models\SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $tenant['org']->id,
+                'provider' => \App\Support\Social\SocialProvider::GoogleBusinessProfile->value,
+                'remote_id' => 'accounts/1',
+                'display_name' => 'A-1',
+            ]);
+            foreach ([[5, 'loc1'], [5, 'loc2'], [4, 'loc2'], [null, 'loc1']] as $i => [$rating, $loc]) {
+                \App\Models\Review::create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $tenant['company']->id,
+                    'connection_id' => $connection->id,
+                    'remote_name' => "accounts/1/locations/$loc/reviews/$i",
+                    'location_name' => "accounts/1/locations/$loc",
+                    'reviewer_name' => 'R'.$i,
+                    'rating' => $rating,
+                    'reviewed_at' => now()->subDays($i),
+                ]);
+            }
+            // The same review synced through a second account (the manager account) is one review.
+            \App\Models\Review::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'connection_id' => $connection->id,
+                'remote_name' => 'accounts/2/locations/loc1/reviews/0',
+                'location_name' => 'accounts/2/locations/loc1',
+                'reviewer_name' => 'R0',
+                'rating' => 5,
+                'reviewed_at' => now(),
+            ]);
+        });
+
+        $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()
+            ->assertJsonPath('review_summary.count', 3)
+            ->assertJsonPath('review_summary.average', 4.7);
+
+        // Once the sync has read Google's own totals, the badge is Google's figure (Jose, 2026-11-20).
+        \Illuminate\Support\Facades\Cache::flush();
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([['locations/1', 13000, 4.9], ['locations/2', 583, 4.2]] as [$name, $n, $avg]) {
+                (new \App\Models\BusinessLocation)->forceFill(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'remote_name' => $name, 'title' => $name, 'google_review_count' => $n, 'google_rating' => $avg, 'google_totals_at' => now()])->save();
+            }
+        });
+        $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()
+            ->assertJsonPath('review_summary.count', 13583)
+            ->assertJsonPath('review_summary.average', 4.9);
+    }
+
     private function pluginRead(string $token, string $host): TestResponse
     {
         return $this->getJson(

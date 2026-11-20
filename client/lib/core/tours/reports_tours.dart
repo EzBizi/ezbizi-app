@@ -298,7 +298,69 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Jobs': Tour(
+  'reports/Cancelled': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'cancelled-search',
+        title: 'Find a job',
+        body: 'By client, phone, number, branch, reason or technician.',
+      ),
+      TourStep(
+        anchor: 'cancelled-reason',
+        title: 'Narrow it',
+        body: 'By reason, source and technician.',
+      ),
+      TourStep(
+        anchor: 'cancelled-totals',
+        title: 'Totals',
+        body:
+            'How many jobs created in these dates are cancelled now, and what share of all created that is.',
+      ),
+      TourStep(
+        anchor: 'cancelled-table',
+        title: 'Every job',
+        body: 'Each cancelled job, newest first, with why and who was on it.',
+      ),
+      TourStep(
+        anchor: 'cancelled-empty',
+        title: 'Nothing yet',
+        body: 'No job created in these dates is cancelled.',
+      ),
+    ],
+  ),
+  'reports/Pending': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'pending-search',
+        title: 'Find a job',
+        body: 'By client, phone, number, branch, sub-status or technician.',
+      ),
+      TourStep(
+        anchor: 'pending-reason',
+        title: 'Narrow it',
+        body: 'By sub-status, source and technician.',
+      ),
+      TourStep(
+        anchor: 'pending-totals',
+        title: 'Totals',
+        body: 'How many jobs are pending now, the oldest one, and their value.',
+      ),
+      TourStep(
+        anchor: 'pending-table',
+        title: 'Every job',
+        body:
+            'Each pending job, oldest first, with how many days it has waited.',
+      ),
+      TourStep(
+        anchor: 'pending-empty',
+        title: 'Nothing yet',
+        body: 'No job is pending now.',
+      ),
+    ],
+  ),
+  'reports/Overview': Tour(
     version: 1,
     steps: [
       TourStep(

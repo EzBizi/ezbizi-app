@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialMarketsController;
 use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
@@ -179,6 +180,7 @@ use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\ReportDraftsController;
 use App\Http\Controllers\Api\ReportGoalsController;
 use App\Http\Controllers\Api\ReportPeriodController;
+use App\Http\Controllers\Api\RecruitingController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReportWorkspaceController;
 use App\Http\Controllers\Api\ReviewLinkEventsController;
@@ -1044,6 +1046,7 @@ Route::prefix('v1')
         Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
+        Route::patch('project-board/jobs/{job}/cost', [ProjectBoardController::class, 'cost']);
         Route::get('project-board/tech-expenses', [ProjectBoardController::class, 'techExpenses']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
@@ -1066,8 +1069,6 @@ Route::prefix('v1')
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}', [TaskBoardsController::class, 'destroy']);
-        Route::put('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
-        Route::delete('task-boards/{taskBoard}/favorite', [TaskBoardsController::class, 'favorite']);
         Route::post('task-boards/{taskBoard}/archive', [TaskBoardsController::class, 'archive']);
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
@@ -1111,6 +1112,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
+        Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
+        Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
         Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
@@ -1246,6 +1250,7 @@ Route::prefix('v1')
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [ComplaintsController::class, 'index']);
+        Route::post('complaints', [ComplaintsController::class, 'store']);
         Route::get('complaints/{complaint}', [ComplaintsController::class, 'show']);
         Route::patch('complaints/{complaint}', [ComplaintsController::class, 'update']);
         Route::post('complaints/{complaint}/notes', [ComplaintsController::class, 'addNote']);
@@ -1368,6 +1373,12 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
+        Route::middleware('permission:financials.markets.view')->group(function (): void {
+            Route::get('financials/markets', [FinancialMarketsController::class, 'index']);
+            Route::get('financials/markets/maps', [FinancialMarketsController::class, 'maps']);
+            Route::patch('financials/markets/maps/{map}', [FinancialMarketsController::class, 'updateMap']);
         });
         // Results (ACE): drawn inside Financials; the controller checks each action.
         Route::middleware('permission:financial_results.view')->group(function (): void {
@@ -1750,6 +1761,11 @@ Route::prefix('v1')
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
         Route::get('reports/jobs', [\App\Http\Controllers\Api\JobsReportController::class, 'show'])->middleware('permission:reports.jobs.view');
+        // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+        Route::get('reports/cancelled', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
+        Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
@@ -2375,6 +2391,19 @@ Route::prefix('v1')
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
         Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
         Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        // The applicant pipeline (Shoval, 2026-11-20); hr.view reads, hr.edit writes, in the controller.
+        Route::get('hr/applicants', [RecruitingController::class, 'index']);
+        Route::post('hr/applicants', [RecruitingController::class, 'store']);
+        Route::get('hr/applicants/{applicant}', [RecruitingController::class, 'show']);
+        Route::patch('hr/applicants/{applicant}', [RecruitingController::class, 'update']);
+        Route::delete('hr/applicants/{applicant}', [RecruitingController::class, 'destroy']);
+        Route::post('hr/applicants/{applicant}/interviews', [RecruitingController::class, 'storeInterview']);
+        Route::patch('hr/applicant-interviews/{interview}', [RecruitingController::class, 'updateInterview']);
+        Route::delete('hr/applicant-interviews/{interview}', [RecruitingController::class, 'destroyInterview']);
+        Route::get('hr/recruiting-spend', [RecruitingController::class, 'spend']);
+        Route::post('hr/recruiting-spend', [RecruitingController::class, 'storeSpend']);
+        Route::patch('hr/recruiting-spend/{spend}', [RecruitingController::class, 'updateSpend']);
+        Route::delete('hr/recruiting-spend/{spend}', [RecruitingController::class, 'destroySpend']);
         Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
         Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.

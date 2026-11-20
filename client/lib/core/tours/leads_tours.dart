@@ -1287,7 +1287,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   // Jose, 2026-10-20: every bad rating and how far it got.
-  'customer_experience/Complaints': Tour(
+  'customer_experience/Reviews & Complaints': Tour(
     version: 1,
     steps: [
       TourStep(

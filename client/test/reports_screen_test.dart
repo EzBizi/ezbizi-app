@@ -1031,6 +1031,63 @@ void main() {
       ]);
     },
   );
+
+  testWidgets('design 199: Jobs is one tab holding Overview, Cancelled and '
+      'Pending, each on its own grant; the one opened is kept', (tester) async {
+    final asked = <String>[];
+    await _pumpReports(
+      tester,
+      permissions: const [
+        'reports.view',
+        'reports.library.view',
+        'reports.cancelled.view',
+        'reports.pending.view',
+      ],
+      onRequest: (r) {
+        final path = r.url.path;
+        if (path.contains('/reports/cancelled') ||
+            path.contains('/reports/pending') ||
+            path.contains('/reports/jobs')) {
+          asked.add(path.split('/').last);
+          return _json({
+            'data': {
+              'rows': <dynamic>[],
+              'count': 0,
+              'value_minor': 0,
+              'all': 0,
+              'created': 0,
+              'statuses': <dynamic>[],
+              'reasons': <dynamic>[],
+              'sources': <dynamic>[],
+              'techs': <dynamic>[],
+            },
+          });
+        }
+        if (path.endsWith('/me/preferences')) return _json({'data': {}});
+        return null;
+      },
+    );
+
+    // No Cancelled jobs / Pending jobs chips beside the others: one Jobs.
+    expect(find.widgetWithText(ChoiceChip, 'Cancelled jobs'), findsNothing);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Jobs'));
+    await tester.pumpAndSettle();
+    final family = find.byKey(const ValueKey('reports-jobs-tabs'));
+    expect(family, findsOneWidget);
+    // Overview is not granted here, so it is not drawn.
+    expect(
+      find.descendant(of: family, matching: find.text('Overview')),
+      findsNothing,
+    );
+    expect(asked.last, 'cancelled');
+
+    await tester.tap(
+      find.descendant(of: family, matching: find.text('Pending')),
+    );
+    await tester.pumpAndSettle();
+    expect(asked.last, 'pending');
+    expect(find.byKey(const ValueKey('reports-jobs-pending')), findsOneWidget);
+  });
 }
 
 /// Somebody who may read reports and not build them.

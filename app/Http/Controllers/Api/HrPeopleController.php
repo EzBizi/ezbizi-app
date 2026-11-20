@@ -12,6 +12,7 @@ use App\Models\HrNote;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
+use App\Models\PersonCertification;
 use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
@@ -968,6 +969,9 @@ class HrPeopleController extends Controller
             ...$user->addressParts(),
             'gender' => $user->gender,
             'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
+            // How far ahead a certification is "expiring" (the HR overview's
+            // own setting), so the record's warn tag says the same thing.
+            'certification_warn_days' => (int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
             // Only whether it is on file; the photo itself is a reveal on the onboarding.
@@ -988,6 +992,9 @@ class HrPeopleController extends Controller
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
                 ->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'certifications' => PersonCertification::query()->where('user_id', $user->id)
+                ->orderByRaw('expires_on is null')->orderBy('expires_on')->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'equipment' => HeldEquipment::query()->where('user_id', $user->id)
                 ->orderByRaw('returned_on is not null')->orderBy('name')->get()

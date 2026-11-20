@@ -108,6 +108,7 @@ void main() {
   Map<String, Object?> groupColours = {};
   var arrange = false;
   final patches = <Object?>[];
+  final prefPatches = <Object?>[];
 
   setUp(() {
     store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tbtree');
@@ -150,6 +151,10 @@ void main() {
               ],
             },
           });
+        }
+        if (path == '/me/preferences') {
+          prefPatches.add(jsonDecode(request.body));
+          return json({'data': <String, dynamic>{}});
         }
         if (path == '/task-boards') {
           return json({'data': boards ?? fixture});
@@ -220,7 +225,8 @@ void main() {
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
     expect(inTree('Boston'), findsOneWidget);
-    expect(inTree('2 open'), findsOneWidget);
+    // No "N open" (Jose 11-20, design 200: Monday shows none).
+    expect(inTree('2 open'), findsNothing);
 
     double y(Finder f) => tester.getTopLeft(f).dy;
     expect(y(row('b-me')), lessThan(y(row('b-sh'))));
@@ -608,5 +614,36 @@ void main() {
       find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('design 200: a star puts a board in Favorites, on top, saved '
+      'as this person’s preference; no "N open"', (tester) async {
+    prefPatches.clear();
+    await pumpBoard(tester);
+    expect(find.byKey(const ValueKey('tasks-fold-favorites')), findsNothing);
+    expect(inTree('2 open'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('board-star-b-bos')).first);
+    await tester.pumpAndSettle();
+    expect(prefPatches.last, {
+      'preferences': {
+        'task_board.favorites': ['b-bos'],
+      },
+    });
+    final favourites = find.byKey(const ValueKey('tasks-fold-favorites'));
+    expect(favourites, findsOneWidget);
+    // Boston twice: under Favorites, at the top, and in its place.
+    expect(row('b-bos'), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(row('b-bos').first).dy,
+      lessThan(tester.getTopLeft(row('b-me')).dy),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('board-star-b-bos')).first);
+    await tester.pumpAndSettle();
+    expect(prefPatches.last, {
+      'preferences': {'task_board.favorites': <Object?>[]},
+    });
+    expect(favourites, findsNothing);
   });
 }

@@ -65,7 +65,7 @@
             "label": "Customer Experience",
             "parent": null,
             "tabs": [
-                "Complaints"
+                "Reviews & Complaints"
             ]
         },
         "customers": {
@@ -114,6 +114,7 @@
             "tabs": [
                 "Home",
                 "Bills",
+                "Markets",
                 "Settings"
             ]
         },
@@ -147,7 +148,8 @@
                 "Contracts",
                 "Invitations",
                 "Onboarding",
-                "Payroll"
+                "Payroll",
+                "Recruiting"
             ]
         },
         "inspection": {
@@ -325,9 +327,16 @@
                 "Marketing Reports",
                 "Meta",
                 "Thumbtack",
-                "Jobs",
+                "Overview",
+                "Cancelled",
+                "Pending",
                 "Workspace"
-            ]
+            ],
+            "within": {
+                "Overview": "Jobs",
+                "Cancelled": "Jobs",
+                "Pending": "Jobs"
+            }
         },
         "reviews": {
             "label": "Reviews",
@@ -483,6 +492,7 @@
         "financials.create",
         "financials.delete",
         "financials.edit",
+        "financials.markets.view",
         "financials.settings.view",
         "financials.view",
         "fleet_management.assign",
@@ -512,6 +522,7 @@
         "hr.pay.view",
         "hr.payroll.view",
         "hr.records.view",
+        "hr.recruiting.view",
         "hr.security.reset",
         "hr.view",
         "inspection.archive",
@@ -623,6 +634,7 @@
         "project_board.view",
         "reports.build",
         "reports.builder.view",
+        "reports.cancelled.view",
         "reports.correct",
         "reports.experimental.view",
         "reports.export",
@@ -631,6 +643,7 @@
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.pending.view",
         "reports.scoring.view",
         "reports.scoring_weights",
         "reports.settings",

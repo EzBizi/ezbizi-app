@@ -527,6 +527,17 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials/Markets': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-markets',
+        title: 'Markets',
+        body:
+            "Expenses per market from QuickBooks, by week and category, beside each market's closing rate and cost per closed job.",
+      ),
+    ],
+  ),
   'financials/Settings': Tour(
     version: 1,
     steps: [

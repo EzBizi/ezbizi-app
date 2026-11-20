@@ -612,6 +612,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // and contract in one table. New, so held by no role until
                     // ticked; administrators by identity.
                     new TabDefinition('payroll', 'Payroll'),
+                    // Recruiting (design 201; Shoval, 2026-11-20): applicants,
+                    // interviews and spend. Its own tab grant, as every HR tab
+                    // (hr.view alone opens no tab); writes are hr.edit. New,
+                    // so held by no role until ticked; administrators hold it.
+                    new TabDefinition('recruiting', 'Recruiting'),
                 ],
                 triggers: [
                     /*
@@ -2578,6 +2583,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('bases', 'Home'),
                     new TabDefinition('bills', 'Bills'),
+                    // Expenses per market from QuickBooks, closing rate, cost per closed job (Shoval, 11-20).
+                    new TabDefinition('markets', 'Markets'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],
@@ -3380,7 +3387,8 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view', 'complaints.manage'],
                 actionLabels: ['view' => 'Customer Experience (tick a part below)', 'complaints.manage' => 'Work complaints (status, owner, notes)'],
                 tabs: [
-                    new TabDefinition('complaints', 'Complaints'),
+                    // Shoval via Jose, 2026-11-20 (design 202): the board Adeline and the GMs work.
+                    new TabDefinition('complaints', 'Reviews & Complaints'),
                 ],
                 auditActionPrefixes: ['complaint'],
                 subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),
@@ -3389,9 +3397,17 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'complaint.opened',
                         label: 'Complaint opened',
-                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, or a call '
-                            .'heard as a complaint was added to Complaints. It carries the kind and, for a '
-                            .'review, the rating.',
+                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, a call '
+                            .'heard as a complaint, a BBB or Attorney General email, or one entered by hand was '
+                            .'added to Complaints. It carries the kind, the rating for a review, client_status '
+                            .'(client or not_client), priority and due_at.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'complaint.due_alert',
+                        label: 'Priority complaint nearing its deadline',
+                        description: 'An open Priority complaint (BBB, Attorney General, lawsuit) reached a step: '
+                            .'1 halfway (12 hours in), 2 due (24 hours), 3 last call (40 hours, 8 before 48). It '
+                            .'carries step, label, hours_open, kind, title and due_at.',
                     ),
                     new TriggerDefinition(
                         key: 'complaint.status_changed',
@@ -4629,7 +4645,13 @@ class ModuleServiceProvider extends ServiceProvider
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
-                    new TabDefinition('jobs', 'Jobs'),
+                    // Drawn inside one "Jobs" tab with its own strip (design 199,
+                    // Shoval 2026-11-18): Overview · Cancelled · Pending. Each
+                    // keeps its grant; "Jobs" is a group with none of its own.
+                    new TabDefinition('jobs', 'Overview', within: 'Jobs'),
+                    // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+                    new TabDefinition('cancelled', 'Cancelled', within: 'Jobs'),
+                    new TabDefinition('pending', 'Pending', within: 'Jobs'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),

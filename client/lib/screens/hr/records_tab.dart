@@ -723,6 +723,7 @@ List<(String, String, IconData)> _sectionsFor(Map<String, dynamic> person) => [
   if (person['pay_rates'] != null) ('pay', 'Pay', Icons.payments_outlined),
   ('work', 'Work', Icons.schedule_outlined),
   ('equipment', 'Equipment', Icons.handyman_outlined),
+  ('certifications', 'Certifications', Icons.workspace_premium_outlined),
   ('onboarding', 'Onboarding', Icons.how_to_reg_outlined),
   ('timeoff', 'Time off', Icons.beach_access_outlined),
   ('training', 'Training', Icons.school_outlined),
@@ -1123,6 +1124,22 @@ class _PersonRecordState extends State<_PersonRecord> {
       key: ValueKey('equipment-$_version'),
       kind: _DetailKind.equipment,
       rows: _rows('equipment'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      refused: _noEdit,
+      onChanged: _reload,
+    ),
+    'certifications' => _DetailList(
+      key: ValueKey('certifications-$_version'),
+      kind: _DetailKind.certifications,
+      rows: [
+        for (final row in _rows('certifications'))
+          {
+            ...row,
+            '_warn_days': (_person['certification_warn_days'] as num?) ?? 60,
+          },
+      ],
       personId: widget.personId,
       api: widget.api,
       formats: widget.formats,
@@ -2622,7 +2639,11 @@ class _DetailKind {
     this.intro,
     this.returnable = false,
     this.counted = false,
+    this.tag,
   });
+
+  /// A state beside the title (a certification's Expired / Expires soon).
+  final Widget? Function(Map<String, dynamic> row)? tag;
 
   /// The `{kind}` in `hr/people/{user}/details/{kind}`.
   final String path;
@@ -2747,6 +2768,50 @@ class _DetailKind {
           ? 'still held'
           : 'returned ${_date(row['returned_on'], formats)}',
     ]),
+  );
+
+  /// Jose, 2026-11-20 (server b8a197b15): soonest expiry first.
+  static final certifications = _DetailKind(
+    path: 'certifications',
+    noun: 'certification',
+    empty: 'No certifications recorded.',
+    fields: const [
+      _FieldSpec('name', 'Certification', _FieldType.text, required: true),
+      _FieldSpec('issuer', 'Issued by', _FieldType.text),
+      _FieldSpec('number', 'Number', _FieldType.text),
+      _FieldSpec('issued_on', 'Issued', _FieldType.date),
+      _FieldSpec('expires_on', 'Expires', _FieldType.date),
+      _FieldSpec('note', 'Note', _FieldType.multiline),
+    ],
+    title: (row, _) => row['name']?.toString() ?? '',
+    subtitle: (row, formats) => _join([
+      row['issuer']?.toString(),
+      if ('${row['number'] ?? ''}'.isNotEmpty) '#${row['number']}',
+      if (row['expires_on'] != null)
+        'expires ${_date(row['expires_on'], formats)}',
+    ]),
+    tag: (row) {
+      final expires = DateTime.tryParse('${row['expires_on'] ?? ''}');
+      if (expires == null) return null;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final day = DateTime(expires.year, expires.month, expires.day);
+      if (day.isBefore(today)) {
+        return Tag(
+          'Expired',
+          key: ValueKey('cert-expired-${row['id']}'),
+          bad: true,
+        );
+      }
+      final warn = (row['_warn_days'] as num?)?.toInt() ?? 60;
+      return day.difference(today).inDays <= warn
+          ? Tag(
+              'Expires soon',
+              key: ValueKey('cert-expiring-${row['id']}'),
+              warn: true,
+            )
+          : null;
+    },
   );
 
   static final ptoUsed = _DetailKind(
@@ -2923,7 +2988,14 @@ class _DetailListState extends State<_DetailList> {
         for (final row in widget.rows)
           Card(
             child: ListTile(
-              title: Text(widget.kind.title(row, widget.formats)),
+              title: switch (widget.kind.tag?.call(row)) {
+                final Widget tag => Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [Text(widget.kind.title(row, widget.formats)), tag],
+                ),
+                _ => Text(widget.kind.title(row, widget.formats)),
+              },
               subtitle: Text(widget.kind.subtitle(row, widget.formats)),
               trailing: widget.refused != null
                   ? null

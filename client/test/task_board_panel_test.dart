@@ -202,6 +202,24 @@ void main() {
             'data': {...task, 'updates': <dynamic>[]},
           });
         }
+        if (path == '/tasks/t1/reminders' && request.method == 'GET') {
+          return json({
+            'data': [
+              {
+                'id': 'r1',
+                'remind_at': '2099-01-05T14:30:00Z',
+                'note': 'Call the supplier',
+                'sent_at': null,
+              },
+              {
+                'id': 'r0',
+                'remind_at': '2026-01-05T14:30:00Z',
+                'note': 'Rung already',
+                'sent_at': '2026-01-05T14:30:10Z',
+              },
+            ],
+          });
+        }
         return json({'data': <dynamic>[]});
       }),
     );
@@ -233,8 +251,11 @@ void main() {
       if (e.$1 == 'PATCH') e,
   ];
 
-  /// Past the server's 200 ms, and every frame after.
+  /// Past the server's 200 ms, and every frame after. Twice: a docked
+  /// panel (design 200) saves in the frame that removes it, so its save's
+  /// 200 ms start a frame after the close.
   Future<void> settle(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
   }
@@ -389,5 +410,114 @@ void main() {
       'values': {'c-text': 'Script ready, needs a voice-over'},
     });
     expect(patches(), hasLength(2));
+  });
+
+  // Design 200 (Jose 11-20, Monday side by side).
+  Border? shadeBorder(WidgetTester tester) {
+    final box = tester.widget<DecoratedBox>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('task-shade-t1')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    return (box.decoration as BoxDecoration).border as Border?;
+  }
+
+  testWidgets('design 200: a clicked task turns blue and its panel docks '
+      'beside the live board; ✕ clears both', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(const Key('task-dock')), findsOneWidget);
+    expect(shadeBorder(tester), isNotNull, reason: 'selected: a blue edge');
+    // No scrim: the board stays live beside the panel.
+    expect(find.byKey(const ValueKey('task-t1')).hitTestable(), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    expect(find.byKey(const Key('task-dock')), findsNothing);
+    expect(shadeBorder(tester), isNull);
+  });
+
+  testWidgets('design 200: under 1100 px the panel still opens over the '
+      'board', (tester) async {
+    await pump(tester, width: 1000);
+    expect(find.byKey(const Key('task-dock')), findsNothing);
+    expect(find.byKey(const Key('task-panel-title')), findsOneWidget);
+  });
+
+  testWidgets('design 200: dragging a group folds every group, and they open '
+      'again on release', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+
+    final handle = find.byKey(const ValueKey('group-drag-g1'));
+    final g = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(const Duration(milliseconds: 50));
+    await g.moveBy(const Offset(0, 40));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('task-t1')), findsNothing);
+
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+  });
+
+  testWidgets('a group header counts the tasks it shows: a search that hides '
+      'them all reads 0 (Jose 11-20, CT › Company Info)', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    expect(find.text('1 task'), findsOneWidget);
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('tasks-search')),
+        matching: find.byType(TextField),
+      ),
+      'nothing like this',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1 task'), findsNothing);
+    expect(find.text('0 tasks'), findsOneWidget);
+  });
+
+  testWidgets('Remind me: the pending reminder is listed, a new one posts '
+      'its time, and one is removed (Shoval 11-20)', (tester) async {
+    await pump(tester);
+    expect(find.textContaining('Call the supplier'), findsOneWidget);
+    expect(find.textContaining('Rung already'), findsNothing);
+
+    final remind = find.byKey(const ValueKey('task-remind-me'));
+    await tester.ensureVisible(remind);
+    await tester.tap(remind);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('task-remind-when')),
+        matching: find.byType(TextField),
+      ),
+      '2099-01-06 09:30',
+    );
+    final save = find.byKey(const ValueKey('task-remind-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final posted = log.lastWhere(
+      (e) => e.$1 == 'POST' && e.$2 == '/tasks/t1/reminders',
+    );
+    expect((posted.$3 as Map)['remind_at'], startsWith('2099-01-0'));
+
+    final remove = find.byKey(const ValueKey('task-reminder-remove-r1'));
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    expect(
+      log.any((e) => e.$1 == 'DELETE' && e.$2 == '/tasks/t1/reminders/r1'),
+      isTrue,
+    );
   });
 }

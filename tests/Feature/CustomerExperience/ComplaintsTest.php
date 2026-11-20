@@ -183,4 +183,73 @@ class ComplaintsTest extends TestCase
         $this->signedInAs($this->t['admin'])->getJson('/api/v1/complaints?status=all')->assertOk()
             ->assertJsonPath('data.0.summary', 'Dana says nobody showed for Tuesday.');
     }
+
+    /** Shoval 2026-11-20: a review from a client is "client", from a stranger "not_client" with a Google report ready. */
+    public function test_reviews_are_triaged_client_or_not_and_strangers_carry_the_google_report(): void
+    {
+        $this->inTenant($this->t['org'], fn () => \App\Models\Customer::create(['owning_franchise_id' => $this->t['franchise']->id,
+            'number' => 'C-1', 'name' => 'Dana Whitfield']));
+        $client = $this->review(1);
+        $stranger = $this->review(2, null, ['reviewer_name' => 'Pat Nobody', 'comment' => 'Never again.']);
+        $this->event('review.received', $client);
+        $this->event('review.received', $stranger);
+        $this->intake();
+
+        $rows = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/complaints?status=all')->assertOk()->json('data'))->keyBy('title');
+        $this->assertSame('client', $rows['Dana Whitfield']['client_status']);
+        $this->assertNull($rows['Dana Whitfield']['google_report']);
+        $this->assertSame('not_client', $rows['Pat Nobody']['client_status']);
+        $this->assertStringContainsString('support.google.com/business/workflow', $rows['Pat Nobody']['google_report']['url']);
+        $opened = AutomationEvent::withoutGlobalScopes()->where('event_key', 'complaint.opened')->get()->pluck('payload.after.client_status')->sort()->values()->all();
+        $this->assertSame(['client', 'not_client'], $opened);
+    }
+
+    /** BBB / Attorney General mail opens a Priority complaint due in 24 h; ordinary mail opens nothing. */
+    public function test_bbb_and_attorney_general_mail_open_priority_complaints(): void
+    {
+        $mailbox = $this->inTenant($this->t['org'], fn () => tap(new \App\Models\Mailbox, fn ($m) => $m->forceFill([
+            'organization_id' => $this->t['org']->id, 'address' => 'office@example.test', 'display_name' => 'Office', 'provider' => 'imap',
+            'scope_type' => 'organization', 'scope_id' => $this->t['org']->id])->save()));
+        $this->event('email.received', $mailbox, ['from' => 'complaints@bbb.org', 'from_domain' => 'bbb.org', 'subject' => 'BBB Complaint #123']);
+        $this->event('email.received', $mailbox, ['from' => 'x@ag.ny.gov', 'from_domain' => 'ag.ny.gov', 'subject' => 'Consumer Complaint from the Attorney General']);
+        $this->event('email.received', $mailbox, ['from' => 'bob@gmail.com', 'from_domain' => 'gmail.com', 'subject' => 'Quote please']);
+        $this->intake();
+
+        $rows = Complaint::withoutGlobalScopes()->orderBy('kind')->get();
+        $this->assertSame(['attorney_general', 'bbb'], $rows->pluck('kind')->all());
+        $this->assertTrue($rows->every(fn ($c) => $c->priority && $c->due_at !== null));
+        $this->assertSame('BBB Complaint #123', $rows->firstWhere('kind', 'bbb')->title);
+    }
+
+    /** A lawsuit entered by hand is Priority; the alerts step halfway, due and last call, once each. */
+    public function test_a_hand_entered_lawsuit_is_priority_and_alerts_escalate_once_per_step(): void
+    {
+        $this->signedInAs($this->t['admin'])->postJson('/api/v1/complaints', ['kind' => 'lawsuit', 'title' => 'Served papers',
+            'franchise_id' => $this->t['franchise']->id])->assertCreated()->assertJsonPath('data.priority', true);
+        $c = Complaint::withoutGlobalScopes()->firstOrFail();
+
+        $this->travel(13)->hours();
+        $this->artisan('ezbizi:complaint-due-alerts')->assertSuccessful();
+        $this->artisan('ezbizi:complaint-due-alerts')->assertSuccessful();
+        $this->travel(28)->hours();
+        $this->artisan('ezbizi:complaint-due-alerts')->assertSuccessful();
+
+        $steps = AutomationEvent::withoutGlobalScopes()->where('event_key', 'complaint.due_alert')->get()->pluck('payload.after.step')->all();
+        $this->assertSame([1, 3], $steps, 'halfway once; at 41 h straight to last call');
+        $this->assertSame(3, $c->fresh()->alerted_level);
+    }
+
+    public function test_the_list_carries_every_open_priority_complaint_whatever_status_is_shown(): void
+    {
+        $admin = $this->signedInAs($this->t['admin']);
+        $admin->postJson('/api/v1/complaints', ['kind' => 'bbb', 'title' => 'BBB #1182'])->assertCreated();
+        $admin->postJson('/api/v1/complaints', ['kind' => 'other', 'title' => 'Yelp: rude'])->assertCreated();
+        $done = $admin->postJson('/api/v1/complaints', ['kind' => 'lawsuit', 'title' => 'Settled'])->assertCreated()->json('data.id');
+        $admin->patchJson("/api/v1/complaints/{$done}", ['status' => 'solved'])->assertOk();
+
+        // Design 202's strip: open and priority only, on the Solved list too.
+        $due = $admin->getJson('/api/v1/complaints?status=solved')->assertOk()->json('meta.due');
+        $this->assertSame(['BBB #1182'], array_column($due, 'title'));
+        $this->assertNotNull($due[0]['due_at']);
+    }
 }

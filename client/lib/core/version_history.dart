@@ -13,10 +13,38 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0619', date: '20 Nov 2026', items: [
+      'Reviews: each Google review is stored and counted once, even when two Google accounts can see the same location',
+      'Reviews: EzBizi keeps the review total and rating of each Google listing exactly as Google reports them',
+      'Task Board: flag tasks (address to fix, overbooked) go to the person who booked the job; the field manager only when the booker has no account',
+    ]),
+    VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
+      'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
+      'Customer Experience: Complaints is now Reviews & Complaints, with a Due within 24 h strip, a Client or Not a client badge, + New complaint, and Report on Google for reviews from non-clients',
+      'Reports: new Cancelled jobs tab (cancelled share by reason, source and technician) and Pending jobs tab (every waiting job, oldest first); Settings › Lists sets which statuses count',
+      'HR: new Recruiting tab with applicants, stages, interviews and recruiting spend per position, including cost per hire',
+      'Financials: QuickBooks Online connection and a Markets view with expenses and closing rate per market (available once QuickBooks is connected)',
+      'Reports: Overview, Cancelled and Pending now sit together under one Jobs tab',
+      'Task Board: Remind me in the task panel sets a reminder with a time and a note',
+      'HR: certifications on each person (number, issuer, expiry) feed the expiring certifications alerts',
+      'Websites: the rating badge shows the real review count and average from EzBizi (each review counted once) and keeps itself up to date',
+    ]),
+    VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
+      'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
+      'Task Board: clicking a task highlights it and opens its updates beside the board',
+      'Task Board: drag tasks and groups (groups fold while you drag one); boards and folders reorder instantly',
+      'Task Board: star a board to keep it in Favorites at the top; the open counts are gone from the sidebar',
+      'Complaints: marked client or not-a-client; BBB and Attorney General emails open as Priority complaints with deadline alerts; complaints can be added by hand',
+      'Task Board: a morning digest of your open, due and overdue tasks; a bell when a task goes overdue or has had no update for 7 days (each can be switched off)',
+      'Task Board: tasks with only a Workiz job number now fill client, phone and address too',
+      'Automations: new templates for client complaints, Priority deadlines and BBB/Attorney General email',
+      'Project Management: Job Cost, Production Job and Total Cost columns, plus Sale Date and Schedule Date',
+    ]),
     VersionRelease(version: '0.0.0616', date: '20 Nov 2026', items: [
       'Reports: Profit and Loss reads from EzBizi once its Airtable base is retired; the numbers stay the same',
       'Task Board: moving boards and folders in the sidebar saves instantly',
       'Marketing: a promotion can send its replies to its own tab in Leads',
+      'Task Board: a complaint the AI hears on a call is not added again when a dispatcher already logged it; its summary goes on that task instead',
     ]),
     VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
       'Websites: the dispatcher photo in the website chat loads again',

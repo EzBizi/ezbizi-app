@@ -13,17 +13,23 @@ class StatusPill extends StatelessWidget {
     super.key,
     this.tone = Tone.neutral,
     this.dense = false,
+    this.solid = false,
   });
 
   final String label;
   final Tone tone;
+
+  /// The tone's ink as the fill, for the one state that must shout (an
+  /// overdue priority complaint, design 202).
+  final bool solid;
 
   /// Sized like the small chips beside it on a list row (labelSmall).
   final bool dense;
 
   @override
   Widget build(BuildContext context) {
-    final colours = ToneColours.of(context, tone);
+    final tones = ToneColours.of(context, tone);
+    final colours = solid ? ToneColours(tones.ink, tones.fill) : tones;
 
     return Container(
       padding: dense

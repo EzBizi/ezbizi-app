@@ -19,6 +19,7 @@ use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\SocialProviderRegistry;
 use App\Support\Social\ThumbtackAccount;
@@ -784,6 +785,14 @@ class SocialConnectionsController extends Controller
         $problems = SocialProvider::tryFrom($row->provider) === SocialProvider::Thumbtack
             ? ThumbtackAccount::tidyUp($row, revoke: $revoke)
             : [];
+
+        // QuickBooks forgets the grant (best effort, on the last row of the sign-in).
+        // The expenses already read stay in Financials, as Airtable's tables do.
+        if ($revoke && $row->provider === SocialProvider::QuickBooks->value
+            && is_string($token = $row->credentials['refresh_token'] ?? null)
+            && ! app(QuickBooksOAuth::class)->revoke($token)) {
+            $problems[] = 'QuickBooks still lists EzBizi as connected. Remove it in QuickBooks > Settings > Apps.';
+        }
 
         // A Telegram bot stops calling EzBizi (best effort). Its staff links
         // stay: reconnecting the same bot brings them straight back.

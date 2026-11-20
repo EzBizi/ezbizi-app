@@ -12,6 +12,7 @@ import 'financials/financial_adjustments.dart';
 import 'financials/financial_bills.dart';
 import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
+import 'financials/financial_markets.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_results.dart';
 import 'financials/financial_sources.dart';
@@ -66,6 +67,13 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Bills',
           Icons.receipt_long_outlined,
           FinancialBillsTab(api: widget.api, me: widget.session.me!),
+        ),
+      // QuickBooks expenses per market, closing rate, cost per closed job (Shoval, 11-20).
+      if (_may('markets'))
+        (
+          'Markets',
+          Icons.store_mall_directory_outlined,
+          FinancialMarketsTab(api: widget.api, me: widget.session.me!),
         ),
       // A child module, drawn as a tab here (design 128).
       if (widget.session.me?.reachableModules.any((m) => m.key == 'invoices') ??

@@ -367,6 +367,30 @@ class ProjectBoardTest extends TestCase
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI CREW'])->assertOk();
     }
 
+    /** Desk, 2026-11-20, Monday's PM boards: Job Cost, Production job, Total Cost = cost + 10% of the amount. */
+    public function test_job_cost_and_a_production_job_make_the_total_cost(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->whereKey($id)->update(['amount_minor' => 250000]);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $url = "/api/v1/project-board/jobs/{$id}/cost";
+
+        $api->patchJson($url, ['job_cost_minor' => 80000, 'production' => false])->assertOk()->assertJsonPath('data.total_cost', 80000);
+        $total = $api->patchJson($url, ['job_cost_minor' => 80000, 'production' => true])->assertOk()->json('data.total_cost');
+        $this->assertSame(80000 + intdiv((int) $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.total') + 5, 10), $total);
+        $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0');
+        $this->assertSame([80000, true, $total], [$row['job_cost'], $row['production'], $row['total_cost']]);
+        $this->assertNotSame(80000, $total, 'production adds to the cost');
+
+        $clerk = $this->userWithRole($alpha, 'Clerk', ['project_board.view', 'jobs.view', 'jobs.edit']);
+        $this->signedInAs($clerk)->patchJson($url, ['job_cost_minor' => 1, 'production' => false])->assertForbidden();
+    }
+
     public function test_a_jobs_parts_need_to_order_or_in_stock(): void
     {
         // Jose, 2026-11-10: "Part Status @ Need to Order or @ In Stock".

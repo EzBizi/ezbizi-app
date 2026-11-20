@@ -2,11 +2,17 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\Automation;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
+use App\Models\WorkizJob;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tasks\TaskRecordFill;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,7 +29,7 @@ class TaskRecordFillTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $this->inTenant($t['org'], function () use ($t) {
-            app(\App\Support\Settings\SettingsResolver::class)->set('leads.line_markets', $t['org'], ['MA' => 'Massachusetts']);
+            app(SettingsResolver::class)->set('leads.line_markets', $t['org'], ['MA' => 'Massachusetts']);
             $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
             $col = fn ($name, $labels = null) => TaskColumn::query()->create(['board_id' => $board->id, 'name' => $name, 'type' => $labels ? 'status' : 'text', 'position' => 1,
                 'settings' => $labels ? ['options' => array_map(fn ($l) => ['id' => strtolower(str_replace(' ', '_', $l)), 'label' => $l, 'colour' => '#000000'], $labels)] : null]);
@@ -73,6 +79,25 @@ class TaskRecordFillTest extends TestCase
         });
     }
 
+    /** Desk 11-20: CT Debby Bloom had only a Workiz Job ID; that Workiz job's EzBizi job fills the rest. */
+    public function test_a_task_with_only_a_workiz_id_finds_its_job(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $wz = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Workiz Job ID', 'type' => 'text', 'position' => 1]);
+            $name = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 2]);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Debby Bloom', 'phone' => '(203) 555-0100']);
+            $job = Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            WorkizJob::create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'R1', 'serial_id' => 200024600, 'status' => 'x', 'payload' => [], 'synced_at' => now(), 'job_id' => $job->id]);
+            $task = app(TaskWriter::class)->create($board, ['title' => 'Debby Bloom', 'values' => [$wz->id => '200024600']], $t['admin']);
+
+            app(TaskRecordFill::class)->fill($task->load('board'), null, $t['admin']);
+
+            $this->assertSame('Debby Bloom', $task->values()->where('column_id', $name->id)->value('value_text'));
+        });
+    }
+
     /** Desk, 11-19: the backfill's writes raised 3,333 events that held up missed calls. It raises none; the value still lands. */
     public function test_the_backfill_raises_no_automation_events(): void
     {
@@ -81,17 +106,17 @@ class TaskRecordFillTest extends TestCase
             $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
             TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Reason', 'type' => 'status', 'position' => 1,
                 'settings' => ['options' => [['id' => 'o', 'label' => 'Other', 'colour' => '#000000']]]]);
-            $rule = \App\Models\Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
 
             return [app(TaskWriter::class)->create($board, ['title' => 'Hello'], $t['admin'], $rule->id)->id, $rule->id];
         });
-        $before = $this->inTenant($t['org'], fn () => \App\Models\AutomationEvent::query()->count());
+        $before = $this->inTenant($t['org'], fn () => AutomationEvent::query()->count());
 
         $this->artisan('ezbizi:tasks-fill-from-record', ['--org' => $t['org']->id, '--as' => $t['admin']->id, '--rule' => [$ruleId]])->assertSuccessful();
 
         $this->inTenant($t['org'], function () use ($before, $taskId) {
-            $this->assertSame($before, \App\Models\AutomationEvent::query()->count(), 'no events');
-            $this->assertTrue(\App\Models\Task::find($taskId)->values()->exists(), 'the value was written');
+            $this->assertSame($before, AutomationEvent::query()->count(), 'no events');
+            $this->assertTrue(Task::find($taskId)->values()->exists(), 'the value was written');
         });
     }
 
@@ -107,8 +132,8 @@ class TaskRecordFillTest extends TestCase
             $task = app(TaskWriter::class)->create($board, ['title' => '(732) 555-0199'], $t['admin']);
 
             $set = app(TaskRecordFill::class)->fill($task->load('board'), null, $t['admin']);
-            $this->assertSame([$name->id => 'Sam Caller'], array_intersect_key($set, [$name->id => 1]), json_encode([$set, \App\Models\Job::query()->withoutGlobalScopes()->count(), $task->title]));
-            $this->assertSame('Sam Caller', \App\Models\TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $name->id)->value('value_text'));
+            $this->assertSame([$name->id => 'Sam Caller'], array_intersect_key($set, [$name->id => 1]), json_encode([$set, Job::query()->withoutGlobalScopes()->count(), $task->title]));
+            $this->assertSame('Sam Caller', TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $name->id)->value('value_text'));
         });
     }
 
