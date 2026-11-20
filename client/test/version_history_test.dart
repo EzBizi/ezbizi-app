@@ -74,6 +74,8 @@ void main() {
     final numbers = [for (final v in versions) int.parse(v.split('.').last)]
       ..sort();
     const neverBuilt = <int>{
+      609, // stopped before its precheck finished and folded into 0.0.0610
+      // (one release running, one waiting). Its note shipped in 0.0.0610.
       492, // pinned at 44a9eada and stopped in its backend gate: pto.allow_negative
       // had no Work Hours section. Its notes shipped in 0.0.0493.
       473, // pinned at ebd660b8 and stopped in its backend gate: InvoicesTest ordered

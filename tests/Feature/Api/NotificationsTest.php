@@ -83,7 +83,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 
@@ -102,7 +105,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 

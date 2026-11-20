@@ -89,12 +89,12 @@ void main() {
     expect(server.last.containsKey('answered'), isFalse);
     expect(_names(), hasLength(4));
 
-    await tester.tap(find.text('1–2 stars'));
+    await tester.tap(find.text('1–3 stars'));
     await tester.pumpAndSettle();
     expect(server.last['rating'], 'negative');
-    // The server's "negative" is 1–3; the chip keeps the 1s and 2s.
+    // The chip is the server's "negative": 1 to 3 stars (2026-11-19).
     expect(_names(), ['Dana Whitfield', 'Lee Park']);
-    await tester.tap(find.text('1–2 stars'));
+    await tester.tap(find.text('1–3 stars'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('This week'));
@@ -329,7 +329,7 @@ void main() {
     await server.pump(tester, size: const Size(390, 844));
 
     expect(find.byKey(const ValueKey('reviews-tile-average')), findsNothing);
-    expect(find.text('1–2 stars'), findsOneWidget);
+    expect(find.text('1–3 stars'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('review-panel')), findsOneWidget);

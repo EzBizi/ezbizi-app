@@ -25,7 +25,7 @@ import 'customer_experience/review_stats_band.dart';
 /// ── UI queue 145 (Jose, 2026-10-26: "Looks good", 1 and 4) ─────
 ///
 /// An inbox: a summary strip (average this month against last, new this
-/// month, unanswered, 1–2 stars still to answer; each tile sets its filter),
+/// month, unanswered, 1–3 stars still to answer; each tile sets its filter),
 /// search with quick chips and a More filters panel, the reviews as a list on
 /// the left and the open one on the right with its reply box. Table and Board
 /// (UI queue 101) stay behind the view toggle. On a phone the list is the
@@ -90,7 +90,7 @@ class _Summary {
   final int counted;
   final int total;
 
-  /// Unanswered 1- and 2-star reviews, from the server's own totals.
+  /// Unanswered 1- to 3-star reviews, from the server's own totals.
   final int? low;
 
   /// The server caps a page at 200, so more than that is a sample.
@@ -125,8 +125,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// Opens on unanswered — see the class note.
   bool _onlyUnanswered = true;
 
-  /// The "1–2 stars" chip. The server's rating filter has no "2 or fewer", so
-  /// this asks for 1–3 and keeps the 1s and 2s.
+  /// The "1–3 stars" chip: the server's `rating=negative`, 3 stars or fewer
+  /// (Adeline, approved by Jose 2026-11-19: "1 to 3 stars not 1 to 2").
   bool _low = false;
   String _rating = 'any';
   int? _days;
@@ -236,7 +236,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'rating': 'negative'
       else if (_rating != 'any')
         'rating': _rating,
-      if (_low) 'per_page': '200',
       if (from != null) 'from': formatCalendarDay(from),
       if (_sort != 'newest') 'sort': _sort,
       'location': ?_location,
@@ -295,12 +294,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'from': formatCalendarDay(lastMonth),
         'per_page': '200',
       }),
-      for (final stars in const ['1', '2'])
-        widget.api.get('/reviews', {
-          'answered': 'no',
-          'rating': stars,
-          'per_page': '1',
-        }),
+      // 1–3 stars (Adeline, approved by Jose 2026-11-19).
+      widget.api.get('/reviews', {
+        'answered': 'no',
+        'rating': 'negative',
+        'per_page': '1',
+      }),
     ]);
     if (!mounted) return;
 
@@ -329,8 +328,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         ? ((r.body['meta'] as Map?)?['total'] as num?)?.toInt() ??
               (r.data as List? ?? const []).length
         : null;
-    final one = totalOf(responses[1]);
-    final two = totalOf(responses[2]);
+    final low = totalOf(responses[1]);
     final meta = window.body['meta'] as Map<String, dynamic>? ?? const {};
     final counted = rows.length;
 
@@ -341,19 +339,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         newThis: newThis,
         counted: counted,
         total: (meta['total'] as num?)?.toInt() ?? counted,
-        low: one == null || two == null ? null : one + two,
+        low: low,
       ),
     );
   }
 
-  /// The loaded rows the search box and the 1–2 stars chip allow.
+  /// The loaded rows the search box allows.
   ///
   /// The server reads `q` (c3cf49fdc); narrowing the loaded page as well keeps
   /// the list right while a debounced request is still out.
   List<Map<String, dynamic>> get _reviews {
     final q = _q.toLowerCase();
     return _loaded.where((r) {
-      if (_low && ((r['rating'] as num?)?.toInt() ?? 9) > 2) return false;
       if (q.isEmpty) return true;
       final text = [
         r['reviewer_name'],
@@ -892,11 +889,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'low',
-              label: '1–2 stars to answer',
+              label: '1–3 stars to answer',
               value: s?.low == null ? '—' : '${s!.low}',
-              sub: 'unanswered, 1 or 2 stars',
+              sub: 'unanswered, 1 to 3 stars',
               info:
-                  'Unanswered 1-star and 2-star reviews, of any age, at the '
+                  'Unanswered 1- to 3-star reviews, of any age, at the '
                   'places you can see. Counted by the server.',
               tone: (s?.low ?? 0) > 0 ? Tone.bad : null,
               onTap: () => _refilter(() {
@@ -1030,7 +1027,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       ),
       FilterChip(
         key: const ValueKey('tour-customer_experience-rating'),
-        label: const Text('1–2 stars'),
+        label: const Text('1–3 stars'),
         selected: _low,
         onSelected: (v) => _refilter(() {
           _low = v;
@@ -1808,8 +1805,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Text(
-        _low
-            ? '$shown ${shown == 1 ? 'review' : 'reviews'} with 1 or 2 stars'
+        _q.isNotEmpty
+            ? '$shown ${shown == 1 ? 'review' : 'reviews'} on this page match'
             : '$_total ${_total == 1 ? 'review' : 'reviews'}',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,

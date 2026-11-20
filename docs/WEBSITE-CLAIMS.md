@@ -129,6 +129,10 @@ touches apps, monitoring, social, Google or mail.
 | Call labelling: "Where call labelling is switched on, the text of a transcribed call … never the recording … sent to Anthropic (Claude) and to xAI (Grok)" · "one word" · "EzBizi keeps only that word, for twelve months" · sub-processor "Anthropic and xAI" | `/privacy/` | `app/Support/Reports/Tagging/` — every `CallTagger` implementation, and what its `tag()` sends (today: `CallLabels::instruction` + the transcript text, nothing else). **A third tagger falsifies "these are all of them" by existing.** `CallReportLabel::retention()` (`window(12)`); `create_call_report_labels` stores `label` only — **a column holding the model's reasoning or the transcript breaks "only that word"**. Switch: `config/experimental_reports.php` `tagging.enabled` (`REPORT_CALL_TAGGING`, default `false`). Written 2026-10-06 BEFORE the switch, on Reports' `0094`; the sentence is conditional so it is true either way. |
 | "When xAI is not available … sent instead to Anthropic (Claude), for the same purpose" · "Anthropic receives the same information, or less: it is never sent a manual to read" · Report files on WhatsApp: message + branch names to xAI "only to read which report, branch and dates"; file "passes through Meta"; "The report itself is not sent to xAI" | `/privacy/` Calls and messages + Who we rely on | `GrokCli::provider()` (`eb2e455d2`, live 0.0.0498): `AI_PROVIDER` auto = Grok CLI if configured, else `ClaudeProvider`. Every xAI sentence on the page rides on this one switch. `ClaudeProvider::askMany` sends images only (no PDF) — if it starts sending files, drop "it is never sent a manual". `ReportFileRequest::read()` (`f903e323d`) and `SendRequestedReport`. |
 
+| Backups: "Up to 14 days in daily backups held on our own infrastructure" · "Up to 45 days in off-site backup copies" · "One backup from the first of each month is kept for about five weeks" | `/delete-account/` (the only page with backup NUMBERS; `/privacy/` gives none) | `deploy/backup.sh` `KEEP_LOCAL_DAYS`, `KEEP_REMOTE_DAYS`, `KEEP_REMOTE_FILES_DAYS`, `KEEP_MONTHLY_DAYS`, and the INSTALLED copy `/usr/local/bin/ezbizi-backup.sh` on the app box. 2026-11-19: 7 / 10 / 3 / 32. The first two are upper bounds kept loose on purpose (the values moved 45→10 on 11-13 and 14→7 on 11-19, and retention is skipped on a night with errors). **False the day local > 14, off-site > 45 or monthly > ~33.** Also list the files: `/var/backups/ezbizi` (app box) and `/home/ubuntu/ezbizi-backups` (websites box). |
+| "Where an organization answers a live chat on its website, the visitor sees the first name and a small copy of the profile photo of the person answering, and of up to three people who answered recently" | `/privacy/` What we collect → Your account | `App\Support\Web\ChatPeople::person()` (first name, initials, signed avatar link) and the header's up-to-three recent repliers; `EnquiriesController::avatar` (96 px). A full name, a title or more than three faces breaks it. |
+| Staff records: "any bonus or deduction a manager adds to a week's pay and the reason given" | `/privacy/` | `PayrollWeekLine::personalDataHeld()` (`bonus, deductions, note`). A new payroll table or column holding another kind of person data needs a clause. |
+
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
 it belongs here with the file that decides it.
@@ -3812,3 +3816,43 @@ LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple 
 11-17). Publishers: **10 classes** (Bluesky, Facebook, Google Business Profile, Instagram, LinkedIn, Pinterest,
 Threads, TikTok, X, YouTube); yesterday's "9" was a miscount, none added. The desk did not flag the Google budget
 write; it answers a diff since yesterday, and this was older than the diff. No other sentence moves.
+
+## 2026-11-19: 0.0.0599-0.0.0611 live, and `/delete-account/` said monthly backups are kept beyond 45 days
+
+Production web is 0.0.0611 at `e2b005063` (release `20261119231839`); `/download/windows.json` reads 0.0.0611 at
+`e2b005063`. 0603, 0604, 0608, 0609 never deployed (folded); 0612 queued. Before the edits no WP page was modified
+since the 11-18 edit (page 7) and all 10 live pages contained their WP post_content and `_ezb_head` (method of
+11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+144 commits in `1d65ae8c0..e2b005063`, read against the live pages. Three edits, pre-edit copies in
+`~/ezb-wp-bak-20261119/` on the websites box, each saved copy read back equal to the written one, live on bare and www:
+- **WP page 5 `/delete-account/`.** `96dd2ca89` (Jose 11-19, installed on the app box 15:58 UTC): backups are 7
+  nights local, 10 days off-site (3 for uploaded files), and ONE month-first copy deleted after 32 days. The page
+  said "Monthly archive backups are retained beyond that period [45 days]": false from today. Now "One backup from
+  the first of each month is kept for about five weeks". "Up to 14 days" and "Up to 45 days" are still true upper
+  bounds and were left. Measured: app box holds 11-01 and 11-12..11-19; websites box 11-01 and 11-09..11-19.
+  **The 11-13 note above ("the erasure page is the place for a number", Unchanged) never opened this page**; 45→10
+  did not falsify it, but nobody had looked. New row in *Load-bearing sentences*.
+- **WP page 8 `/privacy/`, staff in the website chat.** Since `ce84b4c56` (10-01) a chat visitor sees the answering
+  person's first name and photo, and up to three recent repliers; `7c4f0099d` (0607) made the photo link
+  non-expiring. The page said nothing about either. Added one sentence under Your account. New row.
+- **WP page 8 `/privacy/`, payroll.** `ef64b30d5` (0607) adds `payroll_week_lines` (bonus, deductions, note per
+  person per week; 0 rows on prod). Staff records now also name "any bonus or deduction a manager adds to a week's
+  pay and the reason given". New row.
+- Both pages: Last updated / `dateModified` → 2026-11-19.
+
+No sentence moves for: minimum password 12→8 (no page gives a length); `services.twilio.platform_previous_*`
+(same processor, unset on prod); Monday `archive_group` (covered by "updates at your instruction"; no page names
+Monday); Reports Excel/CSV download (built in the client); branch address on contracts; Task Board, Monday sync,
+notifications, reviews filters. No `*OAuth.php` change, no new outbound host, `->mutate(`/`ads-manager/`/`meta-ads/`
+lines unchanged apart from Monday, no manifest/Info.plist/runtime-permission change, `app/Support/Social` unchanged.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edits ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-19, ~00:05 UTC 11-20), recorded as given** (`docs/agents/done/website-daily-2026-11-19-desk-reply.md`):
+0599-0602, 0605-0607, 0610, 0611 live, nothing rolled back. No new processor, scope, host or Google/Meta write.
+`training_attempts` 58, `training_progress` 82, `training_assignments` 12. `phone_ring_groups` 6; numbers resolving
+to a group 6 (total not given). Jobs with `scheduled_for` and no `workiz_jobs` row: **784** (74 on 11-13; orgs not
+split). LSA leads 55,184, all with a `remote_id`. No new publisher class. The scheduling row stays inverted and
+unwritten: ask for the count per organization before a homepage sentence.

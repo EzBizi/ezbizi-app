@@ -441,6 +441,12 @@ return [
         // read into a subaccount, delete a key in one, or move a number out.
         'platform_auth_token' => env('TWILIO_PLATFORM_AUTH_TOKEN'),
 
+        // The OLD platform parent, only while numbers move to the new Twilio
+        // account (2026-11-19): webhooks for numbers it still holds keep
+        // validating. Unset both when the old account closes.
+        'platform_previous_account_sid' => env('TWILIO_PLATFORM_PREVIOUS_ACCOUNT_SID'),
+        'platform_previous_auth_token' => env('TWILIO_PLATFORM_PREVIOUS_AUTH_TOKEN'),
+
         // The number EzBizi ITSELF texts from: verification codes to our own
         // users, on the platform account rather than any tenant's subaccount.
         //

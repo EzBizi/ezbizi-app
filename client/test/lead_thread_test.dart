@@ -10,6 +10,7 @@ import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -157,7 +158,7 @@ void main() {
 
   /// Design 171: a phone's header is one bar - name, status, Book, ... - and
   /// the messages get the rest.
-  testWidgets('on a phone the thread header is one bar', (tester) async {
+  testWidgets('on a phone the thread header is two short lines', (tester) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
@@ -167,34 +168,40 @@ void main() {
 
     expect(
       tester.getSize(find.byKey(const ValueKey('thread-header'))).height,
-      lessThan(64),
+      lessThan(110),
     );
     expect(find.byKey(const ValueKey('thread-details-toggle')), findsOneWidget);
     expect(find.byKey(const ValueKey('copy-name')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  /// Phone audit 2026-11-04: status and a worded Book left the name ~60 px.
-  testWidgets('on a phone the name keeps room beside status and Book', (
+  /// Jose, 2026-11-19: "+1 (267) 55..." cut by status, Book and ... on one
+  /// line, and no copy. The number has its own line, whole, with a copy
+  /// button; the controls sit under it.
+  testWidgets('on a phone the whole number shows, copies, and the controls sit under it', (
     tester,
   ) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
-      size: const Size(390, 844),
+      bookable: true,
+      size: const Size(375, 812),
     );
 
-    final avatar = tester.getRect(find.byKey(const ValueKey('thread-avatar')));
-    final toggle = tester.getRect(
-      find.byKey(const ValueKey('thread-details-toggle')),
-    );
-    final book = find.byKey(const ValueKey('book-open'));
-    final end = book.evaluate().isEmpty
-        ? toggle.left
-        : tester.getRect(book).left;
-    // What is left between the avatar and the controls, less status (118).
-    expect(end - avatar.right - 118, greaterThanOrEqualTo(100));
+    final title = find.byKey(const ValueKey('phone-bar-title'));
+    final words = tester.widget<Text>(title).data!;
+    expect(tester.renderObject<RenderParagraph>(find.descendant(of: title, matching: find.byType(RichText))).didExceedMaxLines, isFalse);
+    expect(tester.widget<Text>(title).overflow, isNot(TextOverflow.ellipsis));
+    expect(find.byKey(const ValueKey('phone-bar-copy')), findsOneWidget);
+    expect(words, isNotEmpty);
+
+    // Status, Book and ... are under the name, not beside it.
+    final nameBottom = tester.getRect(title).bottom;
+    for (final key in ['book-open', 'thread-details-toggle']) {
+      expect(tester.getRect(find.byKey(ValueKey(key))).top, greaterThanOrEqualTo(nameBottom - 1), reason: key);
+    }
+    expect(tester.takeException(), isNull);
   });
 
   /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.

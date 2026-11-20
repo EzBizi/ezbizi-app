@@ -4118,8 +4118,8 @@ class ActionRunner
                 app(TaskWriter::class)->comment($made, $actor, $title);
             }
             // The board's own Area/Reason/Address/Client/Phone from the lead's job (Jose, 11-19).
-            if (! empty($action['fill_from_record']) && $subject instanceof Lead) {
-                app(\App\Support\Tasks\TaskRecordFill::class)->fill($made, $subject, $actor);
+            if (! empty($action['fill_from_record'])) { // no lead (a missed call): the number in the title finds the job
+                app(\App\Support\Tasks\TaskRecordFill::class)->fill($made, $subject instanceof Lead ? $subject : null, $actor);
             }
 
             return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');

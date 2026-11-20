@@ -48,7 +48,13 @@ final class TaskRecordFill
         // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
         if ($job === null) {
             $phoneCol = $board->columns()->where('name', 'Phone number')->first();
-            $ten = substr((string) preg_replace('/\D+/', '', (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''))), -10);
+            $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));
+            // A missed-call task carries the number only in its title ("NJ - PPC +17325550199").
+            // In any format: "+17325550199", "(346) 877-6377", "-917-841-8827." (Outgoing Calls, 11-20).
+            if ($raw === '' && preg_match('/(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}/', (string) $task->title, $m) === 1) {
+                $raw = $m[0];
+            }
+            $ten = substr((string) preg_replace('/\D+/', '', $raw), -10);
             if (strlen($ten) === 10) {
                 $at = $task->created_at ?? now();
                 $job = Job::query()->withoutGlobalScopes()
@@ -76,7 +82,8 @@ final class TaskRecordFill
             'Last Customer Contact' => $lead?->last_contact_at?->toDateString(),
             'Booked by' => $job?->created_by_label,
             // "Date": the job's booked visit (desk for Jose, 11-19); empty without a job.
-            'Date' => $job?->scheduled_for?->toDateString(),
+            // Only on a Customer Relations task: elsewhere "Date" means something else (All Calls: the call's day; 11-19 undo).
+            'Date' => str_contains(mb_strtolower((string) $task->group?->name), 'customer relations') ? $job?->scheduled_for?->toDateString() : null,
             'Technician' => $job?->performed_by_user_id,
             'Notes' => $lead?->summary,
             'Workiz Job ID' => $job ? (string) (\App\Models\WorkizJob::query()->where('job_id', $job->id)->value('serial_id') ?? '') : null,

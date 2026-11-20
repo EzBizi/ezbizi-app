@@ -13,6 +13,36 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0615', date: '20 Nov 2026', items: [
+      'Websites: the dispatcher photo in the website chat loads again',
+      'Backups: the daily backup check runs after the nightly backup has finished',
+    ]),
+    VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
+      'Task Board: drag a group header onto another group to reorder the board; Monday follows',
+      'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
+    ]),
+    VersionRelease(version: '0.0.0613', date: '20 Nov 2026', items: [
+      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
+      'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
+    ]),
+    VersionRelease(version: '0.0.0612', date: '19 Nov 2026', items: [
+      'Reviews: the walkthrough says 1-3 stars, matching the filter',
+      'Task Board: a missed-call task fills the caller details from the number even when there is no lead yet; a job date is only filled on Customer Relations tasks',
+      'Background jobs that run every half hour or nightly (like the Monday check) now always run on time instead of only when the clock lines up',
+    ]),
+    VersionRelease(version: '0.0.0611', date: '19 Nov 2026', items: [
+      'Task Board: a big Monday board syncs a bit each run and picks up where it stopped, so one busy board never holds up the rest',
+    ]),
+    VersionRelease(version: '0.0.0610', date: '19 Nov 2026', items: [
+      'Task Board: clicking a linked job or customer on a task opens it, and so does Linked to in the side panel',
+      'Reviews: the Unanswered count matches your filters; the low-rating filter is now 1-3 stars',
+      'Task Board: missed-call tasks fill the caller client, phone, address and job numbers from the number in the title',
+      'Leads on a phone: the number or name shows in full on its own line with a copy button; Status, Book and the menu sit underneath',
+    ]),
+    VersionRelease(version: '0.0.0608', date: '19 Nov 2026', items: [
+      'Phone: calls and texts keep working while numbers move to a new Twilio account (both accounts accepted)',
+      'Task Board: the half-hourly Monday check always gets its turn, even when a long sync is running',
+    ]),
     VersionRelease(version: '0.0.0607', date: '19 Nov 2026', items: [
       'Passwords now need at least 8 characters (was 12)',
       'Task Board: select several attachments on an update and download them together',
@@ -27,6 +57,7 @@ class VersionHistory {
       'Project Management: a part can be marked paid by the technician, shown as a tech expense until reimbursed',
       'Task Board: the nightly Monday check now compares every cell value, not just groups, and fixes differences',
       'Task Board: a new task that Monday asks to retry still goes to Monday ahead of any large update',
+      'Work Hours: weekly payroll sheet per branch with bonus, deductions, tech expenses and approvals (screen coming)',
     ]),
     VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
       'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
