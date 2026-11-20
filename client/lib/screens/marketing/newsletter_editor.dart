@@ -4483,7 +4483,15 @@ class EditableCopyPanel extends StatelessWidget {
       children: [
         Text(title, style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: Studio.grid),
-        SizedBox(height: 420, child: MessageHtmlView(html: html, ownHtml: true)),
+        Container(
+          height: 420,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: MessageHtmlView(html: html, ownHtml: true),
+        ),
       ],
     );
     final original = pane('Original (Custom HTML)', '${preview['original_html'] ?? ''}',
