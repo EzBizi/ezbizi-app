@@ -143,6 +143,14 @@ final class ListRegistry
                     .'hours of it being raised, and when it was closed within the solve hours.',
                 editPermission: 'reports.settings',
             ),
+            // Reports › Accounting's rules (Shoval, 2026-11-18: "Accounting issues weekly report").
+            new ListDefinition(
+                key: 'reports.accounting_rules', label: 'Accounting report rules', module: 'reports',
+                columns: [['key' => 'rule', 'label' => 'Rule'], ['key' => 'value', 'label' => 'Value']],
+                defaults: [['key' => 'invoice_days', 'value' => ['rule' => 'invoice_days', 'value' => 30]]],
+                help: 'invoice_days: Reports › Accounting lists an invoice as overdue when it still owes money this many days after it was made.',
+                editPermission: 'reports.settings',
+            ),
             new ListDefinition(
                 key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',
                 columns: [['key' => 'role', 'label' => 'Role']],

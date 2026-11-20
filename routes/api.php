@@ -1774,6 +1774,8 @@ Route::prefix('v1')
         Route::get('reports/complaints', [\App\Http\Controllers\Api\ComplaintsReportController::class, 'show'])->middleware('permission:reports.complaints.view');
         // Per dispatcher: leads, messages answered, minutes to the first reply (Shoval, 2026-11-18).
         Route::get('reports/dispatch', [\App\Http\Controllers\Api\DispatchReportController::class, 'show'])->middleware('permission:reports.dispatch.view');
+        // The money that does not add up, one row per problem (Shoval, 2026-11-18).
+        Route::get('reports/accounting', [\App\Http\Controllers\Api\AccountingReportController::class, 'show'])->middleware('permission:reports.accounting.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
