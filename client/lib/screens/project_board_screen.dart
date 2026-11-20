@@ -725,6 +725,22 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                 : Tone.bad,
           ),
         );
+      case 'job_cost':
+        // Job Cost and Production job (desk, 2026-11-20), edited together.
+        final text = value is int
+            ? formatMoney(value, currency: '${row['currency'] ?? 'USD'}')
+            : (_canEditJobs ? 'Add cost…' : '—');
+        if (!_canEditJobs) return Text(text);
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: ValueKey('project-board-cost:${row['id']}'),
+            onPressed: () => _editCost(row),
+            child: Text(text),
+          ),
+        );
+      case 'production':
+        return Text(value == true ? 'Yes' : '—');
       case 'payment_date':
         final at = value is String
             ? DateTime.tryParse(value.replaceFirst(' ', 'T'))
@@ -881,6 +897,77 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   /// The job's repair team, here and in Workiz: a pick replaces the old
   /// one, null unassigns (Jose, 2026-11-10).
+  /// Job Cost and Production job: a production job adds 10% of the job's
+  /// amount to its Total Cost, as on the Monday boards.
+  Future<void> _editCost(Map<String, dynamic> row) async {
+    final cost = TextEditingController(
+      text: row['job_cost'] is int
+          ? ((row['job_cost'] as int) / 100).toStringAsFixed(2)
+          : '',
+    );
+    var production = row['production'] == true;
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (context, set) => SidePanel(
+          title: 'Job cost',
+          subtitle: '${row['customer'] ?? ''}',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('project-board-cost-save'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const Key('project-board-cost-field'),
+                controller: cost,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Job cost',
+                  prefixText: r'$',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              CheckboxListTile(
+                key: const Key('project-board-cost-production'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Production job (+10% of the amount)'),
+                value: production,
+                onChanged: (v) => set(() => production = v ?? false),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final amount = double.tryParse(cost.text.trim().replaceAll(r'$', ''));
+    cost.dispose();
+    if (saved != true || !mounted) return;
+    final r = await widget.api.patch('/project-board/jobs/${row['id']}/cost', {
+      'job_cost_minor': amount == null ? null : (amount * 100).round(),
+      'production': production,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+    }
+    if (r.ok) _load(quiet: true);
+  }
+
   Future<void> _setRepairTeam(Map<String, dynamic> row, String? team) async {
     final r = await widget.api.patch(
       '/project-board/jobs/${row['id']}/repair-team',
@@ -2515,7 +2602,7 @@ List<Map<String, dynamic>> _maps(Object? list) => [
     (m as Map).cast<String, dynamic>(),
 ];
 
-const _moneyKeys = {'paid', 'pending', 'total'};
+const _moneyKeys = {'paid', 'pending', 'total', 'job_cost', 'total_cost', 'production'};
 
 /// Jose's six sub-tabs (2026-11-06): the server's key, the label, the icon.
 const _tabs = [

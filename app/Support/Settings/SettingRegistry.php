@@ -1043,6 +1043,12 @@ class SettingRegistry
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
                     ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
+                    // Monday's Ohio/Illinois PM boards (desk, 2026-11-20).
+                    ['key' => 'job_cost', 'label' => 'Job Cost', 'visible' => true, 'as_label' => false],
+                    ['key' => 'production', 'label' => 'Production Job', 'visible' => true, 'as_label' => false],
+                    ['key' => 'total_cost', 'label' => 'Total Cost', 'visible' => true, 'as_label' => false],
+                    ['key' => 'created', 'label' => 'Sale Date', 'visible' => true, 'as_label' => false],
+                    ['key' => 'scheduled', 'label' => 'Schedule Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
                     ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],
