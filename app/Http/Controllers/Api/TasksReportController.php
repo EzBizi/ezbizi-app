@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\DB;
  * Task performance (Shoval's list, asked by Task Board 2026-11-20): one row per
  * owner (task_assignees), top-level tasks only, on the boards the viewer can
  * see (TaskBoards::visibleTo, which follows the company and branch in view).
+ * A board that is archived is left out (Task Board, 11-20: "All Calls", an
+ * archived Monday mirror, holds 52,684 never-completed rows).
  * Open: not completed. Done: completed in the dates. Overdue: open and due
  * before today. Average days to done: created to completed, over the dates'
  * done tasks. The dates default to this week, on the organization's clock.
@@ -40,7 +42,7 @@ class TasksReportController extends Controller
         $rows = DB::table('tasks as t')->leftJoin('task_assignees as a', 'a.task_id', '=', 't.id')
             ->where('t.organization_id', app(TenantContext::class)->idOrFail())
             ->whereNull('t.deleted_at')->whereNull('t.parent_task_id')
-            ->whereIn('t.board_id', $boards->visibleTo($request->user())->select('id')->toBase())
+            ->whereIn('t.board_id', $boards->visibleTo($request->user())->whereNull('archived_at')->select('id')->toBase())
             ->groupBy('a.user_id')
             ->selectRaw('a.user_id, sum(t.completed_at is null) as open, sum(t.completed_at is null and t.due_on < ?) as overdue, '
                 .'sum(t.completed_at between ? and ?) as done, '
@@ -62,7 +64,7 @@ class TasksReportController extends Controller
             // A task with two owners is on both their rows, so these are tasks, not the rows' sum.
             'totals' => array_map('intval', (array) DB::table('tasks as t')->where('t.organization_id', app(TenantContext::class)->idOrFail())
                 ->whereNull('t.deleted_at')->whereNull('t.parent_task_id')
-                ->whereIn('t.board_id', $boards->visibleTo($request->user())->select('id')->toBase())
+                ->whereIn('t.board_id', $boards->visibleTo($request->user())->whereNull('archived_at')->select('id')->toBase())
                 ->selectRaw('cast(coalesce(sum(t.completed_at is null), 0) as unsigned) as open, '
                     .'cast(coalesce(sum(t.completed_at is null and t.due_on < ?), 0) as unsigned) as overdue, '
                     .'cast(coalesce(sum(t.completed_at between ? and ?), 0) as unsigned) as done', [$now->toDateString(), ...$range])

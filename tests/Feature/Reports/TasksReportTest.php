@@ -44,6 +44,11 @@ class TasksReportTest extends TestCase
             // Not counted: a subtask and a deleted task.
             $task('Subtask', [$t['admin']], ['parent_task_id' => $late->id, 'due_on' => '2026-11-01']);
             $task('Deleted', [$t['admin']], ['due_on' => '2026-11-01'])->delete();
+            // An archived board's tasks are not anyone's open work.
+            $old = $board->replicate()->forceFill(['name' => 'All Calls', 'auto_key' => null, 'archived_at' => now()]);
+            $old->save();
+            Task::query()->create(['organization_id' => $t['org']->id, 'board_id' => $old->id, 'group_id' => TaskGroup::query()->create(['board_id' => $old->id, 'name' => 'x', 'position' => 1])->id,
+                'title' => 'Mirrored call', 'due_on' => '2026-11-01']);
         });
 
         $data = $this->signedInAs($t['admin'])->getJson('/api/v1/reports/tasks')->assertOk()->json('data');
