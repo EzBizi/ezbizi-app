@@ -1778,6 +1778,11 @@ Route::prefix('v1')
         Route::get('reports/accounting', [\App\Http\Controllers\Api\AccountingReportController::class, 'show'])->middleware('permission:reports.accounting.view');
         // Per position on HR's recruiting records (Shoval, 2026-11-18).
         Route::get('reports/recruiting', [\App\Http\Controllers\Api\RecruitingReportController::class, 'show'])->middleware('permission:reports.recruiting.view');
+        // Per technician: the four checks, and the Tech report (Shoval, 2026-11-18).
+        Route::get('reports/tech-checks', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'checks')->middleware('permission:reports.tech_checks.view');
+        Route::get('reports/technicians', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'report')->middleware('permission:reports.techs.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
