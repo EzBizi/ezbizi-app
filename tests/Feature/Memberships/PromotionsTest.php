@@ -101,6 +101,52 @@ class PromotionsTest extends TestCase
         $as->getJson('/api/v1/leads?source=promotions')->assertOk()->assertJsonCount(1, 'data');
     }
 
+    /** Shoval, 2026-11-06: "Create under leads new tab 'Returning Client Promo'". */
+    public function test_a_named_promotions_answers_land_in_a_leads_tab_of_that_name(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$connection, $token] = $this->inTenant($t['org'], function () use ($t) {
+            foreach (['+12035550001' => 'Dana Reyes', '+12035550002' => 'Eli Stone'] as $phone => $name) {
+                DB::table('jobs')->where('id', Job::factory()->create([
+                    'franchise_id' => $t['franchise']->id, 'scheduled_for' => '2025-08-01 09:00:00', 'status' => 'Done',
+                    'customer_id' => Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => $name, 'phone' => $phone])->id,
+                ])->id)->update(['earned_at' => '2025-08-01 09:00:00']);
+            }
+            $token = 'sms-auth-token';
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id, 'auth_token' => $token]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id, 'e164' => '+18555550100', 'sms_outbound_allowed' => true]);
+
+            return [$connection, $token];
+        });
+        $as = $this->signedInAs($t['admin']);
+        $range = ['from' => '2025-07-01', 'to' => '2025-11-30'];
+
+        // Before any named promotion there is no such tab.
+        $as->getJson('/api/v1/leads')->assertOk()->assertJsonPath('meta.promotion_tabs', []);
+
+        Queue::fake();
+        $as->postJson('/api/v1/memberships/promotions', $range + ['name' => ' Returning Client Promo ', 'phones' => ['+12035550001'], 'body' => 'Hi {first_name}'])->assertStatus(202);
+        $as->postJson('/api/v1/memberships/promotions', $range + ['phones' => ['+12035550002'], 'body' => 'Hi {first_name}'])->assertStatus(202);
+        $this->inTenant($t['org'], fn () => Promotion::query()->pluck('id'))
+            ->each(fn ($id) => app()->call([new SendPromotion($id), 'handle']));
+
+        $url = url('/api/v1/phone/sms/'.$t['org']->id.'/'.$connection->id);
+        foreach (['+12035550001' => 'SM10', '+12035550002' => 'SM11'] as $from => $sid) {
+            $this->signed($url, ['MessageSid' => $sid, 'AccountSid' => 'AC'.str_repeat('a', 32), 'From' => $from, 'To' => '+18555550100',
+                'Body' => 'Yes please', 'SmsStatus' => 'received'], $token)->assertOk();
+        }
+
+        $list = $as->getJson('/api/v1/leads')->assertOk();
+        $this->assertSame(['Returning Client Promo'], $list->json('meta.promotion_tabs'));
+        $this->assertSame(1, $list->json('meta.unread_by_source')['promo:Returning Client Promo']);
+
+        // The named tab holds only its own answers; Promotions still holds both.
+        $tab = $as->getJson('/api/v1/leads?source='.rawurlencode('promo:Returning Client Promo'))->assertOk();
+        $this->assertSame(['Dana Reyes'], array_column($tab->json('data'), 'contact_name'));
+        $this->assertCount(2, $as->getJson('/api/v1/leads?source=promotions')->assertOk()->json('data'));
+    }
+
     public function test_the_tab_opens_it_and_sending_needs_edit(): void
     {
         $t = $this->provisionTenant('Alpha');

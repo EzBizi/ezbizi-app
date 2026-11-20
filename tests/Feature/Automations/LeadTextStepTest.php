@@ -42,6 +42,13 @@ class LeadTextStepTest extends TestCase
 
             $none = $runner->run(['type' => 'lead.text', 'body' => 'Hi'], $event, $lead(null), automation: $rule);
             $this->assertTrue($none['skipped'] ?? false, 'no phone is skipped, not a failure toward switching the rule off');
+
+            // Health sweep 11-20: a lead who replied STOP is skipped, not failed.
+            $stopped = $lead('+15557776666');
+            \App\Support\Phone\SmsConsent::absorb($t['org']->id, '+15557776666', 'STOP');
+            $refused = $runner->run(['type' => 'lead.text', 'body' => 'Hi'], $event, $stopped, automation: $rule);
+            $this->assertTrue($refused['ok'] && ($refused['skipped'] ?? false), $refused['detail']);
+            $this->assertSame(\App\Support\Phone\SmsConsent::REFUSAL, $refused['detail']);
         });
     }
 

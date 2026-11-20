@@ -1302,7 +1302,7 @@ class ActionRunner
             $sent = $bySms
                 ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
-        } catch (\App\Support\Phone\SmsCapped $capped) {
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
@@ -1952,13 +1952,24 @@ class ActionRunner
     public static function openTaskForPhone(TaskBoard $board, string $group, string $ten, int $days = 0): ?Task
     {
         $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+        // A dispatcher's task often has only the customer's name and job
+        // number, no phone (Eric via Jose, 11-20): the caller's own jobs and
+        // name match too. Groups by contains: every "Customer Relations ..." group.
+        $customers = \App\Models\Customer::query()->tap(fn ($q) => \App\Models\Customer::phoneLike($q, $ten))->get(['id', 'name']);
+        $jobs = \App\Models\Job::query()->whereIn('customer_id', $customers->pluck('id'))->get(['id', 'number']);
+        $needles = $jobs->pluck('number')->merge(\App\Models\WorkizJob::query()->whereIn('job_id', $jobs->pluck('id'))->pluck('serial_id'))
+            ->map(fn ($v) => trim((string) $v))->filter(fn ($v) => strlen($v) >= 4)->unique()->values();
+        // ponytail: a name matches only when it has two words; "Joe" alone would match strangers.
+        $names = $customers->pluck('name')->map(fn ($n) => trim(preg_replace('/\s+/', ' ', (string) $n)))->filter(fn ($n) => str_contains($n, ' '))->unique()->values();
 
         return Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
-            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($group).'%'])))
             ->when($days > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($days)))
             ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
-                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%'])))
-            ->latest()->first();
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%']))
+                ->when($needles->isNotEmpty(), fn ($q) => $q->orWhereHas('values', fn ($v) => $v->whereIn('value_text', $needles->all())))
+                ->when($names->isNotEmpty(), fn ($q) => $q->orWhereIn('title', $names->all())->orWhereHas('values', fn ($v) => $v->whereIn('value_text', $names->all()))))
+            ->oldest()->first();
     }
 
     /**
@@ -4033,7 +4044,7 @@ class ActionRunner
         // on_duplicate=comment the match gets an update instead (desk for Jose,
         // 2026-11-17: a dispatcher's complaint and the AI's are one task).
         $ten = substr((string) preg_replace('/\D+/', '', $dedupe), -10);
-        if (strlen($ten) === 10 && ($match = self::openTaskForPhone($board, $group, $ten, (int) ($action['dedupe_days'] ?? 0))) !== null) {
+        if (strlen($ten) === 10 && ($match = self::openTaskForPhone($board, trim((string) ($action['group'] ?? '')) ?: $group, $ten, (int) ($action['dedupe_days'] ?? 0))) !== null) {
             if (($action['on_duplicate'] ?? '') === 'comment') {
                 $note = trim($this->interpolate((string) ($action['duplicate_note'] ?? 'This rule also flagged this caller.'), $event, $subject));
 
@@ -4453,7 +4464,7 @@ class ActionRunner
             // A booking confirmation is always sent; other rule texts count toward the daily cap.
             app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
                 automatic: true, capped: $event->event_key !== 'lead.booking_approved');
-        } catch (\App\Support\Phone\SmsCapped $capped) {
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
             return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
