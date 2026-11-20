@@ -1317,6 +1317,10 @@ class _Spend extends StatefulWidget {
 
 class _SpendState extends State<_Spend> {
   List<_Json> _rows = const [];
+
+  /// Hired applicants per position in the same months (server, meta.hires);
+  /// null from a server that does not count them, and then no cost per hire.
+  Map<String, num>? _hires;
   String? _error;
   bool _loading = true;
 
@@ -1367,6 +1371,13 @@ class _SpendState extends State<_Spend> {
         for (final s in (r.data as List? ?? const []))
           if (s is Map) s.cast<String, dynamic>(),
       ];
+      final hires = (r.body['meta'] as Map?)?['hires'];
+      _hires = hires is Map
+          ? {
+              for (final e in hires.entries)
+                if (e.value is num) '${e.key}': e.value as num,
+            }
+          : (hires is List ? <String, num>{} : null);
     });
   }
 
@@ -1436,7 +1447,12 @@ class _SpendState extends State<_Spend> {
 
     final header = TableRow(
       children: [
-        for (final t in ['Position', ..._months.map(_monthLabel), 'Total'])
+        for (final t in [
+          'Position',
+          ..._months.map(_monthLabel),
+          'Total',
+          if (_hires != null) ...['Hires', 'Cost per hire'],
+        ])
           Padding(
             padding: const EdgeInsets.all(8),
             child: Text(
@@ -1551,7 +1567,7 @@ class _SpendState extends State<_Spend> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 700),
+              constraints: const BoxConstraints(minWidth: 900),
               child: Table(
                 key: const Key('spend-table'),
                 columnWidths: const {0: FixedColumnWidth(180)},
@@ -1596,6 +1612,32 @@ class _SpendState extends State<_Spend> {
                             style: theme.textTheme.titleSmall,
                           ),
                         ),
+                        if (_hires case final hires?) ...[
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              '${hires[p] ?? 0}',
+                              key: ValueKey('spend-hires-$p'),
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              (hires[p] ?? 0) == 0
+                                  ? 'no hires'
+                                  : _money(
+                                      _months.fold<num>(
+                                            0,
+                                            (a, m) => a + cell(p, m),
+                                          ) /
+                                          hires[p]!,
+                                    ),
+                              key: ValueKey('spend-per-hire-$p'),
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                 ],

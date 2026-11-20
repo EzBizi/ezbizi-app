@@ -104,6 +104,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('spend-table')), findsOneWidget);
     expect(find.byKey(const ValueKey('spend-total-tech')), findsOneWidget);
+    // Cost per hire from the server's hires: $1,100 over 2.
+    expect(find.text(r'$550'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('spend-per-hire-dispatcher')))
+          .data,
+      'no hires',
+    );
 
     final now = DateTime.now();
     final month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
@@ -225,6 +233,9 @@ class _Server {
             'note': null,
           },
         ],
+        'meta': {
+          'hires': {'tech': 2},
+        },
       });
     }
     return _json({'data': <dynamic>[]});
