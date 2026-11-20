@@ -327,6 +327,8 @@
                 "Meta",
                 "Thumbtack",
                 "Jobs",
+                "Cancelled jobs",
+                "Pending jobs",
                 "Workspace"
             ]
         },
@@ -625,6 +627,7 @@
         "project_board.view",
         "reports.build",
         "reports.builder.view",
+        "reports.cancelled.view",
         "reports.correct",
         "reports.experimental.view",
         "reports.export",
@@ -633,6 +636,7 @@
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.pending.view",
         "reports.scoring.view",
         "reports.scoring_weights",
         "reports.settings",

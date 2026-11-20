@@ -44,6 +44,12 @@ class Complaint extends Model implements StatesRetention
             'priority' => 'boolean', 'due_at' => 'datetime'];
     }
 
+    /** Every complaint is mirrored as a card on Task Board's "Reviews & Complaints" (Shoval and Eric, 2026-11-20). */
+    protected static function booted(): void
+    {
+        static::saved(fn (Complaint $c) => \App\Support\CustomerExperience\ComplaintBoardMirror::sync($c));
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id');
