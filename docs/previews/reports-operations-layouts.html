@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports Operations</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;
+--ok:#1d7a3e;--okf:#dcf2e3;--cau:#8a5a00;--cauf:#fdf0d3;--bad:#a12a2a;--badf:#f9dede;--info:#1e5aa8;--infof:#dde9f9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--cau:#f0c46a;--cauf:#3a2e12;--bad:#f09a9a;--badf:#3a1a1a;--info:#9cc2f2;--infof:#18263a}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.ro-lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.ro-opt{margin-bottom:28px}.ro-opt>h2{font-size:15px;margin:0 0 2px}.ro-opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.ro-rec{color:var(--pri)}
+.ro-win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ro-tabs{display:flex;flex-wrap:wrap;gap:16px;padding:10px 16px 0;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.ro-tabs span{padding-bottom:8px;white-space:nowrap}.ro-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.ro-sub{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px 0}
+.ro-sub span{border-radius:16px;padding:4px 12px;font-size:12px;color:var(--mut);border:1px solid var(--line)}
+.ro-sub .on{background:var(--prif);color:var(--pri);border-color:transparent;font-weight:600}
+.ro-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 16px}
+.ro-date{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-weight:600}
+.ro-seg span{border:1px solid var(--line);padding:5px 9px;font-size:12px;color:var(--mut)}
+.ro-seg span:first-child{border-radius:8px 0 0 8px}.ro-seg span:last-child{border-radius:0 8px 8px 0}.ro-seg .on{background:var(--prif);color:var(--pri)}
+.ro-seg{display:flex}
+.ro-figs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 16px 10px}
+.ro-fig{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.ro-fig .l{font-size:11.5px;color:var(--mut)}.ro-fig .v{font-size:20px;font-weight:700}.ro-fig .d{font-size:11px;color:var(--mut)}
+.ro-filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 10px;align-items:center}
+.ro-search{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--mut);width:240px}
+.ro-pick{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--mut);font-size:12px}
+.ro-sp{flex:1}
+.ro-btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px;white-space:nowrap;border:1px solid var(--line);color:var(--pri)}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
+td{padding:8px 10px;border-bottom:1px solid var(--line)}
+.r{text-align:right}.mut{color:var(--mut);font-size:11.5px}
+.ro-pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px}
+.c{background:var(--cauf);color:var(--cau)}.k{background:var(--okf);color:var(--ok)}.x{background:var(--badf);color:var(--bad)}.i{background:var(--infof);color:var(--info)}
+.ro-cell{display:inline-block;min-width:68px;border-radius:6px;padding:2px 6px;text-align:right;text-decoration:underline dotted;cursor:pointer}
+.ro-split{display:flex}.ro-side{width:230px;border-right:1px solid var(--line);padding:10px}
+.ro-side div{padding:7px 10px;border-radius:8px;font-size:12.5px}.ro-side .on{background:var(--prif);color:var(--pri);font-weight:600}
+.ro-side .h{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);padding:10px 10px 2px}
+.ro-main{flex:1;min-width:0}
+.ro-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px 16px 16px}
+.ro-card{border:1px solid var(--line);border-radius:10px;padding:12px}
+.ro-card b{display:block;margin-bottom:2px}
+.ro-phones{display:flex;flex-wrap:wrap;gap:24px}
+.ro-ph{width:375px}.ro-ph>h2{font-size:15px;margin:0 0 2px}.ro-ph>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.ro-scr{width:375px;height:720px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.ro-ttl{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.ro-body{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.ro-chips{display:flex;gap:6px;overflow:hidden;white-space:nowrap}
+.ro-chips span{border-radius:16px;padding:4px 11px;font-size:12px;border:1px solid var(--line);color:var(--mut)}.ro-chips .on{background:var(--prif);color:var(--pri);border-color:transparent;font-weight:600}
+.ro-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ro-rc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.ro-row{display:flex;gap:8px;align-items:center}
+</style></head><body>
+<h1>199 · Reports › nine operations reports</h1>
+<p class="ro-lead">Reports asked (Shoval, owner, 11-18, via the desk). Nine new reports: Tech AI checks, Tech report, Cancelled jobs, Complaints KPI, Dispatch, Accounting weekly, Recruiting, Pending jobs and Estimates. All of them share the shape of today's Marketing, Meta, Thumbtack and Jobs tabs: the date bar, figures, search with Company · Branch, technician and source filters, then a grid with Download and pinned headings. A row opens the job or person, and each report has its own role grant. Reports already has 9 tabs, and nine more would make 18. The options below are mostly about grouping. Cancelled jobs is drawn as the sample because its data is ready.</p>
+
+<div class="ro-opt"><h2>1 · Three family tabs with sub-tabs <span class="ro-rec">(recommended)</span></h2>
+<p>Each report joins the family it belongs to, as Project Management Settings does with its sub-tabs. <b>Jobs</b> becomes Overview (today's report) · Pending · Cancelled · Estimates. <b>Technicians</b> (new) holds Tech report · AI checks. <b>Office</b> (new) holds Dispatch · Complaints · Accounting weekly · Recruiting. That's 11 top tabs instead of 18. A family tab shows when any of its sub-tabs is granted, and a sub-tab shows only with its own grant. The sub-tab you were on is remembered per person.</p>
+<div class="ro-win">
+<div class="ro-tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span>Scoring</span><span>Marketing Reports</span><span>Meta</span><span>Thumbtack</span><span class="on">Jobs</span><span>Technicians</span><span>Office</span><span>Workspace</span></div>
+<div class="ro-sub"><span>Overview</span><span>Pending · 37</span><span class="on">Cancelled</span><span>Estimates</span></div>
+<div class="ro-bar"><span class="ro-date">📅 Nov 1 – Nov 19, 2026</span><span class="ro-seg"><span>Today</span><span>Week</span><span class="on">Month</span><span>Quarter</span></span></div>
+<div class="ro-figs"><div class="ro-fig"><div class="l">Cancelled</div><div class="v">48</div><div class="d">of 1,260 created</div></div><div class="ro-fig"><div class="l">Share of created</div><div class="v">3.8%</div><div class="d">▲ 0.6 pt vs Oct</div></div><div class="ro-fig"><div class="l">Value lost</div><div class="v">$31,420</div><div class="d">booked total</div></div><div class="ro-fig"><div class="l">Top reason</div><div class="v" style="font-size:16px">Customer rescheduled</div><div class="d">14 of 48</div></div></div>
+<div class="ro-filters"><span class="ro-search">🔍 Job, customer, reason</span><span class="ro-pick">Company · Branch ▾</span><span class="ro-pick">Technician ▾</span><span class="ro-pick">Source ▾</span><span class="ro-pick">Cancelled by ▾</span><span class="ro-sp"></span><span class="ro-btn">⬇ Download</span></div>
+<table><tr><th>Job</th><th>Customer</th><th>Cancelled</th><th>By</th><th>Reason</th><th>Source</th><th>Technician</th><th class="r">Value</th></tr>
+<tr><td><b>JOB-60911</b><div class="mut">Columbus</div></td><td>Kelly Harmon</td><td>Nov 18, 4:12 PM</td><td>Dana (office)</td><td>Customer rescheduled</td><td>Google LSA</td><td>Sam Okafor</td><td class="r">$420.00</td></tr>
+<tr><td><b>JOB-60874</b><div class="mut">Akron</div></td><td>Brian Tull</td><td>Nov 17, 9:40 AM</td><td>Customer (text)</td><td>Found someone cheaper</td><td>Thumbtack</td><td>Rae Moss</td><td class="r">$1,180.00</td></tr>
+<tr><td><b>JOB-60812</b><div class="mut">Columbus</div></td><td>Ana Soto</td><td>Nov 15, 2:05 PM</td><td>Automation</td><td>No answer to confirm</td><td>Website</td><td>—</td><td class="r">$99.00</td></tr></table>
+</div>
+<p style="margin-top:10px">Tech AI checks in the same frame: one row per technician, and every count is a link that opens those jobs in a side pane.</p>
+<div class="ro-win"><div class="ro-tabs"><span>Jobs</span><span class="on">Technicians</span><span>Office</span></div><div class="ro-sub"><span>Tech report</span><span class="on">AI checks</span></div>
+<table><tr><th>Technician</th><th class="r">Jobs</th><th class="r">No ETA call</th><th class="r">Closed late</th><th class="r">No inspection report</th><th class="r">Too few photos</th></tr>
+<tr><td><b>Sam Okafor</b><div class="mut">Columbus</div></td><td class="r">86</td><td class="r"><span class="ro-cell c">9 · 10%</span></td><td class="r"><span class="ro-cell">3 · 3%</span></td><td class="r"><span class="ro-cell x">14 · 16%</span></td><td class="r"><span class="ro-cell">2 · 2%</span></td></tr>
+<tr><td><b>Rae Moss</b><div class="mut">Akron</div></td><td class="r">61</td><td class="r"><span class="ro-cell">1 · 2%</span></td><td class="r"><span class="ro-cell c">7 · 11%</span></td><td class="r"><span class="ro-cell">0 · 0%</span></td><td class="r"><span class="ro-cell c">6 · 10%</span></td></tr></table></div>
+</div>
+
+<div class="ro-opt"><h2>2 · Nine more top tabs</h2>
+<p>Every report gets its own tab: 18 in one strip, which scrolls on a laptop. Each is one click away, but the strip is long, and Jobs and Pending jobs or Cancelled jobs sit far apart.</p>
+<div class="ro-win"><div class="ro-tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span>Scoring</span><span>Marketing Reports</span><span>Meta</span><span>Thumbtack</span><span>Jobs</span><span>Tech AI checks</span><span>Tech report</span><span class="on">Cancelled jobs</span><span>Complaints KPI</span><span>Dispatch</span><span>Accounting weekly</span><span>Recruiting</span><span>Pending jobs</span><span>Estimates</span><span>Workspace</span></div>
+<div class="ro-bar"><span class="ro-date">📅 Nov 1 – Nov 19, 2026</span></div><div class="ro-figs"><div class="ro-fig"><div class="l">Cancelled</div><div class="v">48</div></div><div class="ro-fig"><div class="l">Share</div><div class="v">3.8%</div></div><div class="ro-fig"><div class="l">Value lost</div><div class="v">$31,420</div></div><div class="ro-fig"><div class="l">Top reason</div><div class="v" style="font-size:16px">Rescheduled</div></div></div></div>
+</div>
+
+<div class="ro-opt"><h2>3 · One "Operations" tab with a list on the left</h2>
+<p>A single new tab. On the left is the list of the nine reports, grouped Jobs / Technicians / Office, with the chosen one on the right. The top strip grows by one, but on a laptop the list costs 230 px of width that the grids need.</p>
+<div class="ro-win"><div class="ro-tabs"><span>Thumbtack</span><span>Jobs</span><span class="on">Operations</span><span>Workspace</span></div>
+<div class="ro-split"><div class="ro-side"><div class="h">Jobs</div><div>Pending jobs</div><div class="on">Cancelled jobs</div><div>Estimates</div><div class="h">Technicians</div><div>Tech report</div><div>AI checks</div><div class="h">Office</div><div>Dispatch</div><div>Complaints KPI</div><div>Accounting weekly</div><div>Recruiting</div></div>
+<div class="ro-main"><div class="ro-bar"><span class="ro-date">📅 Nov 1 – Nov 19, 2026</span></div><div class="ro-figs" style="grid-template-columns:repeat(3,1fr)"><div class="ro-fig"><div class="l">Cancelled</div><div class="v">48</div></div><div class="ro-fig"><div class="l">Share</div><div class="v">3.8%</div></div><div class="ro-fig"><div class="l">Value lost</div><div class="v">$31,420</div></div></div>
+<table><tr><th>Job</th><th>Cancelled</th><th>Reason</th><th class="r">Value</th></tr><tr><td><b>JOB-60911</b></td><td>Nov 18</td><td>Customer rescheduled</td><td class="r">$420.00</td></tr><tr><td><b>JOB-60874</b></td><td>Nov 17</td><td>Found someone cheaper</td><td class="r">$1,180.00</td></tr></table></div></div></div>
+</div>
+
+<div class="ro-phones">
+<div class="ro-ph"><h2>4 · Sub-tab chips, figures, cards <span class="ro-rec">(recommended)</span></h2><p>The family tab comes from the strip, and its sub-tabs are chips that scroll sideways. The figures are a 2×2 grid, then search and Filters (one button that opens a panel), then a card per row. Download sits in the header.</p>
+<div class="ro-scr"><div class="ro-ttl">Reports · Jobs</div><div class="ro-body">
+<div class="ro-chips"><span>Overview</span><span>Pending · 37</span><span class="on">Cancelled</span><span>Estimates</span></div>
+<div class="ro-row"><span class="ro-date" style="flex:1">📅 Nov 1 – 19</span><span class="ro-btn" style="padding:6px 10px">⬇</span></div>
+<div class="ro-2"><div class="ro-fig" style="background:var(--card)"><div class="l">Cancelled</div><div class="v">48</div></div><div class="ro-fig" style="background:var(--card)"><div class="l">Share</div><div class="v">3.8%</div></div><div class="ro-fig" style="background:var(--card)"><div class="l">Value lost</div><div class="v">$31.4K</div></div><div class="ro-fig" style="background:var(--card)"><div class="l">Top reason</div><div class="v" style="font-size:14px">Rescheduled</div></div></div>
+<div class="ro-row"><span class="ro-search" style="flex:1;width:auto">🔍 Job, customer</span><span class="ro-btn">Filters · 1</span></div>
+<div class="ro-rc"><div class="ro-row"><b style="flex:1">JOB-60911 · Kelly Harmon</b><b>$420</b></div><div class="mut">Nov 18, 4:12 PM · by Dana (office)</div><div style="margin-top:4px"><span class="ro-pill c">Customer rescheduled</span> <span class="mut">Google LSA · Sam Okafor</span></div></div>
+<div class="ro-rc"><div class="ro-row"><b style="flex:1">JOB-60874 · Brian Tull</b><b>$1,180</b></div><div class="mut">Nov 17, 9:40 AM · by customer (text)</div><div style="margin-top:4px"><span class="ro-pill c">Found someone cheaper</span> <span class="mut">Thumbtack · Rae Moss</span></div></div>
+</div></div></div>
+<div class="ro-ph"><h2>5 · The table, sideways</h2><p>The desktop grid scrolls sideways with the first column pinned. Every column is there, but at 375 px the job is the only thing you see without scrolling.</p>
+<div class="ro-scr"><div class="ro-ttl">Reports · Cancelled</div><div class="ro-body"><span class="ro-date">📅 Nov 1 – 19</span>
+<div class="ro-2"><div class="ro-fig" style="background:var(--card)"><div class="l">Cancelled</div><div class="v">48</div></div><div class="ro-fig" style="background:var(--card)"><div class="l">Value lost</div><div class="v">$31.4K</div></div></div>
+<div style="overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:10px"><table><tr><th>Job</th><th>Cancelled</th><th>By</th><th>Reason</th></tr><tr><td><b>JOB-60911</b></td><td>Nov 18</td><td>Dana</td><td>Customer res…</td></tr><tr><td><b>JOB-60874</b></td><td>Nov 17</td><td>Customer</td><td>Found some…</td></tr><tr><td><b>JOB-60812</b></td><td>Nov 15</td><td>Auto</td><td>No answer…</td></tr></table></div><div class="mut">← swipe for source, technician, value →</div></div></div></div>
+<div class="ro-ph"><h2>6 · Figures first, rows on tap</h2><p>The page is just the figures, and tapping one opens its rows on a full screen. It reads as a dashboard, but every row is one tap further away.</p>
+<div class="ro-scr"><div class="ro-ttl">Reports · Cancelled</div><div class="ro-body"><span class="ro-date">📅 Nov 1 – 19</span>
+<div class="ro-rc"><div class="l mut">Cancelled</div><div class="ro-row"><b style="font-size:24px;flex:1">48</b><span class="mut">›</span></div><div class="mut">3.8% of 1,260 created</div></div>
+<div class="ro-rc"><div class="l mut">Value lost</div><div class="ro-row"><b style="font-size:24px;flex:1">$31,420</b><span class="mut">›</span></div></div>
+<div class="ro-rc"><div class="l mut">By reason</div><div class="ro-row"><span style="flex:1">Customer rescheduled</span><b>14</b></div><div class="ro-row"><span style="flex:1">Found someone cheaper</span><b>9</b></div><div class="ro-row"><span style="flex:1">No answer to confirm</span><b>8</b></div></div></div></div></div>
+</div>
+</body></html>
