@@ -368,7 +368,7 @@ class TaskWriter
             $writer->quiet = true;
 
             // $toMonday: a backfill whose values Monday must still get (11-19 fill), only the events are silenced.
-            return $toMonday ? $fn($writer) : MondayOutbox::suppress(fn () => $fn($writer));
+            return $toMonday ? MondayOutbox::asBackfill(fn () => $fn($writer)) : MondayOutbox::suppress(fn () => $fn($writer));
         } finally {
             $had !== null ? app()->instance(EventEmitter::class, $had) : app()->forgetInstance(EventEmitter::class);
         }
