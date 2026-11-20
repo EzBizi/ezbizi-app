@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0619', date: '20 Nov 2026', items: [
+      'Reviews: each Google review is stored and counted once, even when two Google accounts can see the same location',
+      'Reviews: EzBizi keeps the review total and rating of each Google listing exactly as Google reports them',
+    ]),
     VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
       'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
       'Customer Experience: Complaints is now Reviews & Complaints, with a Due within 24 h strip, a Client or Not a client badge, + New complaint, and Report on Google for reviews from non-clients',
@@ -22,7 +26,7 @@ class VersionHistory {
       'Reports: Overview, Cancelled and Pending now sit together under one Jobs tab',
       'Task Board: Remind me in the task panel sets a reminder with a time and a note',
       'HR: certifications on each person (number, issuer, expiry) feed the expiring certifications alerts',
-      'Websites: the rating badge shows the real review count and average from EzBizi and keeps itself up to date',
+      'Websites: the rating badge shows the real review count and average from EzBizi (each review counted once) and keeps itself up to date',
     ]),
     VersionRelease(version: '0.0.0617', date: '20 Nov 2026', items: [
       'Task Board: clearer contrast between the page, groups and rows; rows light up on hover',
