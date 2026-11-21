@@ -20,6 +20,19 @@ final class MondayOutbox
 {
     private static int $suppressed = 0;
 
+    private static int $backfill = 0;
+
+    /** Run $fn with its rows queued as backfill: live work is pushed first (desk 11-20). */
+    public static function asBackfill(callable $fn): mixed
+    {
+        self::$backfill++;
+        try {
+            return $fn();
+        } finally {
+            self::$backfill--;
+        }
+    }
+
     /** @var array<string, bool> organization id => has a live Monday connection */
     private array $connected = [];
 
@@ -68,7 +81,7 @@ final class MondayOutbox
         }
         MondayOutboxEntry::query()->create([
             'organization_id' => $task->organization_id, 'task_id' => $task->id,
-            'kinds' => array_values(array_unique($kinds)), 'changed_at' => now(), 'available_at' => now(),
+            'kinds' => array_values(array_unique($kinds)), 'changed_at' => now(), 'available_at' => now(), 'backfill' => self::$backfill > 0,
         ]);
     }
 

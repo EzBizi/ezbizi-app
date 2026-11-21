@@ -265,6 +265,19 @@ class MondayPushTest extends TestCase
         $this->assertNull(MondayClient::$deadline, 'no budget left behind for the next job');
     }
 
+    /** Desk 11-20: a bulk fill's Monday rows queue as backfill, so live work goes first; a person's edit stays live. */
+    public function test_a_bulk_write_to_monday_is_queued_as_backfill(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            MondayOutboxEntry::query()->delete();
+            TaskWriter::bulk(fn ($w) => $w->update($this->task, ['status' => 'Stuck'], $this->jose), toMonday: true);
+            $this->assertTrue((bool) MondayOutboxEntry::query()->where('task_id', $this->task->id)->sole()->backfill);
+            MondayOutboxEntry::query()->delete();
+            app(TaskWriter::class)->update($this->task, ['status' => 'Done'], $this->jose);
+            $this->assertFalse((bool) MondayOutboxEntry::query()->where('task_id', $this->task->id)->sole()->backfill);
+        });
+    }
+
     /** Desk 11-18: a shard stops at its time budget (under the queue's retry_after); the rest wait, nothing is lost. */
     public function test_a_spent_time_budget_sends_nothing_more_and_leaves_rows_pending(): void
     {

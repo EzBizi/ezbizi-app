@@ -1766,6 +1766,23 @@ Route::prefix('v1')
             ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
         Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
             ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
+        // Estimates from both stores, texted and answered derived (Shoval, 2026-11-18).
+        Route::get('reports/estimates', [\App\Http\Controllers\Api\EstimatesReportController::class, 'show'])->middleware('permission:reports.estimates.view');
+        // Per owner: open, done in the dates, overdue, days to done (Shoval's list via Task Board, 2026-11-20).
+        Route::get('reports/tasks', [\App\Http\Controllers\Api\TasksReportController::class, 'show'])->middleware('permission:reports.tasks.view');
+        // Complaints against the business's contact and solve hours (Shoval, 2026-11-18).
+        Route::get('reports/complaints', [\App\Http\Controllers\Api\ComplaintsReportController::class, 'show'])->middleware('permission:reports.complaints.view');
+        // Per dispatcher: leads, messages answered, minutes to the first reply (Shoval, 2026-11-18).
+        Route::get('reports/dispatch', [\App\Http\Controllers\Api\DispatchReportController::class, 'show'])->middleware('permission:reports.dispatch.view');
+        // The money that does not add up, one row per problem (Shoval, 2026-11-18).
+        Route::get('reports/accounting', [\App\Http\Controllers\Api\AccountingReportController::class, 'show'])->middleware('permission:reports.accounting.view');
+        // Per position on HR's recruiting records (Shoval, 2026-11-18).
+        Route::get('reports/recruiting', [\App\Http\Controllers\Api\RecruitingReportController::class, 'show'])->middleware('permission:reports.recruiting.view');
+        // Per technician: the four checks, and the Tech report (Shoval, 2026-11-18).
+        Route::get('reports/tech-checks', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'checks')->middleware('permission:reports.tech_checks.view');
+        Route::get('reports/technicians', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'report')->middleware('permission:reports.techs.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
@@ -2620,6 +2637,7 @@ Route::prefix('v1')
             Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
             Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
             Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            Route::post('newsletters/{newsletter}/editable-copy', [NewslettersController::class, 'editableCopy']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
             // A starter's picture copied from the company's own website (SSRF-guarded).

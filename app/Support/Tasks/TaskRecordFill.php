@@ -46,30 +46,7 @@ final class TaskRecordFill
         $writer ??= app(TaskWriter::class);
         $board = $task->board;
         $job ??= $lead?->job_id ? Job::query()->withoutGlobalScopes()->find($lead->job_id) : null;
-        // No job on the lead: the caller's own job, by phone (desk for Jose, 11-19:
-        // "EzBizi Job ID - Workiz Job Id" on every task), the one nearest the call.
-        // No job, but the task carries its Workiz number (desk 11-20: CT Debby Bloom, 200024600): that job.
-        if ($job === null && ($wzCol = $board->columns()->where('name', TaskWriter::WORKIZ_JOB_COLUMN)->first()) !== null
-            && ($wz = trim((string) $task->values()->where('column_id', $wzCol->id)->value('value_text'))) !== '') {
-            $jobId = WorkizJob::query()->where('serial_id', $wz)->orWhere('remote_id', $wz)->value('job_id');
-            $job = $jobId ? Job::query()->withoutGlobalScopes()->find($jobId) : null;
-        }
-        if ($job === null) {
-            $phoneCol = $board->columns()->where('name', 'Phone number')->first();
-            $raw = (string) ($lead?->phone ?? ($phoneCol ? $task->values()->where('column_id', $phoneCol->id)->value('value_text') : ''));
-            // A missed-call task carries the number only in its title ("NJ - PPC +17325550199").
-            // In any format: "+17325550199", "(346) 877-6377", "-917-841-8827." (Outgoing Calls, 11-20).
-            if ($raw === '' && preg_match('/(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}/', (string) $task->title, $m) === 1) {
-                $raw = $m[0];
-            }
-            $ten = substr((string) preg_replace('/\D+/', '', $raw), -10);
-            if (strlen($ten) === 10) {
-                $at = $task->created_at ?? now();
-                $job = Job::query()->withoutGlobalScopes()
-                    ->whereIn('customer_id', Customer::query()->withoutGlobalScopes()->tap(fn ($q) => Customer::phoneLike($q, $ten))->select('id'))
-                    ->get()->sortBy(fn (Job $j) => $j->created_at ? abs($j->created_at->diffInSeconds($at)) : PHP_INT_MAX)->first();
-            }
-        }
+        $job ??= $this->jobFor($task, $lead);
         $customer = $job?->customer_id ? Customer::query()->withoutGlobalScopes()->find($job->customer_id) : null;
 
         $text = trim(implode(' ', array_filter([$task->title, $lead?->summary, $lead?->category])));
@@ -132,6 +109,54 @@ final class TaskRecordFill
         }
 
         return $set;
+    }
+
+    /**
+     * The task's job from ANY identifier it carries (Jose, 2026-11-20: "fill
+     * from any identifier"), first hit wins: EzBizi Job # / Workiz Job ID
+     * cells, the Phone number cell or a number in the title, the client name
+     * with the address, then the name alone when exactly one customer has it.
+     * The customer's open job, else the newest.
+     */
+    public function jobFor(Task $task, ?Lead $lead = null): ?Job
+    {
+        $cell = fn (string $name) => trim((string) $task->values()->whereHas('column', fn ($c) => $c->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)]))->value('value_text'));
+        if (($no = $cell('EzBizi Job #')) !== '' && ($job = Job::query()->withoutGlobalScopes()->whereIn('number', [$no, 'JOB-'.preg_replace('/^JOB-/i', '', $no)])->first())) {
+            return $job;
+        }
+        // A Workiz number: the cell, or "Job #300894261 - Katelyn Banks" in the title.
+        $serial = $cell('Workiz Job ID') ?: (preg_match('/\bJob\s*#\s*(\d{6,})/i', (string) $task->title, $m) === 1 ? $m[1] : '');
+        if ($serial !== '' && ($id = \App\Models\WorkizJob::query()->where('serial_id', $serial)->orWhere('remote_id', $serial)->value('job_id')) && ($job = Job::query()->withoutGlobalScopes()->find($id))) {
+            return $job;
+        }
+        $raw = (string) ($lead?->phone ?: $cell('Phone number'));
+        if ($raw === '' && preg_match('/(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}/', (string) $task->title, $m) === 1) {
+            $raw = $m[0];
+        }
+        $ten = substr((string) preg_replace('/\D+/', '', $raw), -10);
+        $customers = strlen($ten) === 10 ? Customer::query()->withoutGlobalScopes()->tap(fn ($q) => Customer::phoneLike($q, $ten))->pluck('id') : collect();
+        // The caller's number is often a job's second phone, not the customer's
+        // own (11-20: 16 of 35 empty complaints). ponytail: a LIKE scan of payloads, only on a miss.
+        if ($customers->isEmpty() && strlen($ten) === 10 && ($id = \App\Models\WorkizJob::query()->where('payload', 'like', '%'.$ten.'%')->latest()->value('job_id'))
+            && ($job = Job::query()->withoutGlobalScopes()->find($id))) {
+            $customers = collect([$job->customer_id])->filter();
+        }
+        $name = trim((string) preg_replace('/\s+/', ' ', $cell('Client name') ?: ($lead?->contact_name ?: preg_replace('/^Job\s*#\s*\d+\s*-\s*/i', '', (string) $task->title))));
+        if ($customers->isEmpty() && str_contains($name, ' ') && mb_strlen($name) <= 60) {
+            $named = Customer::query()->withoutGlobalScopes()->where('name', $name);
+            $street = trim(strtok($cell('Address'), ',') ?: '');
+            $customers = $street !== '' ? (clone $named)->where('address_line1', 'like', mb_substr($street, 0, 12).'%')->pluck('id') : collect();
+            // ponytail: the name alone only when one customer has it; two "John Smith"s stay empty.
+            if ($customers->isEmpty() && ($all = $named->limit(2)->pluck('id'))->count() === 1) {
+                $customers = $all;
+            }
+        }
+        if ($customers->isEmpty()) {
+            return null;
+        }
+        $jobs = Job::query()->withoutGlobalScopes()->whereIn('customer_id', $customers)->latest()->get();
+
+        return $jobs->first(fn (Job $j) => ! in_array(mb_strtolower((string) $j->status), ['completed', 'cancelled', 'canceled', 'closed', 'done'], true)) ?? $jobs->first();
     }
 
     /** @return list<string> every label the text matches, in rule order */

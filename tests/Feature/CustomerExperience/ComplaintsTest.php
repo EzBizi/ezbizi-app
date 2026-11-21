@@ -202,6 +202,8 @@ class ComplaintsTest extends TestCase
         $this->assertStringContainsString('support.google.com/business/workflow', $rows['Pat Nobody']['google_report']['url']);
         $opened = AutomationEvent::withoutGlobalScopes()->where('event_key', 'complaint.opened')->get()->pluck('payload.after.client_status')->sort()->values()->all();
         $this->assertSame(['client', 'not_client'], $opened);
+        $titles = AutomationEvent::withoutGlobalScopes()->where('event_key', 'complaint.opened')->get()->pluck('payload.after.title')->all();
+        $this->assertContains('Google review: Dana Whitfield · 1★', $titles, 'rules show who complained');
     }
 
     /** BBB / Attorney General mail opens a Priority complaint due in 24 h; ordinary mail opens nothing. */

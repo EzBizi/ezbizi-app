@@ -134,6 +134,44 @@ final class ListRegistry
                 ['reports.pending_statuses', 'Pending job statuses', ['Pending'],
                     'Reports › Pending jobs lists the jobs in these statuses, oldest first. Upper or lower case does not matter.'],
             ]),
+            // Reports › Complaints' targets (Shoval, 2026-11-18: "up to 48 resulting, up to 24 hours to call").
+            new ListDefinition(
+                key: 'reports.complaint_targets', label: 'Complaint targets, in hours', module: 'reports',
+                columns: [['key' => 'target', 'label' => 'Target (contact or solve)'], ['key' => 'hours', 'label' => 'Hours']],
+                defaults: [['key' => 'contact', 'value' => ['target' => 'contact', 'hours' => 24]], ['key' => 'solve', 'value' => ['target' => 'solve', 'hours' => 48]]],
+                help: 'Reports › Complaints counts a complaint as on time when the customer was first contacted within the contact '
+                    .'hours of it being raised, and when it was closed within the solve hours.',
+                editPermission: 'reports.settings',
+            ),
+            // Reports › Accounting's rules (Shoval, 2026-11-18: "Accounting issues weekly report").
+            new ListDefinition(
+                key: 'reports.accounting_rules', label: 'Accounting report rules', module: 'reports',
+                columns: [['key' => 'rule', 'label' => 'Rule'], ['key' => 'value', 'label' => 'Value']],
+                defaults: [['key' => 'invoice_days', 'value' => ['rule' => 'invoice_days', 'value' => 30]]],
+                help: 'invoice_days: Reports › Accounting lists an invoice as overdue when it still owes money this many days after it was made.',
+                editPermission: 'reports.settings',
+            ),
+            // Reports › AI checks and Tech report (Shoval, 2026-11-18).
+            new ListDefinition(
+                key: 'reports.tech_check_rules', label: 'Technician check rules', module: 'reports',
+                columns: [['key' => 'rule', 'label' => 'Rule'], ['key' => 'value', 'label' => 'Value']],
+                defaults: [['key' => 'eta_hours', 'value' => ['rule' => 'eta_hours', 'value' => 3]],
+                    ['key' => 'close_hours', 'value' => ['rule' => 'close_hours', 'value' => 12]],
+                    ['key' => 'min_photos', 'value' => ['rule' => 'min_photos', 'value' => 3]]],
+                help: 'eta_hours: a call or text to the client this many hours before the start counts as the ETA call. close_hours: a job '
+                    .'closed later than this many hours after its start is closed late. min_photos: fewer photos than this is too few.',
+                editPermission: 'reports.settings',
+            ),
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: $list[0], label: $list[1], module: 'reports', columns: [['key' => 'type', 'label' => 'Job type']],
+                defaults: array_map(fn (string $type) => ['key' => $type, 'value' => ['type' => $type]], $list[2]),
+                help: $list[3], editPermission: 'reports.settings',
+            ), [
+                ['reports.inspection_job_types', 'Job types that need an inspection report', [],
+                    'Reports › AI checks counts a done job of one of these types with no inspection report submitted. None listed: not checked.'],
+                ['reports.redo_job_types', 'Redo job types', ['Redo'],
+                    "Reports › Tech report counts each technician's done jobs of these types as redos."],
+            ]),
             new ListDefinition(
                 key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',
                 columns: [['key' => 'role', 'label' => 'Role']],
