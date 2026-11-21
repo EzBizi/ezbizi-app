@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0622', date: '21 Nov 2026', items: [
+      'Workiz: job photos and files are read only for jobs scheduled in the last 30 days',
+    ]),
     VersionRelease(version: '0.0.0621', date: '20 Nov 2026', items: [
       'Workiz: photos and files of finished jobs are read every 10 minutes, so reports and AI checks see them',
       'Reports: AI checks show Not checked when the photos or calls of a job were never read, instead of counting a miss',
