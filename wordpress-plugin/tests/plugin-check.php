@@ -439,6 +439,7 @@ check('[ezbizi_rating] registered', isset($GLOBALS['sc']['ezbizi_rating']), true
 $GLOBALS['opt']['ezbizi_last_good'] = ['review_summary' => ['count' => 27377, 'average' => 4.9]];
 set_transient(EZBIZI_CACHE_KEY, ['review_summary' => ['count' => 27377, 'average' => 4.9]], 300);
 check('[ezbizi_rating] prints the real numbers', strpos($GLOBALS['sc']['ezbizi_rating']([]), '<span itemprop="reviewCount">27,377</span>') !== false, true);
+check('JSON-LD rating follows the payload', ezbizi_fix_rating_jsonld('<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.1","reviewCount":"3218"}}</script><p>"reviewCount":5</p>'), '<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.9","reviewCount":"27377"}}</script><p>"reviewCount":5</p>');
 delete_transient(EZBIZI_CACHE_KEY); unset($GLOBALS['opt']['ezbizi_last_good']);
 check('[ezbizi_booking_url] registered', isset($GLOBALS['sc']['ezbizi_booking_url']), true);
 check('generic [ezbizi] registered', isset($GLOBALS['sc']['ezbizi']), true);
