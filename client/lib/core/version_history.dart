@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0623', date: '21 Nov 2026', items: [
+      'Workiz: a re-read that meets the Workiz rate limit waits and retries instead of failing',
+    ]),
     VersionRelease(version: '0.0.0622', date: '21 Nov 2026', items: [
       'Workiz: job photos and files are read only for jobs scheduled in the last 30 days',
     ]),
