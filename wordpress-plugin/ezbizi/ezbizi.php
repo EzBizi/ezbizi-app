@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.33
+ * Version:           1.26.34
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.33';
+const EZBIZI_VERSION = '1.26.34';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -656,6 +656,32 @@ function ezbizi_rating_shortcode($atts = array()) {
         . esc_html($count) . '</span> Reviews</span>';
 }
 add_shortcode('ezbizi_rating', 'ezbizi_rating_shortcode');
+
+// A theme's or page's own aggregateRating JSON-LD (A-1's are hand-typed) follows the same live numbers as
+// the badge (desk, 2026-11-21: BBB checks that they match). Only ld+json blocks are touched.
+// ponytail: regex over ld+json text, not a JSON rewrite; good enough for flat "reviewCount": N pairs.
+function ezbizi_fix_rating_jsonld($html) {
+    $payload = ezbizi_payload();
+    $sum = isset($payload['review_summary']) && is_array($payload['review_summary']) ? $payload['review_summary'] : null;
+    if ($sum === null || empty($sum['count']) || stripos($html, 'aggregateRating') === false) {
+        return $html;
+    }
+    $count = (string) (int) $sum['count'];
+    $avg = number_format((float) $sum['average'], 1);
+    return preg_replace_callback('#(<script[^>]*application/ld\+json[^>]*>)(.*?)(</script>)#is', function ($m) use ($count, $avg) {
+        if (stripos($m[2], 'aggregateRating') === false) {
+            return $m[0];
+        }
+        $j = preg_replace('/("reviewCount"\s*:\s*"?)[0-9][0-9,]*/', '${1}' . $count, $m[2]);
+        $j = preg_replace('/("ratingValue"\s*:\s*"?)[0-9](?:\.[0-9]+)?/', '${1}' . $avg, $j);
+        return $m[1] . $j . $m[3];
+    }, $html);
+}
+add_action('template_redirect', function () {
+    if (! is_admin() && ! wp_doing_ajax()) {
+        ob_start('ezbizi_fix_rating_jsonld');
+    }
+}, 0);
 
 // No scrollbar on a phone (Jose, 2026-10-08: A-1's theme draws a thick yellow
 // one); a computer keeps the theme's.
