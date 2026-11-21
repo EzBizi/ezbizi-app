@@ -35,7 +35,7 @@ final class ReadWorkizJobFiles extends Command
             $ids = WorkizJob::query()->withoutGlobalScopes()
                 ->where('franchise_id', $connection->scope_id)
                 ->whereIn('status', ['Done', 'done pending approval', 'done', 'Done Pending Approval'])
-                ->where(fn ($q) => $q->where('scheduled_for', '>=', now()->subDays(30))->orWhere('synced_at', '>=', now()->subDays(30)))
+                ->where('scheduled_for', '>=', now()->subDays(30)) // the job's own date; synced_at moves on every list read
                 ->whereRaw("json_unquote(json_extract(payload, '$.v2.id')) is not null")
                 ->whereRaw("coalesce(json_unquote(json_extract(payload, '$.AttachmentsReadAt')), '') <> coalesce(json_unquote(json_extract(payload, '$.v2.utc_updated_at')), '-')")
                 ->orderByDesc('scheduled_for')->limit((int) $this->option('limit'))
