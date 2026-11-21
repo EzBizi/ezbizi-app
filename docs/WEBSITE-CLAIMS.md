@@ -3856,3 +3856,41 @@ LIVE pages after the edits ok - 4 terms, none present. Stores: Play `200`; Apple
 to a group 6 (total not given). Jobs with `scheduled_for` and no `workiz_jobs` row: **784** (74 on 11-13; orgs not
 split). LSA leads 55,184, all with a `remote_id`. No new publisher class. The scheduling row stays inverted and
 unwritten: ask for the count per organization before a homepage sentence.
+
+## 2026-11-20: 0.0.0612-0.0.0620 live, and `/privacy/` named neither job applicants nor staff certifications
+
+Production web is 0.0.0620 at `3f99b84c5`; `/download/windows.json` reads 0.0.0620 at `3f99b84c5`. 0615-0617 never
+deployed (folded into 0618); 0621 (`43a211f00`) in its gate. Before the edit no WP page was modified since the 11-19
+edits (pages 5 and 8) and all 10 live pages contained their WP post_content (method of 11-15). www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies of every page in `~/ezb-wp-bak-20261120/`
+on the websites box; read back equal apart from trailing newlines; live on bare and www):
+- `9dfa1e434` (0618) adds `applicants` (name, phone, email, position, source, stage, notes; optional `lead_id`) and
+  `applicant_interviews` (outcome, notes). Applicants are neither customers nor staff, and the page named only
+  "your customers, your staff". "What your organization enters" now lists "people who apply to work for the
+  organization and their interviews" and the personal-data clause names "your job applicants". 0 rows on prod; the
+  sentence describes what the product holds, as the payroll line of 11-19 did.
+- `b8a197b15` (0618) adds `person_certifications` (name, issuer, number, issued, expires). The staff-records list now
+  names "the certifications a person holds (with the issuer, number and expiry date)".
+- Last updated / `dateModified` → 2026-11-20.
+
+**QuickBooks, deliberately not on `/privacy/`'s list.** `ad3c7cf1e` ships `QuickBooksOAuth` (Intuit, scope
+`com.intuit.quickbooks.accounting`, read-only expenses into Financials › Markets; hosts `*.intuit.com`). Desk: 0
+`social_connections` rows, `services.quickbooks.client_id` unset on prod, so nobody can connect. It is an account a
+tenant connects, covered by "any business account EzBizi reads from or updates at your instruction"; Intuit is not
+a processor of ours. **Trigger:** if EzBizi ever pushes anything to QuickBooks (invoices, payments), that is a write
+and a `forbidden-terms` question (`invoic`, `bill`), not a privacy line. AppAsk now answers market money questions
+from those figures through the existing xAI staff Q&A item ("any records the person may see").
+
+No sentence moves for: rating badge (aggregate count and average, 13,583 / 4.9 on A-1 sites; no person data),
+AI dispatcher (existing xAI path), complaint triage/board mirror (no AI call; Monday covered by "updates at your
+instruction"), QR centre image, Google review totals (existing GBP read), task reminders, PM job cost, Reports.
+Every new route sits in the authenticated group (desk). `app/Support/Social` gained only the QuickBooks reader.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-20, ~00:05 UTC 11-21), recorded as given** (`docs/agents/done/website-daily-2026-11-20-desk-reply.md`):
+0612-0614, 0618-0620 live, nothing rolled back. Training 58/82/12, `phone_ring_groups` 6 (6 numbers), Scheduled
+Jobs 785, LSA leads 55,428 all with `remote_id`, no new publisher class. Applicants 0, recruiting_spend 0.

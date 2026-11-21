@@ -24,13 +24,14 @@ use Illuminate\Support\Facades\DB;
  * it). Over the jobs done that were scheduled in the dates, per technician
  * (a job with two is on both rows):
  *  - eta: no call out to the client in the hours before the start (Workiz's
- *    calls; EzBizi's texts) — derived, a call from a personal phone is not seen;
+ *    calls; EzBizi's texts) — derived, a call from a personal phone is not seen,
+ *    and a branch with no Workiz calls read in the dates is not checked;
  *  - close: closed more than N hours after the start (Workiz rewrites the
  *    scheduled end to the close, so the start is the measure);
  *  - inspection: a job of a type the business says needs an inspection
  *    report with none submitted (no types listed: not checked);
  *  - photos: fewer photos than the business's minimum (Workiz's attachments
- *    and EzBizi's own).
+ *    and EzBizi's own; a Workiz copy with no file list read yet is not checked).
  * The hours and counts are Settings › Lists › Technician check rules; the
  * types, Settings › Lists › Job types that need an inspection report.
  * The Tech report adds, per technician: revenue, complaints raised about
@@ -65,17 +66,22 @@ class TechnicianReportController extends Controller
 
         $jobs = $this->jobs($org, $q['from'], $q['to']);
         $ahead = $this->contactsOut($org, $jobs);
+        // A branch none of whose calls are read (Everdoors · CT, 11-20: no Workiz calls ever) cannot be checked for calling ahead.
+        $calling = DB::table('workiz_calls')->where('organization_id', $org)->where('direction', 'outgoing')
+            ->whereBetween('called_at', [CarbonImmutable::parse($q['from'])->subDay()->toDateString(), CarbonImmutable::parse($q['to'])->addDays(2)->toDateString()])
+            ->distinct()->pluck('franchise_id')->flip();
         foreach ($jobs as $j) {
             $start = $j->start === null ? null : CarbonImmutable::parse($j->start, $j->zone)->utc();
             $from = $start?->subMinutes((int) round($etaHours * 60))->toDateTimeString();
             $until = $start?->addMinutes(30)->toDateTimeString();
+            $j->unchecked = array_keys(array_filter(['eta' => ! isset($calling[$j->franchise_id]), 'inspection' => $inspectionTypes === [], 'photos' => $j->photos === null]));
             $j->misses = array_keys(array_filter([
-                'eta' => $start !== null && $j->phone !== null
+                'eta' => isset($calling[$j->franchise_id]) && $start !== null && $j->phone !== null
                     && ! collect($ahead[$j->phone] ?? [])->contains(fn (string $at) => $at >= $from && $at <= $until),
                 'close' => $start !== null && $j->closed_at !== null
                     && CarbonImmutable::parse($j->closed_at, $j->zone)->utc()->greaterThan($start->addMinutes((int) round($closeHours * 60))),
                 'inspection' => $inspectionTypes !== [] && in_array(mb_strtolower(trim((string) $j->job_type)), $inspectionTypes, true) && ! $j->inspected,
-                'photos' => $j->photos < $minPhotos,
+                'photos' => $j->photos !== null && $j->photos < $minPhotos,
             ]));
         }
 
@@ -92,12 +98,13 @@ class TechnicianReportController extends Controller
                 $byTech[$tech][] = $j;
             }
         }
-        $rows = collect($byTech)->map(function (array $mine, string $tech) use ($kind, $complaints, $redo, $inspectionTypes) {
+        $rows = collect($byTech)->map(function (array $mine, string $tech) use ($kind, $complaints, $redo) {
             $mine = collect($mine);
             $miss = fn (string $check) => $mine->filter(fn (object $j) => in_array($check, $j->misses, true))->count();
             $row = ['tech' => $tech === 'none' ? null : $tech, 'jobs' => $mine->count()];
             foreach (self::CHECKS as $check) {
-                $row[$check.'_missed'] = $check === 'inspection' && $inspectionTypes === [] ? null : $miss($check);
+                // None of their jobs could be checked: not checked, rather than none missed.
+                $row[$check.'_missed'] = $mine->every(fn (object $j) => in_array($check, $j->unchecked, true)) ? null : $miss($check);
             }
             if ($kind === 'report') {
                 $row += [
@@ -133,7 +140,7 @@ class TechnicianReportController extends Controller
             ->whereBetween(DB::raw('coalesce(w.scheduled_for, j.scheduled_for)'), [CarbonImmutable::parse($from)->subDay()->toDateString(), CarbonImmutable::parse($to)->addDays(2)->toDateString()])
             ->get(['j.id', 'j.number', 'j.franchise_id', 'j.job_type', 'j.amount_minor', 'j.scheduled_for as native_start', 'w.scheduled_for as workiz_start', 'w.closed_at',
                 'w.serial_id', 'c.name as client', DB::raw("coalesce(json_unquote(json_extract(w.payload, '$.Phone')), c.phone) as phone"),
-                DB::raw("coalesce(json_length(json_extract(w.payload, '$.Attachments')), 0) as workiz_photos"),
+                'w.remote_id as workiz_remote', DB::raw("json_length(json_extract(w.payload, '$.Attachments')) as workiz_photos"),
                 DB::raw("cast(coalesce(json_unquote(json_extract(w.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as workiz_total")]);
         $ids = $jobs->pluck('id')->all();
         $techs = DB::table('job_technicians as jt')->join('scheduling_technicians as t', 't.id', '=', 'jt.technician_id')->whereIn('jt.job_id', $ids)
@@ -151,11 +158,13 @@ class TechnicianReportController extends Controller
             $j->start = $j->workiz_start ?? $j->native_start;
             $j->day = $j->start === null ? null : CarbonImmutable::parse($j->start, $j->zone)->setTimezone($zone)->toDateString();
             $j->techs = $techs[$j->id] ?? [];
-            $j->photos = (int) $j->workiz_photos + (int) ($photos[$j->id] ?? 0);
+            // Only Workiz's single read carries a job's files; a copy that only
+            // a list read touched has no Attachments: its photos are unknown, not none.
+            $j->photos = $j->workiz_remote !== null && $j->workiz_photos === null ? null : (int) $j->workiz_photos + (int) ($photos[$j->id] ?? 0);
             $j->inspected = isset($inspected[$j->id]);
             $j->total_minor = $j->workiz_start !== null ? (int) round(((float) $j->workiz_total) * 100) : (int) $j->amount_minor;
             $j->phone = strlen($d = substr((string) preg_replace('/\D/', '', (string) $j->phone), -10)) === 10 ? $d : null;
-            $j->misses = [];
+            $j->misses = $j->unchecked = [];
 
             return $j;
         })->filter(fn (object $j) => $j->day !== null && $j->day >= $from && $j->day <= $to)->values();

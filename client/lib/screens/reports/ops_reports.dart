@@ -1103,7 +1103,9 @@ class _TechChecksPanelState extends State<_TechChecksPanel> {
                       'start ${_when(j['start'], widget.formats)}',
                       if (j['closed_at'] != null)
                         'closed ${_when(j['closed_at'], widget.formats)}',
-                      '${j['photos'] ?? 0} photos',
+                      j['photos'] == null
+                          ? 'photos not read'
+                          : '${j['photos']} photos',
                     ].join(' · '),
                     style: theme.textTheme.bodySmall,
                   ),
