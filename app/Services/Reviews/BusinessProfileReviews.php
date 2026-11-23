@@ -139,6 +139,35 @@ class BusinessProfileReviews
     public const REMOVAL_CHECKS = 3;
 
     /**
+     * Is this review gone from Google? Asked by its own name and by the listing's account; only two 404s
+     * say yes, so a failed token or an outage never marks a live review removed.
+     */
+    public function reviewIsGone(Review $review): bool
+    {
+        $connection = $review->connection;
+        if ($connection === null || $review->review_key === null) {
+            return false;
+        }
+        $token = GoogleToken::forConnection($connection, 'business_profile');
+        $tail = \App\Support\CustomerExperience\Places::tail((string) $review->location_name);
+        $listing = $tail === null ? null : \App\Models\BusinessLocation::query()
+            ->where('remote_name', 'like', '%'.addcslashes($tail, '%_'))->first();
+        $names = array_unique(array_filter([$review->remote_name,
+            $listing?->account_name ? 'accounts/'.trim($listing->account_name, '/').'/'.$tail.'/reviews/'.$review->review_key : null]));
+        foreach ($names as $name) {
+            try {
+                if (Http::withToken($token)->timeout(self::TIMEOUT)->get(BusinessProfileOAuth::LEGACY_V4.'/'.ltrim($name, '/'))->status() !== 404) {
+                    return false;
+                }
+            } catch (ConnectionException) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * A review Google's complete list no longer has. It is asked for directly:
      * only a 404 counts, and only once per two hours, so three runs of the
      * six-hourly sync are what it takes. A review seen again starts over.

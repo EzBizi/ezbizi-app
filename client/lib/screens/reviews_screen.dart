@@ -1412,7 +1412,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   String _who(Map<String, dynamic> review) =>
       (review['reviewer_name'] as String?)?.trim().isNotEmpty == true
       ? review['reviewer_name'] as String
-      : 'A Google user';
+      : (review['source'] ?? 'google') == 'google'
+      ? 'A Google user'
+      : 'An ${_sourceName(review['source'] as String)} customer';
+
+  String _sourceName(String source) =>
+      source == 'ekomi' ? 'eKomi' : source[0].toUpperCase() + source.substring(1);
 
   /// "Company · Branch" where the review is a branch's, so twenty "Main"s do
   /// not read the same; the company alone, or the Google location's name.
@@ -2275,6 +2280,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     // edit; posting it on Google is publish.
     final canDraft = _can('reviews.edit');
     final canPost = _can('reviews.publish');
+    // Removed from Google, from eKomi, or no connected profile: say why, offer nothing to post.
+    final blocked = published ? null : review['reply_blocked'] as String?;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2318,7 +2325,13 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               ),
             ),
           ),
-        if (!published && !canDraft && !canPost)
+        if (blocked != null)
+          Padding(
+            key: const ValueKey('review-reply-blocked'),
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(blocked, style: theme.textTheme.bodySmall),
+          ),
+        if (blocked == null && !published && !canDraft && !canPost)
           Padding(
             key: const ValueKey('review-reply-read-only'),
             padding: const EdgeInsets.only(top: 4),
@@ -2334,7 +2347,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               style: theme.textTheme.bodySmall,
             ),
           ),
-        if (!published && (canDraft || canPost)) ...[
+        if (blocked == null && !published && (canDraft || canPost)) ...[
           if (_aiDraft != null && _draft.text == _aiDraft)
             const Padding(
               padding: EdgeInsets.only(bottom: 6),
