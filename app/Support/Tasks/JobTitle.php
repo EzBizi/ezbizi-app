@@ -45,11 +45,33 @@ final class JobTitle
         return null;
     }
 
+    /** @var array<string, string>|null number => job id, for a backfill over every task (serial_id has no index) */
+    private static ?array $map = null;
+
+    /** A backfill reads the organization's Workiz numbers once; the live import asks each time. */
+    public static function preload(): void
+    {
+        self::$map = [];
+        foreach (WorkizJob::query()->whereNotNull('job_id')->get(['serial_id', 'remote_id', 'job_id']) as $w) {
+            foreach (array_filter([(string) $w->serial_id, (string) $w->remote_id]) as $k) {
+                self::$map[$k] ??= (string) $w->job_id;
+            }
+        }
+    }
+
+    public static function forget(): void
+    {
+        self::$map = null;
+    }
+
     /** The job behind a number: Workiz's serial/remote id, or EzBizi's JOB- number. */
     public static function job(string $number): ?Job
     {
         if (str_starts_with($number, 'JOB-')) {
             return Job::query()->where('number', $number)->first();
+        }
+        if (self::$map !== null) {
+            return isset(self::$map[$number]) ? Job::query()->find(self::$map[$number]) : null;
         }
         $workiz = WorkizJob::query()->where('serial_id', $number)->orWhere('remote_id', $number)->first();
 
