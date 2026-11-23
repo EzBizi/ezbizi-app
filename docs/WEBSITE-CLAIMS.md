@@ -3930,3 +3930,7 @@ No sentence moves.
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
 the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+## Pending for the next website-daily reply (desk, 2026-11-23)
+
+- New public no-login pages since 0623: `/join?link=...` (HR invite links: self-signup into a chosen role and place; ships 0626) and Review QR `/r/<code>` (the same smiley/sad review page, now also reached by a technician QR code tied to that technician; live 0624). Neither collects anything beyond the existing invite and review-feedback flows.
