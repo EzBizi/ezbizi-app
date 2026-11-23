@@ -64,6 +64,8 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 38 | Merav: **files attached to updates can't be opened** (11-23: "My board" in A1 Chimney - Excels, Shoval's updates list Seattle/MA/NY/DMV/IL/GA/CT Balance report 2026.xlsx as plain text, not links). Monday update files must import as attachments and open/download from the update | Task Board | ROUTED | Sent 11-23 |
 | 39 | **Drag ghost stays**: start moving an item, then cancel or drop it back in its own place, and the row stays greyed out (11-23 photo: 600026424 Yhav faded) | Task Board | ROUTED | Sent 11-23 |
 | 40 | Chaim: **click the task name to rename it in place** in the table (Enter saves, Esc cancels), like Monday; the arrow/row still opens the panel (11-23 suggestion 01a209a3) | Task Board | ROUTED | Sent 11-23 |
+| 41 | **Old-format titles everywhere** (11-23): items still named "600025660 Albert" / "400595957 - Peter" / "Job #N - Name" get the serial moved to EzBizi Job # + Workiz Job ID and the title reduced to the name, on every board (pushed to Monday), same rule as row 10 | Task Board | ROUTED | Sent 11-23 |
+| 42 | Chaim: **Task Board uses Monday's font** (Figtree) (11-23 suggestion 01a209a5) | Task Board / UI | ROUTED | Sent 11-23 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
