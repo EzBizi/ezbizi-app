@@ -829,7 +829,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ('Jobs created', totals['jobs'], null, null),
       (
         'Conv. rate',
-        _rate(totals['booked_new'], totals['answered_new']),
+        _rate(
+          totals['booked_new'],
+          ((totals['answered_new'] as num?) ?? 0) -
+              ((totals['needs_attention'] as num?) ?? 0) -
+              ((totals['awaiting_review'] as num?) ?? 0),
+        ),
         null,
         null,
       ),
@@ -953,6 +958,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 c['queue'] == _newQueue &&
                 c['mark'] == null &&
                 c['needs_attention'] != true &&
+                c['awaiting_review'] != true &&
                 c['answered_by'] != null &&
                 c['booked'] != true &&
                 c['existing_job'] == null,
@@ -969,9 +975,21 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// The calls that reached nobody: customers calling in. Outbound calls
   /// nobody picked up are listed beside them in Missed, never counted as a
   /// missed customer.
+  /// Outside the line's office hours they are After hours instead
+  /// (Analorena, 2026-11-23: "not count the calls that are outside business
+  /// hours for missed calls").
   List<Map<String, dynamic>> _nobody(List<Map<String, dynamic>> calls) => calls
-      .where((c) => c['outcome'] != 'answered' && !_isOutbound(c))
+      .where(
+        (c) =>
+            c['outcome'] != 'answered' &&
+            !_isOutbound(c) &&
+            c['after_hours'] != true,
+      )
       .toList();
+
+  /// Theirs in that nobody picked up, outside the line's office hours.
+  List<Map<String, dynamic>> _afterHours(List<Map<String, dynamic>> calls) =>
+      calls.where((c) => !_isOutbound(c) && c['after_hours'] == true).toList();
 
   /// Our calls out that nobody picked up.
   List<Map<String, dynamic>> _outbound(List<Map<String, dynamic>> calls) =>
@@ -1066,6 +1084,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   Widget _missedCard(BuildContext context, List<Map<String, dynamic>> calls) {
     final nobody = _nobody(calls);
     int count(String queue) => nobody.where((c) => c['queue'] == queue).length;
+    final late = _afterHours(calls).length;
+    final detail = [
+      if (nobody.isNotEmpty)
+        'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
+      if (late > 0) '$late after hours, not counted',
+    ];
     // One row per caller: the same number twice is "Name · 2 calls" (item 13).
     final byCaller = <String, List<Map<String, dynamic>>>{};
     for (final call in nobody.where(_matches(_missedQuery))) {
@@ -1077,9 +1101,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       key: const ValueKey('overview-missed'),
       title: 'Missed calls',
       count: nobody.length,
-      detail: nobody.isEmpty
-          ? null
-          : 'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
+      detail: detail.isEmpty ? null : detail.join(' · '),
       empty: nobody.isEmpty
           ? 'Every call reached somebody.'
           : 'No caller matches.',
@@ -1364,6 +1386,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       // Needs Attention"). The server decides, and a matching job clears it.
       'ai_booked_no_job' =>
         from.where((c) => c['needs_attention'] == true).toList(),
+      // Another company's call, booked or not by hand (Analorena, 2026-11-23).
+      'awaiting_review' =>
+        from.where((c) => c['awaiting_review'] == true).toList(),
       _ => from,
     };
     // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
@@ -1382,6 +1407,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       // Ours out that nobody picked up; theirs in that nobody did (review item 1).
       'not_answered' => _outbound(from),
       'missed' => _nobody(from),
+      'after_hours' => _afterHours(from),
       // All: theirs in, unless a number is searched or Answered is chosen.
       _ => _numberSearch ? from : from.where((c) => !_isOutbound(c)).toList(),
     };
@@ -1452,9 +1478,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
           ('ai_booked_no_job', 'Needs Attention'),
+          ('awaiting_review', 'Awaiting review'),
         ])
-          // The follow-up list only while it has calls, or is chosen.
-          if (key != 'ai_booked_no_job' ||
+          // The follow-up lists only while they have calls, or are chosen.
+          if (!{'ai_booked_no_job', 'awaiting_review'}.contains(key) ||
               _result == key ||
               pick(key, _callFilter, mine).isNotEmpty)
             chip(
@@ -1475,18 +1502,22 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('answered', 'answered', 'Answered'),
           ('outbound_no_answer', 'not_answered', 'Not answered'),
           ('missed', 'missed', 'Missed call'),
+          ('after_hours', 'after_hours', 'After hours'),
         ])
-          chip(
-            key,
-            '$label ${pick(_result, state, mine).length}',
-            _callFilter == state,
-            () {
-              _callFilter = state;
-              _labelFilter = null;
-              _nobodyFilter = null;
-              _directionFilter = null;
-            },
-          ),
+          if (state != 'after_hours' ||
+              _callFilter == state ||
+              pick(_result, state, mine).isNotEmpty)
+            chip(
+              key,
+              '$label ${pick(_result, state, mine).length}',
+              _callFilter == state,
+              () {
+                _callFilter = state;
+                _labelFilter = null;
+                _nobodyFilter = null;
+                _directionFilter = null;
+              },
+            ),
       ]),
       group('Client', [
         chip(
@@ -1960,10 +1991,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Booked out of the new-client calls they answered (Trey, 2026-11-04:
   /// existing clients are not bookings); null when they answered none.
   double? _bookingRate(Map<String, dynamic> person) {
-    // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
-    final answered = _answeredNew(
-      person,
-    ).where((c) => c['needs_attention'] != true).length;
+    // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12),
+    // nor is Awaiting review (Analorena, 2026-11-23).
+    final answered = _answeredNew(person)
+        .where(
+          (c) => c['needs_attention'] != true && c['awaiting_review'] != true,
+        )
+        .length;
     if (answered == 0) return null;
 
     return _booked(person) / answered * 100;
@@ -2526,6 +2560,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? null
         : c['needs_attention'] == true
         ? 'needs_attention'
+        : c['awaiting_review'] == true
+        ? 'awaiting_review'
         : c['queue'] != _newQueue
         ? null
         : c['booked'] == true
@@ -2612,6 +2648,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ('not_booked', 'Not booked'),
                   ('existing_job', 'Existing job'),
                   ('needs_attention', 'Needs Attention'),
+                  ('awaiting_review', 'Awaiting review'),
                 ],
                 bookingOf,
                 _bookingFilter,
@@ -2724,6 +2761,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             message: 'AI heard a booking, no job yet',
             child: StatusPill('Needs Attention', tone: Tone.review),
           )
+        : call['awaiting_review'] == true
+        ? const Tooltip(
+            message: "Another company's call: set it Booked or Not booked",
+            child: StatusPill('Awaiting review', tone: Tone.review),
+          )
         : call['booked'] == true
         ? _setMark(
             setBy['booking'],
@@ -2757,6 +2799,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? StatusPill(
             outbound
                 ? 'Not answered'
+                : call['after_hours'] == true
+                ? 'After hours'
                 : _outcomes[call['outcome']] ?? 'Missed call',
             tone: Tone.caution,
           )

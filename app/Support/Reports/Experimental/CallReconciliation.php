@@ -4,10 +4,16 @@ namespace App\Support\Reports\Experimental;
 
 use App\Models\CallReportLabel;
 use App\Models\CallReportOverride;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Support\Leads\CallTypeCorrections;
+use App\Support\Leads\LeadOfficeHours;
 use App\Support\Phone\NumberNames;
 use App\Support\Reports\Tagging\CallLabels;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
@@ -206,7 +212,34 @@ final class CallReconciliation
                 'existing' => ($this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) === null && ! isset($converted[(string) ($call['id'] ?? '')]),
                 default => false,
             };
+
+        /*
+         * ANOTHER COMPANY'S CALL (Analorena, 2026-11-23, approved by Jose:
+         * "Companies like Ace, Angisweep, and the others need to be reviewed
+         * manually"). A new client on a line assigned to a company other than
+         * the call account's, with no job for the number, is Awaiting review:
+         * out of Not booked and the booking rate until somebody sets the
+         * booking by hand. A matching job still makes it Booked.
+         */
+        $lines = $this->lines($calls);
+        $awaitingReview = fn (array $call) => ($lines[(string) ($call['to_number'] ?? '')]['other'] ?? false)
+            && ($call['answered_by'] ?? null) !== null && $this->markOf($call) === null
+            && RingCentralCallLog::clientOf($call['queue'] ?? null) === 'new' && ! $needsAttention($call)
+            && ($this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) === null
+            && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null;
+
+        /*
+         * MISSED AFTER HOURS (Analorena, 2026-11-23, approved by Jose: "not
+         * count the calls that are outside business hours for missed calls"):
+         * the office hours of the line's branch (Leads' leads.office_hours), in
+         * that branch's time zone. Counted apart, never dropped.
+         */
+        $hours = app(LeadOfficeHours::class);
+        $afterHours = fn (array $call) => ($call['answered_by'] ?? null) === null
+            && ($place = $lines[(string) ($call['to_number'] ?? '')]['place'] ?? null) !== null
+            && isset($call['started_at']) && ! $hours->isOpenAt($place, CarbonImmutable::parse((string) $call['started_at']));
         $notBooked = 0;
+        $missedAfterHours = 0;
 
         $rang = [];
         $answered = [];
@@ -216,6 +249,7 @@ final class CallReconciliation
         $bookedNew = [];
         $existing = [];
         $attention = [];
+        $review = [];
 
         $reachedNobody = 0;
         $newTotal = 0;
@@ -226,7 +260,9 @@ final class CallReconciliation
             // and was picked up by none reached nobody too. Measured 9/23: 25
             // such calls sat in neither card, so Answered + Reached nobody did
             // not add up to Calls.
-            if (($call['answered_by'] ?? null) === null) {
+            if ($afterHours($call)) {
+                $missedAfterHours++;
+            } elseif (($call['answered_by'] ?? null) === null) {
                 $reachedNobody++;
             }
 
@@ -268,6 +304,8 @@ final class CallReconciliation
                 if ($client === 'new') {
                     $attention[$who] = ($attention[$who] ?? 0) + 1;
                 }
+            } elseif ($awaitingReview($call)) {
+                $review[$who] = ($review[$who] ?? 0) + 1;
             } elseif ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
@@ -348,6 +386,8 @@ final class CallReconciliation
                 'booked_new' => $bookedNew[$name] ?? 0,
                 // Out of the booking rate until chased: new_client less these is its base.
                 'needs_attention' => $attention[$name] ?? 0,
+                // Another company's, out of the booking rate until reviewed.
+                'awaiting_review' => $review[$name] ?? 0,
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
@@ -393,6 +433,9 @@ final class CallReconciliation
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,
                 'needs_attention' => array_sum($attention),
+                'awaiting_review' => array_sum($review),
+                // Nobody answered, outside the line's office hours: not in reached_nobody.
+                'missed_after_hours' => $missedAfterHours,
                 'outbound_unanswered' => count($unansweredOut),
                 'outbound' => count($unansweredOut) + count($connectedOut),
 
@@ -445,6 +488,8 @@ final class CallReconciliation
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
                 'mark' => $this->markOf($call),
                 'needs_attention' => $needsAttention($call),
+                'awaiting_review' => $awaitingReview($call),
+                'after_hours' => $afterHours($call),
                 // Who set the client, the booking or the mark by hand, per field.
                 'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
@@ -551,6 +596,41 @@ final class CallReconciliation
 
             return $day !== '' && $day >= $from && $day <= $to;
         }));
+    }
+
+    /**
+     * Each dialled number's company and place, as assigned in Leads › Manage ›
+     * Phone lines (Jose, 2026-11-17: whose call it is comes from the number it
+     * came in on). `other`: another company's than the call account's. An
+     * unassigned line is the account's, at the organization.
+     *
+     * @param  list<array<string, mixed>>  $calls
+     * @return array<string, array{other: bool, place: Model}>
+     */
+    private function lines(array $calls): array
+    {
+        if (! app(TenantContext::class)->has()) {
+            return [];
+        }
+
+        $org = app(TenantContext::class)->get();
+        $assigned = (array) app(SettingsResolver::class)->get('leads.line_numbers', $org);
+        $own = app(RingCentralCallLog::class)->companyId();
+        $branches = Franchise::query()->get()->keyBy('id');
+        $companies = Company::query()->get()->keyBy('id');
+        $out = [];
+
+        foreach (array_unique(array_map(fn ($c) => (string) ($c['to_number'] ?? ''), $calls)) as $number) {
+            [$type, $id] = array_pad(explode(':', (string) ($assigned[$number] ?? ''), 2), 2, '');
+            $branch = $type === 'franchise' ? $branches->get($id) : null;
+            $company = $branch !== null ? $companies->get($branch->company_id) : ($type === 'company' ? $companies->get($id) : null);
+            $out[$number] = [
+                'other' => $company !== null && $own !== null && (string) $company->getKey() !== $own,
+                'place' => $branch ?? $company ?? $org,
+            ];
+        }
+
+        return $out;
     }
 
     /** spam | not_a_customer, set by hand; null when unmarked. */

@@ -208,8 +208,9 @@ class ScoringReportController extends Controller
             }
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
             $newClient = (int) ($perf[$person]['new_client'] ?? 0);
-            // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
-            $decided = $newClient - (int) ($perf[$person]['needs_attention'] ?? 0);
+            // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12),
+            // nor is another company's call awaiting review (Analorena, 2026-11-23).
+            $decided = $newClient - (int) ($perf[$person]['needs_attention'] ?? 0) - (int) ($perf[$person]['awaiting_review'] ?? 0);
             $jobs = (int) ($perf[$person]['jobs'] ?? 0);
             // Booked out of the new-client calls they answered, as Performance's
             // booking rate (Jose, 2026-11-04). Every job they created over those
