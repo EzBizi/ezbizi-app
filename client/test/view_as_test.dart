@@ -113,6 +113,8 @@ void main() {
     expect(find.byKey(const ValueKey('view-as-panel')), findsNothing);
     expect(find.byKey(const ValueKey('viewing-as-strip')), findsOneWidget);
     expect(find.textContaining('Technician at Akron'), findsOneWidget);
+    // Writes are done as them (Roles & Permissions): the strip says so.
+    expect(find.textContaining('changes you make are real'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('viewing-as-exit')));
     await tester.pumpAndSettle();

@@ -270,8 +270,8 @@ class ViewingAsStrip extends StatelessWidget {
           Expanded(
             child: Text(
               phone
-                  ? 'As $label'
-                  : 'Viewing as $label — what they see and can do',
+                  ? 'As $label · changes are real'
+                  : 'Viewing as $label — changes you make are real and logged as you',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: tone.ink, fontWeight: FontWeight.w600),
