@@ -174,6 +174,9 @@ Schedule::command('ezbizi:thumbtack-keep-alive')->dailyAt('04:30')->withoutOverl
  * A run that outlasts its minute is not overlapped - the next one skips.
  */
 Schedule::command('ezbizi:sync-leads')->everyMinute()->withoutOverlapping(10);
+// Their messages alone, every minute in a lane of their own (Jose, 2026-11-23: LS texts ~4 minutes
+// late, the full run waiting behind the slow lane's Workiz and Monday passes). See TWO LANES.
+Schedule::command('ezbizi:sync-leads --messages')->everyMinute()->withoutOverlapping(5);
 
 /*
  * EVERY MINUTE, because Jose asked for constant sync — and affordable only
@@ -564,6 +567,10 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  * behind them. withoutOverlapping still guards each command.
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
+    // A third lane, LEADS (2026-11-23): `sync-leads --messages` alone, every minute, in
+    // deploy/ezbizi-scheduler-leads.service, so an LS text never waits behind the slow lane.
+    // With ezbizi.scheduler.leads_lane off it is placed like any other command, as before.
+    $messages = str_contains((string) $event->command, 'sync-leads') && str_contains((string) $event->command, '--messages');
     $slow = (bool) preg_match(
         '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity|quickbooks-sync)(\s|\'|$)/',
         (string) $event->command,
@@ -575,7 +582,13 @@ foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event)
     if ($slow && $cron !== '* * * * *' && config('ezbizi.scheduler.slow_lane')) {
         $event->expression = '* * * * *';
     }
-    $event->when(function () use ($slow, $cron, $event) {
+    $event->when(function () use ($slow, $messages, $cron, $event) {
+        // The leads lane runs its one command and nothing else; that command runs nowhere else.
+        $leads = $messages && config('ezbizi.scheduler.leads_lane');
+        $inLeadsLane = getenv('EZBIZI_SCHEDULE_LANE') === 'leads';
+        if ($leads || $inLeadsLane) {
+            return $leads && $inLeadsLane;
+        }
         $inSlowLane = getenv('EZBIZI_SCHEDULE_LANE') === 'slow';
 
         // Flag off: the fast slots run everything and the slow lane nothing.

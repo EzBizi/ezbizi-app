@@ -38,6 +38,38 @@ class SchedulerLanesTest extends TestCase
         return $out;
     }
 
+    /**
+     * Jose, 2026-11-23: LS texts ~4 minutes late, sync-leads waiting behind the
+     * slow lane. Its messages-only run has a lane of its own once the flag is on.
+     */
+    public function test_the_leads_lane_runs_the_messages_read_alone_and_nothing_else_does(): void
+    {
+        config(['ezbizi.scheduler.slow_lane' => true, 'ezbizi.scheduler.leads_lane' => true]);
+        DueSinceLastRun::$fake = true;
+        $passes = function (?string $lane): array {
+            putenv($lane === null ? 'EZBIZI_SCHEDULE_LANE' : "EZBIZI_SCHEDULE_LANE={$lane}");
+            $out = [];
+            foreach ($this->app->make(Schedule::class)->events() as $e) {
+                if ($e->filtersPass($this->app)) {
+                    $out[] = preg_replace('/^.*artisan[\'"]?\s+/', '', (string) $e->command);
+                }
+            }
+            putenv('EZBIZI_SCHEDULE_LANE');
+
+            return $out;
+        };
+
+        $this->assertSame(['ezbizi:sync-leads --messages'], $passes('leads'));
+        $this->assertNotContains('ezbizi:sync-leads --messages', $passes('slow'));
+        $this->assertNotContains('ezbizi:sync-leads --messages', $passes(null));
+        $this->assertContains('ezbizi:sync-leads', $passes('slow'), 'the full run stays in the slow lane');
+
+        // The control: flag off, the leads lane runs nothing and the read is placed as before.
+        config(['ezbizi.scheduler.leads_lane' => false]);
+        $this->assertSame([], $passes('leads'));
+        $this->assertContains('ezbizi:sync-leads --messages', $passes('slow'));
+    }
+
     public function test_flag_off_the_fast_slots_run_everything_and_the_slow_lane_nothing(): void
     {
         config(['ezbizi.scheduler.slow_lane' => false]);
