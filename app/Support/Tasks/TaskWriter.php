@@ -534,7 +534,10 @@ class TaskWriter
             foreach ($ids as $i => $id) {
                 Task::query()->whereKey($id)->update(['position' => $i]);
             }
-            app(MondayOutbox::class)->record($task, ['group']);
+            // Into a Monday board for the first time: made there (desk 11-23, row 35's 3 tasks
+            // never reached Operatrion's Monday board). Already on Monday: moved there.
+            $task->setRelation('board', $board); // the outbox reads the board it is on now, not the one it left
+            app(MondayOutbox::class)->record($task, isset($fields['board_id']) && ! str_starts_with((string) $task->external_ref, 'monday:') ? ['create'] : ['group']);
             $this->checkRules($task);
 
             return $task->refresh();

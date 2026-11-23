@@ -734,4 +734,20 @@ class MondayPushTest extends TestCase
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
         $this->assertTrue(collect($this->mutations)->contains(fn ($m) => str_contains($m['query'], 'delete_update(') && (string) $m['vars']['i'] === '500'));
     }
+
+    /** Desk 11-23: a task moved from a board with no Monday mirror into a mirrored one is made there, in its group. */
+    public function test_a_task_moved_into_a_monday_board_is_created_there(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $plain = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $task = app(TaskWriter::class)->create($plain, ['title' => 'Callback Terence'], $this->jose);
+            $group = $this->board->groups()->orderBy('position')->get()->last();
+            app(TaskWriter::class)->move($task, $group, null, $this->jose);
+            $this->assertSame(['create'], MondayOutboxEntry::query()->where('task_id', $task->id)->sole()->kinds);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_item('));
+        $this->assertNotNull($made, 'made on Monday');
+        $this->assertNotEmpty($made['vars']['g'] ?? null, 'with its group');
+    }
 }
