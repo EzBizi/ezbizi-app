@@ -1119,7 +1119,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return _listCard(
       context,
-      key: ValueKey(name),
+      // Spelt out: a tour step finds its anchor by the literal key.
+      key: afterHours
+          ? const ValueKey('overview-missed-after-hours')
+          : const ValueKey('overview-missed'),
       title: afterHours ? 'After hours' : 'Missed calls',
       count: nobody.length,
       detail: detail.join(' · '),
