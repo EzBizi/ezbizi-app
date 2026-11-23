@@ -28,6 +28,8 @@ use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -606,6 +608,9 @@ class TaskWriter
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);
+            if (! $this->quiet) {
+                DB::afterCommit(fn () => self::tellFollowers($update, $mentions));
+            }
 
             return $update;
         });
@@ -724,6 +729,43 @@ class TaskWriter
         if ($new !== [] && ! $this->quiet && ! $this->syncing) {
             DB::afterCommit(fn () => self::tellAssigned($task, $new));
         }
+    }
+
+    /**
+     * An update rings the bell of the task's followers, as Monday's item
+     * subscribers: its owners, its maker and whoever posted on it before
+     * (suggestion 01a20956, Jennine 11-23: techs' updates reached nobody).
+     * Not the author, not those already told by a mention, only who can see it.
+     *
+     * @param  string[]  $skip
+     */
+    public static function tellFollowers(TaskUpdate $update, array $skip = []): int
+    {
+        $org = Organization::query()->withoutGlobalScopes()->find($update->organization_id);
+
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($update, $skip) {
+            $task = Task::query()->with('board')->find($update->task_id);
+            if ($task === null) {
+                return 0;
+            }
+            $ids = collect([$task->created_by_user_id])
+                ->merge($task->owners()->pluck('user_id'))
+                ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
+                ->filter()->unique()->diff([...$skip, $update->user_id])->all();
+            $who = $update->user()->value('name') ?? 'Monday';
+            $told = 0;
+            foreach (User::query()->whereKey($ids)->where('is_active', true)->get() as $user) {
+                if (Gate::forUser($user)->check('view', $task)) {
+                    $told += app(NotificationDispatcher::class)->dispatch(
+                        title: $who.' posted on '.$task->title,
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        subject: $task, onlyTo: $user, kind: 'task.reply', source: 'tasks',
+                    );
+                }
+            }
+
+            return $told;
+        });
     }
 
     /** @param  string[]  $userIds */

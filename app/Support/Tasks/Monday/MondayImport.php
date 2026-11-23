@@ -783,6 +783,10 @@ final class MondayImport
         $update->forceFill(array_filter(['external_ref' => $ref, 'created_at' => $at, 'updated_at' => $at]))->saveQuietly();
         $this->counts['updates']++;
         $this->files($update, $files, $author ?? $as, false);
+        // A tech's update on Monday rings the task's followers here too; the first import and old history do not.
+        if (! $this->writer->quiet && ($at === null || $at->greaterThan(now()->subDay()))) {
+            DB::afterCommit(fn () => TaskWriter::tellFollowers($update));
+        }
     }
 
     /**
