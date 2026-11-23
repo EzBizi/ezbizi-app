@@ -4082,10 +4082,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Widget _cellBorder(BuildContext context, Widget child) => DecoratedBox(
     decoration: BoxDecoration(
-      border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+      border: Border(top: BorderSide(color: rowLine(context))),
     ),
     child: child,
   );
+
+  /// Monday's row rule (Jose 11-23, row 37: "Missing the row line dividers"):
+  /// the theme's dividerColor all but vanished on white.
+  static Color rowLine(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF4B4E69)
+      : const Color(0xFFD0D4E4);
 
   Widget _cell(BuildContext context, double width, Widget child) => Container(
     width: width,

@@ -478,6 +478,21 @@ void main() {
     expect(updates.left - status.right, lessThan(40), reason: 'next cell');
   });
 
+  testWidgets('every row has the Monday grey rule above it (Jose 11-23, '
+      'row 37)', (tester) async {
+    await pump(tester);
+    final box = tester.widget<DecoratedBox>(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('task-t1')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final top = ((box.decoration as BoxDecoration).border! as Border).top;
+    expect(top.color, const Color(0xFFD0D4E4));
+  });
+
   testWidgets('design 200: under 1100 px the panel still opens over the '
       'board', (tester) async {
     await pump(tester, width: 1000);
