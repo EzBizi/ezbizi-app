@@ -1701,6 +1701,8 @@ class ModuleServiceProvider extends ServiceProvider
                      * builder.view). Jose chose the word "Testing", 2026-10-26.
                      */
                     new TabDefinition('testing', 'Testing', action: 'builder.view'),
+                    // Jose 11-23: Review QR here too, for technicians: New Inspection's grant, no new box.
+                    new TabDefinition('review_qr', 'Review QR', action: 'new.view'),
                 ],
                 actionRequires: ['new.view' => ['inspection.create'], 'builder.view' => ['inspection.edit']],
                 /*
