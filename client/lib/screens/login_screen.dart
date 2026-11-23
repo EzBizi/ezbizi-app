@@ -18,6 +18,11 @@ import '../widgets/get_the_apps.dart';
 /// picker only ever appears AFTER the password verified — the server enforces
 /// that, and this screen simply never has the data before then.
 class LoginScreen extends StatefulWidget {
+  /// Jose 2026-11-23, "for now": the Create an account line confused staff
+  /// arriving from HR invite links. Set true to bring it back. Signup itself,
+  /// /invite and /join still work. Not const so a test can open the door.
+  static bool showCreateAccount = false;
+
   const LoginScreen({
     super.key,
     required this.api,
@@ -380,7 +385,7 @@ class _LoginScreenState extends State<LoginScreen> {
             // somebody without an account arrives — there is no marketing page in
             // the app to put it on. Hidden when the server has closed the front
             // door (no mailbox to verify an address). Invitations still work.
-            if (UiStrings.signupOpen) ...[
+            if (LoginScreen.showCreateAccount && UiStrings.signupOpen) ...[
               const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
