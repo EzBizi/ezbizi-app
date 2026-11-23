@@ -203,4 +203,27 @@ class JobAddressFlagsTest extends TestCase
             $this->assertSame('Geri Vandaveer', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Client name'))->value('value_text'));
         });
     }
+    /** Jose with Shoval, 2026-11-23: a Project job completed in Workiz without its costs is flagged. */
+    public function test_a_project_completed_in_workiz_without_costs_is_flagged(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $f = $alpha['franchise'];
+            $done = collect(Job::allowedStatuses($f))->last();
+            app(SettingsResolver::class)->set('jobs.earned_statuses', $alpha['org'], [$done]);
+            $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'A']);
+            foreach ([['J-1', ['Project'], null], ['J-2', ['Project'], 5000], ['J-3', [], null]] as $n => [$num, $tags, $parts]) {
+                $job = Job::create(['franchise_id' => $f->id, 'customer_id' => $c->id, 'number' => $num, 'title' => 'J', 'status' => $done,
+                    'currency' => 'USD', 'tags' => $tags]);
+                $job->forceFill(['parts_cost_minor' => $parts, 'labor_kind' => $parts ? 'contractor' : null, 'labor_price_minor' => $parts])->save();
+                $w = WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => "W{$n}", 'serial_id' => 200 + $n, 'status' => 'Done',
+                    'address' => '12 Savin Ave', 'postal_code' => '06516', 'payload' => [], 'synced_at' => now()]);
+                $w->job_id = $job->id;
+                $w->save();
+            }
+        });
+
+        // Only J-1: J-2 has its costs, J-3 is not a Project.
+        $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('1 flag raised')->assertSuccessful();
+    }
 }

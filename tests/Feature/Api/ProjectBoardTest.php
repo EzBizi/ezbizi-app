@@ -198,7 +198,7 @@ class ProjectBoardTest extends TestCase
         $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=jonathon')->json('data'), 'id'));
         $this->assertSame([], $api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=nobody-here')->json('data'));
         $this->assertSame(now()->subDays(5)->format('Y-m-d').' 11:48', $row['payment_date']);
-        $this->assertContains($row['status_days'], [4, 5]);
+        $this->assertContains($row['status_days'], [5, 6], 'day 1 is the day it entered');
         $this->assertSame(1, $row['attachments']);
         $this->assertSame(['Service Area', 'Repair Team / Contractor', 'a note'], $row['ready_missing']);
 
@@ -344,7 +344,7 @@ class ProjectBoardTest extends TestCase
         $api = $this->signedInAs($alpha['admin']);
 
         $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()
-            ->assertJsonPath('meta.status_days', ['warn' => 3, 'bad' => 7])->json('data.0');
+            ->assertJsonPath('meta.status_days', ['warn' => 2, 'bad' => 3])->json('data.0');
         $this->assertSame(['DEPOSIT RECEIVED'], $row['tags'], 'the repair tag has its own column');
         $this->assertSame('CONTRACTOR', $row['repair_team']);
 
@@ -365,6 +365,54 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['Technician'], $row['ready_missing']);
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'CONTRACTOR: OMER'])->assertStatus(422);
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI CREW'])->assertOk();
+    }
+
+    /** Jose, 2026-11-23: Status Time is days in the CURRENT stage; a move to another tab restarts it at day 1. */
+    public function test_status_time_restarts_when_the_job_changes_stage(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->whereKey($id)->update(['created_at' => now()->subDays(9)]);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $this->assertSame(10, $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.status_days'), 'first seen: from creation');
+
+        $this->inTenant($alpha['org'], fn () => Job::query()->whereKey($id)->update(['tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE']]));
+        $this->assertSame(1, $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->json('data.0.status_days'), 'a new stage is day 1');
+        $this->travel(2)->days();
+        $this->assertSame(3, $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->json('data.0.status_days'));
+    }
+
+    /** Jose with Shoval, 2026-11-23: a Project job completes only with Parts and Labor costs in. */
+    public function test_a_project_job_cannot_complete_without_parts_and_labor_costs(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$id, $done, $plain] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            app(\App\Support\Settings\SettingsResolver::class)->set('project_board.team_rates', $alpha['org'],
+                ['alone_per_day_minor' => 30000, 'with_helper_per_day_minor' => 45000]);
+            app(\App\Support\Settings\SettingsResolver::class)->set('jobs.earned_statuses', $alpha['org'],
+                [collect(Job::allowedStatuses($alpha['franchise']))->last()]);
+
+            return [$this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['Project']),
+                \App\Support\Jobs\EarnedStatuses::for($alpha['franchise'])[0],
+                $this->job($alpha['franchise'], 'J-2', 'Submitted', null, [])];
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $costs = "/api/v1/project-board/jobs/{$id}/project-costs";
+
+        $api->patchJson("/api/v1/jobs/{$id}", ['status' => $done])->assertUnprocessable()
+            ->assertJsonPath('errors.status.0', 'A Project job needs its Parts cost and Labor cost before it is complete. Add them in Project Management.');
+        $api->patchJson("/api/v1/jobs/{$plain}", ['status' => $done])->assertOk();
+
+        $api->patchJson($costs, ['parts_cost_minor' => 12000, 'labor_kind' => 'team', 'labor_helper' => true])->assertUnprocessable();
+        $res = $api->patchJson($costs, ['parts_cost_minor' => 12000, 'labor_kind' => 'team', 'labor_days' => 2, 'labor_helper' => true])->assertOk();
+        $this->assertSame([12000, 90000, []], [$res->json('data.parts_cost'), $res->json('data.labor_cost'), $res->json('data.project_missing')]);
+        $api->patchJson($costs, ['parts_cost_minor' => 0, 'labor_kind' => 'contractor', 'labor_price_minor' => 150000])
+            ->assertOk()->assertJsonPath('data.labor_cost', 150000);
+        $api->patchJson("/api/v1/jobs/{$id}", ['status' => $done])->assertOk();
     }
 
     /** Desk, 2026-11-20, Monday's PM boards: Job Cost, Production job, Total Cost = cost + 10% of the amount. */
