@@ -613,8 +613,7 @@ final class MondayImport
         // and the cleaned title goes back to Monday after the import.
         $title = trim((string) $item['name']);
         $about = [];
-        if (($job = JobTitle::split($title)) !== null) {
-            $found = JobTitle::job($job['number']);
+        if (($job = JobTitle::split($title)) !== null && (($found = JobTitle::job($job['number'])) !== null || empty($job['loose']))) {
             $column = $this->column($board, $job['ezbizi'] ? TaskWriter::EZBIZI_JOB_COLUMN : TaskWriter::WORKIZ_JOB_COLUMN, 'text');
             $values[$column->id] = $job['number'];
             $title = $job['rest'] !== '' ? $job['rest'] : ($found?->customer?->name ?? $title);

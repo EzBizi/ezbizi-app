@@ -106,6 +106,12 @@ class EzBiziTheme {
       ? const Color(0xFF252D35)
       : const Color(0xFFEDF2F7);
 
+  /// The Task Board's rule between rows, Monday's grey (Jose 11-23, row 37).
+  static Color boardRowLine(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF4B4E69)
+      : const Color(0xFFD0D4E4);
+
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.
   static Color clockIn(BuildContext context) =>

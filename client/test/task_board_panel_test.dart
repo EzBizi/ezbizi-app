@@ -478,6 +478,38 @@ void main() {
     expect(updates.left - status.right, lessThan(40), reason: 'next cell');
   });
 
+  testWidgets('every row has the Monday grey rule above it (Jose 11-23, '
+      'row 37)', (tester) async {
+    await pump(tester);
+    final box = tester.widget<DecoratedBox>(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('task-t1')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final top = ((box.decoration as BoxDecoration).border! as Border).top;
+    expect(top.color, const Color(0xFFD0D4E4));
+  });
+
+  testWidgets('a cancelled drag leaves the row at full colour (Jose 11-23, '
+      'row 39)', (tester) async {
+    await pump(tester);
+    final handle = find.byKey(const ValueKey('task-drag-t1'));
+    await tester.ensureVisible(handle);
+    final g = await tester.startGesture(tester.getCenter(handle));
+    await g.moveBy(const Offset(0, 30));
+    await tester.pump(const Duration(milliseconds: 50));
+    await g.moveBy(const Offset(0, -30)); // back over its own place
+    await tester.pump();
+    final shade = find.byKey(const ValueKey('task-shade-t1'));
+    expect((tester.widget(shade) as dynamic).ghost, isTrue, reason: 'lifted');
+    await g.up();
+    await tester.pumpAndSettle();
+    expect((tester.widget(shade) as dynamic).ghost, isFalse);
+  });
+
   testWidgets('design 200: under 1100 px the panel still opens over the '
       'board', (tester) async {
     await pump(tester, width: 1000);
