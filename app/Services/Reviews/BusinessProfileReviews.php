@@ -229,9 +229,13 @@ class BusinessProfileReviews
         }
 
         if ($response->failed()) {
+            // Google's own reason, so a refusal can be read (health sweep 2026-11-23: three 400s with no cause logged).
+            // "unclaimed locations" means nobody owns the listing on Google any more: only re-verifying it there helps.
+            $why = trim((string) $response->json('error.message'));
             throw new RuntimeException(sprintf(
-                'Google refused the reply (HTTP %d). Nothing was published.',
+                'Google refused the reply (HTTP %d%s). Nothing was published.',
                 $response->status(),
+                $why === '' ? '' : ': '.mb_substr($why, 0, 200),
             ));
         }
     }
