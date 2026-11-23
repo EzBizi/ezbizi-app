@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0627', date: '23 Nov 2026', items: [
+      'iPhone Duo, iPad mini and foldables: the bottom bar stays under 900 wide, and Leads and HR Records show list and detail side by side from 600 wide; folding keeps your place',
+      'Task Board: people tagged on Monday are notified here too',
+      'Task Board: an item moved onto a Monday board is created on Monday',
+      'Reviews: a review Google removed, an eKomi review, or one whose company has no connected Business Profile says why it cannot be answered and is not counted as Unanswered',
+      'Human Resources: saving a field a person record does not take is refused by name',
+    ]),
     VersionRelease(version: '0.0.0626', date: '23 Nov 2026', items: [
       'Human Resources: invite links. Pick a role and a place, share the link or QR, and people create their own account straight into it',
       'Sign-in no longer shows Create an account; staff join by invite link',

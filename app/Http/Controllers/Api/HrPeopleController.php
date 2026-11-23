@@ -1032,7 +1032,7 @@ class HrPeopleController extends Controller
             // number and are not the same thing.
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
-                    'allowance', 'allowance_period', 'eligible_from', 'eligible',
+                    'allowance', 'allowance_period', 'eligible_from', 'usable_from', 'first_days', 'usable', 'eligible',
                     'total', 'used', 'left', 'carried', 'expired', 'resets_on',
                 ])->all()
                 : null,
@@ -1214,6 +1214,10 @@ class HrPeopleController extends Controller
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],
+                    // The first day they actually have a day to take (Jose, 2026-11-23).
+                    'usable_from' => $answer['usable_from'],
+                    'first_days' => $answer['first_days'],
+                    'usable' => $answer['usable'],
                     'eligible' => $answer['eligible'],
 
                     // Reserved and honest: nothing records a day off yet, so

@@ -521,6 +521,10 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
         # A script on the Mac rather than a line here: the command needs nested
         # quoting through ssh, which is how a password gets mangled.
         ~/ezbizi-signing/unlock-keychain.sh
+        # iOS only: build with the App Store Xcode (27.1+ SDK fills the iPhone Duo's
+        # inner screen; older SDKs letterbox it). macOS stays on the xcode-select pin
+        # (26.0.1, flutter#188461 lipo bug). Desk, 2026-11-23.
+        export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
         cd ${MAC_PROJECT}
         ${MAC_FLUTTER} pub get
         ${MAC_FLUTTER} build ipa --release ${MAC_DEFINES} --export-options-plist=ios/ExportOptions.plist
