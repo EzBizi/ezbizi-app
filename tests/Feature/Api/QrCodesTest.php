@@ -254,6 +254,30 @@ class QrCodesTest extends TestCase
         ])->assertNotFound();
     }
 
+    /** Jose, 2026-11-23: organization-level codes stay in the organization view. */
+    public function test_a_company_view_shows_only_its_own_codes_never_organization_ones(): void
+    {
+        $t = $this->provisionTenant('Golf');
+        $admin = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        [$org, $mine] = $this->inTenant($t['org'], fn () => [
+            QrCode::create(['scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'code' => QrCode::freshCode(), 'name' => 'Org code', 'destination_url' => 'https://a.test']),
+            QrCode::create(['scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'code' => QrCode::freshCode(), 'name' => 'Company code', 'destination_url' => 'https://b.test']),
+        ]);
+        $company = ['X-EzBizi-View' => 'company:'.$t['company']->id];
+
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes', ['X-EzBizi-View' => 'organization'])
+            ->assertJsonCount(2, 'data');
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes', $company)
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $mine->id);
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes/'.$org->id.'/image', $company)->assertNotFound();
+
+        $made = $this->signedInAs($admin)->postJson('/api/v1/marketing/qr-codes',
+            ['name' => 'New', 'destination_url' => 'https://c.test'], $company)->assertCreated()->json('data');
+        $this->assertSame(['company', $t['company']->id], [$made['scope_type'], $made['scope_id']]);
+    }
+
     public function test_the_printable_image_comes_as_svg_and_png(): void
     {
         $t = $this->provisionTenant('Golf');
