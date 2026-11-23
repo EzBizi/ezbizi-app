@@ -108,6 +108,27 @@ void main() {
     );
   });
 
+  testWidgets('without findings in the payload there is no verdict', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      list: _hit(),
+      show: _findings.replaceFirst('"findings":', '"findings_old":'),
+    );
+
+    expect(
+      find.byKey(const ValueKey('inspection-finding-crown')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Inspection result'), findsNothing);
+    expect(find.text('FAIL'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('inspection-report-summary')),
+      findsNothing,
+    );
+  });
+
   // Phone audit 2026-11-04, Section 3 #1: a report imported from A1 carries a
   // numeric id and photo answers as one string or a keyed object, and a bare
   // `as List?` crashed the whole tab to a grey box.
