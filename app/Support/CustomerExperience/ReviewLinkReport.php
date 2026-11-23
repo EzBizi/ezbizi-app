@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReviewLinkReport
 {
-    public const COUNTS = ['sent', 'opened', 'happy', 'sad', 'submitted', 'google', 'reviewed'];
+    public const COUNTS = ['sent', 'opened', 'happy', 'sad', 'submitted', 'google', 'reviewed', 'qr'];
 
     /** How "reviewed" splits, and the stars behind it (Jose, 2026-11-09). */
     public const REVIEWED = ['exact', 'likely', 'confirmed', 'possible', 'without_click', 'stars'];
@@ -67,7 +67,23 @@ final class ReviewLinkReport
                 sum((m.confidence != 'possible' or m.status = 'confirmed') and not m.clicked) as without_click,
                 sum(case when m.confidence != 'possible' or m.status = 'confirmed' then v.rating else 0 end) as stars");
 
-        $rows = collect($this->grouped($sent))->concat($this->grouped($events))->concat($this->grouped($matches));
+        // Review QR scans (Jose, 2026-11-23): the technician who made the code, at its branch.
+        $qr = DB::table('review_link_events as x')
+            ->join('review_codes as q', 'q.code', '=', 'x.review_code')
+            ->where('x.organization_id', $user->organization_id)
+            ->whereNotNull('x.review_code')
+            ->whereBetween('x.occurred_at', [$from, $to])
+            ->whereIn('q.franchise_id', $franchiseIds)
+            ->selectRaw("q.franchise_id as franchise_id, x.user_id as performed_by_user_id, x.kind, count(*) as n");
+        $qrOpens = DB::table('review_link_events as x')
+            ->join('review_codes as q', 'q.code', '=', 'x.review_code')
+            ->where('x.organization_id', $user->organization_id)->where('x.kind', 'opened')
+            ->whereBetween('x.occurred_at', [$from, $to])
+            ->whereIn('q.franchise_id', $franchiseIds)
+            ->selectRaw("q.franchise_id as franchise_id, x.user_id as performed_by_user_id, 'qr' as kind, count(*) as n");
+
+        $rows = collect($this->grouped($sent))->concat($this->grouped($events))->concat($this->grouped($matches))
+            ->concat($this->groupedBy($qr, 'q.franchise_id', 'x.user_id'))->concat($this->groupedBy($qrOpens, 'q.franchise_id', 'x.user_id'));
 
         $names = Franchise::query()->whereIn('id', $rows->pluck('franchise_id')->unique())->pluck('name', 'id');
         $people = User::query()->whereIn('id', $rows->pluck('performed_by_user_id')->filter()->unique())->pluck('name', 'id');
@@ -83,6 +99,12 @@ final class ReviewLinkReport
 
     /** The last tally's "reviewed" detail: confidence split and average stars. */
     private array $detail = [];
+
+    /** @return list<object> */
+    private function groupedBy(Builder $query, string $franchise, string $person): array
+    {
+        return $query->groupBy($franchise, $person, 'kind')->get()->all();
+    }
 
     /** @return list<object> */
     private function grouped(Builder $query): array

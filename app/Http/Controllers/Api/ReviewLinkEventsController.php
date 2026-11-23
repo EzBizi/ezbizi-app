@@ -41,6 +41,14 @@ class ReviewLinkEventsController extends Controller
             $this->tenant->run($organization, function () use ($input) {
                 $customerId = CustomerLinks::customerId($input['c']);
                 if ($customerId === null) {
+                    // A Review QR (Jose, 2026-11-23): many people scan one code, so every event counts, for
+                    // the technician who made it.
+                    $owner = CustomerLinks::qrOwner($input['c']);
+                    if ($owner !== null) {
+                        ReviewLinkEvent::query()->create(['customer_id' => null, 'job_id' => null, 'review_code' => $owner[0],
+                            'user_id' => $owner[1], 'kind' => $input['kind'], 'occurred_at' => now()]);
+                    }
+
                     return;
                 }
 
