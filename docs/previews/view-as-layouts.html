@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>View as</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--cau:#734600;--cauf:#fff0d2;--bar:#10161b;--barink:#e8ecef}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--cau:#f1c56a;--cauf:#3d2e0c}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--cau:#f1c56a;--cauf:#3d2e0c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:28px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative}
+.top{display:flex;align-items:center;gap:14px;background:var(--bar);color:var(--barink);padding:9px 14px;font-size:12px}
+.top .sp{flex:1}.ic{width:28px;height:28px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center}
+.ic.on{background:#f1c56a;color:#111}
+.strip{display:flex;align-items:center;gap:10px;background:var(--cauf);color:var(--cau);padding:8px 14px;font-weight:600;border-bottom:2px solid var(--cau)}
+.strip .sp{flex:1}.sbtn{border:1px solid var(--cau);border-radius:16px;padding:3px 12px;font-size:12px}.sbtn.f{background:var(--cau);color:var(--cauf)}
+.body{display:flex;min-height:300px}.side{width:180px;border-right:1px solid var(--line);padding:10px;color:var(--mut);font-size:12px;line-height:2}
+.main{flex:1;padding:14px}
+.panel{position:absolute;right:0;top:46px;bottom:0;width:380px;background:var(--card);border-left:1px solid var(--line);padding:14px;box-shadow:-8px 0 24px rgba(0,0,0,.08)}
+.panel h3{margin:0 0 2px;font-size:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin:10px 0}.seg span{padding:5px 14px;font-size:12.5px}.seg .on{background:var(--prif);color:var(--pri);font-weight:600}
+.pick{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--mut);margin-bottom:8px}
+.it{display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px}.it.on{background:var(--prif)}.it small{color:var(--mut);margin-left:auto}
+.btn{border-radius:18px;padding:6px 16px;font-weight:600;font-size:12.5px;display:inline-block}.fill{background:var(--pri);color:#fff}
+.mut{color:var(--mut);font-size:11.5px}
+.menu{position:absolute;right:120px;top:44px;width:280px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.pill{background:#f1c56a;color:#111;border-radius:14px;padding:3px 10px;font-weight:600}
+.phones{display:flex;flex-wrap:wrap;gap:24px}
+.phn{width:375px}.phn>h2{font-size:15px;margin:0 0 2px}.phn>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.scr{width:375px;height:640px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.pb{flex:1;padding:12px}
+</style></head><body>
+<h1>205 · "View as": see the app as a role or a person (Administrators who are developers)</h1>
+<p class="lead">Jose, 11-23, via the desk; Roles &amp; Permissions builds the server side. Behind a new icon beside Search, only for administrators who are developers. You pick a role at a company or branch, or a specific person, and the app behaves exactly as it would for them: the same modules, tabs, buttons and data. A banner that can't be missed says who you're viewing as, with Exit. It's for debugging permissions.</p>
+
+<div class="opt"><h2>1 · Icon, then a side panel: Role · Person <span class="rec">(recommended)</span></h2>
+<p>The icon (a person with arrows) sits left of Search. It opens the house side panel with Role / Person tabs. <b>Role</b>: a Company · Branch picker, then that view's roles with how many people hold each. <b>Person</b>: a search list showing name, role and branch. "Start viewing" applies it. Your last three choices sit at the top for one-tap repeats.</p>
+<div class="win"><div class="top"><b>EzBizi</b><span>Triplex Group ▾</span><span class="sp"></span><span class="ic on" title="View as">⇄👤</span><span class="ic">🔍</span><span class="ic">🔔</span></div>
+<div class="body"><div class="side">Dashboard<br>Scheduling<br>Jobs<br>Leads</div><div class="main mut">…the screen you were on…</div></div>
+<div class="panel"><h3>View as</h3><span class="mut">See exactly what they see and can do. Your own account is untouched.</span><br>
+<div class="seg"><span class="on">Role</span><span>Person</span></div>
+<div class="pick">A-1 Chimney › Akron ▾</div>
+<div class="it"><input type="radio">Administrator<small>2 people</small></div>
+<div class="it on"><input type="radio" checked>Technician<small>14 people</small></div>
+<div class="it"><input type="radio">Dispatcher<small>3 people</small></div>
+<div class="it"><input type="radio">Local Manager<small>1 person</small></div>
+<div class="mut" style="margin:10px 0 4px">Recent</div><div class="it">👤 Sam Okafor<small>Technician · Akron</small></div>
+<div style="margin-top:12px"><span class="btn fill">Start viewing</span></div></div></div></div>
+
+<div class="opt"><h2>2 · A drop-down menu off the icon</h2>
+<p>Smaller: the icon opens a menu with a search box (roles and people mixed) and Recent. Quick, but the company/branch choice gets cramped.</p>
+<div class="win" style="height:260px"><div class="top"><b>EzBizi</b><span class="sp"></span><span class="ic on">⇄👤</span><span class="ic">🔍</span></div>
+<div class="menu"><div class="pick">🔍 Role or person</div><div class="it">🛡 Technician<small>role · Akron</small></div><div class="it">👤 Sam Okafor<small>Technician</small></div><div class="it">🛡 Dispatcher<small>role · Triplex</small></div></div></div></div>
+
+<div class="opt"><h2>3 · Inside the Company · Branch picker</h2>
+<p>The existing view switcher gains a "View as" section under the companies. It needs no new icon, but Jose asked for one beside Search, and it mixes "where" with "who".</p>
+<div class="win" style="height:200px"><div class="top"><b>EzBizi</b><span class="pill" style="background:var(--prif);color:var(--pri)">A-1 Chimney ▾</span><span class="sp"></span><span class="ic">🔍</span></div><div class="main mut">Switch view: Triplex · A-1 Chimney · … ── View as: Role ▸ · Person ▸</div></div></div>
+
+<div class="opt"><h2>Banner A · an amber strip under the top bar on every screen <span class="rec">(recommended)</span></h2>
+<p>Full width and always there: "Viewing as Technician · A-1 Chimney › Akron". On the right are <b>Switch</b> (reopens the panel) and <b>Exit</b>. The View-as icon stays lit amber. Writes follow whatever Roles &amp; Permissions decides, and the strip says it ("changes are made as them" or "read-only").</p>
+<div class="win"><div class="top"><b>EzBizi</b><span>A-1 Chimney › Akron</span><span class="sp"></span><span class="ic on">⇄👤</span><span class="ic">🔍</span><span class="ic">🔔</span></div>
+<div class="strip">👁 Viewing as Technician · A-1 Chimney › Akron <span style="font-weight:400">— what they see and can do</span><span class="sp"></span><span class="sbtn">Switch</span><span class="sbtn f">Exit</span></div>
+<div class="body" style="min-height:140px"><div class="side">Dashboard<br>Scheduling<br>Jobs</div><div class="main mut">…only Technician's modules…</div></div></div></div>
+
+<div class="opt"><h2>Banner B · a pill in the top bar</h2>
+<p>An amber "As: Sam Okafor ✕" pill beside the view name. Lighter, but easy to forget you're in it.</p>
+<div class="win"><div class="top"><b>EzBizi</b><span class="pill">As: Sam Okafor ✕</span><span class="sp"></span><span class="ic on">⇄👤</span><span class="ic">🔍</span></div></div></div>
+
+<div class="phones">
+<div class="phn"><h2>4 · Phone: strip under the bar, full-screen picker <span class="rec">(recommended)</span></h2><p>The icon sits in the top bar (developers only, so space allows). The picker opens full screen with the same Role / Person tabs. The strip is one line, "As Technician · Akron", with Exit.</p>
+<div class="scr"><div class="top"><b>EzBizi</b><span class="sp"></span><span class="ic on">⇄👤</span><span class="ic">🔍</span><span class="ic">🔔</span></div><div class="strip" style="font-size:12px">👁 As Technician · Akron<span class="sp"></span><span class="sbtn f">Exit</span></div><div class="pb mut">…Technician's phone app…</div></div></div>
+<div class="phn"><h2>5 · Phone: the pill</h2><p>Banner B on a phone; it eats the view name's space.</p>
+<div class="scr"><div class="top"><b>EzBizi</b><span class="pill">As: Sam ✕</span><span class="sp"></span><span class="ic">🔍</span></div><div class="pb mut">…</div></div></div>
+<div class="phn"><h2>6 · Phone: a bar at the bottom</h2><p>The strip sits above the bottom navigation, nearer the thumb, but it's hidden behind the keyboard.</p>
+<div class="scr"><div class="top"><b>EzBizi</b><span class="sp"></span><span class="ic on">⇄👤</span></div><div class="pb mut">…</div><div class="strip" style="border-bottom:0;border-top:2px solid var(--cau)">👁 As Technician · Akron<span class="sp"></span><span class="sbtn f">Exit</span></div></div></div>
+</div>
+</body></html>

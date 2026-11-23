@@ -432,6 +432,27 @@ class ModuleServiceProvider extends ServiceProvider
                 rolesGroup: ModuleDefinition::ROLES_SETTINGS,
                 sidebar: false,
             ),
+
+            /*
+             * Developer tools (Jose, 2026-11-23). `view_as` lets an
+             * Administrator who is also platform staff see and use the app as
+             * one role at one place, or as one person, to debug permissions
+             * (ViewAs). Nobody holds it by grant: Administrators hold every
+             * key, and the staff link is the real gate. Declared so the
+             * platform's availability switch can withdraw it.
+             */
+            new ModuleDefinition(
+                key: 'development',
+                label: 'Development',
+                actions: ['view', 'view_as'],
+                actionLabels: [
+                    'view_as' => 'View the app as a role or person (developers)',
+                ],
+                automationExemptBecause: 'A developer tool; nothing may start or stop it programmatically.',
+                auditActionPrefixes: ['view_as'],
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
+                sidebar: false,
+            ),
         ];
     }
 

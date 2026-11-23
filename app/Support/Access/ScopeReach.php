@@ -100,7 +100,8 @@ class ScopeReach
      */
     private function reachOf(User $actor): array
     {
-        return $this->memo[$actor->getKey()] ??= [
+        // Keyed by role too: a View-as role clone shares its actor's id (ViewAsUser).
+        return $this->memo[$actor->getKey().'|'.$actor->role_id] ??= [
             'organization' => $actor->canActOnOrganization($actor->organization),
             'companies'    => $actor->reachableCompanies()->modelKeys(),
             'franchises'   => $actor->reachableFranchises()->modelKeys(),
