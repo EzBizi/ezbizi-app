@@ -249,7 +249,7 @@ class JobsController extends Controller
             // payload carries the role column, `serviceArea` the area column.
             ->with([
                 'franchise:id,name,timezone,company_id', 'franchise.company:id,name',
-                'customer:id,name,number,owning_franchise_id',
+                'customer:id,name,number,owning_franchise_id,phone,address_line1,city,state,postal_code',
                 'assignedRole:id,name',
                 'serviceArea',
                 // The row's money with the toggle; its Workiz job number always.
@@ -566,6 +566,13 @@ class JobsController extends Controller
         // onto `completed`, which is the way out of the state.
         if (isset($input['status']) && $input['status'] !== $job->status) {
             $this->assertStatusAllowed($input['status'], $job->franchise);
+            // A Project job completes only with its Parts and Labor costs in (Jose with Shoval, 2026-11-23).
+            if ($job->franchise && \App\Support\Jobs\EarnedStatuses::isEarned($input['status'], $job->franchise)
+                && ($missing = \App\Support\Jobs\ProjectCosts::missing($job)) !== []) {
+                throw ValidationException::withMessages([
+                    'status' => 'A Project job needs its '.implode(' and ', $missing).' before it is complete. Add them in Project Management.',
+                ]);
+            }
         }
 
         if (array_key_exists('performed_by_user_id', $input)) {
@@ -835,7 +842,7 @@ class JobsController extends Controller
         // ran on every list row, for a panel nobody had opened (UI/UX measured
         // it, 2026-09-24; JobListQueryCountTest pins it).
         $job->loadMissing([
-            'franchise:id,name,timezone,company_id', 'franchise.company:id,name', 'customer:id,name,number,owning_franchise_id',
+            'franchise:id,name,timezone,company_id', 'franchise.company:id,name', 'customer:id,name,number,owning_franchise_id,phone,address_line1,city,state,postal_code',
             'assignedRole:id,name', 'serviceArea',
         ]);
 
@@ -868,7 +875,13 @@ class JobsController extends Controller
                 // So a technician can see at a glance that this job is for
                 // another franchise's customer, before they change anything.
                 'owned_by_this_franchise' => $job->customer?->owning_franchise_id === $job->franchise_id,
+                // Call and Text on a phone card (design 207 J1, 2026-11-23).
+                'phone' => $job->customer?->phone ?: null,
             ],
+            // One line for Go on a phone card: "41 Elm St, Akron OH 44310".
+            'address' => ($c = $job->customer) && filled($c->address_line1)
+                ? trim($c->address_line1.', '.trim(implode(' ', array_filter([trim(($c->city ?? '').' '.($c->state ?? '')), $c->postal_code]))), ', ')
+                : null,
             // A list row's view of Workiz's money; the detail carries all of it
             // below. Not on the detail: `$base + [...]` would keep this one.
             ...($money && ! $detailed ? ['money' => $this->moneySummary($job)] : []),

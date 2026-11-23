@@ -321,7 +321,7 @@ class ProjectBoardController extends Controller
         'scheduled' => 'jobs.scheduled_for',
         'payment_date' => "(SELECT MIN(r.starts_at) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'payment')",
         // Days in this state: older first is more days, so it sorts the other way.
-        'status_days' => "COALESCE((SELECT MIN(r.starts_at) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'payment'), jobs.created_at)",
+        'status_days' => "COALESCE(jobs.pm_stage_at, (SELECT MIN(r.starts_at) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'payment'), jobs.created_at)",
         'attachments' => "(SELECT COUNT(*) FROM attachments t WHERE t.attachable_type = 'jobs' AND t.attachable_id = jobs.id)",
     ];
 
@@ -406,6 +406,19 @@ class ProjectBoardController extends Controller
         $jobs = $page->getCollection();
         $money = $user->hasPermission('jobs.financials') ? JobMoney::of($jobs->pluck('id')) : null;
         $extras = $this->extras($jobs->pluck('id')->all());
+        // Days in this stage (Jose, 2026-11-23): a job found on a tab other than
+        // the one it was last seen on entered it now; seen for the first time,
+        // its clock starts at the deposit (else its creation), as before.
+        // ponytail: stamped when a tab is listed, so a move nobody looked at
+        // starts its clock late; a sweep if that matters.
+        foreach ($jobs as $j) {
+            if ($j->pm_stage !== $tab) {
+                $paid = $extras['paid'][$j->id] ?? null;
+                $at = $j->pm_stage === null ? ($paid ? Carbon::parse($paid) : $j->created_at) : now();
+                Job::query()->whereKey($j->id)->toBase()->update(['pm_stage' => $tab, 'pm_stage_at' => $at]);
+                $j->setRawAttributes(['pm_stage' => $tab, 'pm_stage_at' => $at] + $j->getAttributes(), true);
+            }
+        }
 
         return response()->json([
             'data' => $jobs->map(fn (Job $job) => $this->row($job, $money, $partTags) + $this->unscheduled($job, $extras))->values(),
@@ -735,8 +748,9 @@ class ProjectBoardController extends Controller
             'repair_team' => collect($job->tags ?? [])->first(fn ($t) => $this->isRepair((string) $t)),
             'repair_options' => $this->repairOptions($job),
             'payment_date' => $paid?->format('Y-m-d H:i'),
-            // Days in this state, from the deposit (else the job's creation).
-            'status_days' => $since === null ? null : (int) floor($since->diffInDays(now(), true)),
+            // Days in this stage, counting the day it entered as day 1 (Jose,
+            // 2026-11-23: "1 green, 2 yellow, 3 and above red").
+            'status_days' => $job->pm_stage_at ? (int) Carbon::parse($job->pm_stage_at)->startOfDay()->diffInDays(now()->startOfDay(), true) + 1 : null,
             'attachments' => $files,
             'notes' => $note['latest'] ?? null,
             'schedule_proposal' => $job->schedule_proposal,
@@ -1000,6 +1014,7 @@ class ProjectBoardController extends Controller
                 'total' => $m['total'] ?? 0,
                 'currency' => $job->currency,
                 'job_cost' => $job->job_cost_minor,
+                ...(\App\Support\Jobs\ProjectCosts::isProject($job) ? $this->projectCosts($job) : ['project' => false]),
                 'production' => (bool) $job->production_job,
                 'total_cost' => self::totalCost($job->job_cost_minor, (bool) $job->production_job, (int) ($m['total'] ?? 0)),
             ] : []),
@@ -1014,6 +1029,40 @@ class ProjectBoardController extends Controller
         }
 
         return (int) $cost + ($production ? intdiv($amount + 5, 10) : 0);
+    }
+
+    /** A Project job's costs, as the board shows them. */
+    private function projectCosts(Job $job): array
+    {
+        return ['project' => true, 'parts_cost' => \App\Support\Jobs\ProjectCosts::partsMinor($job),
+            'labor_kind' => $job->labor_kind, 'labor_price' => $job->labor_price_minor, 'labor_days' => $job->labor_days,
+            'labor_helper' => (bool) $job->labor_helper, 'labor_cost' => \App\Support\Jobs\ProjectCosts::laborMinor($job),
+            'project_missing' => \App\Support\Jobs\ProjectCosts::missing($job)];
+    }
+
+    /**
+     * PATCH /api/v1/project-board/jobs/{job}/project-costs: a Project job's
+     * Parts cost and Labor (contractor price, or team days with/without a
+     * helper) (Jose with Shoval, 2026-11-23).
+     */
+    public function projectCostsUpdate(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        abort_unless($request->user()->hasPermission('jobs.financials'), Response::HTTP_FORBIDDEN, 'Job costs need Financials.');
+        $input = $request->validate([
+            'parts_cost_minor' => ['present', 'nullable', 'integer', 'min:0', 'max:100000000000'],
+            'labor_kind' => ['present', 'nullable', 'in:contractor,team'],
+            'labor_price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000', 'required_if:labor_kind,contractor'],
+            'labor_days' => ['nullable', 'integer', 'min:1', 'max:365', 'required_if:labor_kind,team'],
+            'labor_helper' => ['nullable', 'boolean'],
+        ]);
+        $team = ($input['labor_kind'] ?? null) === 'team';
+        $job->forceFill(['parts_cost_minor' => $input['parts_cost_minor'], 'labor_kind' => $input['labor_kind'],
+            'labor_price_minor' => ($input['labor_kind'] ?? null) === 'contractor' ? $input['labor_price_minor'] : null,
+            'labor_days' => $team ? $input['labor_days'] : null, 'labor_helper' => $team && ($input['labor_helper'] ?? false)])->save();
+        app(AuditLogger::class)->log('job.project_costs_set', $job, actor: $request->user());
+
+        return response()->json(['data' => $this->projectCosts($job)]);
     }
 
     /** PATCH /api/v1/project-board/jobs/{job}/cost: Job Cost and Production job (desk, 2026-11-20). */

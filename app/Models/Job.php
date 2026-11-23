@@ -119,6 +119,10 @@ class Job extends Model implements StatesRetention
             'schedule_proposal' => 'array',
             'job_cost_minor' => 'integer',
             'production_job' => 'boolean',
+            'parts_cost_minor' => 'integer',
+            'labor_price_minor' => 'integer',
+            'labor_days' => 'integer',
+            'labor_helper' => 'boolean',
         ];
     }
 
