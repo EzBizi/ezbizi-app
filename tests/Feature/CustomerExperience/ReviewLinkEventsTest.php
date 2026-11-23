@@ -90,4 +90,31 @@ class ReviewLinkEventsTest extends TestCase
 
         $this->assertSame([], $this->counts());
     }
+
+    /** Jose 2026-11-23: a Review QR names the technician; every scan and face counts for them, in the report too. */
+    public function test_a_review_qr_counts_every_scan_for_the_technician_who_made_it(): void
+    {
+        $tech = $this->userWithRole($this->t, 'Tech', ['reviews.view'], null, $this->t['franchise']);
+        $this->inTenant($this->t['org'], fn () => \App\Models\ServiceArea::create(['organization_id' => $this->t['org']->id,
+            'franchise_id' => $this->t['franchise']->id, 'name' => 'North'])->zips()->create(['zip' => '06511', 'franchise_id' => $this->t['franchise']->id]));
+
+        $qr = $this->signedInAs($tech)->postJson('/api/v1/customer-experience/review-qr', ['zip' => '06511'])->assertOk()->json('data');
+        $this->assertSame('https://chimney.test/r/'.$qr['code'], $qr['url']);
+        $this->assertSame($qr['code'], $this->postJson('/api/v1/customer-experience/review-qr', ['zip' => '06511'])->json('data.code'), 'one code per person and branch');
+        $this->postJson('/api/v1/customer-experience/review-qr', ['zip' => '99999'])->assertStatus(422);
+        auth()->forgetGuards();
+
+        foreach (['opened', 'opened', 'happy', 'sad'] as $kind) {
+            $this->send($kind, $qr['code']);
+        }
+        $rows = ReviewLinkEvent::withoutGlobalScopes()->get();
+        $this->assertCount(4, $rows, 'two people scanning both count');
+        $this->assertTrue($rows->every(fn ($e) => $e->user_id === $tech->id && $e->customer_id === null));
+
+        $person = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/customer-experience/review-links')->assertOk()
+            ->json('data.by_person'))->firstWhere('id', $tech->id);
+        $this->assertSame(2, $person['qr']);
+        $this->assertSame(1, $person['happy']);
+        $this->assertSame(1, $person['sad']);
+    }
 }
