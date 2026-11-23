@@ -105,6 +105,16 @@ final class MondayWriter
         return (string) ($data['create_update']['id'] ?? throw new RuntimeException('Monday made no update.'));
     }
 
+    public function editUpdate(string $updateId, string $body): void
+    {
+        $this->mutate('mutation($i:ID!,$b:String!){ edit_update(id:$i, body:$b) { id } }', ['i' => $updateId, 'b' => $body]);
+    }
+
+    public function deleteUpdate(string $updateId): void
+    {
+        $this->mutate('mutation($i:ID!){ delete_update(id:$i) { id } }', ['i' => $updateId]);
+    }
+
     public function createWebhook(string $boardId, string $url, string $event): string
     {
         $data = $this->mutate('mutation($b:ID!,$u:String!,$e:WebhookEventType!){ create_webhook(board_id:$b, url:$u, event:$e) { id } }',

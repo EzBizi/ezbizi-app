@@ -12,6 +12,7 @@ use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\User;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
@@ -252,7 +253,14 @@ final class MondayPush
 
         if ($entry->task_update_id !== null) {
             $update = $entry->taskUpdate;
-            if ($update !== null && ! str_starts_with((string) $update->external_ref, 'monday:')) {
+            $mondayId = $update !== null && str_starts_with((string) $update->external_ref, 'monday:')
+                ? (string) last(explode('.', substr((string) $update->external_ref, 7))) : null;
+            if ($mondayId !== null && in_array('update_delete', $kinds, true)) {
+                $this->writer->deleteUpdate($mondayId);
+            } elseif ($mondayId !== null && in_array('update_edit', $kinds, true)) {
+                $who = $update->user_id ? User::query()->find($update->user_id)?->name : null;
+                $this->writer->editUpdate($mondayId, trim((string) SensitiveTasks::open($update->body))."\n\n— from EzBizi".($who ? ', '.$who : ''));
+            } elseif ($update !== null && ! $update->trashed() && $mondayId === null) {
                 $who = $update->user_id ? User::query()->find($update->user_id)?->name : null;
                 $id = $this->writer->createUpdate($itemId, trim($update->body)."\n\n— from EzBizi".($who ? ', '.$who : ''));
                 $update->forceFill(['external_ref' => 'monday:'.$id])->saveQuietly();
