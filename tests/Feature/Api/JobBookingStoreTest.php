@@ -33,6 +33,9 @@ class JobBookingStoreTest extends TestCase
         ])->assertCreated()->json('data');
 
         $this->assertSame('no_workiz', $res['workiz']['status'], 'a branch without Workiz keeps an EzBizi-only job');
+        // Design 207 J1: the list row carries Call/Text and Go.
+        $row = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs')->assertOk()->json('data.0');
+        $this->assertSame(['+13055550123', '1 Main St, Columbus OH 43004'], [$row['customer']['phone'], $row['address']]);
         $this->assertContains('custom_fields', $res['ezbizi_only']);
 
         $this->inTenant($alpha['org'], function () use ($res, $area) {

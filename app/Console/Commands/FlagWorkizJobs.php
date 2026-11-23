@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Support\Jobs\EarnedStatuses;
+use App\Support\Jobs\ProjectCosts;
 use App\Models\Organization;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
@@ -74,6 +76,12 @@ class FlagWorkizJobs extends Command
                     if ($checkFriday && $at && $at->isFriday() && $at->format('H:i') > '12:00' && $at->isFuture()) {
                         $issues['late_friday'] = self::FRIDAY_RULE;
                     }
+                    // A Project job completed in Workiz without its costs (Jose with Shoval, 2026-11-23).
+                    $linked = $w->job_id ? Job::query()->with('franchise')->find($w->job_id) : null;
+                    if ($linked?->franchise && EarnedStatuses::isEarned((string) $linked->status, $linked->franchise)
+                        && ($missing = ProjectCosts::missing($linked)) !== []) {
+                        $issues['project_costs'] = 'Project completed without its '.implode(' and ', $missing).'; add them in Project Management.';
+                    }
 
                     foreach ($issues as $issue => $sentence) {
                         // The insert is the dedupe: a second sweep finds the row and skips.
@@ -108,6 +116,7 @@ class FlagWorkizJobs extends Command
     /** The one line that says what the flag asks for (desk 11-18: "what the point to them is"). */
     public const WHY = [
         'address' => 'Fix the address in Workiz so the tech can find it',
+        'project_costs' => 'A Project job is complete only with its Parts and Labor costs',
     ];
 
     /**
