@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PM appointments and teams</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--bar:#10161b;--barink:#e8ecef;--ok:#1f7a3a;--okf:#dcf3e3;--bad:#a3261d;--badf:#fbe1de;--cau:#734600;--cauf:#fff0d2;--map:#e7ece6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24;--bad:#f19a91;--badf:#3d1714;--cau:#f1c56a;--cauf:#3d2e0c;--map:#1d2420}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24;--bad:#f19a91;--badf:#3d1714;--cau:#f1c56a;--cauf:#3d2e0c;--map:#1d2420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-width:1100px}
+h2.s{font-size:16px;margin:24px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.opt{margin-bottom:26px}.opt>h3{font-size:14.5px;margin:0 0 2px}.opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1100px}
+.rec{color:var(--pri)}.mut{color:var(--mut);font-size:12px}
+.win{max-width:1150px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative}
+.top{display:flex;align-items:center;gap:12px;background:var(--bar);color:var(--barink);padding:9px 14px;font-size:12px}.sp{flex:1}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 10px;font-size:12px}.tabs span{padding:7px 10px;color:var(--mut)}.tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:700}
+.pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}
+.ok{background:var(--okf);color:var(--ok)}.bad{background:var(--badf);color:var(--bad)}.cau{background:var(--cauf);color:var(--cau)}.pri{background:var(--prif);color:var(--pri)}
+.panel{width:470px;border-left:1px solid var(--line);background:var(--card);padding:14px;box-shadow:-8px 0 24px rgba(0,0,0,.08)}
+.panel h4{margin:0;font-size:16px}
+.ap{border:1px solid var(--line);border-radius:10px;padding:10px;margin:10px 0}.ap .h{display:flex;align-items:center;gap:8px;font-weight:700}
+.f{border:1px solid var(--line);border-radius:8px;padding:6px 9px;color:var(--mut);margin-top:6px;font-size:12px}.two{display:flex;gap:6px}.two .f{flex:1}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:6px;font-size:11.5px}.seg span{padding:3px 10px}.seg .on{background:var(--prif);color:var(--pri);font-weight:700}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:12px;padding:2px 8px;margin:4px 4px 0 0;font-size:11.5px}
+.btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px;display:inline-block;border:1px solid var(--line)}.fill{background:var(--pri);color:#fff;border-color:var(--pri)}
+.msg{background:var(--prif);border-radius:10px;padding:8px 10px;font-size:12px;margin-top:8px}
+.flex{display:flex}.grow{flex:1;padding:12px}
+table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left}
+.map{flex:1;background:var(--map);position:relative;min-height:340px}
+.pin{position:absolute;width:24px;height:24px;border-radius:12px 12px 12px 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.hov{position:absolute;width:250px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:12px}
+.lst{width:330px;border-right:1px solid var(--line);background:var(--card);overflow:hidden}
+.it{padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px}.it b{font-size:12.5px}
+.leg{display:flex;gap:12px;font-size:11.5px;color:var(--mut);padding:8px 12px;border-bottom:1px solid var(--line)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:5px;vertical-align:middle;margin-right:4px}
+.phn{width:300px}.scr{width:300px;height:560px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.phones{display:flex;gap:22px;flex-wrap:wrap}
+</style></head><body>
+<h1>209 · Project Management: several appointments per job, Repair teams tab, day colours</h1>
+<p class="lead">Jose with Shoval, 11-23, via the desk; Jobs builds the server. Three changes. <b>(a)</b> "Ready to schedule" can book one or several appointments, each with its own date and time, technicians or a repair team, and items, and the customer text lists them all. <b>(b)</b> A new <b>Repair teams</b> tab: pick a team to see its jobs, and its technicians' jobs, as a list and on the Field map, with a hover card for each job. <b>(c)</b> The status colour counts days in the current stage: 1 day green, 2 yellow, 3 or more red. All names are invented.</p>
+
+<h2 class="s">(a) Ready to schedule</h2>
+<div class="opt"><h3>A1 · One side panel of appointment cards, "+ Add appointment", text preview at the foot <span class="rec">(recommended)</span></h3>
+<p>Each card has: date, time slot (8–11 / 11–2 / 2–5 or typed), an Assign switch (Technicians | Repair team) with its picker, and items picked from the job's parts and services, or added, with quantities. Cards can be duplicated or removed. The customer text at the foot updates live and is read-only, with "Send the text" ticked by default.</p>
+<div class="win flex"><div class="grow"><div class="tabs"><span>Unscheduled</span><span class="on">Ready to Schedule</span><span>Scheduled</span></div><p class="mut" style="margin:14px">…the board…</p></div>
+<div class="panel"><h4>Ready to schedule</h4><span class="mut">JOB-04926 · Dana Reyes · 41 Elm St, Akron</span>
+<div class="ap"><div class="h">Appointment 1<span class="sp"></span><span class="mut">⧉ ✕</span></div><div class="two"><div class="f">📅 Tue, Nov 25</div><div class="f">🕘 8 – 11 AM</div></div>
+<div class="seg"><span class="on">Technicians</span><span>Repair team</span></div><div class="f">Sam Okafor ✕ · Lee Park ✕ ▾</div>
+<div class="mut" style="margin-top:6px">Items</div><span class="chip">Crown repair × 1</span><span class="chip">Liner 8" × 1</span><span class="chip" style="border-style:dashed;color:var(--pri)">＋ item</span></div>
+<div class="ap"><div class="h">Appointment 2<span class="sp"></span><span class="mut">⧉ ✕</span></div><div class="two"><div class="f">📅 Wed, Nov 26</div><div class="f">🕘 8 – 11 AM</div></div>
+<div class="seg"><span>Technicians</span><span class="on">Repair team</span></div><div class="f"><span class="pill pri">Masonry Crew</span> ▾</div>
+<span class="chip">Rebuild crown × 1</span><span class="chip" style="border-style:dashed;color:var(--pri)">＋ item</span></div>
+<span class="btn">＋ Add appointment</span>
+<div class="msg"><b>Text to Dana:</b> Hi Dana, your appointments with A-1 Chimney are: 1) Tue Nov 25, 8–11 AM · 2) Wed Nov 26, 8–11 AM. Reply YES to confirm.</div>
+<div style="margin-top:8px"><label><input type="checkbox" checked> Send the text</label><span style="float:right"><span class="btn">Cancel</span> <span class="btn fill">Save 2 appointments</span></span></div></div></div></div>
+
+<div class="opt"><h3>A2 · A step-by-step wizard</h3>
+<p>Step 1: how many appointments. Step 2: one page per appointment. Step 3: preview and send. Guided, but slower, and the whole picture is never on one screen.</p>
+<div class="win" style="padding:14px"><span class="pill pri">1 Count</span> → <span class="pill">2 Appointment 1 of 2</span> → <span class="pill">3 Preview</span><div class="f" style="max-width:420px">📅 Tue, Nov 25 · 🕘 8 – 11 AM · Sam Okafor · Crown repair</div></div></div>
+
+<div class="opt"><h3>A3 · A table, one row per appointment</h3>
+<p>Columns for Date, Time, Who and Items, with "+ row". Dense and fast for the office, but item lists get cramped in a cell.</p>
+<div class="win" style="padding:10px"><table><tr><th>#</th><th>Date</th><th>Time</th><th>Who</th><th>Items</th></tr><tr><td>1</td><td>Tue 25</td><td>8–11</td><td>Sam, Lee</td><td>Crown repair, Liner 8"</td></tr><tr><td>2</td><td>Wed 26</td><td>8–11</td><td>Masonry Crew</td><td>Rebuild crown</td></tr></table></div></div>
+
+<h2 class="s">(b) Repair teams tab</h2>
+<div class="opt"><h3>B1 · Team picker, list on the left, Field map on the right, hover cards <span class="rec">(recommended)</span></h3>
+<p>A seventh PM tab, "Repair teams". It has a team picker (SearchPickerField, with the team's colour) and a range of Today, This week or Custom. The list groups the jobs by day, each tagged "Team" or with the technician's name. The map uses Field's map: pins in the team colour, filled for team jobs and outlined for technicians' jobs. Hovering a pin or a row shows the card with number, type, customer, time, technicians, items and parts (with Received or On order). Clicking opens the job.</p>
+<div class="win"><div class="tabs"><span>Unscheduled</span><span>Ready to Schedule</span><span>Scheduled</span><span>In Progress</span><span>Done Waiting Payment</span><span>Complete</span><span class="on">Repair teams</span></div>
+<div style="display:flex;gap:10px;padding:10px;align-items:center"><div class="f" style="margin:0;width:220px"><span class="sw" style="background:#c0392b"></span>Masonry Crew ▾</div><span class="pill pri">This week</span><span class="mut">Members: Sam Okafor, Lee Park · 6 jobs</span></div>
+<div class="leg"><span><span class="sw" style="background:#c0392b"></span>Assigned to the team</span><span><span class="sw" style="border:2px solid #c0392b"></span>Through a member</span></div>
+<div class="flex"><div class="lst"><div class="it mut"><b style="color:var(--ink)">Tue, Nov 25</b></div><div class="it"><b>JOB-04926</b> <span class="pill pri">Team</span><br>Dana Reyes · Crown rebuild · 8–11</div><div class="it"><b>JOB-04931</b> <span class="pill">Sam</span><br>Omar Field · Liner · 11–2</div><div class="it mut"><b style="color:var(--ink)">Wed, Nov 26</b></div><div class="it"><b>JOB-04944</b> <span class="pill">Lee</span><br>Rita Moss · Cap · 2–5</div></div>
+<div class="map"><span class="pin" style="left:120px;top:90px;background:#c0392b"></span><span class="pin" style="left:260px;top:160px;background:var(--card);border-color:#c0392b"></span><span class="pin" style="left:380px;top:70px;background:var(--card);border-color:#c0392b"></span>
+<div class="hov" style="left:150px;top:110px"><b>JOB-04926</b> · <span class="pill pri">Crown rebuild</span><br>Dana Reyes · 41 Elm St, Akron<br><span class="mut">Tue Nov 25, 8–11 AM · Masonry Crew</span><hr style="border:0;border-top:1px solid var(--line)"><b>Items</b>: Rebuild crown × 1<br><b>Parts</b>: Mortar mix × 4 <span class="pill ok">Received</span> · Crown form × 1 <span class="pill bad">On order</span></div></div></div></div></div>
+
+<div class="opt"><h3>B2 · Map only, list in a drawer</h3>
+<p>The whole width is the map, with the list behind a "List" button. Good for routing, but you can't scan the week.</p>
+<div class="win"><div class="map" style="min-height:160px"><span class="pin" style="left:120px;top:60px;background:#c0392b"></span><span class="btn" style="position:absolute;right:10px;top:10px">☰ List 6</span></div></div></div>
+
+<div class="opt"><h3>B3 · Per-member lanes, no map</h3>
+<p>One row per member plus a "Team" row, with days across. Like the schedule board. Clear workload, but no geography.</p>
+<div class="win" style="padding:10px"><table><tr><th></th><th>Tue 25</th><th>Wed 26</th><th>Thu 27</th></tr><tr><td><b>Team</b></td><td>04926 Dana</td><td></td><td></td></tr><tr><td>Sam</td><td>04931 Omar</td><td></td><td>04950</td></tr><tr><td>Lee</td><td></td><td>04944 Rita</td><td></td></tr></table></div></div>
+
+<h2 class="s">(c) Days in stage</h2>
+<div class="opt"><h3>C1 · One pill on every row and card: "1d", "2d", "4d" <span class="rec">(recommended)</span></h3>
+<p>The house tone pill: green for 1 day, amber for 2, red for 3 or more. The clock restarts when the job changes stage. Hovering it says "4 days in Ready to Schedule".</p>
+<div class="win" style="padding:12px"><table><tr><th>Job</th><th>Customer</th><th>In stage</th></tr><tr><td>04926</td><td>Dana Reyes</td><td><span class="pill ok">1d</span></td></tr><tr><td>04931</td><td>Omar Field</td><td><span class="pill cau">2d</span></td></tr><tr><td>04902</td><td>Rita Moss</td><td><span class="pill bad">4d</span></td></tr></table></div></div>
+<div class="opt"><h3>C2 · A coloured left edge on the row</h3><p>A quieter 4 px edge in the tone colour, with the number in plain text. Less noise, but the colour alone carries meaning, which is weak for colour-blind users.</p></div>
+<div class="opt"><h3>C3 · Tint the whole row</h3><p>The whole row is washed in the tone colour. Loud, and it clashes with selection and hover.</p></div>
+
+<h2 class="s">Phone</h2>
+<div class="phones">
+<div class="phn"><h3>4 · Ready to schedule, full screen <span class="rec">(recommended)</span></h3><p class="mut">The same appointment cards stacked, with the text preview and Save in a sticky foot.</p>
+<div class="scr"><div class="top">✕ <b>Ready to schedule</b></div><div style="flex:1;padding:10px;overflow:hidden"><div class="ap"><div class="h">Appointment 1</div><div class="f">📅 Tue, Nov 25 · 8–11</div><div class="f">Sam, Lee</div><span class="chip">Crown repair</span></div><div class="ap"><div class="h">Appointment 2</div><div class="f">📅 Wed, Nov 26 · 8–11</div><div class="f"><span class="pill pri">Masonry Crew</span></div></div><span class="btn">＋ Add appointment</span></div><div style="padding:10px;border-top:1px solid var(--line);background:var(--card)"><div class="msg" style="margin:0 0 6px">1) Tue Nov 25, 8–11 · 2) Wed Nov 26, 8–11</div><span class="btn fill" style="display:block;text-align:center">Save 2 appointments</span></div></div></div>
+<div class="phn"><h3>4 · Repair teams on a phone</h3><p class="mut">Team picker on top, then the map (half) with the list under it. Tapping a pin shows the card as a bottom sheet.</p>
+<div class="scr"><div class="top"><b>Repair teams</b></div><div style="padding:8px"><div class="f" style="margin:0"><span class="sw" style="background:#c0392b"></span>Masonry Crew ▾</div></div><div class="map" style="min-height:200px;flex:none"><span class="pin" style="left:80px;top:60px;background:#c0392b"></span><span class="pin" style="left:190px;top:110px;background:var(--card);border-color:#c0392b"></span></div><div class="it"><b>JOB-04926</b> <span class="pill pri">Team</span> <span class="pill ok">1d</span><br>Dana Reyes · 8–11</div><div class="it"><b>JOB-04931</b> <span class="pill">Sam</span><br>Omar Field · 11–2</div></div></div>
+</div>
+</body></html>

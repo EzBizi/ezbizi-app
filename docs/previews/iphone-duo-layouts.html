@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPhone Duo layouts</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--bar:#10161b;--barink:#e8ecef;--ok:#1f7a3a;--okf:#dcf3e3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:32px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 10px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.cap{font-size:11.5px;color:var(--mut);margin:0 0 4px}
+/* devices at half scale: inner 669x951 -> 335x476, book 951x669 -> 476x335, outer 466x678 -> 233x339 */
+.dev{border:6px solid #2a2f35;border-radius:18px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column;position:relative;font-size:10px}
+.inner{width:347px;height:488px}.book{width:488px;height:347px}.outer{width:245px;height:351px}
+.fold{position:absolute;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(120,120,120,.18) 3px 4px);pointer-events:none}
+.inner .fold{left:calc(50% - 1px);top:0;bottom:0;width:2px}.book .fold{top:calc(50% - 1px);left:0;right:0;height:2px;display:none}
+.top{display:flex;align-items:center;gap:8px;background:var(--bar);color:var(--barink);padding:6px 8px;font-size:10px}.top .sp{flex:1}
+.body{flex:1;display:flex;min-height:0}
+.nav{display:flex;justify-content:space-around;border-top:1px solid var(--line);background:var(--card);padding:5px 0 7px;font-size:9px;color:var(--mut)}
+.nav span{display:flex;flex-direction:column;align-items:center;gap:1px}.nav .on{color:var(--pri);font-weight:700}
+.rail{width:44px;border-right:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:8px;font-size:8.5px;color:var(--mut)}
+.rail .on{color:var(--pri);font-weight:700}
+.side{width:110px;border-right:1px solid var(--line);background:var(--card);padding:8px;line-height:1.9;color:var(--mut)}
+.side .on{color:var(--pri);font-weight:700}
+.list{border-right:1px solid var(--line);background:var(--card);overflow:hidden}
+.it{padding:6px 8px;border-bottom:1px solid var(--line)}.it b{display:block;font-size:10px}.it small{color:var(--mut)}.it.on{background:var(--prif)}
+.det{flex:1;padding:8px;overflow:hidden}.det h3{margin:0 0 2px;font-size:12px}
+.chip{display:inline-block;border-radius:10px;padding:1px 7px;font-size:9px;background:var(--okf);color:var(--ok);font-weight:600}
+.blk{border:1px solid var(--line);border-radius:6px;background:var(--card);padding:6px;margin-top:6px}
+.bub{background:var(--prif);border-radius:8px;padding:4px 6px;margin:4px 0;max-width:80%}.bub.me{margin-left:auto;background:var(--card);border:1px solid var(--line)}
+.panel{position:absolute;right:0;top:26px;bottom:0;background:var(--card);border-left:1px solid var(--line);box-shadow:-6px 0 18px rgba(0,0,0,.12);padding:8px}
+.mut{color:var(--mut)}
+.tbl{width:100%;border-collapse:collapse;font-size:9px}.tbl td,.tbl th{border-bottom:1px solid var(--line);padding:3px 4px;text-align:left}
+</style></head><body>
+<h1>206 · iPhone Duo: the open inner screen gets a tablet layout</h1>
+<p class="lead">Jose, 11-23, via the desk: "we need Iphone Duo support… it's not optimized for it." The Duo has two screens. Folded, the outer screen is about 466 pt wide, an ordinary phone, which we already handle. Open, the inner screen is about 669×951 pt upright and 951×669 sideways, close to an iPad mini. Today the open screen falls between our two layouts: no bottom bar, a hamburger menu, and phone screens stretched across it. Each option below shows the inner screen upright, then sideways ("book"). The grey line marks the fold. Flutter can't report the fold on iOS yet, so no control should sit on it. Leads is the example screen; HR Records, Customers and Email follow the same rule. Folding or unfolding keeps the open record.</p>
+
+<div class="opt"><h2>1 · Keep the bottom bar, split list and record side by side <span class="rec">(recommended)</span></h2>
+<p>Unfolding keeps what the thumb already knows: the same four modules and More at the bottom. The extra width goes to content, with the list on the left half and the open record on the right half, so the fold falls on the line between them. Side panels open at 420 pt from the right, leaving the list visible. Sideways (951 wide) it becomes today's desktop shell with the slim sidebar.</p>
+<div class="row">
+<div><p class="cap">Inner, upright · 669×951</p><div class="dev inner"><div class="fold"></div>
+<div class="top"><b>EzBizi</b><span>A-1 Chimney ▾</span><span class="sp"></span>🔍 🔔</div>
+<div class="body"><div class="list" style="width:50%"><div class="it on"><b>Dana Reyes</b><small>Chimney sweep · 2m</small></div><div class="it"><b>Omar Field</b><small>Liner quote · 1h</small></div><div class="it"><b>Rita Moss</b><small>Inspection · 3h</small></div><div class="it"><b>Sam Okafor</b><small>Cap repair · yday</small></div></div>
+<div class="det"><h3>Dana Reyes</h3><span class="chip">New</span><div class="bub">Hi, can someone sweep Friday?</div><div class="bub me">Yes, we have 8–11 AM.</div><div class="blk mut">Reply…</div></div></div>
+<div class="nav"><span class="on">▣<br>Leads</span><span>⚒<br>Jobs</span><span>▦<br>Schedule</span><span>☑<br>Tasks</span><span>☰<br>More</span></div></div></div>
+<div><p class="cap">Inner, sideways · 951×669</p><div class="dev book"><div class="fold"></div>
+<div class="top"><b>EzBizi</b><span>A-1 Chimney ▾</span><span class="sp"></span>🔍 🔔</div>
+<div class="body"><div class="side"><span class="on">Leads</span><br>Jobs<br>Scheduling<br>Task Board<br>Customers</div><div class="list" style="width:150px"><div class="it on"><b>Dana Reyes</b><small>Sweep · 2m</small></div><div class="it"><b>Omar Field</b><small>Liner · 1h</small></div><div class="it"><b>Rita Moss</b><small>Insp. · 3h</small></div></div>
+<div class="det"><h3>Dana Reyes</h3><div class="bub">Hi, can someone sweep Friday?</div><div class="bub me">Yes, we have 8–11 AM.</div></div></div></div></div>
+<div><p class="cap">Outer, folded · 466×678: unchanged phone</p><div class="dev outer">
+<div class="top"><b>EzBizi</b><span class="sp"></span>🔍</div><div class="body"><div class="list" style="width:100%"><div class="it"><b>Dana Reyes</b><small>Chimney sweep · 2m</small></div><div class="it"><b>Omar Field</b><small>Liner quote · 1h</small></div></div></div>
+<div class="nav"><span class="on">▣<br>Leads</span><span>⚒<br>Jobs</span><span>▦<br>Sched.</span><span>☰<br>More</span></div></div></div>
+</div></div>
+
+<div class="opt"><h2>2 · A side rail instead of the bottom bar</h2>
+<p>The iPad pattern: an icon rail down the left edge with list and record beside it. It looks most like a tablet, but the rail takes 72 pt, so the list and record are narrower than in option 1. The modules also move from the thumb's spot to the left edge the moment you unfold.</p>
+<div class="row">
+<div><p class="cap">Inner, upright</p><div class="dev inner"><div class="fold"></div>
+<div class="top"><b>EzBizi</b><span class="sp"></span>🔍 🔔</div>
+<div class="body"><div class="rail"><span class="on">▣<br>Leads</span><span>⚒<br>Jobs</span><span>▦<br>Sched</span><span>☑<br>Tasks</span><span>☰</span></div>
+<div class="list" style="width:42%"><div class="it on"><b>Dana Reyes</b><small>Sweep · 2m</small></div><div class="it"><b>Omar Field</b><small>Liner · 1h</small></div><div class="it"><b>Rita Moss</b><small>Insp. · 3h</small></div></div>
+<div class="det"><h3>Dana Reyes</h3><div class="bub">Hi, can someone sweep Friday?</div><div class="bub me">Yes, 8–11 AM.</div></div></div></div></div>
+<div><p class="cap">Inner, sideways</p><div class="dev book">
+<div class="top"><b>EzBizi</b><span class="sp"></span>🔍</div>
+<div class="body"><div class="rail"><span class="on">▣</span><span>⚒</span><span>▦</span><span>☑</span></div><div class="list" style="width:160px"><div class="it on"><b>Dana Reyes</b><small>Sweep</small></div><div class="it"><b>Omar Field</b><small>Liner</small></div></div><div class="det"><h3>Dana Reyes</h3><div class="bub">Hi, can someone sweep Friday?</div></div></div></div></div>
+</div></div>
+
+<div class="opt"><h2>3 · The desktop app, shrunk</h2>
+<p>From 600 pt up, the full desktop shell with the sidebar collapsed to icons, and every screen in its desktop form. It needs the least new work, but desktop tables and three-column screens (Leads, Task Board) are cramped at 669 and text gets small.</p>
+<div class="row">
+<div><p class="cap">Inner, upright</p><div class="dev inner"><div class="fold"></div>
+<div class="top"><b>EzBizi</b><span>A-1 ▾</span><span class="sp"></span>🔍 🔔</div>
+<div class="body"><div class="rail"><span class="on">▣</span><span>⚒</span><span>▦</span><span>☑</span></div><div class="side" style="width:70px;font-size:8.5px">Sources<br><span class="on">All</span><br>Google<br>Angi</div><div class="list" style="width:90px"><div class="it on"><b>Dana R.</b></div><div class="it"><b>Omar F.</b></div></div><div class="det" style="font-size:8.5px"><h3 style="font-size:10px">Dana Reyes</h3><div class="bub">Hi, can someone sweep Friday?</div></div></div></div></div>
+</div></div>
+
+<p class="lead">Under every option: folding or unfolding keeps the open record and any text being typed. Layout follows the available width, never the device name, so iPad mini and Android foldables get the same benefit. Separately, for the desk: the iOS build has to move to the iOS 27.1 SDK (Xcode 27.1) before the Duo gives the app its full inner screen. Until then the app runs as a centred phone-size window.</p>
+</body></html>

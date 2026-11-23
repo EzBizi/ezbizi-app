@@ -2145,9 +2145,9 @@ class _HomeShellState extends State<HomeShell> {
        */
       // Mobile review 2026-11-13, P7 (preview §3 A): on a phone, four
       // modules one tap away at the bottom, and More opens the drawer.
-      bottomNavigationBar: MediaQuery.sizeOf(context).width < 600
-          ? _bottomBar(destinations)
-          : null,
+      // Design 206: also on the open iPhone Duo / an iPad mini, where the
+      // thumb is where it was folded; the sidebar takes over at 900.
+      bottomNavigationBar: wide ? null : _bottomBar(destinations),
       drawer: wide
           ? null
           : _navigationDrawer(
