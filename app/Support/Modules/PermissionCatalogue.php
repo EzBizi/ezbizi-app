@@ -214,10 +214,17 @@ class PermissionCatalogue
                 ...$user->personalGrantKeys(),
             ])));
 
-        return array_values(array_filter(
+        $keys = array_values(array_filter(
             $keys,
             fn (string $key) => $this->availability->isPermissionAvailable($key, $user->organization),
         ));
+
+        // View as (2026-11-23): never more than the developer holds themselves.
+        if ($user instanceof \App\Support\ViewAs\ViewAsUser) {
+            $keys = array_values(array_intersect($keys, $this->heldBy($user->viewAsActor)));
+        }
+
+        return $keys;
     }
 
     /**

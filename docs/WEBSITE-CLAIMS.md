@@ -3894,3 +3894,39 @@ LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple 
 **Desk (11-20, ~00:05 UTC 11-21), recorded as given** (`docs/agents/done/website-daily-2026-11-20-desk-reply.md`):
 0612-0614, 0618-0620 live, nothing rolled back. Training 58/82/12, `phone_ring_groups` 6 (6 numbers), Scheduled
 Jobs 785, LSA leads 55,428 all with `remote_id`, no new publisher class. Applicants 0, recruiting_spend 0.
+
+## 2026-11-21: 0.0.0621-0.0.0623 live, nothing on the site went false
+
+Production web is 0.0.0623 at `194e4c29c`; `/download/windows.json` reads 0.0.0623 at `194e4c29c`. No WP page modified
+since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their WP
+post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`3f99b84c5..194e4c29c` is 18 files: Workiz job-file reads and rate-limit retries (existing processor and host), Reports
+"Not checked"/"photos not read", and plugin 1.26.34 (A-1 sites' aggregateRating JSON-LD follows the live review
+numbers). No new host, route, scope, publisher or `app/Support/Social` change. No sentence moves.
+**The desk's "pages hard-coding 13,583" note is about the A-1 tenant sites, not ezbizi.com**: no live ezbizi.com page
+carries a review count; the homepage's only `4.9` is an SVG star path.
+
+**Gate trap, Git-Bash:** looping `grep -qiF` over the terms core-dumped on every call, and the loop still printed
+`ok - 4 terms, none present` because a crashed grep is not a hit. Run the gate in Python (fails closed on a short
+page). A gate that prints its pass line when its matcher crashes is the fail-open shape the block above forbids.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-21, ~00:00 UTC 11-22), recorded as given** (`docs/agents/done/website-daily-2026-11-21-desk-reply.md`):
+0621-0623 live, none folded or rolled back. Training 58/82/12, `phone_ring_groups` 6, numbers resolving to a group 6
+**of 15** (the first total since 11-15's 11 of 13 — the Communication card's forbidden phrasings hold more firmly).
+Scheduled Jobs 785, **all in Triplex Group, 0 in any other org** — the per-org split 11-19 asked for: one tenant, so
+the scheduling row stays unwritten on the homepage. LSA leads 55,429 all with `remote_id`. No new publisher class.
+
+## 2026-11-22: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0623 at `194e4c29c`; main has only docs commits since. No WP page
+modified since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their
+WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+Desk not asked: production has not moved since the 11-21 reply (measured ~00:00 UTC 11-22), so its counts stand.
+No sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.

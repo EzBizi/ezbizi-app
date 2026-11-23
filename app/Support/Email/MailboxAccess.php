@@ -160,7 +160,7 @@ final class MailboxAccess
     public function givenByName(User $user): Collection
     {
         return Mailbox::query()
-            ->whereIn('id', MailboxGrant::query()->where('user_id', $user->getKey())->select('mailbox_id'))
+            ->whereIn('id', MailboxGrant::query()->where('user_id', $user->ownRowsKey())->select('mailbox_id'))
             ->orderBy('address')
             ->get();
     }
@@ -168,7 +168,7 @@ final class MailboxAccess
     public function isGivenByName(User $user, Mailbox $mailbox): bool
     {
         return MailboxGrant::query()
-            ->where('user_id', $user->getKey())
+            ->where('user_id', $user->ownRowsKey())
             ->where('mailbox_id', $mailbox->getKey())
             ->exists();
     }
@@ -328,7 +328,7 @@ final class MailboxAccess
     private function grantsOf(User $user): \Illuminate\Database\Eloquent\Builder
     {
         return MailboxGrant::query()->where(function ($query) use ($user) {
-            $query->where('user_id', $user->getKey());
+            $query->where('user_id', $user->ownRowsKey());
 
             if ($user->role_id !== null) {
                 $query->orWhere('role_id', $user->role_id);

@@ -36,6 +36,7 @@ import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
 import 'widgets/open_destination.dart';
 import 'widgets/side_panel.dart';
+import 'widgets/view_as_panel.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -989,6 +990,18 @@ class _HomeShellState extends State<HomeShell> {
   /// POST /auth/verify/resend answers identically whether or not the address
   /// matched, so there is no success to read out of it -- only that it was
   /// accepted. The sentence below says what we DID, never that it arrived.
+  /// "View as" (design 205): the picker; Exit returns to yourself.
+  void _viewAs() =>
+      showViewAsPanel(context, api: widget.api, session: widget.session);
+
+  Future<void> _exitViewAs() async {
+    final error = await widget.session.stopViewAs();
+    if (!mounted || error == null) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(error)));
+  }
+
   Future<void> _resendConfirmation() async {
     final me = widget.session.me;
     if (me == null || _resendingConfirmation) return;
@@ -1314,6 +1327,14 @@ class _HomeShellState extends State<HomeShell> {
       emailConfirmation: !wide && me.emailConfirmationRequired,
       onTwoFactor: _showProfile,
       onEmailConfirmation: _resendConfirmation,
+      // "View as" (design 205): on every screen, desktop and phone.
+      viewing: me.viewingAs == null
+          ? null
+          : ViewingAsStrip(
+              label: me.viewingAs!.label,
+              onSwitch: _viewAs,
+              onExit: _exitViewAs,
+            ),
       // The company picker on its own row on a phone (live 0.0.0597 at 375:
       // between the hamburger and the icons it got ~20 px and drew an
       // empty box). Only when there is somewhere else to stand.
@@ -1537,6 +1558,20 @@ class _HomeShellState extends State<HomeShell> {
                       _ => 'system',
                     },
                   ),
+                ),
+              // "View as" a role or person (design 205): developers who are
+              // Administrators; lit while on, so it can be switched or left.
+              if (me.viewAsAvailable || me.viewingAs != null)
+                IconButton(
+                  key: const Key('shell-view-as'),
+                  tooltip: me.viewingAs == null
+                      ? 'View as a role or person'
+                      : 'Viewing as ${me.viewingAs!.label}',
+                  color: me.viewingAs == null
+                      ? null
+                      : ToneColours.of(context, Tone.caution).ink,
+                  icon: const Icon(Icons.switch_account_outlined),
+                  onPressed: _viewAs,
                 ),
               IconButton(
                 key: const Key('shell-quick-search'),
@@ -2034,7 +2069,8 @@ class _HomeShellState extends State<HomeShell> {
                         // And by what they may reach, so a grant made
                         // elsewhere remounts the page and its lists reload.
                         key: ValueKey(
-                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}',
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}'
+                          ':${me.viewingAs?.label}',
                         ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
@@ -2479,10 +2515,14 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     required this.onTwoFactor,
     required this.onEmailConfirmation,
     this.scope,
+    this.viewing,
   });
 
   /// The company picker's row on a phone, or null.
   final Widget? scope;
+
+  /// The "Viewing as" strip (design 205), or null.
+  final Widget? viewing;
 
   final bool twoFactor;
   final bool readOnly;
@@ -2493,8 +2533,11 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight((_any ? 49 : 1) + (scope == null ? 0 : 44));
+  Size get preferredSize => Size.fromHeight(
+    (_any ? 49 : 1) +
+        (scope == null ? 0 : 44) +
+        (viewing == null ? 0 : ViewingAsStrip.height),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2510,9 +2553,12 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
             ),
           );
     if (!_any) {
-      return row == null
+      return row == null && viewing == null
           ? rule
-          : Column(mainAxisSize: MainAxisSize.min, children: [row, rule]);
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [?viewing, ?row, rule],
+            );
     }
 
     final scheme = Theme.of(context).colorScheme;
@@ -2521,6 +2567,7 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?viewing,
         ?row,
         SizedBox(
           height: 48,

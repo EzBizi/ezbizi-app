@@ -1,6 +1,10 @@
 # Google Ads API filing amendment: draft for Jose (2026-11-18)
 
-Nothing here has been submitted or sent. Each section is ready to paste, in
+Nothing here has been submitted or sent.
+
+**Corrected 2026-11-23 by Leads:** the first version said EzBizi was on Basic access and addressed case 3-8972000040872. Per docs/LEADS.md and docs/EZBIZI-TODO.md #31, that case was **denied 2026-09-09**, and **Standard Access was granted 2026-09-26** on case **9-3038000041842**. So RMF applies today, and the reply goes on 9-3038000041842. Sections 5–7 below are corrected.
+
+Each section is ready to paste, in
 Jose's name, signed in as `development@ezbizi.com` (passkey). One sitting:
 sections 2 → 3 → 4 → 5, in that order.
 
@@ -9,7 +13,7 @@ sections 2 → 3 → 4 → 5, in that order.
 What Google holds today says EzBizi's only Google Ads write is a Local Services
 reply:
 
-- **Standard Access application, case 3-8972000040872**, filed 2026-09-08
+- **Standard Access application, case 3-8972000040872**, filed 2026-09-08 (denied 09-09; the re-application on case 9-3038000041842 was granted 09-26, and what it says about writes was not re-read for this draft)
   (`H:/Development/Leads/GOOGLE-ADS-API-STANDARD-ACCESS-ANSWERS.md`).
   - Q7: "One write: a staff-typed reply via appendLeadConversation … No
     campaign, bid, budget, account or billing operations."
@@ -115,11 +119,11 @@ touches ad groups, ads, keywords, assets, billing or account settings.
 Schedules add at most two status calls per scheduled campaign per day. Reads are
 unchanged from the September document.
 
-## 5. Reply on case 3-8972000040872 (Standard Access application)
+## 5. Reply on case 9-3038000041842 (Standard Access, granted 2026-09-26)
 
 > Hello,
 >
-> An update to our Standard Access application (case 3-8972000040872) before it is reviewed, so that what you hold matches what EzBizi does.
+> An update to what EzBizi does with its Standard Access (case 9-3038000041842), so that what you hold matches it.
 >
 > Since November 9, 2026, EzBizi also lets a person in a customer's own business, with the "Manage Ads" permission, make three campaign-level changes on campaigns that already exist in that customer's own Google Ads account:
 > 1. pause or enable a campaign, now or on an on/off schedule they set;
@@ -140,8 +144,8 @@ unchanged from the September document.
 Source: Google's RMF page, https://developers.google.com/google-ads/api/docs/api-policy/rmf,
 read 2026-11-18. Its label is "v. 2022-10-06", and nothing on it says RMF was withdrawn.
 
-- **RMF applies only to Standard access.** On Basic, as EzBizi is today, it does
-  not apply. It will once Standard is granted.
+- **RMF applies only to Standard access, which EzBizi holds since 2026-09-26.**
+  So it applies today.
 - **Which list depends on the tool type.**
   - A *Full-Service Tool* ("fully manage their Google Ads accounts") owes the
     Creation, Management and Reporting lists.
@@ -176,7 +180,7 @@ build and would contradict the campaign-level statement, so the realistic option
 are:
 - (a) the limited-functionality ruling asked for in section 5;
 - (b) dropping the campaign writes;
-- (c) staying on Basic access.
+- (c) asking Google to move the project back to Basic access.
 
 ## 7. Jose's sitting, in order (≈ 15 minutes)
 
@@ -184,7 +188,7 @@ are:
    Intended use.
 2. Regenerate the design document with section 4 added (Leads session can
    produce the PDF on request), attach it.
-3. Reply on case 3-8972000040872 with section 5 (from development@ezbizi.com),
+3. Reply on case 9-3038000041842 with section 5 (from development@ezbizi.com),
    attaching the PDF.
 4. If the application form must be re-submitted rather than replied to, use
    section 3 for Q7/Q11/Q12; every other answer stays as filed.

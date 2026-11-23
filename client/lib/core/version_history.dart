@@ -13,6 +13,28 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0625', date: '23 Nov 2026', items: [
+      'View as: Administrators who are developers can see and use the app as a role or a person, with a banner and Exit, and every change logged as them',
+      'Task Board: the Updates column sits right after Status on every board',
+      'Task Board: tagging somebody on a shared board adds them to it; private boards stay members only',
+      'Task Board: each company has one board, and boards follow the folders they have on Monday',
+      'Email: a thread shows one line per message and opens one at a time, so long threads no longer get stuck when scrolling',
+      'Leads: LS Texts are read every minute on their own, so they no longer wait behind other syncs',
+      'Jobs: the list opens on All, so a search finds past jobs too',
+    ]),
+    VersionRelease(version: '0.0.0624', date: '23 Nov 2026', items: [
+      'Inspection: the emailed report no longer fails in the queue',
+      'Inspection: report templates can use {{company_name}}, and notes keep their line breaks',
+      'Inspection: approve before/after photo pairs for the website, after a privacy check (no faces or house numbers)',
+      'Inspection: Generated Reports reads like the PDF, with a Pass or Fail summary, one card per section, PASS, FAIL and N/A badges and the code quoted under each finding',
+      'Review QR: technicians make a QR code that sends clients to their branch review page, and every scan counts for them (Customer Experience and Inspection)',
+      'Customer Experience: Review links shows a technician leaderboard and QR scans',
+      'Customer Experience: review replies show the reason Google refused them, and an unverified listing no longer switches the auto-reply rule off',
+      'Task Board: clicking the Updates cell opens only the updates',
+    ]),
+    VersionRelease(version: '0.0.0623', date: '21 Nov 2026', items: [
+      'Workiz: a re-read that meets the Workiz rate limit waits and retries instead of failing',
+    ]),
     VersionRelease(version: '0.0.0622', date: '21 Nov 2026', items: [
       'Workiz: job photos and files are read only for jobs scheduled in the last 30 days',
     ]),

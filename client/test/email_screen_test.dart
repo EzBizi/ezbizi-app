@@ -996,6 +996,45 @@ void main() {
   /// branch `_conversation` takes and no other test in this file reaches.
   /// Words are replaced by x's of the same length and URLs reduced to their
   /// host -- the shape is real and none of anybody's mail is in the repository.
+  /// Nick Frias 11-23: "once scrolled down, will not allow me to scroll back
+  /// up". Each part of a thread was an HTML page in a scrolled list; over a
+  /// page the wheel goes to the page and never back to the list. Now one part
+  /// is open at full height and the rest fold to their header line.
+  testWidgets('an HTML thread opens one part at full height, never a page '
+      'inside a scrolled list', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final thread = jsonDecode(
+      File('test/fixtures/real_thread_message.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    final parts = (thread['thread'] as List).cast<Map<String, dynamic>>();
+    for (var i = 0; i < parts.length; i++) {
+      parts[i]['html'] = '<p>part $i</p>';
+    }
+
+    await _pump(tester, _handler(detail: thread), size: const Size(1400, 900));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    final pages = find.byType(MessageHtmlView);
+    expect(pages, findsOneWidget);
+    expect(
+      find.ancestor(of: pages, matching: find.byType(Scrollable)),
+      findsNothing,
+      reason: 'A page inside a scrolled list takes the wheel and the list '
+          'can no longer be scrolled back up.',
+    );
+    expect(
+      tester.widget<MessageHtmlView>(pages).html,
+      '<p>part ${parts.length - 1}</p>',
+      reason: 'The newest message opens first.',
+    );
+
+    await _tap(tester, find.byKey(const ValueKey('email-thread-part-0')));
+    expect(tester.widget<MessageHtmlView>(pages).html, '<p>part 0</p>');
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('a real 73-part conversation draws', (tester) async {
     final thread = jsonDecode(
       File('test/fixtures/real_thread_message.json').readAsStringSync(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'customer_experience/review_qr_panel.dart';
 import 'inspection/builder_tab.dart';
 import 'inspection/new_tab.dart';
 import 'inspection/reports_tab.dart';
@@ -79,6 +80,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Icons.science_outlined,
           () => TestingTab(api: widget.api, session: widget.session),
         ),
+      // Jose 11-23: Review QR here too, on New Inspection's grant (the
+      // registry names `new.view`); the server's POST also needs reviews.
+      if (_mayOpen('new') && widget.session.me!.reaches('reviews'))
+        ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     ];
   }
 
@@ -109,7 +114,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3()),
+        Expanded(
+          child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3(),
+        ),
       ],
     );
   }

@@ -124,6 +124,9 @@ return [
     // are installed, so a deploy in either order never strands a command.
     'scheduler' => [
         'slow_lane' => env('EZBIZI_SLOW_LANE') === 'on',
+        // Its own lane for `ezbizi:sync-leads --messages` (deploy/ezbizi-scheduler-leads.*),
+        // on after those units are installed; off, it runs in the slow lane.
+        'leads_lane' => env('EZBIZI_LEADS_LANE') === 'on',
     ],
 
     'backups' => [

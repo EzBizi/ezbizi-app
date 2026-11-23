@@ -124,7 +124,7 @@ class InspectionTabPermissionsTest extends TestCase
         }
 
         $this->assertSame(
-            ['new' => 'New Inspection', 'reports' => 'Generated Reports', 'builder' => 'Builder', 'testing' => 'Testing'],
+            ['new' => 'New Inspection', 'reports' => 'Generated Reports', 'builder' => 'Builder', 'testing' => 'Testing', 'review_qr' => 'Review QR'],
             $byKey,
         );
     }

@@ -464,6 +464,7 @@ class TasksController extends Controller
 
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
             // A mention on a sensitive task says only that there is something to read.
+            app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
             $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
                 $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
             $update = $this->writer->comment($task, $request->user(), $body, $mentions);
