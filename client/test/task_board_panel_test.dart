@@ -440,6 +440,32 @@ void main() {
     expect(shadeBorder(tester), isNull);
   });
 
+  testWidgets('the Updates cell opens the thread alone; the row opens the '
+      'whole form (Jose 11-23)', (tester) async {
+    for (final width in [1700.0, 1000.0]) {
+      await pump(tester, width: width);
+      if (width > 1100) {
+        await tester.tap(find.byTooltip('Close Lakeview'));
+      } else {
+        Navigator.of(tester.element(title())).pop();
+      }
+      await settle(tester);
+      final cell = find.byKey(const ValueKey('task-updates-cell-t1'));
+      // At 1000 px the column is scrolled off to the right: its tap, direct.
+      if (width > 1100) {
+        await tester.ensureVisible(cell);
+        await tester.tap(cell);
+      } else {
+        tester.widget<InkWell>(cell).onTap!();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('task-panel-updates-only')), findsOneWidget);
+      expect(find.text('Post update'), findsOneWidget);
+      expect(title(), findsNothing, reason: 'no form fields ($width)');
+      expect(find.byKey(const Key('task-activity')), findsNothing);
+    }
+  });
+
   testWidgets('design 200: under 1100 px the panel still opens over the '
       'board', (tester) async {
     await pump(tester, width: 1000);
