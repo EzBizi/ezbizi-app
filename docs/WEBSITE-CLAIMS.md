@@ -3919,3 +3919,14 @@ the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultC
 **of 15** (the first total since 11-15's 11 of 13 — the Communication card's forbidden phrasings hold more firmly).
 Scheduled Jobs 785, **all in Triplex Group, 0 in any other org** — the per-org split 11-19 asked for: one tenant, so
 the scheduling row stays unwritten on the homepage. LSA leads 55,429 all with `remote_id`. No new publisher class.
+
+## 2026-11-22: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0623 at `194e4c29c`; main has only docs commits since. No WP page
+modified since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their
+WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+Desk not asked: production has not moved since the 11-21 reply (measured ~00:00 UTC 11-22), so its counts stand.
+No sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
