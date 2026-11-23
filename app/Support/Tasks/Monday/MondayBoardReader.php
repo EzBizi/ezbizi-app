@@ -119,7 +119,7 @@ final class MondayBoardReader
      *
      * @return list<array{name: string, colour: ?string}>
      */
-    public function folderPath(?string $folderId): array
+    public function folderPath(?string $folderId): ?array
     {
         if ($folderId === null || $folderId === '') {
             return [];
@@ -132,6 +132,9 @@ final class MondayBoardReader
                 $this->folders[(string) $f['id']] = ['name' => (string) $f['name'], 'colour' => self::FOLDER_COLOURS[(string) ($f['color'] ?? '')] ?? null,
                     'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null];
             }
+        }
+        if (! isset($this->folders[$folderId])) {
+            return null; // a folder the listing did not return: unknown, so nothing moves
         }
         $path = [];
         for ($id = $folderId; $id !== null && isset($this->folders[$id]) && count($path) < 10; $id = $this->folders[$id]['parent']) {

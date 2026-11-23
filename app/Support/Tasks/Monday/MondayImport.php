@@ -1007,13 +1007,19 @@ final class MondayImport
      * The board in Monday's folder (Jose 11-13: each board in the same folder
      * with the same colour): the folder chain is found by name under its
      * parent, or made with Monday's colour; a folder without a colour takes
-     * Monday's. A board somebody here already put in a folder stays there.
+     * Monday's. Every sync moves the board to Monday's folder (desk 11-23).
      *
      * @param  list<array{name: string, colour: ?string}>|null  $path  root first; null: the export does not say
      */
     private function folder(TaskBoard $board, ?array $path): void
     {
-        if ($path === null || $path === [] || $board->folder_id !== null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+        // Every sync follows Monday's folder (desk 11-23, full parity): a stale one cannot stay.
+        if ($path === null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+            return;
+        }
+        if ($path === []) {
+            $board->folder_id === null || $board->forceFill(['folder_id' => null])->saveQuietly();
+
             return;
         }
         $parent = null;
@@ -1032,7 +1038,9 @@ final class MondayImport
             }
             $parent = $found;
         }
-        $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
+        if ($board->folder_id !== $parent->id) {
+            $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
+        }
     }
 
     /**
