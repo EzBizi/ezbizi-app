@@ -151,7 +151,7 @@ class RoleInboxesApiTest extends TestCase
         $this->connectInbox($alpha, 'billing@a-1chimney.com');
 
         $role = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
-            'name' => 'Front desk', 'permissions' => ['email.view', 'email.send'],
+            'name' => 'Front desk', 'permissions' => ['email.view'],
         ])->assertCreated()->json('data');
 
         // The whole owner requirement in one assertion: somebody who ticks Email
