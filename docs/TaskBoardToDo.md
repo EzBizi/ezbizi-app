@@ -57,6 +57,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 31 | Shoval via Eric 11-20: all negative reviews/complaints (Google, Yelp, BBB, Attorney General...) scanned vs client records; non-client -> contest on the platform; client -> instant alert to Adeline + market GM; dedicated Reviews & Complaints board for Adeline + GMs; AG / lawsuit / BBB tagged Priority with 24 h (48 h max) reply deadline | Customer Experience (+ Automations, Task Board) | WORKING | Sent 11-20; Yelp blocked by API terms; BBB/AG via inbox intake; Google contest = check API, else one-click prepared report |
 | 32 | Flag tasks (address fixes, overbooked...) must tag the person who BOOKED the job, not the field manager (11-20) | Task Board | DONE (prod) | 11-20: 207 open flag tasks: booker-owned 67 -> 142, someone else 21 -> 0; 45 left on the field manager = bookers who left the company or deactivated (Jose: do not invite); 20 no booker. Writer now matches booker by Workiz link, exact name, then NameMatch; merged 5e678447a, ships 0619 |
 | 33 | **Clicking the Updates column opens a panel with only the updates** (the item's thread + write box), not the whole item form; clicking elsewhere on the row keeps the full panel, as Monday does (11-23, screenshot A1 - Operatrion) | Task Board | ROUTED | Sent 11-23 |
+| 34 | **Updates column sits right after Status** on every board (most used; must always be visible, today it is last) (11-23) | Task Board | ROUTED | Sent 11-23 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
