@@ -89,7 +89,10 @@ class TaskBoards
                 default => [TaskBoard::KIND_USER, 'owner_user_id'],
             };
 
-            $board = TaskBoard::query()->firstOrCreate(
+            // A board named to stand for this place (A-1's is Monday's "A1 - Operatrion",
+            // Jose 11-19/11-23: one board, not two) holds its key: writers land there.
+            $board = TaskBoard::query()->where('auto_key', $kind.':'.$owner->getKey())->where('kind', '!=', $kind)->first()
+                ?? TaskBoard::query()->firstOrCreate(
                 ['kind' => $kind, $column => $owner->getKey()],
                 [
                     'organization_id' => $owner->organization_id,

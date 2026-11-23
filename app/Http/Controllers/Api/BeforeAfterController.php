@@ -18,6 +18,8 @@ class BeforeAfterController extends Controller
 {
     public function index(InspectionReport $inspectionReport): JsonResponse
     {
+        $this->authorize('view', $inspectionReport);
+
         return response()->json(['data' => array_map(fn (array $p) => [
             'id' => $p['after']->id,
             'label' => $p['label'],
@@ -29,6 +31,8 @@ class BeforeAfterController extends Controller
 
     public function approve(Request $request, InspectionReport $inspectionReport, string $after, AuditLogger $audit): JsonResponse
     {
+        // Reach before validation, so a report out of reach is a 404, not a 422.
+        $this->authorize('view', $inspectionReport);
         $request->validate(['privacy_checked' => ['accepted']], [
             'privacy_checked.accepted' => 'Confirm the photos show no faces and no house numbers.',
         ]);
@@ -38,6 +42,8 @@ class BeforeAfterController extends Controller
 
     public function withdraw(InspectionReport $inspectionReport, string $after, AuditLogger $audit): JsonResponse
     {
+        $this->authorize('view', $inspectionReport);
+
         return $this->stamp($inspectionReport, $after, null, $audit, 'inspection.before_after.withdrawn');
     }
 

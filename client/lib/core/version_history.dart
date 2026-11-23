@@ -17,7 +17,11 @@ class VersionHistory {
       'Inspection: the emailed report no longer fails in the queue',
       'Inspection: report templates can use {{company_name}}, and notes keep their line breaks',
       'Inspection: approve before/after photo pairs for the website, after a privacy check (no faces or house numbers)',
-      'Inspection: reports carry a PASS, FAIL or N/A result per answer, as the PDF shows them',
+      'Inspection: Generated Reports reads like the PDF, with a Pass or Fail summary, one card per section, PASS, FAIL and N/A badges and the code quoted under each finding',
+      'Review QR: technicians make a QR code that sends clients to their branch review page, and every scan counts for them (Customer Experience and Inspection)',
+      'Customer Experience: Review links shows a technician leaderboard and QR scans',
+      'Customer Experience: review replies show the reason Google refused them, and an unverified listing no longer switches the auto-reply rule off',
+      'Task Board: clicking the Updates cell opens only the updates',
     ]),
     VersionRelease(version: '0.0.0623', date: '21 Nov 2026', items: [
       'Workiz: a re-read that meets the Workiz rate limit waits and retries instead of failing',
