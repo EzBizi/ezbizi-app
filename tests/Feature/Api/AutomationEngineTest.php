@@ -219,6 +219,8 @@ class AutomationEngineTest extends TestCase
 
     public function test_recovered_worker_never_repeats_an_ambiguous_sms_but_resumes_its_webhook(): void
     {
+        // Midday where the branch is: a customer text due at night waits for 8 AM (quiet hours, 2026-11-16).
+        \Illuminate\Support\Carbon::setTestNow('2026-11-17 17:00:00');
         $actions = [['type' => 'sms.send'], ['type' => 'webhook', 'url' => 'https://example.com/hook']];
         $rule = $this->automation('job.created', null, $actions);
         $mock = \Mockery::mock(OutboundWebhook::class);
@@ -1441,7 +1443,9 @@ class AutomationEngineTest extends TestCase
         Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('moved@example.test'));
 
         $none = $send($this->org['admin']);
-        $this->assertFalse($none['ok']);
+        // Nothing to fix, so a skip, not a failure (health sweep 11-17).
+        $this->assertTrue($none['ok']);
+        $this->assertTrue($none['skipped'] ?? false);
         $this->assertStringContainsString('not about a customer', $none['detail']);
     }
 
@@ -2805,5 +2809,24 @@ class AutomationEngineTest extends TestCase
         // Attribute substitution only — a tenant-authored string evaluated as
         // code would be remote execution wearing a friendly name.
         $this->assertStringContainsString('Person moved franchise', $run->action_results[0]['detail']);
+    }
+
+    /** Prod 11-15: a RingCentral call lead withdrawn for Google's copy before its queued run (5 failures a day). */
+    public function test_a_step_about_an_enquiry_that_is_gone_is_a_skip(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'lead.call_not_booked',
+            'subject_type'    => \App\Models\Lead::class,
+            'subject_id'      => '01a1e146-7070-736f-97a1-5fed9c9aa138',
+            'payload'         => ['after' => ['phone' => '+15555550100']],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run(['type' => 'reply', 'message' => 'Hi'], $event, null));
+
+        $this->assertTrue($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false, $result['detail']);
     }
 }

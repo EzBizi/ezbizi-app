@@ -65,7 +65,7 @@
             "label": "Customer Experience",
             "parent": null,
             "tabs": [
-                "Complaints"
+                "Reviews & Complaints"
             ]
         },
         "customers": {
@@ -114,6 +114,7 @@
             "tabs": [
                 "Home",
                 "Bills",
+                "Markets",
                 "Settings"
             ]
         },
@@ -147,7 +148,8 @@
                 "Contracts",
                 "Invitations",
                 "Onboarding",
-                "Payroll"
+                "Payroll",
+                "Recruiting"
             ]
         },
         "inspection": {
@@ -205,6 +207,7 @@
                 "WhatsApp",
                 "Workiz",
                 "Promotions",
+                "Recovery",
                 "Hidden"
             ],
             "within": {
@@ -227,6 +230,7 @@
                 "Compose",
                 "Calendar",
                 "Accounts",
+                "Comments",
                 "QR Codes"
             ],
             "within": {
@@ -234,6 +238,7 @@
                 "Compose": "Social Media Management",
                 "Calendar": "Social Media Management",
                 "Accounts": "Social Media Management",
+                "Comments": "Social Media Management",
                 "QR Codes": "Social Media Management"
             }
         },
@@ -300,6 +305,8 @@
             "label": "Project Management",
             "parent": null,
             "tabs": [
+                "Dashboard",
+                "Inbox",
                 "Unscheduled",
                 "Ready to Schedule",
                 "Scheduled",
@@ -317,11 +324,35 @@
                 "Report Builder",
                 "Performance",
                 "Scoring",
-                "Marketing",
+                "Marketing Reports",
                 "Meta",
                 "Thumbtack",
+                "Overview",
+                "Cancelled",
+                "Pending",
+                "Estimates",
+                "Tasks",
+                "Complaints",
+                "Dispatch",
+                "Accounting weekly",
+                "Recruiting",
+                "Tech report",
+                "AI checks",
                 "Workspace"
-            ]
+            ],
+            "within": {
+                "Overview": "Jobs",
+                "Cancelled": "Jobs",
+                "Pending": "Jobs",
+                "Estimates": "Jobs",
+                "Tasks": "Office",
+                "Complaints": "Office",
+                "Dispatch": "Office",
+                "Accounting weekly": "Office",
+                "Recruiting": "Office",
+                "Tech report": "Technicians",
+                "AI checks": "Technicians"
+            }
         },
         "reviews": {
             "label": "Reviews",
@@ -394,6 +425,7 @@
                 "Paid Time Off",
                 "Reports",
                 "Daily approval",
+                "Payroll",
                 "Settings"
             ]
         }
@@ -476,6 +508,7 @@
         "financials.create",
         "financials.delete",
         "financials.edit",
+        "financials.markets.view",
         "financials.settings.view",
         "financials.view",
         "fleet_management.assign",
@@ -505,6 +538,7 @@
         "hr.pay.view",
         "hr.payroll.view",
         "hr.records.view",
+        "hr.recruiting.view",
         "hr.security.reset",
         "hr.view",
         "inspection.archive",
@@ -553,6 +587,7 @@
         "leads.manage",
         "leads.promotions.view",
         "leads.reclassify",
+        "leads.recovery.view",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
         "leads.view",
@@ -563,6 +598,7 @@
         "leads.workiz.view",
         "marketing.accounts.view",
         "marketing.calendar.view",
+        "marketing.comments.view",
         "marketing.compose.view",
         "marketing.dashboard.view",
         "marketing.edit",
@@ -586,6 +622,7 @@
         "monitoring.map.view",
         "monitoring.screenshots.view",
         "monitoring.specs.view",
+        "monitoring.unmonitored",
         "monitoring.view",
         "newsletter.composer.view",
         "newsletter.create",
@@ -611,18 +648,29 @@
         "phone.view",
         "profit_loss.view",
         "project_board.view",
+        "reports.accounting.view",
         "reports.build",
         "reports.builder.view",
+        "reports.cancelled.view",
+        "reports.complaints.view",
         "reports.correct",
+        "reports.dispatch.view",
+        "reports.estimates.view",
         "reports.experimental.view",
         "reports.export",
         "reports.handles",
+        "reports.jobs.view",
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.pending.view",
+        "reports.recruiting.view",
         "reports.scoring.view",
         "reports.scoring_weights",
         "reports.settings",
+        "reports.tasks.view",
+        "reports.tech_checks.view",
+        "reports.techs.view",
         "reports.thumbtack.view",
         "reports.view",
         "reports.workspace.view",
@@ -640,6 +688,7 @@
         "scheduling.edit",
         "scheduling.helpers.view",
         "scheduling.locations.view",
+        "scheduling.overbook",
         "scheduling.rescheduling.view",
         "scheduling.routing.view",
         "scheduling.schedule.view",
@@ -677,6 +726,7 @@
         "work_hours.approve",
         "work_hours.general.view",
         "work_hours.manage",
+        "work_hours.payroll",
         "work_hours.pto.edit",
         "work_hours.pto.request",
         "work_hours.pto.view",

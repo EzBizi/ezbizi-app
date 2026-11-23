@@ -60,6 +60,7 @@ import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
+import 'widgets/broken_widget_card.dart';
 import 'widgets/callout.dart';
 import 'widgets/quick_search.dart';
 import 'widgets/incoming_call_bar.dart';
@@ -68,6 +69,7 @@ import 'core/phone_call_service.dart';
 import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
+  IssueReporter.markLaunch();
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();
@@ -84,6 +86,9 @@ Future<void> main() async {
 
   // Crashes, freezes and failed calls reach the staff console (2026-10-15).
   IssueReporter.install();
+
+  // One widget that throws draws a card, not a grey or black app.
+  BrokenWidgetCard.install();
 
   // A paired camera-bridge PC streams on its site key, signed in or not.
   unawaited(startCameraBridge());
@@ -614,7 +619,12 @@ class _HomeShellState extends State<HomeShell> {
     // an icon: what it prevents is somebody reading a stale dot for the rest
     // of the afternoon. Anything that must be immediate — a call starting or
     // ending — already notifies in the same frame.
-    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
+    _heartbeat.onBeat = () {
+      PhoneCallService.current.presenceMayHaveChanged();
+      // A phone account that just got its first line is picked up within a
+      // minute, without a reload (Jose, 2026-11-12).
+      unawaited(PhoneCallService.current.syncAccounts());
+    };
     _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
     // So no computer asks somebody who has the phone app to install it.
     markPhoneAppUsed(widget.session);
@@ -690,6 +700,7 @@ class _HomeShellState extends State<HomeShell> {
         DeepLinks.open(link);
       }
     }
+    DeepLinks.module.addListener(_openRequestedModule);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
@@ -698,6 +709,7 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Which view the desk was brought up for, so a change can be noticed.
   String? _deskScope;
+  String? _deskAccess;
 
   /// Try again for a desk that never came up, now that the view has moved.
   ///
@@ -721,6 +733,13 @@ class _HomeShellState extends State<HomeShell> {
   /// since navigated away from. Give it the scope's own line when somebody
   /// asks for that, and decide then what a lineless scope should do.
   void _followScope() {
+    // Access changed (a line or account granted): register on what is new.
+    final access = widget.session.me?.accessVersion;
+    if (access != _deskAccess) {
+      _deskAccess = access;
+      unawaited(PhoneCallService.current.syncAccounts());
+    }
+
     final scope = widget.session.me?.scope;
     final key = scope == null ? null : '${scope.type}:${scope.id}';
     if (key == _deskScope) return;
@@ -759,6 +778,7 @@ class _HomeShellState extends State<HomeShell> {
     HardwareKeyboard.instance.removeHandler(_quickSearchKey);
     Callouts.ready = false;
     _stopListening?.call();
+    DeepLinks.module.removeListener(_openRequestedModule);
     _heartbeat.dispose();
     stopLighting();
     _fieldTracker?.dispose();
@@ -929,6 +949,13 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Another screen sending someone here ([OpenDestination]): read the id the
   /// way a typed URL is read, so a child module opens inside its parent.
+  void _openRequestedModule() {
+    final key = DeepLinks.module.value;
+    if (key == null || !mounted) return;
+    DeepLinks.module.value = null;
+    _open(key);
+  }
+
   void _open(String id) {
     setState(() {
       _leadsOpen = null;
@@ -1153,8 +1180,16 @@ class _HomeShellState extends State<HomeShell> {
       me.navigationOrder,
       (d) => d.id,
     );
-    destinations = arranged.rows;
-    final divideAfter = arranged.divideAfter;
+    // Under fixed group headings (Muse audit 1A); their order still
+    // decides the order inside each group.
+    final grouped = groupSidebar(
+      arranged.rows,
+      arranged.divideAfter,
+      (d) => d.id,
+    );
+    destinations = grouped.rows;
+    final divideAfter = grouped.divideAfter;
+    final headingAt = grouped.headingAt;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -1261,6 +1296,32 @@ class _HomeShellState extends State<HomeShell> {
     IssueReporter.module = shownId;
     IssueReporter.route = Address.pathOf(shownId);
 
+    final barStates = _BarStates(
+      // A state is not a control, and states already have a home here:
+      // `_timeClockNotice` is described in this file as sitting "as a
+      // one-line strip under the AppBar, same family as the two-factor
+      // chip". The chip was simply never put in it.
+      //
+      // On a phone that is not tidiness. Measured at 375 with both
+      // showing, the actions row runs off the right edge -- these two
+      // are conditional, so the worst case is worse than any screenshot
+      // of a healthy account.
+      twoFactor: !wide && me.twoFactorEnrolmentRequired,
+      readOnly: !wide && me.organization.isReadOnly,
+      // The third state this strip's own comment anticipated. It
+      // scrolls rather than wraps, so it does not push every screen
+      // down a row on a phone.
+      emailConfirmation: !wide && me.emailConfirmationRequired,
+      onTwoFactor: _showProfile,
+      onEmailConfirmation: _resendConfirmation,
+      // The company picker on its own row on a phone (live 0.0.0597 at 375:
+      // between the hamburger and the icons it got ~20 px and drew an
+      // empty box). Only when there is somewhere else to stand.
+      scope: !wide && ScopeSwitcher.hasChoices(me)
+          ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
+          : null,
+    );
+
     final shell = Scaffold(
       key: _scaffoldKey,
       // The top bar belongs to the CHROME, not to the page.
@@ -1272,9 +1333,12 @@ class _HomeShellState extends State<HomeShell> {
       // deliberately different.
       //
       // PreferredSize because Scaffold.appBar demands one and a Theme is not:
-      // the height is the toolbar plus the one-pixel rule below it.
+      // the height is the toolbar plus what hangs below it (the rule, and on
+      // a phone the state strip and the company picker's row).
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight + 1),
+        preferredSize: Size.fromHeight(
+          kToolbarHeight + barStates.preferredSize.height,
+        ),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
           builder: (context) => AppBar(
@@ -1283,25 +1347,7 @@ class _HomeShellState extends State<HomeShell> {
             // The bar and the rail were both plain surface, so on a light theme
             // they met as one continuous white field and the sidebar read as part
             // of the header. One pixel fixes it; nothing else would.
-            bottom: _BarStates(
-              // A state is not a control, and states already have a home here:
-              // `_timeClockNotice` is described in this file as sitting "as a
-              // one-line strip under the AppBar, same family as the two-factor
-              // chip". The chip was simply never put in it.
-              //
-              // On a phone that is not tidiness. Measured at 375 with both
-              // showing, the actions row runs off the right edge -- these two
-              // are conditional, so the worst case is worse than any screenshot
-              // of a healthy account.
-              twoFactor: !wide && me.twoFactorEnrolmentRequired,
-              readOnly: !wide && me.organization.isReadOnly,
-              // The third state this strip's own comment anticipated. It
-              // scrolls rather than wraps, so it does not push every screen
-              // down a row on a phone.
-              emailConfirmation: !wide && me.emailConfirmationRequired,
-              onTwoFactor: _showProfile,
-              onEmailConfirmation: _resendConfirmation,
-            ),
+            bottom: barStates,
             leading: wide
                 ? IconButton(
                     tooltip: expanded
@@ -1365,7 +1411,7 @@ class _HomeShellState extends State<HomeShell> {
                 // and says nothing, which is worse than absence.
                 //
                 // So the wordmark, the rule and the company logo are dropped
-                // together below 900, and the switcher gets the whole slot. It
+                // together below 900, and the switcher gets a row of its own. It
                 // still NAMES the company in words, which is what the logo was
                 // saying in pixels -- nothing that identifies the business is
                 // lost, only a second copy of it.
@@ -1379,8 +1425,10 @@ class _HomeShellState extends State<HomeShell> {
                   // So when it has nothing to offer, the name is said plainly.
                   // Asking the switcher rather than re-deriving the condition
                   // here keeps one definition of "is there a choice".
+                  // With a choice, the switcher has its own row below
+                  // (`_BarStates.scope`).
                   return ScopeSwitcher.hasChoices(me)
-                      ? switcher
+                      ? const SizedBox.shrink()
                       : Text(
                           me.scope.label,
                           overflow: TextOverflow.ellipsis,
@@ -1737,8 +1785,15 @@ class _HomeShellState extends State<HomeShell> {
              */
             AnimatedBuilder(
               animation: PhoneCallService.current,
-              builder: (context, _) =>
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   voiceDeviceView(PhoneCallService.current.platformView),
+                  // One per other phone account (EverDoors, 2026-11-11).
+                  for (final view in PhoneCallService.current.extraViews)
+                    voiceDeviceView(view),
+                ],
+              ),
             ),
 
             /*
@@ -1930,10 +1985,12 @@ class _HomeShellState extends State<HomeShell> {
                         // theme and the page is the other.
                         EzBiziTheme.navigationOverride(me.theme),
                         builder: (context) => NavigationSidebar(
+                          api: widget.api,
                           expanded: expanded,
                           width: me.navigationWidth,
                           destinations: destinations,
                           divideAfter: divideAfter,
+                          headingAt: headingAt,
                           pinned: pinned,
                           staffOnly: staffOnly,
                           selectedIndex: railIndex,
@@ -2035,11 +2092,17 @@ class _HomeShellState extends State<HomeShell> {
        * No `leading` is set on this layout, so Scaffold supplies the button
        * that opens it.
        */
+      // Mobile review 2026-11-13, P7 (preview §3 A): on a phone, four
+      // modules one tap away at the bottom, and More opens the drawer.
+      bottomNavigationBar: MediaQuery.sizeOf(context).width < 600
+          ? _bottomBar(destinations)
+          : null,
       drawer: wide
           ? null
           : _navigationDrawer(
               destinations,
               divideAfter,
+              headingAt,
               pinned,
               staffOnly,
               (order) =>
@@ -2127,8 +2190,15 @@ class _HomeShellState extends State<HomeShell> {
   /// Design 161 T1: one toolbar slot per module, filled by its screen.
   final Map<String, ValueNotifier<Widget?>> _toolbars = {};
 
+  /// D3: one primary-action slot per module, header right ([ModuleAction]).
+  final Map<String, ValueNotifier<Widget?>> _actions = {};
+
   Widget _titled(Destination destination) {
     final toolbar = _toolbars.putIfAbsent(
+      destination.id,
+      () => ValueNotifier<Widget?>(null),
+    );
+    final action = _actions.putIfAbsent(
       destination.id,
       () => ValueNotifier<Widget?>(null),
     );
@@ -2138,9 +2208,10 @@ class _HomeShellState extends State<HomeShell> {
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         PhoneAppBanner(session: widget.session),
-        ValueListenableBuilder<Widget?>(
-          valueListenable: toolbar,
-          builder: (context, bar, _) => ModulePageHeader(
+        ListenableBuilder(
+          listenable: Listenable.merge([toolbar, action]),
+          builder: (context, _) => ModulePageHeader(
+            actions: [?action.value],
             title: destination.label,
             subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
             // UI queue 81: the walkthrough and the how-to video, as A1 Tools
@@ -2151,7 +2222,7 @@ class _HomeShellState extends State<HomeShell> {
               api: widget.api,
               session: widget.session,
             ),
-            toolbar: bar,
+            toolbar: toolbar.value,
           ),
         ),
         TourOffer(
@@ -2162,15 +2233,110 @@ class _HomeShellState extends State<HomeShell> {
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
-          child: ModuleToolbarScope(slot: toolbar, child: destination.screen),
+          child: ModuleToolbarScope(
+            slot: toolbar,
+            action: action,
+            child: destination.screen,
+          ),
         ),
       ],
+    );
+  }
+
+  /// The modules a field team uses all day, in order, when this person has
+  /// them; the rest of the four come from the top of their own sidebar.
+  static const _barFirst = ['jobs', 'scheduling', 'leads', 'phone'];
+
+  Widget _bottomBar(List<Destination> destinations) {
+    final byId = {for (final d in destinations) d.id: d};
+    final slots = <Destination>[for (final id in _barFirst) ?byId[id]];
+    for (final d in destinations) {
+      if (slots.length >= 4) break;
+      if (!slots.contains(d)) slots.add(d);
+    }
+    final at = _rail == _Rail.modules
+        ? slots.indexWhere((d) => d.id == _selected)
+        : -1;
+    // One line under each icon at any width and text size (Jose,
+    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
+    // label to one line, so the bar is drawn here: a short word, scaled
+    // down to fit its slot rather than wrapped.
+    final scheme = Theme.of(context).colorScheme;
+    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
+      final on = i == at;
+      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+      return Expanded(
+        child: Tooltip(
+          message: tip,
+          child: InkWell(
+            key: key,
+            onTap: () => i == slots.length
+                ? _scaffoldKey.currentState?.openDrawer()
+                : _show(_Rail.modules, slots[i].id),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: on ? scheme.secondaryContainer : null,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon, color: ink, size: 22),
+                ),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: ink,
+                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      key: const Key('phone-bottom-bar'),
+      color: scheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              for (final (i, d) in slots.indexed)
+                slot(i, d.icon, barLabel(d.id, d.label), d.label, null),
+              slot(
+                slots.length,
+                Icons.menu,
+                'More',
+                'More',
+                const Key('phone-bottom-more'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _navigationDrawer(
     List<Destination> destinations,
     Set<int> divideAfter,
+    Map<int, String> headingAt,
     List<Destination> pinned,
     List<Destination> staffOnly,
     ValueChanged<List<String>> onArranged,
@@ -2226,6 +2392,7 @@ class _HomeShellState extends State<HomeShell> {
                 header,
                 const Divider(height: 1),
                 for (var i = 0; i < destinations.length; i++) ...[
+                  if (headingAt.containsKey(i)) _GroupHeading(headingAt[i]!),
                   tile(destinations[i], _Rail.modules),
                   // Their own rule, nameless, exactly where they put it. The
                   // last position can never be in the set, so this cannot draw
@@ -2264,7 +2431,7 @@ class _HomeShellState extends State<HomeShell> {
                           textStyle: Theme.of(context).textTheme.labelMedium,
                         ),
                       ),
-                      const BuildStamp(),
+                      BuildStamp(api: widget.api),
                     ],
                   ),
                 ),
@@ -2311,7 +2478,11 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     required this.emailConfirmation,
     required this.onTwoFactor,
     required this.onEmailConfirmation,
+    this.scope,
   });
+
+  /// The company picker's row on a phone, or null.
+  final Widget? scope;
 
   final bool twoFactor;
   final bool readOnly;
@@ -2322,12 +2493,27 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
-  Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
+  Size get preferredSize =>
+      Size.fromHeight((_any ? 49 : 1) + (scope == null ? 0 : 44));
 
   @override
   Widget build(BuildContext context) {
     final rule = Container(height: 1, color: EzBiziTheme.edge(context));
-    if (!_any) return rule;
+    final row = scope == null
+        ? null
+        : SizedBox(
+            key: const Key('top-bar-scope-row'),
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+              child: scope,
+            ),
+          );
+    if (!_any) {
+      return row == null
+          ? rule
+          : Column(mainAxisSize: MainAxisSize.min, children: [row, rule]);
+    }
 
     final scheme = Theme.of(context).colorScheme;
     final tint = scheme.errorContainer.withValues(alpha: 0.4);
@@ -2335,6 +2521,7 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?row,
         SizedBox(
           height: 48,
           // Scrolls rather than wraps: two chips fit at 375, and a third state
@@ -2603,6 +2790,7 @@ Widget _maybeThemed(ThemeData? theme, {required WidgetBuilder builder}) =>
 /// reading the code reliably catches.
 class NavigationSidebar extends StatefulWidget {
   const NavigationSidebar({
+    this.api,
     super.key,
     required this.expanded,
     required this.width,
@@ -2618,7 +2806,14 @@ class NavigationSidebar extends StatefulWidget {
     this.onResized,
     this.onArranged,
     this.divideAfter = const {},
+    this.headingAt = const {},
   });
+
+  /// Group heading drawn above a position in [destinations].
+  final Map<int, String> headingAt;
+
+  /// For the version stamp's release bar; null where no client is built.
+  final ApiClient? api;
 
   final bool expanded;
 
@@ -2771,6 +2966,12 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
     // good when it was saved.
     final segments = <List<int>>[[]];
     for (final i in shown) {
+      // A heading starts a new rail too (filtering hides headings).
+      if (!filtering &&
+          widget.headingAt.containsKey(i) &&
+          segments.last.isNotEmpty) {
+        segments.add([]);
+      }
       segments.last.add(i);
       if (widget.divideAfter.contains(i)) segments.add([]);
     }
@@ -2905,6 +3106,10 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // list, so it is the last thing that should require scrolling to
             // reach.
             Expanded(
+              // Keyed: the search field above it comes and goes with the
+              // collapse, and an unkeyed sibling shift remounted this whole
+              // list (and its scroll view) on every toggle.
+              key: const ValueKey('sidebar-list'),
               // Nothing matched is the state that matters more than the happy
               // path: a sidebar with no modules in it and no explanation is
               // indistinguishable from a broken one. So it names what was
@@ -2921,53 +3126,85 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                     )
                   : filtering && shown.isEmpty
                   ? _noMatch(context, _query.trim())
-                  : LayoutBuilder(
-                      // A visible thumb when the list is taller than the
-                      // window: without it the lower group just stopped
-                      // mid-row with no hint there was more (deep dive
-                      // 2026-11-02).
-                      builder: (context, constraints) => Scrollbar(
-                        controller: _railScroll,
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _railScroll,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: constraints.maxHeight,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            // A visible thumb when the list is taller than the
+                            // window: without it the lower group just stopped
+                            // mid-row with no hint there was more (deep dive
+                            // 2026-11-02).
+                            builder: (context, constraints) => Stack(
                               children: [
-                                for (var g = 0; g < segments.length; g++) ...[
-                                  if (g > 0)
-                                    Divider(
-                                      height: 17,
-                                      thickness: 1,
-                                      indent: width * 0.15,
-                                      endIndent: width * 0.15,
-                                      color: scheme.outlineVariant,
-                                    ),
-                                  IntrinsicHeight(
-                                    child: _rail(
-                                      context,
-                                      expanded: expanded,
-                                      width: width,
-                                      destinations: [
-                                        for (final i in segments[g])
-                                          widget.destinations[i],
-                                      ],
-                                      selectedIndex: within(segments[g]),
-                                      onSelected: (i) =>
-                                          widget.onSelected(segments[g][i]),
-                                      query: query,
+                                Scrollbar(
+                                  controller: _railScroll,
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    controller: _railScroll,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        minHeight: constraints.maxHeight,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          for (
+                                            var g = 0;
+                                            g < segments.length;
+                                            g++
+                                          ) ...[
+                                            if (!filtering &&
+                                                expanded &&
+                                                widget.headingAt.containsKey(
+                                                  segments[g].first,
+                                                ))
+                                              _GroupHeading(
+                                                widget.headingAt[segments[g]
+                                                    .first]!,
+                                              )
+                                            else if (g > 0)
+                                              Divider(
+                                                height: 17,
+                                                thickness: 1,
+                                                indent: width * 0.15,
+                                                endIndent: width * 0.15,
+                                                color: scheme.outlineVariant,
+                                              ),
+                                            IntrinsicHeight(
+                                              child: _rail(
+                                                context,
+                                                expanded: expanded,
+                                                width: width,
+                                                destinations: [
+                                                  for (final i in segments[g])
+                                                    widget.destinations[i],
+                                                ],
+                                                selectedIndex: within(
+                                                  segments[g],
+                                                ),
+                                                onSelected: (i) => widget
+                                                    .onSelected(segments[g][i]),
+                                                query: query,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ],
+                                ),
                               ],
                             ),
                           ),
                         ),
-                      ),
+                        // "More below" on its own row under the list while
+                        // rows remain under the fold (Jose 11-13 read the
+                        // cut-off list as modules MISSING). Drawn over the
+                        // list it covered a module name (desktop review
+                        // 2026-11-13, Top 6).
+                        _MoreBelow(controller: _railScroll),
+                      ],
                     ),
             ),
 
@@ -3075,10 +3312,10 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                               ).textTheme.labelMedium,
                             ),
                           ),
-                        const BuildStamp(),
+                        BuildStamp(api: widget.api),
                       ],
                     )
-                  : const Center(child: BuildStamp(compact: true)),
+                  : Center(child: BuildStamp(compact: true, api: widget.api)),
             ),
             const SizedBox(height: 12),
           ],
@@ -3088,44 +3325,53 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!expanded || widget.onResized == null) return sidebar;
-
+    //
+    // The Stack itself is ALWAYS there. Returning the bare sidebar when
+    // collapsed changed the root widget type, so every toggle threw the whole
+    // subtree away and mounted a new one: the old and new list both held the
+    // rail's scroll controller for a frame, `_MoreBelow` read
+    // `controller.position` (`positions.single`) and threw "Too many
+    // elements", and the column painted grey until the next click rebuilt it
+    // (Jose 11-16, 0.0.0575; client_issues 01a1e4ea).
+    final resizable = expanded && widget.onResized != null;
     return Stack(
       children: [
         sidebar,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          // Straddles the border rather than sitting beside it, so the cursor
-          // changes where the eye says the edge is.
-          right: -3,
-          width: 7,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragStart: (_) => setState(() => _dragWidth = width),
-              onHorizontalDragUpdate: (d) => setState(() {
-                _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
-                  NavigationSidebar.minWidth,
-                  NavigationSidebar.maxWidth,
-                );
-              }),
-              onHorizontalDragEnd: (_) {
-                final settled = _dragWidth;
-                setState(() => _dragWidth = null);
-                if (settled != null) widget.onResized!(settled);
-              },
-              // Double-click puts it back, because a resize handle without one
-              // means somebody who has dragged it somewhere odd has to find
-              // their way back by feel.
+        if (resizable)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            // Straddles the border rather than sitting beside it, so the cursor
+            // changes where the eye says the edge is.
+            right: -3,
+            width: 7,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
               child: GestureDetector(
-                onDoubleTap: () => widget.onResized!(220),
                 behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _dragWidth = width),
+                onHorizontalDragUpdate: (d) => setState(() {
+                  _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
+                    NavigationSidebar.minWidth,
+                    NavigationSidebar.maxWidth,
+                  );
+                }),
+                onHorizontalDragEnd: (_) {
+                  final settled = _dragWidth;
+                  setState(() => _dragWidth = null);
+                  if (settled != null) widget.onResized!(settled);
+                },
+                // Double-click puts it back, because a resize handle without one
+                // means somebody who has dragged it somewhere odd has to find
+                // their way back by feel.
+                child: GestureDetector(
+                  onDoubleTap: () => widget.onResized!(220),
+                  behavior: HitTestBehavior.translucent,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -3329,6 +3575,10 @@ Widget _rail(
   String query = '',
 }) {
   return NavigationRail(
+    // A fresh rail per state, so it does not run its own extend animation.
+    // The column around it already snapped to its new width, and the rail
+    // animating its labels inside 80px overflowed every frame of a collapse.
+    key: ValueKey(expanded),
     backgroundColor: Colors.transparent,
     // null when an off-rail screen is showing, or when the OTHER rail holds the
     // selection. The assert allows it; a stale index would throw.
@@ -3395,3 +3645,103 @@ class Destination {
   final IconData icon;
   final Widget screen;
 }
+
+/// A fade and a "More" chevron over the bottom of a scrolling list, shown only
+/// while there is still something below the fold. Tapping it scrolls down.
+class _MoreBelow extends StatefulWidget {
+  const _MoreBelow({required this.controller});
+
+  final ScrollController controller;
+
+  @override
+  State<_MoreBelow> createState() => _MoreBelowState();
+}
+
+class _MoreBelowState extends State<_MoreBelow> {
+  ScrollController get controller => widget.controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // The list lays out after this row's first build, and a controller only
+    // notifies on a scroll: look again once the list has its size.
+    if (controller.positions.length != 1 ||
+        !controller.positions.first.hasContentDimensions) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && controller.hasClients) setState(() {});
+      });
+    }
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        // `positions`, never `position`: during a rebuild the controller can
+        // briefly hold two, and `position` throws on more than one.
+        final positions = controller.positions;
+        final more =
+            positions.length == 1 &&
+            positions.first.hasContentDimensions &&
+            positions.first.extentAfter > 8;
+        if (!more) return const SizedBox.shrink();
+
+        // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
+        final bg = scheme.surfaceContainerLow;
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [bg.withValues(alpha: 0), bg],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Center(
+              child: TextButton.icon(
+                key: const Key('sidebar-more-below'),
+                onPressed: () => controller.animateTo(
+                  controller.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                ),
+                icon: Icon(Icons.expand_more, size: 18, color: scheme.primary),
+                label: const Text('More'),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A sidebar group heading ("Work", "Customers"...): small, muted capitals.
+class _GroupHeading extends StatelessWidget {
+  const _GroupHeading(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+    child: Text(
+      label.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        letterSpacing: 0.6,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+/// A module's name under its icon in the phone bar: one short word. The
+/// full name stays in the tooltip and the drawer.
+String barLabel(String id, String label) =>
+    const {
+      'phone': 'Comms',
+      'project_board': 'Projects',
+      'customer_experience': 'Experience',
+    }[id] ??
+    (label.length <= 10 ? label : label.split(' ').first);

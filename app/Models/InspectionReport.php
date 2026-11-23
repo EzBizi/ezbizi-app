@@ -11,6 +11,7 @@ use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -36,6 +37,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InspectionReport extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'inspection_reports';
+
+    /** Filed where automationScope() files it: the job's branch, else the customer's (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        [, $franchise] = $this->automationScope();
+
+        return [null, $franchise];
+    }
+
     use HasAttachments;
     use HasUuids;
     use WrittenOnce;
@@ -83,6 +97,20 @@ class InspectionReport extends Model implements CarriesAutomationScope, HoldsPer
             : Customer::withTrashed()->whereKey($this->customer_id)->value('owning_franchise_id');
 
         return $franchiseId === null ? [null, null] : ['franchise', $franchiseId];
+    }
+
+    /**
+     * May this person read this report from where they are viewing? The
+     * franchise automationScope() files it under must be in their current view.
+     * One answer for every door: InspectionReportPolicy::view and
+     * InspectionReportsController::assertReach both ask here.
+     */
+    public function inReachOf(User $user): bool
+    {
+        [$type, $franchiseId] = $this->automationScope();
+
+        return $type === 'franchise'
+            && in_array($franchiseId, ViewScope::forUser($user)->franchiseIds(), true);
     }
 
     public static function personalDataPurpose(): string

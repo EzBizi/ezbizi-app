@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -65,26 +66,37 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
   void initState() {
     super.initState();
     _load();
+    // A recording finished, transcribed or flagged elsewhere: the list
+    // re-reads quietly; the open one and a flag being written are kept.
+    _live = LiveChanges.of(widget.api).subscribe({'field'}, (_) {
+      if (!_loading && !_keeping) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     _reason.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _rows.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _rows.isEmpty;
+        _error = null;
+      });
+    }
     final response = await widget.api.get('/field/recordings', {
       'user_id': ?_person,
       if (_day != null) 'date': formatCalendarDay(_day!),
       if (_query.trim().isNotEmpty) 'q': _query.trim(),
     });
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (!response.ok) {
@@ -273,13 +285,12 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                       },
                       child: const Text('Any day'),
                     ),
-                  SizedBox(
-                    width: 260,
-                    child: ListSearch(
-                      key: const ValueKey('field-recordings-search'),
-                      hint: 'Search person, job or reason',
-                      onChanged: _search,
-                    ),
+                  // ListSearch's own width: 280 on a desk, the row on a
+                  // phone (mobile review 2026-11-13: it was 125 px, cut).
+                  ListSearch(
+                    key: const ValueKey('field-recordings-search'),
+                    hint: 'Search person, job or reason',
+                    onChanged: _search,
                   ),
                 ],
               ),

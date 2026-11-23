@@ -521,6 +521,7 @@ class SearchMultiPickerField<T> extends StatelessWidget {
     this.label,
     this.hint,
     this.searchFrom = 8,
+    this.selectShown = false,
   });
 
   final Set<T> values;
@@ -529,6 +530,10 @@ class SearchMultiPickerField<T> extends StatelessWidget {
   final String? label;
   final String? hint;
   final int searchFrom;
+
+  /// Offers "Select all shown": ticks every row the search left (Jose,
+  /// 2026-11-12, Reports › Jobs: type "CLE", take every Cleveland line).
+  final bool selectShown;
 
   @override
   Widget build(BuildContext context) {
@@ -578,6 +583,7 @@ class SearchMultiPickerField<T> extends StatelessWidget {
         options: options,
         values: values,
         searchFrom: searchFrom,
+        selectShown: selectShown,
       ),
     );
 
@@ -591,12 +597,14 @@ class _SearchMultiDialog<T> extends StatefulWidget {
     required this.options,
     required this.values,
     required this.searchFrom,
+    this.selectShown = false,
   });
 
   final String? title;
   final List<SearchOption<T>> options;
   final Set<T> values;
   final int searchFrom;
+  final bool selectShown;
 
   @override
   State<_SearchMultiDialog<T>> createState() => _SearchMultiDialogState<T>();
@@ -650,6 +658,26 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
                     hintText: 'Search',
                   ),
                   onChanged: (value) => setState(() => _term = value),
+                ),
+              ),
+            if (widget.selectShown && hits.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('search-multi-select-shown'),
+                    onPressed: () => setState(
+                      () => _chosen.addAll([
+                        for (final o in hits)
+                          if (o.enabled) o.value as T,
+                      ]),
+                    ),
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: Text(
+                      needle.isEmpty ? 'Select all' : 'Select all shown',
+                    ),
+                  ),
                 ),
               ),
             Expanded(

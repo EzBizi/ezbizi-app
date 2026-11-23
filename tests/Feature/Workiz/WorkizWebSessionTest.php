@@ -131,7 +131,9 @@ class WorkizWebSessionTest extends TestCase
                 ['fid' => '555', 'account_custom_name' => 'Sub branch', 'invite_status' => '1', 'status' => '1', 'account_status' => 'active'],
             ]]),
             'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [
-                ['id' => 71, 'amount' => '250.00', 'date' => '2026-10-19 10:00:00', 'payment_type' => 'credit', 'status' => 'Paid', 'technician_name' => 'Ana Ruiz'],
+                ['id' => 71, 'amount' => '250.00', 'date' => '2026-10-19 10:00:00', 'timestamp' => '1760868000', 'client_id' => '5', 'payment_type' => 'credit', 'status' => 'Paid', 'technician_name' => 'Ana Ruiz'],
+                // Workiz repeats a report id on another payment (audit 11-11): both are kept.
+                ['id' => 71, 'amount' => '90.00', 'date' => '2026-10-19 11:00:00', 'timestamp' => '1760871600', 'client_id' => '6', 'payment_type' => 'check', 'status' => 'Paid'],
                 ['isTotalsRow' => true, 'amount' => '250.00'],
             ]]),
         ]);
@@ -139,8 +141,9 @@ class WorkizWebSessionTest extends TestCase
         $this->artisan('ezbizi:workiz-web-payments', ['--from' => '2026-10-19', '--to' => '2026-10-20'])
             ->expectsOutputToContain('Sub branch is not mapped')->assertSuccessful();
 
-        $row = $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->sole());
-        $this->assertSame(['web_payment', 'WP-71', '250.00', $this->t['franchise']->id], [$row->type, $row->remote_id, $row->amount, $row->franchise_id]);
+        $this->assertSame(['250.00', '90.00'], $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->orderByDesc('amount')->pluck('amount')->all()));
+        $row = $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->where('amount', 250)->sole());
+        $this->assertSame(['web_payment', $this->t['franchise']->id], [$row->type, $row->franchise_id]);
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'getPaymentsReport') && $r['date_query'] === '19.10.26_20.10.26'
             && $r->hasHeader('User-Id', '406487') && $r->hasHeader('Account-Id', '98765') && $r->hasHeader('Origin', 'https://app.workiz.com'));
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'franchiseLogin'));

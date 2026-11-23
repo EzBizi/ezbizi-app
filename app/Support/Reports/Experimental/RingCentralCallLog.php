@@ -186,6 +186,12 @@ final class RingCentralCallLog
                 'account' => (string) $c->remote_id,
             ];
         }
+        // Asked for one account that this reader cannot see: none, never the
+        // env account in its place (2026-11-17: EverDoors' header listed A-1's
+        // numbers for a reader viewing A-1 Chimney).
+        if ($this->only !== null) {
+            return null;
+        }
 
         // The env account belongs to one company (REPORT_RINGCENTRAL_COMPANY,
         // 2026-10-19): a signed-in reader whose view is another company or a
@@ -685,7 +691,8 @@ final class RingCentralCallLog
     private function token(): string
     {
         $config = $this->credentialsOrFail();
-        $key = 'ringcentral-token:'.sha1((string) $config['client_id']);
+        // Per sign-in, not per app: two accounts on one app each have their own JWT.
+        $key = 'ringcentral-token:'.sha1($config['client_id'].'|'.$config['jwt']);
 
         if (is_string($cached = Cache::get($key))) {
             return $cached;

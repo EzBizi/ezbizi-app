@@ -160,7 +160,7 @@ final class EzLeadCalls
 
             if (($outcome === RingCentralLeadCalls::MISSED || $outcome === RingCentralLeadCalls::VOICEMAIL)
                 && $at->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
-                $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
+                RingCentralLeadCalls::firstMissedThisHour($lead) && $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
                     'phone' => $lead->phone,
                     'contact_name' => $lead->contact_name,
                     'line' => (string) ($line->label ?: $line->e164),

@@ -51,6 +51,12 @@ class EzBiziTheme {
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 
+  /// The height of a toolbar's field, picker and button side by side (Jose,
+  /// 2026-11-13: "The Filters button is not the same size as the status
+  /// picker or the field"). Such a row sets [VisualDensity.standard]: the
+  /// desktop's compact density draws a field 8 shorter than its slot.
+  static const double controlHeight = 44;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
@@ -68,6 +74,29 @@ class EzBiziTheme {
       Theme.of(context).brightness == Brightness.dark
       ? const Color(0xFF1E262E)
       : const Color(0xFFE9EDF1);
+
+  /// A board's three steps, as Monday (design 200, 1; Jose 11-20: ours was
+  /// too flat): the page behind the groups, a group's card, and its rows a
+  /// step lighter again; [boardRowHover] one more step under the pointer.
+  static Color boardCanvas(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF080B0F)
+      : const Color(0xFFE8EDF2);
+
+  static Color boardGroup(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF151B21)
+      : const Color(0xFFF6F8FA);
+
+  static Color boardRow(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF1B2229)
+      : Colors.white;
+
+  static Color boardRowHover(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF252D35)
+      : const Color(0xFFEDF2F7);
 
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.
@@ -509,6 +538,20 @@ class EzBiziTheme {
   /// hardcode its own eight and the same person would be two colours in two
   /// places. And these carry white glyphs, so the day dark mode makes one of
   /// them unreadable there is exactly one place to fix it.
+  /// Task Board folder and board colours (Jose 11-13): Monday's folder
+  /// colours, kept as data like a status's colour. No purple.
+  static const List<Color> boardPalette = [
+    Color(0xFFC4C4C4),
+    Color(0xFFE2445C),
+    Color(0xFFFDAB3D),
+    Color(0xFFFFCB00),
+    Color(0xFF00C875),
+    Color(0xFF4ECCC6),
+    Color(0xFF0086C0),
+    Color(0xFF225091),
+    Color(0xFF7F5347),
+  ];
+
   static const List<Color> avatarPalette = [
     Color(0xFF1A73E8),
     Color(0xFFD93025),
@@ -732,13 +775,6 @@ class ToneColours {
   /// Both tables, for the contrast test.
   static Map<Tone, ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
-
-  /// A mid grey for a bar's share that has no category ("No reason"): plainly
-  /// darker (light) or lighter (dark) than [Tone.neutral]'s fill, the track.
-  static Color midGrey(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF7D8A95)
-      : const Color(0xFF8C98A3);
 }
 
 /// A person's colour, for the avatar beside what they wrote (Leads' replies,
@@ -872,4 +908,33 @@ abstract final class SourceColours {
 
     return table[key] ?? ToneColours.table(brightness)[Tone.neutral]!;
   }
+}
+
+/// The side margin of a page's content: 16 on a phone, 24 above (mobile
+/// review 2026-11-13, P6: Jobs and Customers used 16, Settings 24, so the
+/// title, the chips and the list did not line up on a phone).
+abstract final class Gutter {
+  static const double phone = 16;
+  static const double wide = 24;
+
+  static double of(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600 ? phone : wide;
+}
+
+/// A tag colour that came from outside the app (a Workiz job tag), kept on
+/// the theme's side of two rules (desktop review 2026-11-13, D5): no purple,
+/// so a magenta "DEPOSIT RECEIVED" draws in the theme's `tertiary`; and red
+/// only for problems, so a red label that is not a fault ("RESCHEDULE"
+/// beside a green Done) draws amber. Greys and every other hue pass through.
+Color tagColour(BuildContext context, Color colour) {
+  final hsl = HSLColor.fromColor(colour);
+  if (hsl.saturation < 0.25) return colour;
+  final hue = hsl.hue;
+  if (hue >= 250 && hue < 340) {
+    return Theme.of(context).colorScheme.tertiary;
+  }
+  if (hue >= 340 || hue < 15) {
+    return ToneColours.of(context, Tone.caution).fill;
+  }
+  return colour;
 }

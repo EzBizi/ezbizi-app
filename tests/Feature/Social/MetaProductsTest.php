@@ -3,6 +3,7 @@
 namespace Tests\Feature\Social;
 
 use App\Models\SocialConnection;
+use App\Support\Social\FacebookOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -52,7 +53,7 @@ class MetaProductsTest extends TestCase
 
         $products = collect($this->products($t))->keyBy('key');
 
-        $this->assertSame(['pages', 'messenger', 'instagram', 'ads', 'whatsapp'], $products->keys()->all());
+        $this->assertSame(['pages', 'messenger', 'instagram', 'comments', 'ads', 'whatsapp'], $products->keys()->all());
         $this->assertTrue($products['pages']['connected']);
         // Unticked on Meta's screen: the Page is there, Messenger is not.
         $this->assertFalse($products['messenger']['connected']);
@@ -79,6 +80,23 @@ class MetaProductsTest extends TestCase
         $this->signedInAs($t['admin'])
             ->postJson('/api/v1/social/facebook/start', ['products' => ['nonsense']])
             ->assertUnprocessable();
+    }
+
+    public function test_facebook_comments_asks_for_reading_and_moderating_page_comments(): void
+    {
+        config(['services.meta.client_id' => 'app-id', 'services.meta.client_secret' => 'app-secret']);
+        $t = $this->provisionTenant('A1-Group');
+
+        $url = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/social/facebook/start', ['products' => ['comments']])
+            ->assertOk()->json('data.authorization_url');
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $scopes = explode(',', $query['scope']);
+        $this->assertContains('pages_read_user_content', $scopes);
+        $this->assertContains('pages_manage_engagement', $scopes);
+        $this->assertNotContains('ads_management', $scopes);
+        $this->assertSame('pages_manage_engagement', FacebookOAuth::MARKS['comments']);
     }
 
     public function test_removing_ad_accounts_keeps_the_pages_and_takes_the_ads_permissions_back(): void

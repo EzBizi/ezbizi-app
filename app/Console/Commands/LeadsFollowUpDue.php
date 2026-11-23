@@ -75,10 +75,13 @@ class LeadsFollowUpDue extends Command
                             'kind' => $lead->kind(),
                             'contact_name' => $lead->contact_name,
                             'first_name' => $first,
-                            'greeting' => Lead::greeting($first),
+                            'greeting' => Lead::greetingFor($first),
                             // The after-call text already went, so a rule can stay at one
                             // booking link (Jose, 2026-11-05: "send only one").
                             'not_booked_call' => AutomationEvent::query()->where('event_key', 'lead.call_not_booked')
+                                ->where('subject_id', $lead->getKey())->exists(),
+                            // The missed-call text already went: no went-quiet text after it (desk for Jose, 2026-11-16).
+                            'missed_call' => AutomationEvent::query()->where('event_key', 'lead.missed_call')
                                 ->where('subject_id', $lead->getKey())->exists(),
                             'hours_since_reply' => (int) $firstReply->occurred_at->diffInHours(now()),
                         ],

@@ -25,7 +25,11 @@ class DeepLink {
     required this.id,
     this.mailbox,
     this.date,
+    this.update,
   });
+
+  /// For a `task` mention or reply: the update to scroll into view.
+  final String? update;
 
   /// The module key that should open it, e.g. `email`.
   final String module;
@@ -58,6 +62,12 @@ class DeepLinks {
   /// Hand a link to whichever screen owns [link.module].
   static void open(DeepLink link) => pending.value = link;
 
+  /// A module the shell should switch to (a dashboard card was clicked).
+  /// The shell listens and clears it.
+  static final ValueNotifier<String?> module = ValueNotifier<String?>(null);
+
+  static void openModule(String key) => module.value = key;
+
   /// The pending link for [module], consumed — or null when the waiting link
   /// belongs to another module (it stays for that one) or there is none.
   ///
@@ -78,6 +88,7 @@ class DeepLinks {
     'jobs': 'job',
     'leads': 'lead',
     'customers': 'customer',
+    'tasks': 'task',
   };
 
   static DeepLink? fromUri(Uri uri) {

@@ -38,10 +38,10 @@ class TaskBoards
 {
     public const DEFAULT_GROUPS = [
         ['Open Tasks', '#579BFC'],
-        ['Recurring Tasks', '#A25DDC'],
+        ['Recurring Tasks', '#00A9B5'],
         ['Completed Tasks', '#00C875'],
         ['Company Files', '#FDAB3D'],
-        ['Guidelines', '#784BD1'],
+        ['Guidelines', '#7F5347'],
     ];
 
     /** key, name, colour, is_done — every new board starts with these. */
@@ -300,6 +300,11 @@ class TaskBoards
         }
         if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return 'everyone';
+        }
+        // A company board the person reaches by role sits with their team boards, first by
+        // position (Jose 11-18: A-1 Chimney at the top), with no membership row to widen anything.
+        if ($board->kind === TaskBoard::KIND_COMPANY) {
+            return 'shared';
         }
 
         return 'place';

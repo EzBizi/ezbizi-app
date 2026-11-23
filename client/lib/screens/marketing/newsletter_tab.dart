@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
@@ -13,7 +17,12 @@ import 'newsletter_new_list_panel.dart';
 import 'newsletter_blocks.dart';
 import 'newsletter_dashboard.dart';
 import 'newsletter_editor.dart';
+import 'newsletter_history.dart';
+import 'newsletter_local_copy.dart';
+import 'newsletter_versions.dart';
+import 'newsletter_preflight.dart';
 import 'newsletter_settings.dart';
+import 'newsletter_templates.dart';
 
 /// Marketing › Newsletter — the dashboard, the composer and the settings.
 ///
@@ -70,8 +79,10 @@ class _NewsletterTabState extends State<NewsletterTab> {
   bool _mayOpen(String pane) =>
       widget.session.me?.permissions.contains('newsletter.$pane.view') ?? false;
 
-  List<(String, String, IconData)> get _shownPanes =>
-      [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
+  List<(String, String, IconData)> get _shownPanes => [
+    for (final pane in _panes)
+      if (_mayOpen(pane.$1)) pane,
+  ];
 
   /// The pane actually on screen: the chosen one if it is shown, else the
   /// first that is. Resolved every frame, so a grant changing mid-session
@@ -111,9 +122,28 @@ class _NewsletterTabState extends State<NewsletterTab> {
   String? _sendingRefusedBecause;
 
   final TextEditingController _subject = TextEditingController();
+  final TextEditingController _name = TextEditingController();
+  final TextEditingController _preheader = TextEditingController();
+
+  /// Undo/redo over the open newsletter's content (P1a).
+  final NewsletterHistory _history = NewsletterHistory();
+
+  /// Bumped when content is replaced from outside the editor's fields.
+  int _generation = 0;
+
+  /// An unsaved copy of the open newsletter found on this device.
+  NewsletterLocalCopy? _localCopy;
+
+  /// The edit count the server last acknowledged. "Saved" is shown only
+  /// when it equals [_edits] and nothing is in flight.
+  int _ackedEdit = 0;
   final TextEditingController _when = TextEditingController();
   List<Map<String, dynamic>> _blocks = [];
   String? _htmlOverride;
+  String _activeDesign = 'blocks';
+
+  /// The brand applied to the open newsletter (P1b), or null.
+  Map<String, dynamic>? _brand;
   String? _audienceId;
 
   String _previewHtml = '';
@@ -121,6 +151,15 @@ class _NewsletterTabState extends State<NewsletterTab> {
   bool _saving = false;
   String? _saveError;
   Timer? _settleTimer;
+
+  /// The saved revision the open draft is built on; every save names it.
+  int _revision = 1;
+
+  /// A save was refused because the row moved on (409). Autosave stops and
+  /// the local edits stay until somebody reloads.
+  bool _conflict = false;
+
+  NewsletterLastTest? _lastTest;
 
   /// The save under way, so Send can wait for it rather than race it.
   Future<void>? _saveInFlight;
@@ -144,14 +183,24 @@ class _NewsletterTabState extends State<NewsletterTab> {
   void initState() {
     super.initState();
     _load();
+    // A send finishing or a draft saved elsewhere: the list re-reads;
+    // the draft open in the composer is not touched.
+    _live = LiveChanges.of(widget.api).subscribe({'newsletters'}, (_) {
+      if (!_loading) return _reloadList();
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _settleTimer?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
     _subject.dispose();
+    _name.dispose();
+    _preheader.dispose();
     _when.dispose();
     super.dispose();
   }
@@ -202,9 +251,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
       _audiences = audiences == null || !audiences.ok
           ? const []
           : ((audiences.body['data'] as List<dynamic>?) ?? const [])
-              .whereType<Map<String, dynamic>>()
-              .map(NewsletterAudience.fromJson)
-              .toList();
+                .whereType<Map<String, dynamic>>()
+                .map(NewsletterAudience.fromJson)
+                .toList();
 
       if (_selectedId == null && _all.isNotEmpty) _open(_all.first);
     });
@@ -263,6 +312,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
             (q.isEmpty ||
                 [
                   n.row.subject,
+                  n.row.name,
                   n.row.audienceName,
                   n.row.status,
                 ].whereType<String>().join(' ').toLowerCase().contains(q)))
@@ -292,12 +342,164 @@ class _NewsletterTabState extends State<NewsletterTab> {
   void _open(_Newsletter n) {
     _selectedId = n.id;
     _subject.text = n.subject;
+    _name.text = n.name ?? '';
+    _preheader.text = n.preheader ?? '';
     _when.text = n.scheduledFor ?? '';
     _blocks = n.blocks.map((b) => Map<String, dynamic>.from(b)).toList();
     _htmlOverride = n.htmlOverride;
+    _activeDesign = n.activeDesign;
+    _brand = n.brand;
     _audienceId = n.audienceId;
+    _revision = n.revision;
+    _lastTest = n.lastTest;
+    _conflict = false;
     _dirty = false;
     _saveError = null;
+    _ackedEdit = _edits;
+    _generation++;
+    _history.reset(_snapshot());
+    // Unsaved work left on this device (a refresh, an expired session, a
+    // refused save) is offered back when it differs from what was saved.
+    final local = NewsletterLocalCopy.load(n.id);
+    _localCopy = local != null && _differs(local.content) ? local : null;
+  }
+
+  NewsletterSnapshot _snapshot() => NewsletterSnapshot(
+    subject: _subject.text,
+    name: _name.text,
+    preheader: _preheader.text,
+    html: _htmlOverride ?? '',
+    blocks: _blocks,
+  );
+
+  Map<String, dynamic> _content() => {
+    'subject': _subject.text,
+    'name': _name.text,
+    'preheader': _preheader.text,
+    'blocks': _blocks,
+    'html_override': _htmlOverride,
+    'active_design': _activeDesign,
+  };
+
+  bool _differs(Map<String, dynamic> content) =>
+      jsonEncode(content) != jsonEncode(_content());
+
+  /// Content replaced from outside the fields: undo, redo, a local copy.
+  void _applyContent(NewsletterSnapshot s) {
+    setState(() {
+      _subject.text = s.subject;
+      _name.text = s.name;
+      _preheader.text = s.preheader;
+      _htmlOverride = s.html.isEmpty ? null : s.html;
+      _blocks
+        ..clear()
+        ..addAll(s.copyBlocks());
+      _generation++;
+    });
+    _touched(record: false);
+  }
+
+  void _undo() {
+    final s = _history.undo();
+    if (s != null) _applyContent(s);
+  }
+
+  void _redo() {
+    final s = _history.redo();
+    if (s != null) _applyContent(s);
+  }
+
+  void _restoreLocal() {
+    final local = _localCopy;
+    if (local == null) return;
+    final c = local.content;
+    _localCopy = null;
+    _applyContent(
+      NewsletterSnapshot(
+        subject: '${c['subject'] ?? ''}',
+        name: '${c['name'] ?? ''}',
+        preheader: '${c['preheader'] ?? ''}',
+        html: '${c['html_override'] ?? ''}',
+        blocks: [
+          for (final b in (c['blocks'] as List? ?? const []))
+            if (b is Map) Map<String, dynamic>.from(b),
+        ],
+      ),
+    );
+    _history.changed(_snapshot());
+  }
+
+  void _discardLocal() {
+    final id = _selectedId;
+    if (id != null) NewsletterLocalCopy.clear(id);
+    setState(() => _localCopy = null);
+  }
+
+  /// After a refused save: the local copy becomes a new draft.
+  Future<void> _saveAsCopy() async {
+    final from = _selectedId;
+    final subject = _subject.text.trim().isEmpty ? 'Untitled' : _subject.text.trim();
+    final name = _name.text.trim().isEmpty ? subject : _name.text.trim();
+    final response = await widget.api.post('/newsletters', {
+      'subject': subject,
+      'name': 'Copy of $name',
+      'preheader': _preheader.text,
+      'blocks': _blocks,
+      'html_override': _htmlOverride,
+      'brand': _brand,
+      'audience_id': _audienceId,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _saveError = response.reason);
+      return;
+    }
+    if (from != null) NewsletterLocalCopy.clear(from);
+    final data = response.data;
+    await _load();
+    if (!mounted || data is! Map) return;
+    final made = _all.where((n) => n.id == data['id']).toList();
+    if (made.isNotEmpty) setState(() => _open(made.first));
+    await _refreshPreview();
+  }
+
+  Future<void> _compare() async {
+    final id = _selectedId;
+    if (id == null) return;
+    await showNewsletterCompare(
+      context,
+      api: widget.api,
+      newsletterId: id,
+      localBlocks: _blocks,
+      localHtml: _htmlOverride,
+      company: widget.session.me?.organization.name ?? 'EzBizi',
+    );
+  }
+
+  Future<void> _versions() async {
+    final id = _selectedId;
+    if (id == null) return;
+    _settleTimer?.cancel();
+    await _saveInFlight;
+    if (!mounted) return;
+    if (_dirty && !_conflict) await _save();
+    if (!mounted) return;
+    final restored = await showNewsletterVersions(
+      context,
+      api: widget.api,
+      newsletterId: id,
+      revision: _revision,
+      canRestore: _readOnlyBecause == null &&
+          !_conflict &&
+          (widget.session.me?.can('newsletter.edit') ?? false),
+    );
+    if (restored == null || !mounted) return;
+    setState(() {
+      final fresh = _Newsletter.fromJson(restored);
+      _all = [for (final n in _all) n.id == fresh.id ? fresh : n];
+      _open(fresh);
+    });
+    await _refreshPreview();
   }
 
   /// Typing changed something. Save shortly, then re-render.
@@ -306,10 +508,16 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// afternoon's writing to a closed tab is the kind of thing people never
   /// forgive — and because the preview has to come from a saved row, so the
   /// save was going to happen anyway.
-  void _touched() {
+  void _touched({bool record = true}) {
     _edits++;
+    if (record) _history.changed(_snapshot());
+    final id = _selectedId;
+    // Kept on this device until the server acknowledges it.
+    if (id != null) NewsletterLocalCopy.save(id, _revision, _content());
     setState(() => _dirty = true);
     _settleTimer?.cancel();
+    // A conflict holds the edits here and saves nothing until a reload.
+    if (_conflict) return;
     _settleTimer = Timer(_settle, _save);
   }
 
@@ -324,7 +532,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
   Future<void> _saveNow() async {
     final id = _selectedId;
-    if (id == null) return;
+    if (id == null || _conflict) return;
     final edits = _edits;
 
     setState(() {
@@ -333,15 +541,33 @@ class _NewsletterTabState extends State<NewsletterTab> {
     });
 
     final response = await widget.api.put('/newsletters/$id', {
-      'subject': _subject.text.trim().isEmpty ? 'Untitled' : _subject.text.trim(),
+      'subject': _subject.text.trim().isEmpty
+          ? 'Untitled'
+          : _subject.text.trim(),
       'blocks': _blocks,
-      // Always sent: the server keeps what it holds only when this is absent.
+      // An empty HTML no longer clears it (01a1f9ed): the server keeps both
+      // designs, and only active_design ("Use this design") picks what goes out.
       'html_override': _htmlOverride,
+      'active_design': _activeDesign,
+      'brand': _brand,
       'audience_id': _audienceId,
+      'name': _name.text.trim(),
+      'preheader': _preheader.text.trim(),
       'scheduled_for': _when.text.trim(),
+      'revision': _revision,
     });
 
     if (!mounted) return;
+
+    if (response.statusCode == 409) {
+      _settleTimer?.cancel();
+      setState(() {
+        _saving = false;
+        _conflict = true;
+        _saveError = response.reason;
+      });
+      return;
+    }
 
     if (!response.ok) {
       setState(() {
@@ -351,11 +577,18 @@ class _NewsletterTabState extends State<NewsletterTab> {
       return;
     }
 
+    final saved = response.data;
     setState(() {
+      if (saved is Map && saved['revision'] is num) {
+        _revision = (saved['revision'] as num).toInt();
+      }
       _saving = false;
-      // Typing during the save left something this save did not carry.
-      _dirty = _edits != edits;
+      // Saved means the server acknowledged THIS edit; typing during the
+      // save left something it did not carry.
+      _ackedEdit = edits;
+      _dirty = _edits != _ackedEdit;
     });
+    if (!_dirty) NewsletterLocalCopy.clear(id);
     if (_dirty) {
       _settleTimer?.cancel();
       _settleTimer = Timer(_settle, _save);
@@ -373,7 +606,26 @@ class _NewsletterTabState extends State<NewsletterTab> {
     if (!mounted || !response.ok) return;
 
     final data = response.body['data'];
-    setState(() => _previewHtml = data is Map ? (data['html'] as String? ?? '') : '');
+    setState(
+      () => _previewHtml = data is Map ? (data['html'] as String? ?? '') : '',
+    );
+  }
+
+  /// After a conflict: read the newest version and open it, dropping the
+  /// local copy (the person chose Reload).
+  Future<void> _reloadOpen() async {
+    _settleTimer?.cancel();
+    final id = _selectedId;
+    await _reloadList();
+    if (!mounted) return;
+    final fresh = _all.where((n) => n.id == id).toList();
+    if (id != null) NewsletterLocalCopy.clear(id);
+    setState(() {
+      if (fresh.isNotEmpty) _open(fresh.first);
+      _conflict = false;
+      _localCopy = null;
+    });
+    await _refreshPreview();
   }
 
   /// The list only, so saving does not reset the editor under the cursor.
@@ -428,11 +680,29 @@ class _NewsletterTabState extends State<NewsletterTab> {
     await _load();
   }
 
-  Future<void> _create() async {
-    final response = await widget.api.post('/newsletters', {
-      'subject': 'Untitled newsletter',
-      'blocks': [BlockKind.heading.blank(), BlockKind.text.blank()],
-    });
+  /// A scheduled newsletter back to a draft (review 2026-11-09 A28).
+  Future<void> _unschedule() async {
+    final id = _selectedId;
+    if (id == null) return;
+    final response = await widget.api.post('/newsletters/$id/unschedule', {});
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _saveError = response.reason);
+      return;
+    }
+    await _load();
+  }
+
+  /// A copy of the open newsletter, as a new draft (review 2026-11-09 A34).
+  Future<void> _duplicate() => _create(from: _selectedId);
+
+  Future<void> _create({String? from}) async {
+    final response = from != null
+        ? await widget.api.post('/newsletters/$from/duplicate', {})
+        : await widget.api.post('/newsletters', {
+            'subject': 'Untitled newsletter',
+            'blocks': [BlockKind.heading.blank(), BlockKind.text.blank()],
+          });
 
     if (!mounted) return;
 
@@ -441,20 +711,60 @@ class _NewsletterTabState extends State<NewsletterTab> {
       return;
     }
 
-    await _load();
-
     final data = response.body['data'];
     if (data is Map && data['id'] is String) {
-      final made = _all.where((n) => n.id == data['id']).toList();
-      if (made.isNotEmpty) {
-        setState(() {
-          _open(made.first);
-          // From the dashboard's New newsletter, land where it is written.
-          if (_mayOpen('composer')) _tab = 'composer';
-        });
-      }
-      await _refreshPreview();
+      await _openCreated(data['id'] as String);
+    } else {
+      await _load();
     }
+  }
+
+  /// Start from template: the starter's blocks, subject and preview text
+  /// cloned into one new draft. Audience and schedule stay unset.
+  Future<void> _startFromTemplate() async {
+    final made = await showSidePanel<String>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Start from template',
+        subtitle: 'Branded starters for $_viewName',
+        width: 720,
+        child: NewsletterTemplateGallery(
+          company: _viewName,
+          api: widget.api,
+          onUse: (s, blocks) async {
+            final response = await widget.api.post('/newsletters', {
+              'subject': s.subject,
+              'name': s.title,
+              'preheader': s.preheader,
+              'blocks': blocks,
+            });
+            final data = response.ok ? response.body['data'] : null;
+            if (data is Map && data['id'] is String) {
+              if (panel.mounted) Navigator.of(panel).pop(data['id'] as String);
+            } else if (panel.mounted) {
+              ScaffoldMessenger.maybeOf(panel)?.showSnackBar(SnackBar(content: Text(response.reason)));
+            }
+          },
+        ),
+      ),
+    );
+    if (made != null && mounted) await _openCreated(made);
+  }
+
+  /// A draft just made (New, Duplicate, or the import wizard's "Save as new
+  /// draft"): reload the list and open it in the composer.
+  Future<void> _openCreated(String id) async {
+    await _load();
+    if (!mounted) return;
+    final made = _all.where((n) => n.id == id).toList();
+    if (made.isNotEmpty) {
+      setState(() {
+        _open(made.first);
+        // From the dashboard's New newsletter, land where it is written.
+        if (_mayOpen('composer')) _tab = 'composer';
+      });
+    }
+    await _refreshPreview();
   }
 
   /// Why the open newsletter cannot be changed, or null for a draft. The
@@ -462,8 +772,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// only for the autosave to throw it away.
   String? get _readOnlyBecause => switch (_selected?.status) {
     'scheduled' =>
-      'This newsletter is scheduled, so it cannot be changed. Delete it to '
-          'stop it, or start a new one.',
+      'This newsletter is scheduled, so it cannot be changed. Unschedule it '
+          'to edit it again, or Duplicate it.',
     'sending' => 'This newsletter is being sent, so it cannot be changed.',
     'sent' =>
       'This newsletter has gone out, so it cannot be changed — the copy in '
@@ -532,23 +842,14 @@ class _NewsletterTabState extends State<NewsletterTab> {
         status: _dashStatus,
         onStatus: _filter,
         query: _q,
-        search: TextField(
+        search: ListSearch(
           key: const Key('newsletters-search'),
           controller: _search,
           onChanged: _searched,
-          // bodyMedium for the text and the hint, as the dense pickers draw:
-          // 53 points tall, as they are; the theme's 16-point hint makes 56.
-          style: Theme.of(context).textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Subject or mailing list',
-            hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
+          hint: 'Name, subject or mailing list',
         ),
         onNew: _create,
+        onTemplate: NewsletterStarters.forCompany(_viewName).isEmpty ? null : _startFromTemplate,
         scheduled: [
           for (final n in _all)
             if (n.status == 'scheduled' && n.scheduledFor != null)
@@ -569,8 +870,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
       'composer' => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _bar(context),
-          const Divider(height: 1),
+          // The open campaign has its own toolbar; the picker bar is only
+          // for when nothing is open.
+          if (_selected == null) ...[_bar(context), const Divider(height: 1)],
           Expanded(
             child: _selected == null ? _empty(context) : _split(context),
           ),
@@ -585,6 +887,32 @@ class _NewsletterTabState extends State<NewsletterTab> {
         onChanged: _load,
       ),
     };
+  }
+
+  /// A bar action: worded on a desk, its icon with the word as a tooltip on
+  /// a phone, where the words would push the picker off the row.
+  Widget _barAction(
+    BuildContext context, {
+    required Key key,
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required String label,
+  }) {
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return IconButton(
+        key: key,
+        tooltip: label,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+      );
+    }
+
+    return TextButton.icon(
+      key: key,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+    );
   }
 
   Widget _bar(BuildContext context) {
@@ -628,29 +956,21 @@ class _NewsletterTabState extends State<NewsletterTab> {
           // Delete the open one. Offered only when something is open, and
           // refused in the server's words without `newsletter.delete`; a
           // mailing already going out is refused by the server, which says so.
-          if (_selectedId != null) ...[
+          if (_selectedId != null && _selected?.status == 'scheduled') ...[
             const SizedBox(width: 12),
             Refused(
               reason: widget.session.me?.refusal(
-                'newsletter.delete',
-                'delete a newsletter',
+                'newsletter.send',
+                'unschedule a newsletter',
               ),
-              child: TextButton.icon(
-                key: const ValueKey('tour-newsletter-delete'),
-                // Red: it destroys the mailing (phone audit 2026-11-04).
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                onPressed: (widget.session.me?.can('newsletter.delete') ?? false) &&
-                        _selected?.status != 'sending'
-                    ? _delete
+              child: _barAction(
+                context,
+                key: const ValueKey('newsletter-unschedule'),
+                onPressed: (widget.session.me?.can('newsletter.send') ?? false)
+                    ? _unschedule
                     : null,
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: Text(
-                  _confirmingDelete == _selectedId
-                      ? 'Tap again to delete'
-                      : 'Delete',
-                ),
+                icon: Icons.edit_calendar_outlined,
+                label: 'Unschedule',
               ),
             ),
           ],
@@ -704,6 +1024,27 @@ class _NewsletterTabState extends State<NewsletterTab> {
     return NewsletterEditor(
       key: ValueKey(_selectedId),
       subject: _subject,
+      name: _name,
+      preheader: _preheader,
+      onBack: _mayOpen('dashboard') ? () => setState(() => _tab = 'dashboard') : null,
+      canUndo: _history.canUndo,
+      canRedo: _history.canRedo,
+      onUndo: _undo,
+      onRedo: _redo,
+      historyGeneration: _generation,
+      onUnschedule: _selected?.status == 'scheduled' ? _unschedule : null,
+      onHistory: _versions,
+      onNew: (widget.session.me?.can('newsletter.create') ?? false) ? _create : null,
+      onCompare: _compare,
+      onSaveAsCopy: (widget.session.me?.can('newsletter.create') ?? false) ? _saveAsCopy : null,
+      onImportedAsNew: _openCreated,
+      localCopyNote: _localCopy == null
+          ? null
+          : 'A local copy of this newsletter, not saved, is on this device '
+                '(built on revision ${_localCopy!.revision}; the saved one is '
+                'revision $_revision).',
+      onRestoreLocal: _restoreLocal,
+      onDiscardLocal: _discardLocal,
       blocks: _blocks,
       audiences: _audiences,
       audienceId: _audienceId,
@@ -711,16 +1052,50 @@ class _NewsletterTabState extends State<NewsletterTab> {
       viewName: _viewName,
       company: widget.session.me?.organization.name ?? 'EzBizi',
       initialHtml: _htmlOverride,
+      initialActiveDesign: _activeDesign,
+      onActiveDesign: (design) {
+        setState(() => _activeDesign = design);
+        _touched();
+      },
+      onEditableCopy: (_) => _reloadOpen(),
       scheduledTimezone: _selected?.scheduledTimezone,
       session: widget.session,
       sendingRefusedBecause: _sendingRefusedBecause,
       readOnlyBecause: _readOnlyBecause,
       saveError: _saveError,
-      saveState: _dirty
-          ? 'Unsaved'
-          : _saving
-              ? 'Saving…'
-              : 'Saved',
+      saveState: _conflict
+          ? NewsletterSaveState.conflict
+          : _saveError != null && !_saving
+          ? NewsletterSaveState.failed
+          : _dirty || _saving || _ackedEdit != _edits
+          ? NewsletterSaveState.saving
+          : NewsletterSaveState.saved,
+      status: _selected?.status ?? 'draft',
+      revision: _revision,
+      lastTest: _lastTest,
+      onTested: (t) => setState(() => _lastTest = t),
+      onRetry: () {
+        setState(() => _saveError = null);
+        _save();
+      },
+      onReload: _reloadOpen,
+      onDuplicate: (widget.session.me?.can('newsletter.create') ?? false)
+          ? _duplicate
+          : null,
+      onDelete:
+          (widget.session.me?.can('newsletter.delete') ?? false) &&
+              _selected?.status != 'sending'
+          ? _delete
+          : null,
+      confirmingDelete: _confirmingDelete == _selectedId,
+      onAudienceCreated: (a) => setState(() {
+        if (!_audiences.any((x) => x.id == a.id)) {
+          _audiences = [..._audiences, a];
+        }
+      }),
+      onOpenSettings: _mayOpen('settings')
+          ? () => setState(() => _tab = 'settings')
+          : null,
       previewHtml: _previewHtml,
       onChanged: _touched,
       onAudience: (id) {
@@ -730,6 +1105,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
       onNewList: _mayOpen('composer') ? _newList : null,
       onHtml: (html) {
         setState(() => _htmlOverride = html);
+        _touched();
+      },
+      brand: _brand,
+      onBrand: (brand) {
+        setState(() => _brand = brand);
         _touched();
       },
       onSend: _send,
@@ -769,10 +1149,26 @@ class _NewsletterTabState extends State<NewsletterTab> {
     await _save();
     if (!mounted) return;
     if (_saveError != null || _dirty) {
-      setState(() => _saveError ??=
-          'The latest changes are not saved yet, so nothing was sent. Try again.');
+      setState(
+        () => _saveError ??=
+            'The latest changes are not saved yet, so nothing was sent. Try again.',
+      );
       return;
     }
+
+    // How many it reaches, counted the way the send counts (review
+    // 2026-11-09 A32). A list Mailchimp holds has no count here.
+    final counted = await widget.api.get('/newsletters/$_selectedId/preflight');
+    if (!mounted) return;
+    final data = counted.ok ? counted.data : null;
+    final recipients = data is Map
+        ? (data['recipients'] as num?)?.toInt()
+        : null;
+    final audience = data is Map ? data['audience'] as String? : null;
+    final reach = recipients == null
+        ? ''
+        : 'Sends to ${recipients == 1 ? '1 person' : '$recipients people'}'
+              '${audience == null ? '' : ' on “$audience”'}. ';
 
     final go = await showSidePanel<bool>(
       context,
@@ -790,16 +1186,20 @@ class _NewsletterTabState extends State<NewsletterTab> {
             child: const Text('Send'),
           ),
         ],
-        child: const Text(
-          'It goes out through the mailing account this company connected, to '
-          'the audience chosen above. A newsletter cannot be unsent.',
+        child: Text(
+          '${reach}It goes out through the mailing account this company '
+          'connected, to the audience chosen above. A newsletter cannot be '
+          'unsent.',
+          key: const ValueKey('newsletter-send-reach'),
         ),
       ),
     );
 
     if (go != true || !mounted) return;
 
-    final response = await widget.api.post('/newsletters/$id/send', {});
+    final response = await widget.api.post('/newsletters/$id/send', {
+      'revision': _revision,
+    });
     if (!mounted) return;
 
     setState(() => _saveError = response.ok ? null : response.reason);
@@ -814,17 +1214,31 @@ class _Newsletter {
     required this.blocks,
     required this.status,
     required this.row,
+    this.name,
+    this.preheader,
     this.audienceId,
     this.scheduledFor,
     this.scheduledTimezone,
     this.htmlOverride,
+    this.activeDesign = 'blocks',
+    this.brand,
+    this.revision = 1,
+    this.lastTest,
   });
+
+  /// The saved revision; a save naming an older one is refused (409).
+  final int revision;
+  final NewsletterLastTest? lastTest;
 
   /// The same newsletter as the dashboard's table reads it.
   final NewsletterRow row;
 
   final String id;
   final String subject;
+
+  /// Internal name and preheader (P1a); null when never set.
+  final String? name;
+  final String? preheader;
   final List<Map<String, dynamic>> blocks;
   final String status;
   final String? audienceId;
@@ -832,6 +1246,12 @@ class _Newsletter {
 
   /// The whole-mailing HTML, when somebody wrote one instead of blocks.
   final String? htmlOverride;
+
+  /// 'html' or 'blocks': the design preview, test and send render.
+  final String activeDesign;
+
+  /// The brand applied to it (P1b), or null.
+  final Map<String, dynamic>? brand;
 
   /// The clock the SERVER filed that wall time against, which is not always
   /// the clock of the place named in the view. Above franchise scope it is the
@@ -851,16 +1271,21 @@ class _Newsletter {
     return _Newsletter(
       id: json['id'] as String? ?? '',
       subject: json['subject'] as String? ?? '',
+      name: json['name'] as String?,
+      preheader: json['preheader'] as String?,
       status: json['status'] as String? ?? 'draft',
       row: NewsletterRow.fromJson(json),
       audienceId: audience is Map ? audience['id'] as String? : null,
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
       htmlOverride: json['html_override'] as String?,
+      activeDesign: json['active_design'] as String? ?? ((json['html_override'] as String? ?? '').isNotEmpty ? 'html' : 'blocks'),
+      brand: json['brand'] is Map ? Map<String, dynamic>.from(json['brand'] as Map) : null,
+      revision: (json['revision'] as num?)?.toInt() ?? 1,
+      lastTest: NewsletterLastTest.fromJson(json['last_test']),
       blocks: ((json['blocks'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList(),
     );
   }
 }
-

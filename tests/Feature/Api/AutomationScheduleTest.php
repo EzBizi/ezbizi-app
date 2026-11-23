@@ -123,6 +123,23 @@ class AutomationScheduleTest extends TestCase
         $this->assertSame('2027-01-18', $next->setTimezone('America/New_York')->format('Y-m-d'));
     }
 
+    /** Audit, 2026-11-11: the Wednesday losses run every hour from 10 until 20, then wait for the next Wednesday. */
+    public function test_repeat_until_runs_hourly_on_the_chosen_day_then_waits_for_the_next(): void
+    {
+        $schedule = new AutomationSchedule(['kind' => AutomationSchedule::WEEKLY, 'time' => '10:00', 'repeat_until' => '20:00',
+            'days' => ['wednesday'], 'timezone' => 'America/New_York']);
+        $next = fn (string $local) => $schedule->nextAfter(Carbon::parse($local, 'America/New_York'))->setTimezone('America/New_York')->format('D Y-m-d H:i');
+
+        $this->assertSame('Wed 2027-01-13 10:00', $next('2027-01-12 23:00:00'));
+        $this->assertSame('Wed 2027-01-13 11:00', $next('2027-01-13 10:00:00'));
+        $this->assertSame('Wed 2027-01-13 15:00', $next('2027-01-13 14:20:00'));
+        $this->assertSame('Wed 2027-01-13 20:00', $next('2027-01-13 19:00:00'));
+        $this->assertSame('Wed 2027-01-20 10:00', $next('2027-01-13 20:00:00'));
+
+        $this->expectException(InvalidArgumentException::class);
+        new AutomationSchedule(['kind' => AutomationSchedule::DAILY, 'time' => '10:00', 'repeat_until' => '09:00', 'timezone' => 'America/New_York']);
+    }
+
     /**
      * The 31st of a month with 30 days runs on the 30th, not never.
      *

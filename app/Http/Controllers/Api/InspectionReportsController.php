@@ -309,13 +309,7 @@ class InspectionReportsController extends Controller
      */
     private function assertReach(Request $request, InspectionReport $report): void
     {
-        [$type, $franchiseId] = $report->automationScope();
-
-        abort_if(
-            $type !== 'franchise'
-                || ! in_array($franchiseId, ViewScope::forUser($request->user())->franchiseIds(), true),
-            404,
-        );
+        abort_unless($report->inReachOf($request->user()), 404);
     }
 
     /** @return array<string, mixed> */

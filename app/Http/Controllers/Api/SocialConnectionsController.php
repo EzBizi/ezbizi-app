@@ -15,17 +15,23 @@ use App\Support\Integrations\DisconnectCode;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
+use App\Support\Social\SocialMediaKind;
+use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\SocialProviderRegistry;
 use App\Support\Social\ThumbtackAccount;
+use App\Support\Social\WhatsAppHealth;
 use App\Support\Telegram\TelegramBotStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 class SocialConnectionsController extends Controller
@@ -82,6 +88,8 @@ class SocialConnectionsController extends Controller
         $telegramError = $rows
             ->filter(fn (SocialConnection $c) => $c->provider === SocialProvider::Telegram->value && $c->status === SocialConnection::STATUS_CONNECTED)
             ->mapWithKeys(fn (SocialConnection $c) => [$c->getKey() => TelegramBotStatus::webhookError($c)]);
+        $whatsappPurpose = WhatsAppNumber::query()->whereIn('social_connection_id', $rows->modelKeys())
+            ->pluck('purpose', 'social_connection_id');
 
         return response()->json([
             'data' => $rows->map(fn (SocialConnection $c) => [
@@ -105,6 +113,8 @@ class SocialConnectionsController extends Controller
                 'label' => $c->label,
 
                 'handle' => $c->handle,
+                // The provider's profile picture URL; null = show the network icon.
+                'avatar_url' => $c->avatar_url,
                 // The Google login it was signed in with; null = unknown, reconnect to see (Jose, 2026-11-02).
                 'account_email' => $c->account_email,
                 'scope_type' => $c->scope_type,
@@ -116,17 +126,35 @@ class SocialConnectionsController extends Controller
                 'detail' => match ($c->provider) {
                     SocialProvider::Workiz->value => self::workizDetail($c),
                     SocialProvider::Telegram->value => TelegramBotStatus::detail($c),
-                    default => null,
+                    // Meta refused the lead-ad subscription; Messenger still arrives (SubscribeMetaMessages).
+                    SocialProvider::FacebookPage->value => implode(' ', array_filter([
+                        isset($c->credentials['leadgen_refused']) ? 'Lead ads: off — '.$c->credentials['leadgen_refused'] : null,
+                        \App\Support\Leads\ConnectBranch::detail($c),
+                    ])) ?: null,
+                    // What the person must still do (Jose, 2026-11-12).
+                    default => \App\Support\Leads\ConnectBranch::detail($c),
                 },
                 // The same, as fields for the Workiz card's own controls.
                 'workiz' => $c->provider === SocialProvider::Workiz->value ? [
                     'method' => WorkizV2::uses($c) ? 'v2' : 'v1',
                     'last_synced_at' => \App\Models\WorkizJob::query()->where('franchise_id', $c->scope_id)->max('synced_at'),
                     'history' => BackfillWorkizJobs::state($c),
+                    'health' => \App\Support\Workiz\WorkizHealth::check($c),
+                ] : null,
+                // What the number is for; its card asks right after connecting
+                // (PATCH .../whatsapp-purpose) and shows .../whatsapp-health.
+                'whatsapp' => $c->provider === SocialProvider::WhatsApp->value ? [
+                    'purpose' => $whatsappPurpose[$c->getKey()] ?? null,
                 ] : null,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
                 // When ezbizi:check-connection-health last had a verdict (Jose, 2026-11-03).
                 'last_checked_at' => $c->last_checked_at?->toIso8601String(),
+                // Connect's pass/fail check for the card: can it post (the
+                // scopes were granted) and how long the token lasts; and the
+                // choices Connect made, with the options to change them
+                // (ConnectSetup, Jose 2026-11-12).
+                'connect_check' => ConnectSetup::check($c),
+                'choices' => ConnectSetup::choices($c),
 
                 /*
                  * Connected is not the same as postable: four of the nine
@@ -147,7 +175,21 @@ class SocialConnectionsController extends Controller
                 'posting_note' => Publishers::postingNoteFor($c->providerEnum()),
                 // TikTok Direct Post: the composer must ask privacy, interactions
                 // and disclosure for this account (GET .../tiktok-creator).
-                'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok && Publishers::tiktokIsAudited(),
+                // Every TikTok account now asks: profile or inbox, per post.
+                'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok,
+                // Which of the two the composer starts on: the installation's default.
+                'tiktok_mode' => $c->providerEnum() !== SocialProvider::TikTok ? null
+                    : (Publishers::tiktokIsAudited() ? 'direct' : 'inbox'),
+                // The composer's limit and pre-flight caution come from the
+                // same rules that refuse at publish (review 2026-11-09 C4).
+                // Only for a network that posts: Mailchimp, Workiz and the rest
+                // are connections with nothing to refuse.
+                'body_limit' => $c->providerEnum()?->maxBodyLength(),
+                'refuses' => Publishers::refusalFor($c->providerEnum()) === null
+                    ? collect(SocialMediaKind::cases())
+                        ->mapWithKeys(fn (SocialMediaKind $k) => [$k->value => $c->providerEnum()?->refuses($k)])
+                        ->all()
+                    : (object) [],
             ])->all(),
         ]);
     }
@@ -210,6 +252,42 @@ class SocialConnectionsController extends Controller
         ]]);
     }
 
+    /**
+     * PATCH /api/v1/social/connections/{connection}/choice
+     *
+     * Change one of the choices Connect made (a Pinterest board, a Mailchimp
+     * audience) to another of its listed options. Same gate as renaming.
+     */
+    public function choose(Request $request, string $connection, ConnectSetup $setup): JsonResponse
+    {
+        $user = $request->user();
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        abort_unless(
+            $user->hasPermission($row->providerEnum()?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('change a connected account')->message(),
+        );
+
+        $input = $request->validate([
+            'key' => ['required', 'string', 'max:40'],
+            'value' => ['required', 'string', 'max:120'],
+        ]);
+
+        if (! $setup->choose($row, $input['key'], $input['value'])) {
+            throw ValidationException::withMessages(['value' => 'Choose one of the listed options.']);
+        }
+
+        $this->audit->log('social.choice_changed', $row, [
+            'provider' => $row->provider,
+            'key' => $input['key'],
+            'value' => $input['value'],
+        ]);
+
+        return response()->json(['data' => ['choices' => ConnectSetup::choices($row->fresh())]]);
+    }
+
     public function rename(Request $request, string $connection): JsonResponse
     {
         $user = $request->user();
@@ -253,6 +331,71 @@ class SocialConnectionsController extends Controller
         });
 
         return response()->json(['data' => $this->placement($row->fresh())]);
+    }
+
+    /**
+     * PATCH /api/v1/social/connections/{connection}/whatsapp-purpose
+     *
+     * What a connected WhatsApp number is for, asked right after connecting
+     * (Jose, 2026-11-12). Reports and sign-in codes go from ONE number per
+     * organization, so choosing either here moves it: the number that had it
+     * goes back to customer chat rather than leaving forPurpose() to pick.
+     */
+    public function whatsappPurpose(Request $request, string $connection): JsonResponse
+    {
+        [$row, $number] = $this->whatsappNumber($request, $connection);
+
+        $purpose = $request->validate([
+            'purpose' => ['required', Rule::in(WhatsAppNumber::PURPOSES)],
+        ])['purpose'];
+        $before = $number->purpose;
+
+        DB::transaction(function () use ($row, $number, $purpose, $before) {
+            $moved = in_array($purpose, WhatsAppNumber::ONE_PER_ORGANIZATION, true)
+                ? WhatsAppNumber::query()->where('purpose', $purpose)->whereKeyNot($number->getKey())->get()
+                : collect();
+
+            $moved->each(fn (WhatsAppNumber $other) => $other->forceFill(['purpose' => 'company'])->save());
+            $number->forceFill(['purpose' => $purpose])->save();
+
+            $this->audit->log('whatsapp.purpose_changed', $row, [
+                'before' => $before,
+                'after' => $purpose,
+                'moved_from' => $moved->pluck('display_number')->all(),
+            ]);
+        });
+
+        return response()->json(['data' => ['purpose' => $purpose]]);
+    }
+
+    /**
+     * GET /api/v1/social/connections/{connection}/whatsapp-health
+     *
+     * Pass or fail per line, with what to do, fixing what EzBizi can on the
+     * way (WhatsAppHealth). The card calls it when it is drawn.
+     */
+    public function whatsappHealth(Request $request, string $connection): JsonResponse
+    {
+        [$row, $number] = $this->whatsappNumber($request, $connection);
+
+        return response()->json(['data' => WhatsAppHealth::check($row, $number)]);
+    }
+
+    /** @return array{0: SocialConnection, 1: WhatsAppNumber} The same gate as renaming it. */
+    private function whatsappNumber(Request $request, string $connection): array
+    {
+        $user = $request->user();
+        $row = SocialConnection::query()->find($connection);
+        $number = $row === null ? null : WhatsAppNumber::query()->where('social_connection_id', $row->getKey())->first();
+
+        abort_if($number === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        abort_unless(
+            $user->hasPermission(SocialProvider::WhatsApp->connectPermission()),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('change a connected WhatsApp number')->message(),
+        );
+
+        return [$row, $number];
     }
 
     /**
@@ -642,6 +785,14 @@ class SocialConnectionsController extends Controller
         $problems = SocialProvider::tryFrom($row->provider) === SocialProvider::Thumbtack
             ? ThumbtackAccount::tidyUp($row, revoke: $revoke)
             : [];
+
+        // QuickBooks forgets the grant (best effort, on the last row of the sign-in).
+        // The expenses already read stay in Financials, as Airtable's tables do.
+        if ($revoke && $row->provider === SocialProvider::QuickBooks->value
+            && is_string($token = $row->credentials['refresh_token'] ?? null)
+            && ! app(QuickBooksOAuth::class)->revoke($token)) {
+            $problems[] = 'QuickBooks still lists EzBizi as connected. Remove it in QuickBooks > Settings > Apps.';
+        }
 
         // A Telegram bot stops calling EzBizi (best effort). Its staff links
         // stay: reconnecting the same bot brings them straight back.

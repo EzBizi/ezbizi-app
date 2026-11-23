@@ -3,7 +3,6 @@
 namespace App\Support\Settings;
 
 use App\Models\TimeClockDay;
-
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -664,11 +663,11 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'security.password_min_length', label: 'Minimum password length',
-                type: SettingDefinition::TYPE_INT, default: 12,
+                type: SettingDefinition::TYPE_INT, default: 8,
                 allowedScopes: $orgOnly,
                 // Raise-only, and it says so, because "minimum password length"
                 // reads like a number you can set in either direction.
-                help: 'Can only make passwords longer than the platform minimum of 12, '
+                help: 'Can only make passwords longer than the platform minimum of 8, '
                     .'never shorter. Above 72 has no effect — the password hash stops '
                     .'reading there. Does not apply to the very first account, which is '
                     .'created before this organization exists.',
@@ -1001,7 +1000,8 @@ class SettingRegistry
                         'tags_none' => ['READY TO SCHEDULE'], 'scheduled' => false],
                     'ready_to_schedule' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE'],
                         'tags_mode' => 'all', 'scheduled' => false],
-                    'scheduled' => ['statuses' => []],
+                    // Jose, 2026-11-10: Scheduled is Submitted AND scheduled (Jose 11-12: AND, not OR): Submitted + DEPOSIT RECEIVED + a date.
+                    'scheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => true],
                     'in_progress' => ['statuses' => []],
                     'done_waiting_payment' => ['statuses' => []],
                     'complete' => ['statuses' => []],
@@ -1038,25 +1038,74 @@ class SettingRegistry
                     ['key' => 'repair_team', 'label' => 'Repair Team / Contractor', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
+                    // Jose, 2026-11-17: "Reorder - Total amount, paid amount, remaining balance".
+                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
-                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
+                    // Monday's Ohio/Illinois PM boards (desk, 2026-11-20).
+                    ['key' => 'job_cost', 'label' => 'Job Cost', 'visible' => true, 'as_label' => false],
+                    ['key' => 'production', 'label' => 'Production Job', 'visible' => true, 'as_label' => false],
+                    ['key' => 'total_cost', 'label' => 'Total Cost', 'visible' => true, 'as_label' => false],
+                    ['key' => 'created', 'label' => 'Sale Date', 'visible' => true, 'as_label' => false],
+                    ['key' => 'scheduled', 'label' => 'Schedule Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
                     ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],
+                    // Jose, 2026-11-17: the job's work order as a PDF for the crew.
+                    ['key' => 'work_order', 'label' => 'Work Order', 'visible' => true, 'as_label' => false],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-17: Project Management's client texts, each its
+            // own switch and wording, all OFF until he approves the wording.
+            // {client_first}, {company}, {date}, {link}. `since`: when it was
+            // switched on; only later jobs get it (ProjectBoardClientMessages).
+            new SettingDefinition(
+                key: 'project_board.client_messages', label: 'Project Management: texts to the client',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'project_link' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, thank you for choosing {company}. Your project is underway, and you can see where it stands any time here: {link}'],
+                    'scheduled' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, your project with {company} is scheduled for {date}. See it here: {link}'],
+                    'day_before' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, happy to remind you about your appointment tomorrow, {date}, to complete your project. Our repair crews are booked 7 to 14 days ahead, so moving it may take 1 to 2 weeks.'],
+                    'complete' => ['on' => false, 'since' => null, 'text' => 'Thank you for your business, {client_first}. It was a pleasure working on your project with {company}.'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Each text to the client, its switch and its wording. Replies land in Project Management > Inbox.',
+            ),
+            // Jose, 2026-11-17: "we need to set up list of supplier". Each
+            // {id, name, address, phone, kind: order|pickup}: a supplier parts
+            // are ordered from, or a same-day pickup store.
+            new SettingDefinition(
+                key: 'project_board.suppliers', label: 'Project Management: suppliers',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Where parts are ordered from, and the same-day pickup stores.',
+            ),
             // Jose, 2026-11-10: "the settings need to be updated to manage all
             // of these new columns".
+            // ezbizi:flag-workiz-jobs (dispatchers, 2026-11-17): each check can be switched off.
+            new SettingDefinition(
+                key: 'jobs.flag_incomplete_address', label: 'Jobs: flag Workiz jobs with no house number, street or postal code',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a new or changed Workiz job with an incomplete address alerts whoever booked it and goes on the branch board.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.flag_late_friday', label: 'Jobs: flag Friday jobs in a window later than 12-3',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a Workiz job starting after noon on a Friday (later than the 12-3 window) (branch time) alerts whoever booked it and goes on the branch board.',
+            ),
             new SettingDefinition(
                 key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',
                 type: SettingDefinition::TYPE_JSON,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
-                help: 'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
+                // 2026-11-10: managed from Project Management and pushed to every Workiz account; each a name with a phone or user.
+                help: 'The Repair Team / Contractor list: each a job tag, with a phone or a user. None yet: every tag naming a repair team or a contractor.',
             ),
             new SettingDefinition(
                 key: 'project_board.ready_requires', label: 'Project Management: what Ready to schedule needs',
@@ -1064,6 +1113,20 @@ class SettingRegistry
                 default: ['service_area', 'technician', 'repair_team', 'attachment', 'note'],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Service area, technician, repair team, an attachment, a note: the ones ticked must be there.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.technician_roles', label: 'Project Management: roles that can be picked as Technician',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['Technician', 'Local Manager'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                // Jose, 2026-11-16: the picker shows only these roles; matched by name, any case.
+                help: 'Role names, any case. The technician picker lists only active users holding one of them; Workiz sync is not limited.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.client_texts', label: 'Project Management: text the client the times',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Ready to schedule texts the client the date and slot; YES schedules it, NO offers the alternative, NO again asks the PM to call.',
             ),
             new SettingDefinition(
                 key: 'project_board.status_days', label: 'Project Management: Status Time colours',
@@ -1551,17 +1614,33 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',
             ),
+            // Jose / desk, 2026-11-17: a job booked into a full window alerts at once.
+            new SettingDefinition(
+                key: 'scheduling.full_window_alert_to', label: 'Full-window alert: also tell (emails)',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                help: 'When a Workiz job is booked into a window that was already full, whoever booked it is alerted at once and it goes on the branch board. These people (the branch\'s field managers: emails separated by commas) are alerted too. Set it per branch.',
+            ),
+            // Dispatchers, via Jose 2026-11-17: "Friday appointments must be scheduled
+            // no later than the 12-3 PM time window." Weekday (0 Sun .. 6 Sat) => the
+            // latest window start offered; an area can set its own.
+            new SettingDefinition(
+                key: 'scheduling.latest_window', label: 'Latest window offered, by weekday',
+                type: SettingDefinition::TYPE_JSON, default: [],
+                help: 'Weekday number (0 Sunday to 6 Saturday) and the latest start time offered that day, like {"5": "12:00"}: on Fridays nothing after the 12 PM window is offered. Online booking, Check availability, re-scheduling texts and suggestions all follow it.',
+            ),
             // "An earlier opening" texts from Scheduling › Overbooking (Shoval, 2026-10-26).
             new SettingDefinition(
                 key: 'scheduling.overbooked_offer_message', label: 'Overbooked-day text',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'Hi {name}, {company} is very busy on {booked}. Would {date}, {window} work for you instead? Reply YES and we will move your appointment.',
+                default: 'Hi {name}, this is {company}. Our technicians are fully booked on {booked}. Could we come {date}, {window} instead? Reply YES to move it, or NO to keep your current time.',
+                sms: true,
                 help: 'Sent from Re-Scheduling › Overbooking to customers on a day booked past what it takes. {name}, {company}, {booked} (their day), {date} and {window} (the day offered).',
             ),
             new SettingDefinition(
                 key: 'scheduling.offer_message', label: 'Earlier-opening text',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'Hi {name}, {company} has an earlier opening on {date}, {window}. Reply YES if you would like it and we will move your appointment.',
+                default: "Hi {name}, good news from {company}: a spot opened up sooner, {date}, {window}. Want it? Reply YES and we'll move your appointment. No reply keeps your current date.",
+                sms: true,
                 help: 'Sent to customers booked later when an area has room. {name}, {company}, {date} and {window} are filled in.',
             ),
             $enum('scheduling.underfilled_min_empty', 'Tomorrow under-filled: list areas with at least', 2, [1, 2, 3, 5, 10],
@@ -1660,6 +1739,27 @@ class SettingRegistry
                     .'{{booking_link}} in an auto reply is this page with a link that files the '
                     .'booking on the same lead. Empty: no link.',
             ),
+            // Jose, 2026-11-11: an online booking with an email gets a branded confirmation.
+            new SettingDefinition(
+                key: 'leads.booking_confirmation_email',
+                label: 'Email a confirmation for online bookings',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                editPermission: 'leads.edit',
+                help: 'When a visitor books online and gives an email, they get "Your appointment request '
+                    .'is confirmed" in your logo and colour, with the day, arrival window and address. '
+                    .'Replies go to the email on your website.',
+            ),
+            // {{price_list}} (Shoval, 2026-11-16): which catalogue prices a first reply quotes.
+            new SettingDefinition(
+                key: 'leads.quote_services',
+                label: 'Prices an auto reply quotes',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                editPermission: 'leads.edit',
+                help: 'Service names from Services, separated by commas, e.g. "Chimney Sweep - Level 1, Chimney Inspection - Level 1". '
+                    .'{{price_list}} lists them with their catalogue price, plus any service the customer names in full. Empty: no prices.',
+            ),
             new SettingDefinition(
                 key: 'leads.office_phone',
                 label: 'Office phone for customers',
@@ -1693,6 +1793,28 @@ class SettingRegistry
                 readPermission: 'leads.manage',
                 help: 'The code your line names start with, and the branch its calls go to: NJ for a '
                     .'line called "NJ - GMB". A line whose code is not here stays at company level.',
+            ),
+            new SettingDefinition(
+                key: 'leads.line_numbers',
+                label: 'Phone lines by number',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'Whose calls each RingCentral number takes, set in Leads › Manage › Phone lines: '
+                    .'{"+17813855201": "company:<id>"} or "franchise:<id>".',
+            ),
+            new SettingDefinition(
+                key: 'leads.line_brands',
+                label: 'Phone lines by brand',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'A short code your line names start with and the company it stands for, as '
+                    .'{"ED": "Everdoors"}: "ED - MA - GBP" is then an Everdoors call, in its branch for MA.',
             ),
             new SettingDefinition(
                 key: 'leads.new_client_queue',
@@ -1763,6 +1885,16 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
                 help: 'A customer waiting this long for an answer turns their lead red and raises Reply overdue.',
+            ),
+            new SettingDefinition(
+                key: 'leads.automatic_texts_per_day',
+                min: 1,
+                label: 'Automatic texts to one customer per 24 hours',
+                type: SettingDefinition::TYPE_INT,
+                default: 2,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The most texts your automations send one number in a day; more are skipped. Booking confirmations and texts a person sends are not counted against it.',
             ),
             new SettingDefinition(
                 key: 'leads.follow_up_hours',
@@ -2017,6 +2149,45 @@ class SettingRegistry
                 help: "What HR picks from for someone's gender under Records › Personal (Jose, 2026-11-06).",
             ),
             new SettingDefinition(
+                key: 'hr.recruiting.positions', label: 'Recruiting positions',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'technician', 'label' => 'Technician'],
+                    ['value' => 'office', 'label' => 'Office staff'],
+                    ['value' => 'manager', 'label' => 'Manager'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The positions applicants apply for, e.g. Technician or Dispatcher (Shoval, 2026-11-20).',
+            ),
+            new SettingDefinition(
+                key: 'hr.recruiting.stages', label: 'Recruiting stages',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'applied', 'label' => 'Applied'],
+                    ['value' => 'phone_screen', 'label' => 'Phone screen'],
+                    ['value' => 'in_person_interview', 'label' => 'In-person interview'],
+                    ['value' => 'offer', 'label' => 'Offer'],
+                    ['value' => 'hired', 'label' => 'Hired'],
+                    ['value' => 'rejected', 'label' => 'Rejected'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The steps an applicant moves through, in order. Keep "hired" and "rejected" as the two ends.',
+            ),
+            new SettingDefinition(
+                key: 'hr.recruiting.sources', label: 'Recruiting sources',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'indeed', 'label' => 'Indeed'],
+                    ['value' => 'facebook', 'label' => 'Facebook'],
+                    ['value' => 'referral', 'label' => 'Referral'],
+                    ['value' => 'website', 'label' => 'Website'],
+                    ['value' => 'walk_in', 'label' => 'Walk-in'],
+                    ['value' => 'other', 'label' => 'Other'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Where applicants come from, for spend and cost per hire by source.',
+            ),
+            new SettingDefinition(
                 key: 'hr.onboarding_approval',
                 label: 'Approve onboardings before access',
                 type: SettingDefinition::TYPE_BOOL,
@@ -2142,6 +2313,15 @@ class SettingRegistry
                 default: false,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'When on, people whose role can "Approve daily hours" get yesterday\'s clock-ins each morning to approve or adjust.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.manual_clock_out_roles',
+                section: 'Shift timing',
+                label: 'Roles that clock out by hand',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Their shift never ends at the scheduled time; they clock out themselves. Each finished shift raises "Technician clocked out" for Automations (A-1: a WhatsApp to the branch managers).',
             ),
             new SettingDefinition(
                 key: 'time_clock.approval_roles',
@@ -2383,6 +2563,24 @@ class SettingRegistry
                 ],
                 allowedScopes: $orgOnly,
                 help: 'When the days earned must be used by. Days are still earned per the "Earned per" setting; at each reset, carryover decides whether what is left comes along.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.payroll_manager_review',
+                section: 'Payroll',
+                label: 'Sunday 5 PM: ask branch managers to approve their payroll',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'A notification and email to each branch manager to add bonuses or deductions and approve the week in Work Hours › Payroll.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.payroll_recipients',
+                section: 'Payroll',
+                label: 'Payroll goes to',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Email addresses, separated by commas. Monday morning they get the whole company week as a spreadsheet, every branch, approved or not.',
             ),
         ];
     }

@@ -168,4 +168,30 @@ final class PhoneScope
             }
         });
     }
+
+    /**
+     * The PEOPLE who work in the company being viewed: assigned to the whole
+     * organization, to a company in the view, or to a branch of one, plus
+     * Administrators. Jose, 2026-11-11: Communication › Users for EverDoors
+     * listed A-1 Chimney's staff. The organization view lists everybody.
+     */
+    public static function people(Builder $users, User $viewer): Builder
+    {
+        return self::peopleIn($users, ViewScope::forUser($viewer)->companyIdsInView());
+    }
+
+    /** The same rule for a set of companies; null is the whole organization. */
+    public static function peopleIn(Builder $users, ?array $companyIds): Builder
+    {
+        if ($companyIds === null) {
+            return $users;
+        }
+
+        return $users->where(fn (Builder $q) => $q
+            ->whereHas('role', fn (Builder $r) => $r->where('is_administrator', true))
+            ->orWhereHas('assignments', fn (Builder $a) => $a
+                ->whereNotNull('assigned_organization_id')
+                ->orWhereIn('assigned_company_id', $companyIds)
+                ->orWhereIn('assigned_franchise_id', \App\Models\Franchise::query()->whereIn('company_id', $companyIds)->select('id'))));
+    }
 }

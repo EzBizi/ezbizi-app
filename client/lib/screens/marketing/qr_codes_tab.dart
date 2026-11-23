@@ -1,8 +1,11 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -44,6 +47,10 @@ class _QrCodesTabState extends State<QrCodesTab> {
   List<QrCodeRow> _codes = const [];
   String _query = '';
 
+  /// The picture in the middle of each code (Bar, 01a1f4ba), by
+  /// `id:choice`; null while none is drawn. Re-read when the choice moves.
+  final Map<String, Uint8List?> _pictures = {};
+
   /// The codes the search keeps: name, the printed address and where it goes.
   List<QrCodeRow> get _shown {
     final needle = _query.trim().toLowerCase();
@@ -79,28 +86,99 @@ class _QrCodesTabState extends State<QrCodesTab> {
   void initState() {
     super.initState();
     _load();
+    // A code made or changed elsewhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'qr_codes'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _destination.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _codes.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the codes on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _codes.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/marketing/qr-codes');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
       _error = response.ok ? null : response.reason;
       if (response.ok) _codes = QrCodeRow.listFrom(response.body);
     });
+    if (response.ok) await _loadPictures();
+  }
+
+  /// Fetches the centre picture of every code not yet read for its choice.
+  Future<void> _loadPictures({bool again = false}) async {
+    for (final code in _codes) {
+      final key = code.pictureKey;
+      if (code.centerImage == QrCodeRow.noPicture) continue;
+      if (!again && _pictures.containsKey(key)) continue;
+      final bytes = await widget.api.getBytes(
+        '/marketing/qr-codes/${code.id}/center-image',
+      );
+      if (!mounted) return;
+      setState(() {
+        _pictures[key] = bytes != null && isPicture(bytes)
+            ? Uint8List.fromList(bytes)
+            : null;
+      });
+    }
+  }
+
+  Uint8List? _pictureOf(QrCodeRow code) =>
+      code.centerImage == QrCodeRow.noPicture
+      ? null
+      : _pictures[code.pictureKey];
+
+  /// Logo or nothing in the middle; the server redraws both downloads.
+  Future<void> _setPicture(QrCodeRow code, String choice) async {
+    final response = await widget.api.put('/marketing/qr-codes/${code.id}', {
+      'center_image': choice,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.reason)));
+      return;
+    }
+    _pictures.remove('${code.id}:$choice');
+    await _load(quiet: true);
+  }
+
+  /// Any picture for the middle: checked and kept by the server (2 MB).
+  Future<void> _uploadPicture(QrCodeRow code) async {
+    final picked = await Files.pickBytes(accept: 'image/*');
+    if (picked == null || !mounted) return;
+    final response = await widget.api.postFile(
+      '/marketing/qr-codes/${code.id}/center-image',
+      'file',
+      picked.name,
+      picked.bytes,
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.reason)));
+      return;
+    }
+    _pictures.remove('${code.id}:${QrCodeRow.uploadedPicture}');
+    await _load(quiet: true);
   }
 
   void _startChange(QrCodeRow code) => setState(() {
@@ -213,24 +291,149 @@ class _QrCodesTabState extends State<QrCodesTab> {
     if (made == true && mounted) await _load();
   }
 
+  /// The link the code holds, on the clipboard: for an email, a text or a
+  /// page where a printed code will not do.
+  Future<void> _copy(QrCodeRow code) async {
+    await Clipboard.setData(ClipboardData(text: code.url));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text('Link copied.')));
+  }
+
+  /// The code large enough to scan from the screen, where it sends people,
+  /// and the link itself to follow: after a change, the way to see the
+  /// printed copies now land on the new place (Rodrigo 01a1ef57).
+  Future<void> _preview(QrCodeRow code) => showSidePanel<void>(
+    context,
+    builder: (panel) => StatefulBuilder(
+      builder: (panel, refresh) {
+        // The row as it stands now: a picture change re-reads the list.
+        code = _codes.firstWhere((c) => c.id == code.id, orElse: () => code);
+        final theme = Theme.of(panel);
+        return SidePanel(
+          key: const Key('qr-preview-panel'),
+          title: code.name,
+          subtitle: code.active ? 'Active' : 'Deactivated',
+          actions: [
+            OutlinedButton.icon(
+              key: const Key('qr-preview-copy'),
+              onPressed: () => _copy(code),
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copy link'),
+            ),
+            FilledButton.icon(
+              key: const Key('qr-preview-open'),
+              onPressed: () => launchUrl(
+                Uri.parse(code.url),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Test the link'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: EzBiziTheme.paper,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: EzBiziTheme.edge(panel)),
+                  ),
+                  child: QrWithPicture(
+                    key: const Key('qr-preview-image'),
+                    data: code.url,
+                    size: 240,
+                    picture: _pictureOf(code),
+                  ),
+                ),
+              ),
+              if (_canEdit) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Picture in the middle',
+                  style: theme.textTheme.labelMedium,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (choice, label) in const [
+                      (QrCodeRow.logoPicture, 'Company logo'),
+                      (QrCodeRow.noPicture, 'No picture'),
+                    ])
+                      ChoiceChip(
+                        key: Key('qr-picture-$choice'),
+                        label: Text(label),
+                        selected: code.centerImage == choice,
+                        onSelected: (_) async {
+                          await _setPicture(code, choice);
+                          refresh(() {});
+                        },
+                      ),
+                    ActionChip(
+                      key: const Key('qr-picture-upload'),
+                      avatar: const Icon(Icons.upload, size: 16),
+                      label: Text(
+                        code.centerImage == QrCodeRow.uploadedPicture
+                            ? 'Your picture · change'
+                            : 'Upload a picture',
+                      ),
+                      onPressed: () async {
+                        await _uploadPicture(code);
+                        refresh(() {});
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  code.centerImage == QrCodeRow.logoPicture &&
+                          _pictureOf(code) == null
+                      ? 'No logo is set for this company yet, so the code has '
+                            'no picture. Add one in Settings, or upload a picture.'
+                      : 'Kept small, on white, so the code still scans. It is '
+                            'in the SVG and PNG downloads too.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text('Scanning it opens', style: theme.textTheme.labelMedium),
+              SelectableText(
+                code.destinationUrl,
+                key: const Key('qr-preview-destination'),
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              Text('The link in the code', style: theme.textTheme.labelMedium),
+              SelectableText(code.url, style: theme.textTheme.bodySmall),
+              const SizedBox(height: 8),
+              Text(
+                code.active
+                    ? 'Test the link follows it the way a scan does, so it '
+                          'lands where the code sends people now.'
+                    : 'Deactivated: a scan lands on a page saying so until '
+                          'it is reactivated.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
@@ -300,8 +503,20 @@ class _QrCodesTabState extends State<QrCodesTab> {
                       'where it sends people can change later without reprinting.'
                 : 'No QR codes yet.',
             style: theme.textTheme.bodyMedium,
-          )
-        else
+          ),
+        // Rodrigo 01a1ef57: the genuine empty state offers the first one.
+        if (_codes.isEmpty && _canEdit) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              key: const Key('qr-create-empty'),
+              onPressed: _create,
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text('Create QR code'),
+            ),
+          ),
+        ] else
           LayoutBuilder(
             key: const ValueKey('tour-marketing-qr-list'),
             builder: (context, box) {
@@ -404,17 +619,11 @@ class _QrCodesTabState extends State<QrCodesTab> {
                 ),
                 // A fixed square: QrImageView sizes itself in a LayoutBuilder,
                 // which cannot answer the row's IntrinsicHeight.
-                child: SizedBox.square(
-                  dimension: narrow ? 84 : 96,
-                  child: QrImageView(
-                    key: ValueKey('qr-image:${code.id}'),
-                    data: code.url,
-                    version: QrVersions.auto,
-                    errorCorrectionLevel: QrErrorCorrectLevel.H,
-                    size: narrow ? 84 : 96,
-                    padding: EdgeInsets.zero,
-                    backgroundColor: EzBiziTheme.paper,
-                  ),
+                child: QrWithPicture(
+                  key: ValueKey('qr-image:${code.id}'),
+                  data: code.url,
+                  size: narrow ? 84 : 96,
+                  picture: _pictureOf(code),
                 ),
               ),
             ),
@@ -542,6 +751,18 @@ class _QrCodesTabState extends State<QrCodesTab> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         OutlinedButton.icon(
+                          key: ValueKey('qr-preview:${code.id}'),
+                          onPressed: () => _preview(code),
+                          icon: const Icon(Icons.visibility_outlined, size: 16),
+                          label: const Text('Preview'),
+                        ),
+                        OutlinedButton.icon(
+                          key: ValueKey('qr-copy:${code.id}'),
+                          onPressed: () => _copy(code),
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('Copy link'),
+                        ),
+                        OutlinedButton.icon(
                           key: ValueKey('qr-svg:${code.id}'),
                           onPressed: () => _download(code, 'svg'),
                           icon: const Icon(Icons.download, size: 16),
@@ -557,7 +778,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           key: ValueKey('qr-stats:${code.id}'),
                           onPressed: () => _openStats(code),
                           icon: const Icon(Icons.insights_outlined, size: 16),
-                          label: const Text('Stats'),
+                          label: const Text('Scan history'),
                         ),
                         if (paused && _canEdit)
                           FilledButton.tonal(
@@ -759,7 +980,18 @@ class QrCodeRow {
     this.scans30d,
     this.scanners30d,
     this.daily30d,
+    this.centerImage = logoPicture,
   });
+
+  /// The picture in the middle: the company logo (the default), none, or
+  /// one uploaded.
+  static const logoPicture = 'logo';
+  static const noPicture = 'none';
+  static const uploadedPicture = 'upload';
+  final String centerImage;
+
+  /// What the picture cache is keyed by: a new choice is a new picture.
+  String get pictureKey => '$id:$centerImage';
 
   final String id;
   final String name;
@@ -862,7 +1094,81 @@ class QrCodeRow {
                     (n as num?)?.toInt() ?? 0,
                 ]
               : null,
+          centerImage: row['center_image'] is String
+              ? row['center_image'] as String
+              : logoPicture,
         ),
     ];
+  }
+}
+
+/// PNG, JPEG, GIF or WebP by their first bytes: what the server accepts,
+/// and the guard against drawing an error page as a picture.
+bool isPicture(List<int> b) =>
+    (b.length > 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E) ||
+    (b.length > 3 && b[0] == 0xFF && b[1] == 0xD8) ||
+    (b.length > 6 && b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46) ||
+    (b.length > 12 &&
+        b[8] == 0x57 &&
+        b[9] == 0x45 &&
+        b[10] == 0x42 &&
+        b[11] == 0x50);
+
+/// The code as printed: [picture] on a white pad in the middle, the same
+/// proportions as the server's downloads (QrImage::PAD_RATIO, 22% of the
+/// width; the picture 82% of the pad), at error correction H.
+class QrWithPicture extends StatelessWidget {
+  const QrWithPicture({
+    super.key,
+    required this.data,
+    required this.size,
+    this.picture,
+  });
+
+  static const padRatio = 0.22;
+  static const pictureInPad = 0.82;
+
+  final String data;
+  final double size;
+  final Uint8List? picture;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = picture;
+    final pad = size * padRatio;
+    // A fixed square: QrImageView sizes itself in a LayoutBuilder, which
+    // cannot answer a row's IntrinsicHeight.
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          QrImageView(
+            data: data,
+            version: QrVersions.auto,
+            errorCorrectionLevel: QrErrorCorrectLevel.H,
+            size: size,
+            padding: EdgeInsets.zero,
+            backgroundColor: EzBiziTheme.paper,
+          ),
+          if (bytes != null)
+            Container(
+              key: const Key('qr-center-picture'),
+              width: pad,
+              height: pad,
+              color: EzBiziTheme.paper,
+              alignment: Alignment.center,
+              child: Image.memory(
+                bytes,
+                width: pad * pictureInPad,
+                height: pad * pictureInPad,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }

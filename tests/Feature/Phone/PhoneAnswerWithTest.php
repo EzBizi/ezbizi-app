@@ -311,6 +311,74 @@ class PhoneAnswerWithTest extends TestCase
             ->assertJsonPath('data.answer_with', PhoneNumber::ANSWER_VOICEMAIL);
     }
 
+    /** Jose, 2026-11-11: an overridden line forwards, past the menu it would otherwise play. */
+    public function test_an_override_forwards_past_the_menu(): void
+    {
+        $xml = $this->render(['override_on' => true, 'override' => ['action' => 'forward', 'number' => '+13055550111']], withMenu: true);
+
+        $this->assertStringNotContainsString('<Gather', $xml);
+        $this->assertStringContainsString('<Number>+13055550111</Number>', $xml);
+        $this->assertStringNotContainsString('<Client', $xml);
+    }
+
+    /** The call-flow chart says the line is overridden, so nobody wonders where the menu went. */
+    public function test_the_chart_shows_an_overridden_line(): void
+    {
+        [$graph] = $this->graphWith(fn () => ['override_on' => true, 'override' => ['action' => 'forward', 'number' => '+13055550111']], withMenu: true);
+
+        $this->assertContains('override', array_column($graph['nodes'], 'kind'));
+        $this->assertNotContains('menu', array_column($graph['nodes'], 'kind'));
+    }
+
+    /** Jose, 2026-11-12: the card says pass or fail, and what to fix. */
+    public function test_a_new_line_reports_what_is_missing(): void
+    {
+        [$number, $editor] = $this->lineToEdit();
+
+        $health = $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['label' => 'New line'])
+            ->assertOk()
+            ->json('data.health');
+
+        $this->assertFalse($health['ok']);
+        $this->assertContains('Calls reach nobody: choose who answers, or a ring group.', $health['problems']);
+        $this->assertContains('Nobody is signed in to take calls on this phone account right now.', $health['problems']);
+        $this->assertContains('route', array_column($health['checks'], 'key'));
+        $this->inTenant($number->organization, fn () => $this->assertSame(
+            array_column(\App\Support\Phone\LineHealth::for($number->fresh())['problems'], 'key'),
+            array_column($health['checks'], 'key'),
+        ));
+    }
+
+    /** Switched off, the regular flow runs: the override is kept but ignored. */
+    public function test_an_override_switched_off_leaves_the_flow_alone(): void
+    {
+        $xml = $this->render(['override_on' => false, 'override' => ['action' => 'forward', 'number' => '+13055550111']], withMenu: true);
+
+        $this->assertStringContainsString('<Gather', $xml);
+        $this->assertStringNotContainsString('+13055550111', $xml);
+    }
+
+    public function test_the_override_is_validated_and_audited(): void
+    {
+        [$number, $editor] = $this->lineToEdit();
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['override_on' => true, 'override' => ['action' => 'forward']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('override.number');
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['override_on' => true, 'override' => ['action' => 'forward', 'number' => '+13055550111']])
+            ->assertOk()
+            ->assertJsonPath('data.override_on', true)
+            ->assertJsonPath('data.override.number', '+13055550111');
+
+        $this->inTenant($number->organization, fn () => $this->assertTrue(
+            \App\Models\AuditEvent::query()->where('action', 'phone.number.override')->exists(),
+        ));
+    }
+
     /** @return array{0: PhoneNumber, 1: User} */
     private function lineToEdit(): array
     {

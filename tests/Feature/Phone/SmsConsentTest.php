@@ -64,4 +64,37 @@ class SmsConsentTest extends TestCase
             $this->assertSame('Back', $bodies()[4]);
         });
     }
+
+    public function test_twilios_unsubscribed_refusal_is_recorded_so_the_next_text_never_reaches_twilio(): void
+    {
+        $twilio = new FakeTwilioGateway;
+        $this->app->instance(TwilioGateway::class, $twilio);
+        $t = $this->provisionTenant();
+        $to = '+13057242199';
+
+        $this->inTenant($t['org'], function () use ($t, $twilio, $to) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id,
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id,
+            ]);
+            $number->forceFill(['sms_outbound_allowed' => true])->save();
+            $texts = app(PhoneTexts::class);
+            $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->count();
+
+            $twilio->failSendMessageWith = '[HTTP 400] Unable to create record: Attempt to send to unsubscribed recipient';
+            foreach ([1, 1] as $expected) {
+                try {
+                    $texts->send($number, $to, 'Hello', automated: true);
+                    $this->fail('An unsubscribed number was texted.');
+                } catch (TextRefused $e) {
+                    $this->assertSame(SmsConsent::REFUSAL, $e->getMessage());
+                }
+                $this->assertSame($expected, $sends());
+            }
+            $this->assertTrue(SmsConsent::optedOut($t['org']->id, $to));
+        });
+    }
 }

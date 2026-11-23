@@ -135,6 +135,7 @@ class AutomationEngine
                     // the others act now, and a redelivery cannot run them twice.
                     $due = $event->occurred_at->copy()->addMinutes((int) $automation->delay_minutes
                         + self::replySpread($version, $event, (int) $automation->delay_minutes));
+                    $due = self::outsideQuietHours($due, $version, $event, $scope);
                     if ($due->isFuture()) {
                         $dueAt = $dueAt === null || $due->lt($dueAt) ? $due : $dueAt;
                         continue;
@@ -212,6 +213,18 @@ class AutomationEngine
             }
             if (! $verdict['matched']) {
                 $this->record($automation, $version, $event, AutomationRun::SKIPPED, $started, trace: $verdict['trace']);
+                return false;
+            }
+            // A status change undone before the rule ran is not acted on (desk
+            // for Jose, 2026-11-18: Done then back to Working on it 16 seconds
+            // later, and the rule still moved the task to Done a minute after).
+            if (str_ends_with($event->event_key, '.status_changed') && $subject instanceof \Illuminate\Database\Eloquent\Model
+                && ($now = $subject->fresh()) !== null
+                && (array_key_exists('status_id', $after = (array) ($event->payload['after'] ?? [])) && $after['status_id'] !== null
+                    ? (string) $now->getAttribute('status_id') !== (string) $after['status_id']
+                    : array_key_exists('status_key', $after) && (string) $now->getAttribute('status') !== (string) $after['status_key'])) {
+                $this->record($automation, $version, $event, AutomationRun::SKIPPED, $started,
+                    trace: [['reason' => 'The status changed again before this ran.']]);
                 return false;
             }
             $run = AutomationRun::create([
@@ -480,6 +493,48 @@ class AutomationEngine
      * The cascade budget and depth cap still apply through `run()`, so a rule
      * that fires other rules cannot be made to run away by pressing a button.
      */
+    /**
+     * A rule re-armed after its auto-disable runs again, on its active
+     * version, the events of the last day whose run failed having done
+     * nothing (Jose, 2026-11-17: the missed-call tasks are relied on now; a
+     * failed run must not lose the call). A run that did any step is left
+     * alone, so nobody gets a second text. Returns how many were replayed.
+     */
+    public function replayFailed(Automation $automation): int
+    {
+        return (int) $this->tenant->run($automation->organization ?? \App\Models\Organization::withoutGlobalScopes()->find($automation->organization_id), function () use ($automation) {
+            $version = $automation->activeVersion;
+            if ($version === null) {
+                return 0;
+            }
+            $events = AutomationRun::query()->where('automation_id', $automation->getKey())->where('status', AutomationRun::FAILED)
+                ->where('started_at', '>=', now()->subDay())->get()
+                ->reject(fn (AutomationRun $r) => collect((array) $r->action_results)->contains(fn ($a) => ($a['ok'] ?? false) === true))
+                ->pluck('event_id')->unique()
+                ->reject(fn ($id) => AutomationRun::query()->where('event_id', $id)->where('automation_id', $automation->getKey())
+                    ->where('status', '!=', AutomationRun::FAILED)->exists());
+            $n = 0;
+            foreach (AutomationEvent::query()->whereIn('id', $events->all())->orderBy('occurred_at')->get() as $event) {
+                // The same lease deliver() takes, so a worker on this event and the replay never both run it.
+                $token = (string) Str::uuid();
+                if (AutomationEvent::query()->whereKey($event->id)->where(fn ($q) => $q->whereNull('processing_until')->orWhere('processing_until', '<=', now()))
+                    ->update(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)]) !== 1) {
+                    continue;
+                }
+                $event->forceFill(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)])->syncOriginal();
+                try {
+                    $this->runOne($automation, $version, $event, $this->subjectOf($event));
+                    $n++;
+                } finally {
+                    AutomationEvent::query()->whereKey($event->id)->where('processing_token', $event->processing_token)
+                        ->update(['processing_token' => null, 'processing_until' => null]);
+                }
+            }
+
+            return $n;
+        });
+    }
+
     public function runNow(Automation $automation, AutomationEvent $event): array
     {
         return $this->tenant->run($event->organization, function () use ($automation, $event) {
@@ -572,6 +627,40 @@ class AutomationEngine
      * twice the wait, the same for an event every time it is looked at (so a
      * redelivery does not move it). Every other rule waits exactly as set.
      */
+    /** Events a customer just started, answered at once at any hour: their own message, their booking. */
+    private const ANSWERS_THE_CUSTOMER = ['lead.received', 'lead.customer_replied', 'lead.booking_approved'];
+
+    /**
+     * No automatic text to a customer between 9 PM and 8 AM where the branch
+     * is (desk for Jose, 2026-11-16: "no text at 3 AM"): a rule that would
+     * text then waits for 8 AM. Same answer every visit, so the wait holds.
+     *
+     * @param  array<string, mixed>  $scope
+     */
+    public static function outsideQuietHours(\Carbon\CarbonInterface $due, AutomationVersion $version, AutomationEvent $event, array $scope): \Carbon\CarbonInterface
+    {
+        $texts = collect((array) $version->actions)->contains(fn ($a) => in_array($a['type'] ?? null, ['reply', 'lead.text', 'book_by_chat'], true)
+            || (in_array($a['type'] ?? null, ['sms.send', 'whatsapp.send'], true)
+                && ! str_starts_with(trim((string) ($a['to'] ?? $a['to_field'] ?? '')), 'user:')
+                && ! str_starts_with(trim((string) ($a['to'] ?? $a['to_field'] ?? '')), 'branch_managers:')));
+        if (! $texts || in_array($event->event_key, self::ANSWERS_THE_CUSTOMER, true)) {
+            return $due;
+        }
+        $place = match ($scope['type'] ?? null) {
+            'franchise' => \App\Models\Franchise::query()->find($scope['id'] ?? null),
+            'company' => \App\Models\Company::query()->find($scope['id'] ?? null),
+            default => null,
+        };
+        $zone = (string) ($place !== null ? app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $place)
+            : \App\Support\Settings\SettingsResolver::forOrganization('timezone'));
+        $local = \Carbon\CarbonImmutable::instance($due)->setTimezone($zone ?: 'America/New_York');
+        if ($local->hour >= 8 && $local->hour < 21) {
+            return $due;
+        }
+
+        return ($local->hour < 8 ? $local : $local->addDay())->setTime(8, 0)->utc();
+    }
+
     private static function replySpread(AutomationVersion $version, AutomationEvent $event, int $delay): int
     {
         if ($delay <= 0 || ! collect((array) $version->actions)->contains(fn ($a) => ($a['type'] ?? null) === 'publish_reply')) {

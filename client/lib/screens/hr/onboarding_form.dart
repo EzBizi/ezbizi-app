@@ -1619,15 +1619,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final missing = _isMissing(question);
     final caution = StateColour.of(context).caution;
 
+    // The same tree answered or not: a key or a decoration that comes and
+    // goes with `missing` remounts the box under the cursor on the first
+    // keystroke, and typing stops (Merav, 2026-11-19: "when typing a number
+    // on the field it stops selecting the field").
     return Container(
-      key: missing ? Key('missing-${field.key}') : null,
+      key: ValueKey('question-${field.key}'),
       margin: const EdgeInsets.only(bottom: 22),
-      padding: missing ? const EdgeInsets.only(left: 10) : EdgeInsets.zero,
-      decoration: missing
-          ? BoxDecoration(
-              border: Border(left: BorderSide(color: caution, width: 3)),
-            )
-          : null,
+      padding: EdgeInsets.only(left: missing ? 10 : 0),
+      decoration: BoxDecoration(
+        border: Border(
+          left: missing
+              ? BorderSide(color: caution, width: 3)
+              : BorderSide.none,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1642,7 +1648,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
                         style: theme.textTheme.titleSmall,
                       ),
                     ),
-                    if (missing) const Tag('Not filled in', warn: true),
+                    if (missing)
+                      Tag(
+                        'Not filled in',
+                        key: Key('missing-${field.key}'),
+                        warn: true,
+                      ),
                     // The one thing position cannot show: that the other side
                     // may have got there first, and that correcting them is
                     // expected.
@@ -1983,6 +1994,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     return switch (field.type) {
       'checklist' => _checklist(question, enabled: enabled),
+      'rate_steps' => _rateSteps(question, enabled: enabled),
       'choice' when field.options.length <= 4 => Wrap(
         key: answerKey(field.key),
         spacing: 8,
@@ -2160,6 +2172,94 @@ class _OnboardingFormState extends State<OnboardingForm> {
     _setChecklistQuantity(question, item, 1);
   }
 
+  /// Hourly rate stages (Merav, 2026-11-17): rows of "after N days, $X/hr",
+  /// counted from the start date. Stored as JSON; the server sorts and checks.
+  Widget _rateSteps(OnboardingQuestion question, {required bool enabled}) {
+    final steps = _rateStepRows(question);
+    void save(List<Map<String, String>> rows) =>
+        _answer(question.key, rows.isEmpty ? '' : jsonEncode(rows));
+
+    return Column(
+      key: Key('rate-steps-${question.key}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, step) in steps.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Text('After '),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    key: Key('rate-step-days-$i'),
+                    initialValue: step['after_days'],
+                    enabled: enabled,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'after_days': v}),
+                  ),
+                ),
+                const Text(' days: \$'),
+                SizedBox(
+                  width: 90,
+                  child: TextFormField(
+                    key: Key('rate-step-rate-$i'),
+                    initialValue: step['rate'],
+                    enabled: enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'rate': v}),
+                  ),
+                ),
+                const Text(' /hr'),
+                IconButton(
+                  tooltip: 'Remove this stage',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: enabled
+                      ? () => save([...steps]..removeAt(i))
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          key: Key('rate-step-add-${question.key}'),
+          onPressed: enabled
+              ? () => save([
+                  ...steps,
+                  {'after_days': '', 'rate': ''},
+                ])
+              : null,
+          icon: const Icon(Icons.add),
+          label: const Text('Add a rate stage'),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, String>> _rateStepRows(OnboardingQuestion question) {
+    final raw = _pending[question.key] ?? question.value;
+    if (raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return [
+          for (final row in decoded.whereType<Map>())
+            {
+              'after_days': '${row['after_days'] ?? ''}',
+              'rate': '${row['rate'] ?? ''}',
+            },
+        ];
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Only received items are stored; the document prints every listed item,
   /// the unreceived ones blank.
   Map<String, Map<String, String>> _checklistRows(OnboardingQuestion question) {
@@ -2194,10 +2294,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       rows.remove(item);
     } else {
       final now = DateTime.now();
-      final today =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}';
+      final today = formatCalendarDay(now);
       final received = rows[item]?['received'] ?? '';
       rows[item] = {
         'quantity': '$quantity',

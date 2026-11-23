@@ -120,6 +120,9 @@ class ReviewsController extends Controller
         }
 
         $locations = $this->locations(clone $query);
+        // The Unanswered chip counts within every OTHER filter in play (Adeline, approved by Jose 2026-11-19:
+        // "fix the counter when multiple filters selected").
+        $unanswered = (clone $query)->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))->count();
 
         // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.
         match ($request->query('sort')) {
@@ -136,7 +139,7 @@ class ReviewsController extends Controller
             'data' => array_map(fn (Review $r) => $this->present($r), $reviews->items()),
             'meta' => [
                 ...$this->pageMeta($reviews),
-                'unanswered'   => $this->unansweredCount($user),
+                'unanswered'   => $unanswered,
                 'locations'    => $locations,
                 'stats'        => $stats,
                 'connections'  => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
@@ -640,18 +643,6 @@ class ReviewsController extends Controller
         }
 
         return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
-    }
-
-    private function unansweredCount($user): int
-    {
-        $query = Review::query()->whereDoesntHave(
-            'reply',
-            fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED),
-        );
-
-        \App\Support\CustomerExperience\Places::scope($query, $user);
-
-        return (int) $query->count();
     }
 
     /** @return array<string, mixed> */

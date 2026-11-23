@@ -187,6 +187,35 @@ class GmailMailboxWatchTest extends TestCase
     }
 
     /**
+     * A message deleted after it arrived answers 404. It is skipped, and the
+     * position moves on: failing on it replayed the same history every poll,
+     * and four A-1 inboxes stopped announcing any mail (11-12).
+     */
+    public function test_a_message_deleted_since_it_arrived_does_not_stop_the_watch(): void
+    {
+        Http::fake([
+            self::TOKEN   => Http::response(['access_token' => 'at-1', 'expires_in' => 3600]),
+            self::HISTORY => Http::response([
+                'history' => [
+                    ['id' => '1001', 'messagesAdded' => [
+                        ['message' => ['id' => 'm-000001', 'labelIds' => ['INBOX']]],
+                        ['message' => ['id' => 'm-000002', 'labelIds' => ['INBOX']]],
+                    ]],
+                ],
+                'historyId' => '1050',
+            ]),
+            'gmail.googleapis.com/gmail/v1/users/me/messages/m-000001*' => Http::response(['error' => ['code' => 404]], 404),
+            'gmail.googleapis.com/gmail/v1/users/me/messages/m-000002*'
+                => Http::response($this->metadata('m-000002', 'Kept', 'Bob <bob@example.com>')),
+        ]);
+
+        $arrivals = $this->reader()->arrivalsSince($this->inbox(), '900', 50);
+
+        $this->assertSame('1050', $arrivals->mark);
+        $this->assertSame(['Kept'], array_map(fn ($m) => $m->subject, $arrivals->messages));
+    }
+
+    /**
      * A message listed twice in one history is one arrival.
      *
      * Google's own guidance is that history records can repeat a message, and a

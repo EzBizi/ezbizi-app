@@ -32,12 +32,23 @@ class ColumnConverter
         $assignable = null;
         $rows = [];
 
-        foreach ($old->values()->with('column')->get() as $v) {
+        foreach ($old->values()->with(['column', 'task' => fn ($q) => $q->withTrashed()->select('id', 'sensitive')])->get() as $v) {
+            $sensitive = (bool) $v->task?->sensitive;
+            // A sensitive task's words never become a column option everyone reads: that value is lost.
+            if ($sensitive && ! SensitiveTasks::sealsColumn($new->type)) {
+                $rows[$v->id] = null;
+
+                continue;
+            }
             $words = $this->words($old, $v);
             $value = $words === null ? null : $this->read($new, $words, $options);
             $probe = $new->replicate();
             $probe->settings = ['options' => $options] + ($new->settings ?? []);
-            $rows[$v->id] = $value === null ? null : $this->writer->encode($probe, $value, $old->board, $assignable)[0];
+            $row = $value === null ? null : $this->writer->encode($probe, $value, $old->board, $assignable)[0];
+            if ($row !== null && $sensitive) {
+                $row['value_text'] = SensitiveTasks::seal($row['value_text']);
+            }
+            $rows[$v->id] = $row;
         }
 
         return ['rows' => $rows, 'options' => $options];
@@ -53,10 +64,12 @@ class ColumnConverter
             'status', 'dropdown' => is_string($value) ? $label($value) : null,
             'tags' => implode(', ', array_filter(array_map($label, (array) $value))),
             'person' => User::query()->find($value)?->name,
+            'people' => implode(', ', User::query()->whereIn('id', (array) $value)->pluck('name')->all()),
             'checkbox' => $value ? 'Yes' : 'No',
             'timeline' => is_array($value) ? $value['from'] : null,
             'link' => is_array($value) ? $value['label'] : null,
-            'number', 'currency' => $value === null ? null : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.'),
+            'location' => is_array($value) ? ($value['address'] ?? null) : null,
+            'number', 'currency', 'rating' => $value === null ? null : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.'),
             default => is_scalar($value) ? (string) $value : null,
         };
 
@@ -95,7 +108,10 @@ class ColumnConverter
             'datetime' => $time === false ? null : date('Y-m-d H:i', $time),
             'timeline' => $time === false ? null : ['from' => date('Y-m-d', $time), 'to' => date('Y-m-d', $time)],
             'person' => User::query()->where('name', $words)->value('id'),
-            'formula', 'link' => null,
+            'people' => User::query()->whereIn('name', array_map('trim', explode(',', $words)))->pluck('id')->all() ?: null,
+            'location' => ['address' => $words, 'lat' => null, 'lng' => null],
+            'rating' => ctype_digit($n = (string) round((float) preg_replace('/[^\d.]/', '', $words))) ? $n : null,
+            'formula', 'link', 'files', 'connect', 'dependency', 'last_updated', 'creation_log', 'mirror' => null,
             default => $words,
         };
     }

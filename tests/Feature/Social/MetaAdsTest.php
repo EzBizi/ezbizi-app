@@ -78,6 +78,26 @@ class MetaAdsTest extends TestCase
         $this->assertSame('GA', $campaign->fresh()->state);
     }
 
+    public function test_a_campaign_lands_in_the_one_branch_its_state_names(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $connection = $this->account($t);
+        $this->inTenant($t['org'], fn () => $connection->forceFill(['scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $t['company']->id])->save());
+        $jersey = $this->inTenant($t['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'name' => 'New Jersey',
+        ]));
+
+        Http::fake(['graph.facebook.com/*/act_111/campaigns*' => Http::response(['data' => [
+            ['id' => '901', 'name' => 'A1 - Meta Leads - NJ', 'objective' => 'OUTCOME_LEADS'],
+            ['id' => '902', 'name' => 'A1 - Meta Leads - Chicago', 'objective' => 'OUTCOME_LEADS'],
+        ]])]);
+
+        $this->inTenant($t['org'], fn () => app(MetaAdInsights::class)->campaigns($connection));
+        $branches = MetaAdCampaign::query()->withoutGlobalScopes()->pluck('franchise_id', 'campaign_id');
+        $this->assertSame($jersey->id, $branches['901']);
+        $this->assertNull($branches['902']);
+    }
+
     public function test_daily_rows_land_as_totals_and_by_region_and_a_resync_does_not_double(): void
     {
         $t = $this->provisionTenant('A1-Group');

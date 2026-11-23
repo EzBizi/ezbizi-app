@@ -74,6 +74,41 @@ final class SiteLists
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * Every rated review of the site's company, across all its Google
+     * locations: what [ezbizi_reviews] prints and its aggregateRating says.
+     * Cached for an hour; the plugin purges its pages when it changes.
+     *
+     * @return array{count: int, average: float}
+     */
+    public static function reviewSummary(WebSite $site): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('web-review-summary-v3:'.$site->company_id, 3600, function () use ($site): array {
+            // Google's own per-listing totals when the sync has read them (Jose 11-20:
+            // the badge equals Google, 13,583 for A-1); else the unique count below.
+            $google = \App\Support\CustomerExperience\GoogleReviewTotals::forCompany((string) $site->company_id);
+            if ($google['count'] > 0 && $google['average'] !== null) {
+                return ['count' => $google['count'], 'average' => round((float) $google['average'], 1)];
+            }
+
+            // One review once (desk 11-20): a Google location synced through two connections
+            // (the manager account and the location's own) stores every review twice, under
+            // two resource names that end in the same review id. Count each id once.
+            $unique = Review::query()
+                ->where('company_id', $site->company_id)
+                ->whereNotNull('rating')
+                ->whereNull('removed_at')
+                ->selectRaw("max(rating) as r")
+                ->groupByRaw("case when remote_name like '%/reviews/%' then concat(coalesce(source, ''), ':', substring_index(remote_name, '/reviews/', -1)) else id end");
+
+            $row = \Illuminate\Support\Facades\DB::query()->fromSub($unique, 'u')
+                ->selectRaw('count(*) as n, avg(r) as a')
+                ->first();
+
+            return ['count' => (int) ($row->n ?? 0), 'average' => round((float) ($row->a ?? 0), 1)];
+        });
+    }
+
     public static function reviews(WebSite $site): array
     {
         return Review::query()

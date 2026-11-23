@@ -1,0 +1,11 @@
+[Unit]
+Description=Run EzBizi's slow scheduled tasks every minute
+
+[Timer]
+OnCalendar=*:*:30
+AccuracySec=1s
+Persistent=false
+Unit=ezbizi-scheduler-slow.service
+
+[Install]
+WantedBy=timers.target

@@ -238,7 +238,7 @@ final class DialPlan
         return array_values($userIds);
     }
 
-    private static function memberUserIds(PhoneRingGroup $group): array
+    public static function memberUserIds(PhoneRingGroup $group): array
     {
         $fromUsers = is_array($group->member_user_ids) ? $group->member_user_ids : [];
         $roleIds = is_array($group->member_role_ids) ? $group->member_role_ids : [];

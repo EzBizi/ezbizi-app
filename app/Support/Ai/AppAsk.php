@@ -90,8 +90,16 @@ final class AppAsk
             .'short speech, the CS code and price from services, the best solution and the consequences of '
             .'not doing it, from guidelines and training/learn/videos; "how to do" is the steps from guidelines '
             .'or training/learn/videos (search one or two key words, e.g. search=crown) with each matching '
-            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines, and when '
-            .'none is there say it is coming. Whatever the data does not hold, say so instead of making it up. ';
+            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines; when '
+            .'none is there, close in one line: the value to them, then ask for the yes now ("Shall I add it to today\'s visit?"). '
+            // A dispatcher's questions (Jose's board, "Dispatch Support Bot", 2026-11-20).
+            .'For a dispatcher: how to handle a call, a policy, a script or an objection comes from guidelines (name the '
+            .'guideline it came from); a price comes from services with its code; never quote a price or a promise the data does not hold. '
+            // The financial bot (Shoval, 2026-11-20): money per market from QuickBooks.
+            .'Expenses per market (branch), weekly expenses by category, average closing rate and cost per '
+            .'closed job come from financials/markets with from and to dates (last week = the previous Monday '
+            .'to Sunday); amounts there are in cents. '
+            .'Whatever the data does not hold, say so instead of making it up. ';
 
         // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).
         $ask = function (string $prompt, array $schema, int $timeout) use ($left) {
@@ -188,7 +196,8 @@ final class AppAsk
             })->take(60)->implode("\n");
 
         return $lines === '' ? '' : 'Their companies and the branches (franchises) of each - a question naming a '
-            ."company means all of its branches together:\n{$lines}\n\n";
+            ."company means all of its branches together - lead with the total, then each branch "
+            ."(a board's counts.by_branch has them):\n{$lines}\n\n";
     }
 
     /** Every tenant GET endpoint, one per line. */
@@ -254,7 +263,8 @@ final class AppAsk
      */
     public static function fetch(User $viewer, array $calls): array
     {
-        $token = $viewer->createToken('WhatsApp AI (read only)', ['*'], now()->addMinutes(2));
+        // Marked as the AI's: a sensitive task is never shown to it (SensitiveTasks).
+        $token = $viewer->createToken('WhatsApp AI (read only)', ['*', \App\Support\Tasks\SensitiveTasks::AI_READER], now()->addMinutes(2));
         $as = Request::create('/');
         $as->headers->set('Authorization', 'Bearer '.$token->plainTextToken);
         $as->setUserResolver(fn () => $viewer);
@@ -274,7 +284,8 @@ final class AppAsk
                     continue;
                 }
                 parse_str(ltrim((string) ($call['query'] ?? ''), '?'), $query);
-                $response = InternalRequest::send($as, 'GET', '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''));
+                $response = InternalRequest::send($as, 'GET', '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''),
+                    attributes: [\App\Support\Tasks\SensitiveTasks::AI_READER => true]);
                 $raw = (string) $response->getContent();
                 // Only JSON reaches Grok: audio, files and pages (an LSA recording) never do.
                 $json = str_contains((string) $response->headers->get('Content-Type'), 'json');

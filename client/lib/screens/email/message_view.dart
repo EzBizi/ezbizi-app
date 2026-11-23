@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -250,7 +251,15 @@ class MailMessageView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(child: _conversation(mailbox, message)),
-                  if (_files.isNotEmpty) _attachments(context),
+                  if (_files.isNotEmpty)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: constraints.maxHeight * 0.3,
+                      ),
+                      child: SingleChildScrollView(
+                        child: _attachments(context),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -349,29 +358,58 @@ class MailMessageView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            SizedBox(height: 420, child: _body(mailbox, part)),
+            // A web page or desktop WebView needs a height. On phones the
+            // blocks lay out at full length so the thread scrolls as one page;
+            // a box of its own trapped the scroll on Eve's iPhone (11-11).
+            if (_htmlInThread && (part.html ?? '').isNotEmpty)
+              SizedBox(height: 420, child: _body(mailbox, part))
+            else
+              _blocks(mailbox, part, EdgeInsets.zero),
           ],
         );
       },
     );
   }
 
+  /// HTML mail is drawn by a real engine wherever there is one (Jose 11-12:
+  /// the block body drops table layouts, so Google's call notices showed only
+  /// their logos on Windows). A sandboxed iframe on the web, WebView2 on
+  /// Windows, the system WebView elsewhere; Linux keeps the blocks.
+  static bool get _htmlEngine =>
+      kIsWeb || defaultTargetPlatform != TargetPlatform.linux;
+
+  /// In a thread each part is a fixed-height box, which on a phone traps the
+  /// scroll -- so phones keep blocks there.
+  static bool get _htmlInThread =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
   Widget _body(Mailbox mailbox, MessageDetail message) {
     final html = message.html;
-    if (kIsWeb && html != null && html.isNotEmpty) {
+    if (_htmlEngine && html != null && html.isNotEmpty) {
       return MessageHtmlView(html: html);
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-      child: MessageBody(
-        blocks: message.blocks,
-        api: api,
-        picturePath:
-            '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+      child: _blocks(
+        mailbox,
+        message,
+        const EdgeInsets.fromLTRB(20, 4, 20, 28),
       ),
     );
   }
+
+  Widget _blocks(Mailbox mailbox, MessageDetail message, EdgeInsets padding) =>
+      Padding(
+        padding: padding,
+        child: MessageBody(
+          blocks: message.blocks,
+          api: api,
+          picturePath:
+              '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+        ),
+      );
 
   /// Files on this message, or on every part of the conversation. Nothing is
   /// stored: a tap streams the bytes through EzBizi as a download.
@@ -381,66 +419,25 @@ class MailMessageView extends StatelessWidget {
     return [for (final part in message.thread) ...part.attachments];
   }
 
-  Widget _attachments(BuildContext context) {
-    final theme = Theme.of(context);
-    final files = _files;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(height: 1),
-          const SizedBox(height: 14),
-          Text('ATTACHMENTS', style: theme.textTheme.labelSmall),
-          const SizedBox(height: 8),
-          for (final file in files)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: InkWell(
-                onTap: file.token == null
-                    ? null
-                    : () => _downloadAttachment(context, file),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.attach_file,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          file.size == null
-                              ? file.name
-                              : '${file.name} · ${_size(file.size!)}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: file.token == null
-                                ? null
-                                : theme.colorScheme.primary,
-                            decoration: file.token == null
-                                ? null
-                                : TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                      if (file.token != null)
-                        Icon(
-                          Icons.download_outlined,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  /// Gmail's chips: a wrapping row, the first four and "+N more" (Eve 11-11:
+  /// a list of ten signature logos took her whole screen).
+  Widget _attachments(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        const SizedBox(height: 10),
+        _AttachmentChips(
+          files: _files,
+          label: (file) => file.size == null
+              ? file.name
+              : '${file.name} · ${_size(file.size!)}',
+          onOpen: (file) => _downloadAttachment(context, file),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _downloadAttachment(
     BuildContext context,
@@ -473,5 +470,56 @@ class MailMessageView extends StatelessWidget {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
 
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+class _AttachmentChips extends StatefulWidget {
+  const _AttachmentChips({
+    required this.files,
+    required this.label,
+    required this.onOpen,
+  });
+
+  final List<MailAttachment> files;
+  final String Function(MailAttachment) label;
+  final void Function(MailAttachment) onOpen;
+
+  @override
+  State<_AttachmentChips> createState() => _AttachmentChipsState();
+}
+
+class _AttachmentChipsState extends State<_AttachmentChips> {
+  static const _shown = 4;
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final files = widget.files;
+    final more = files.length - _shown;
+    final visible = _all || more <= 0 ? files : files.take(_shown);
+
+    return Wrap(
+      key: const ValueKey('email-attachments'),
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final file in visible)
+          ActionChip(
+            avatar: const Icon(Icons.attach_file, size: 16),
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(widget.label(file), overflow: TextOverflow.ellipsis),
+            ),
+            tooltip: file.token == null ? null : 'Download ${file.name}',
+            onPressed: file.token == null ? null : () => widget.onOpen(file),
+          ),
+        if (more > 0 && !_all)
+          ActionChip(
+            key: const ValueKey('email-attachments-more'),
+            label: Text('+$more more'),
+            onPressed: () => setState(() => _all = true),
+          ),
+      ],
+    );
   }
 }

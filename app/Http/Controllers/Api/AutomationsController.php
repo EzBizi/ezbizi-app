@@ -123,8 +123,11 @@ class AutomationsController extends Controller
         // model's own canActOnFranchise.
         'assign_to_user',
         'task.create',
+        'task.complete_matching',
         'task.assign',
         'task.move_group',
+        'task.shift_date',
+        'task.set_value',
         'report.text',
         'alert.send',
         'lead.text',
@@ -169,6 +172,8 @@ class AutomationsController extends Controller
         // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
         'inspection_report.workiz',
         'workiz.job_update',
+        // Jose, 2026-11-16: a job's source from the line its client dialed.
+        'job.source_from_dialed',
         'job.set',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
@@ -559,6 +564,11 @@ class AutomationsController extends Controller
                         ->map(fn (TrainingTest $t) => ['id' => 'test:'.$t->id, 'label' => $t->title.' (test)'])
                         ->all(),
                 ),
+
+                // Boards the author may write, for "Add a task" on a named board (desk 11-16).
+                'task_boards' => TaskBoard::query()->whereNull('archived_at')->orderBy('name')->get()
+                    ->filter(fn (TaskBoard $b) => app(TaskBoards::class)->canEdit($request->user(), $b))
+                    ->map(fn (TaskBoard $b) => ['id' => $b->id, 'label' => $b->name])->values()->all(),
 
                 // From Human Resources, not from a query here: it offers exactly
                 // what startOnboarding accepts, because both ask the same
@@ -1375,7 +1385,9 @@ class AutomationsController extends Controller
             $this->authorize('update', $automation);
         }
 
-        DB::transaction(function () use ($automation, $input, $request) {
+        $rearmed = false;
+        $wasDisabled = $automation->disabled_at !== null;
+        DB::transaction(function () use ($automation, $input, $request, &$rearmed) {
             $automation->fill(array_intersect_key($input, array_flip([
                 'name', 'description', 'scope_type', 'scope_id', 'delay_minutes',
             ])));
@@ -1414,10 +1426,23 @@ class AutomationsController extends Controller
             $this->audit->logChange('automation.updated', $automation);
             $automation->save();
 
-            if (isset($input['actions'])) {
+            if (array_key_exists('actions', $input)) {
                 $this->addVersion($automation, $input, $request);
+                // A saved fix to a rule that is ON re-arms it (Jose, 2026-11-17:
+                // a fixed rule stayed silently off for twelve hours).
+                if ($automation->is_active && $automation->disabled_at !== null) {
+                    $automation->forceFill(['disabled_at' => null, 'disabled_reason' => null, 'consecutive_failures' => 0])->save();
+                    $rearmed = true;
+                }
+            }
+            if (($input['is_active'] ?? false) === true) {
+                $rearmed = true;
             }
         });
+        // After the commit: the failed events of the last day run on the fixed version.
+        if ($rearmed && $wasDisabled) {
+            app(\App\Support\Automations\AutomationEngine::class)->replayFailed($automation->fresh());
+        }
 
         return response()->json(['data' => $this->present($automation->fresh(), detailed: true)]);
     }
@@ -1737,7 +1762,7 @@ class AutomationsController extends Controller
     // ── shared ───────────────────────────────────────────────────
 
     /** Task Board recipes may only use these (inbox 0120). */
-    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group'];
+    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group', 'task.shift_date', 'task.set_value'];
 
     /**
      * BOARD OWNERS AUTOMATE THEIR OWN BOARD (Jose, 2026-10-13, asked whether an
@@ -1751,7 +1776,7 @@ class AutomationsController extends Controller
      */
     private function managedBoardOf(User $user, string $trigger, ?array $conditions, array $actions, ?string $scopeType, ?string $scopeId): ?TaskBoard
     {
-        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue'], true) || $actions === []) {
+        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue', 'task.column_changed', 'task.date_arrived'], true) || $actions === []) {
             return null;
         }
         foreach ($actions as $action) {
@@ -1925,8 +1950,31 @@ class AutomationsController extends Controller
             $this->assertConditionsUsable($input['conditions']);
         }
 
+        // A PATCH carrying only one half of a version keeps the other half from
+        // the active one; a missing key is "unchanged", never "empty" (desk 11-12:
+        // an actions-only edit dropped four rules' conditions for 18 hours).
+        $active = $existing?->activeVersion;
+        if ($active !== null && (array_key_exists('actions', $input) || array_key_exists('conditions', $input))) {
+            $input += ['actions' => $active->actions, 'conditions' => $active->conditions];
+        }
+
+        // A customer-messaging rule with no conditions on a busy trigger texts
+        // everyone; saving one has to be said out loud.
+        if (array_key_exists('actions', $input) && empty($input['conditions'])
+            && in_array($trigger, self::HIGH_VOLUME_TRIGGERS, true)
+            && collect($input['actions'])->contains(fn ($a) => in_array($a['type'] ?? null, self::CUSTOMER_MESSAGES, true))
+            && ! $request->boolean('confirm_no_conditions')) {
+            throw ValidationException::withMessages([
+                'conditions' => 'This rule would message every customer on this trigger. Add a condition, or send confirm_no_conditions=true.',
+            ]);
+        }
+
         return $input;
     }
+
+    private const HIGH_VOLUME_TRIGGERS = ['lead.received', 'lead.customer_replied', 'lead.call_not_booked', 'lead.follow_up_due'];
+
+    private const CUSTOMER_MESSAGES = ['sms.send', 'whatsapp.send', 'email.send', 'message.reply'];
 
     /**
      * An empty condition row would save and then throw on every run.
@@ -2155,6 +2203,8 @@ class AutomationsController extends Controller
         'job.set' => [\App\Models\Job::class],
         'task.assign' => [\App\Models\Task::class],
         'task.move_group' => [\App\Models\Task::class],
+        'task.shift_date' => [\App\Models\Task::class],
+        'task.set_value' => [\App\Models\Task::class],
         'resend' => [\App\Models\Invitation::class],
         'revoke' => [\App\Models\Invitation::class],
         'onboarding.start' => [\App\Models\Invitation::class],
@@ -2424,6 +2474,8 @@ class AutomationsController extends Controller
             $type('inspection_report.email', 'Email the report to the customer', true, []),
             $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
             // EzBizi first, Workiz mirrored (Jose, 2026-10-27). The Workiz-only step below stays for rules built on it.
+            // Every job booked since the rule was made, last 48 hours; the pairs are Settings › Lists.
+            $type('job.source_from_dialed', 'Set job sources from the line dialed', false, []),
             $type('job.set', 'Set the job status and tags', true, [
                 $parameter('status', 'Status', 'status', required: false),
                 $parameter('sub_status', 'Sub-status', 'text', required: false),
@@ -2469,6 +2521,18 @@ class AutomationsController extends Controller
             $type('task.create', 'Add a task', true, [
                 $parameter('title', 'Task', 'text', variables: true),
                 $parameter('assignee', 'Give it to', 'person', false, true),
+                // Empty = the place's board, as before.
+                $parameter('board', 'On the board (empty: the place board)', 'task_board', false),
+                // e.g. {{phone}}: skip while an open task in the group has it in its title.
+                $parameter('dedupe', 'Skip if an open task already has (title or e.g. {{phone}})', 'text', false, true),
+                $parameter('dedupe_days', 'Only tasks from the last N days (empty: any)', 'text', false),
+                $parameter('on_duplicate', 'When one exists (empty: skip; comment: add an update)', 'text', false),
+                $parameter('duplicate_note', 'The update', 'text', false, true),
+            ]),
+            $type('task.complete_matching', 'Close the call-back task for this number', false, [
+                $parameter('board', 'On the board', 'task_board'),
+                $parameter('phone', 'Phone number', 'text', variables: true),
+                $parameter('note', 'Note on the task', 'text', false, true),
             ]),
             // Communication › Alerts, from a rule (Jose, 2026-10-13).
             // From the branch's texting line, onto the enquiry's thread (Leads' LeadTexts).
@@ -2485,6 +2549,18 @@ class AutomationsController extends Controller
             $type('task.move_group', 'Move the task to a group', true, [
                 // A group id on the task's own board; Task Board's recipes fill it.
                 $parameter('group_id', 'Group', 'text'),
+            ]),
+            // Monday parity (2026-11-13): Recurring Tasks push their date on.
+            $type('task.shift_date', 'Push a date', true, [
+                // "due", or a date column's id on the task's own board.
+                $parameter('column_id', 'Date', 'text'),
+                $parameter('amount', 'By', 'text'),
+                $parameter('unit', 'Days, weeks or months', 'text'),
+            ]),
+            $type('task.set_value', 'Set a column', true, [
+                // "due", or a column's id on the task's own board; a label by name, or "today".
+                $parameter('column_id', 'Column', 'text'),
+                $parameter('value', 'To', 'text'),
             ]),
             $type('assign_to_user', 'Assign to a person', true, [
                 // A PERSON OR A FIELD. It was field-only, which meant a rule

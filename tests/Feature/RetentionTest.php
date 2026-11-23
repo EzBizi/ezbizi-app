@@ -577,11 +577,14 @@ class RetentionTest extends TestCase
             'migrations' => 'the ledger of which migrations have run',
             'cache' => 'framework cache, evicted by its own TTL',
             'cache_locks' => 'framework cache locks, released on use',
+            'change_events' => 'live-update feed of record ids (no personal data), pruned after one day by ezbizi:prune-change-events',
             'queue_jobs' => 'pending queue payloads, deleted as they are processed. Named '
                 .'`queue_jobs` rather than `jobs` because `jobs` is the business table — see '
                 .'the rename migration, which exists so the two can never be confused.',
             'job_batches' => 'queue batch bookkeeping, pruned by queue:prune-batches',
             'failed_jobs' => 'failed queue payloads, pruned by queue:prune-failed',
+            'workiz_job_flags' => 'which Workiz jobs were already flagged, keyed to the mirror row and '
+                .'deleted with it (cascade); no person in it',
 
             'password_reset_tokens' => 'Laravel\'s email-keyed reset table, which this '
                 .'application does not use: an address is not an account here (§4.3), so '

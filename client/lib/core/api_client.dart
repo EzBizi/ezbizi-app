@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import 'issue_reporter.dart';
@@ -252,7 +253,52 @@ class ApiClient {
     String filename,
     List<int> bytes, {
     Map<String, String>? fields,
-  }) async {
+  }) => _postMultipart(
+    path,
+    [http.MultipartFile.fromBytes(field, bytes, filename: filename)],
+    fields,
+    'Could not upload that. Check your connection.',
+  );
+
+  /// SEVERAL files under one field name, plus ordinary fields.
+  ///
+  /// [postFile] sends exactly one, which is right for the upload endpoints that
+  /// take one. Composing an email takes up to five and they have to arrive in
+  /// the SAME request as the message — sending them one at a time would mean
+  /// deciding what to do when the third upload fails after two have already
+  /// gone, and there is no good answer to that for a message that has not been
+  /// sent yet.
+  ///
+  /// [field] is repeated per file (`attachments[]`), which is what a PHP
+  /// backend reads as an array. Everything else — the identity headers, `_http`
+  /// rather than `request.send()`, the 426 notice — is the same request as
+  /// [postFile]'s, sent by [_postMultipart]; see the comments there.
+  ///
+  /// Additive: no existing caller changes. This lives in core rather than in
+  /// the Email module because nothing about it is email-specific.
+  Future<ApiResponse> postFiles(
+    String path,
+    String field,
+    List<({String name, List<int> bytes})> files, {
+    Map<String, String>? fields,
+  }) => _postMultipart(
+    path,
+    [
+      for (final file in files)
+        http.MultipartFile.fromBytes('$field[]', file.bytes, filename: file.name),
+    ],
+    fields,
+    'Could not send that. Check your connection.',
+  );
+
+  /// The multipart POST behind [postFile] and [postFiles]; [failure] is the
+  /// sentence when it cannot be sent at all.
+  Future<ApiResponse> _postMultipart(
+    String path,
+    List<http.MultipartFile> files,
+    Map<String, String>? fields,
+    String failure,
+  ) async {
     final tokenGeneration = _tokenGeneration;
     final authenticated = _token != null;
     try {
@@ -265,7 +311,7 @@ class ApiClient {
         // not belong to this request — a multipart body carries a generated
         // boundary and `MultipartRequest.finalize` writes that header itself.
         ..headers.addAll(_identity)
-        ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename));
+        ..files.addAll(files);
 
       if (fields != null) request.fields.addAll(fields);
 
@@ -295,75 +341,7 @@ class ApiClient {
         headers: Map<String, String>.unmodifiable(response.headers),
       );
     } catch (_) {
-      return const ApiResponse(
-        statusCode: 0,
-        body: {'message': 'Could not upload that. Check your connection.'},
-      );
-    }
-  }
-
-  /// SEVERAL files under one field name, plus ordinary fields.
-  ///
-  /// [postFile] sends exactly one, which is right for the upload endpoints that
-  /// take one. Composing an email takes up to five and they have to arrive in
-  /// the SAME request as the message — sending them one at a time would mean
-  /// deciding what to do when the third upload fails after two have already
-  /// gone, and there is no good answer to that for a message that has not been
-  /// sent yet.
-  ///
-  /// [field] is repeated per file (`attachments[]`), which is what a PHP
-  /// backend reads as an array. Everything else — the identity headers, `_http`
-  /// rather than `request.send()`, the 426 notice — is [postFile]'s reasoning
-  /// unchanged; see the comments there, which apply here word for word.
-  ///
-  /// Additive: no existing caller changes. This lives in core rather than in
-  /// the Email module because nothing about it is email-specific.
-  Future<ApiResponse> postFiles(
-    String path,
-    String field,
-    List<({String name, List<int> bytes})> files, {
-    Map<String, String>? fields,
-  }) async {
-    final tokenGeneration = _tokenGeneration;
-    final authenticated = _token != null;
-    try {
-      final request =
-          http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
-            ..headers['Accept'] = 'application/json'
-            ..headers.addAll(_identity);
-
-      for (final file in files) {
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            '$field[]',
-            file.bytes,
-            filename: file.name,
-          ),
-        );
-      }
-
-      if (fields != null) request.fields.addAll(fields);
-
-      if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
-
-      final streamed = await _http.send(request);
-      final response = await http.Response.fromStream(streamed);
-
-      _noticeResponse(response, tokenGeneration, authenticated);
-
-      return ApiResponse(
-        statusCode: response.statusCode,
-        body: response.body.isEmpty
-            ? <String, dynamic>{}
-            : jsonDecode(response.body) as Map<String, dynamic>,
-        correlationId: response.headers['x-correlation-id'],
-        headers: Map<String, String>.unmodifiable(response.headers),
-      );
-    } catch (_) {
-      return const ApiResponse(
-        statusCode: 0,
-        body: {'message': 'Could not send that. Check your connection.'},
-      );
+      return ApiResponse(statusCode: 0, body: {'message': failure});
     }
   }
 
@@ -495,7 +473,7 @@ class ApiClient {
 
       final body = response.body.isEmpty
           ? <String, dynamic>{}
-          : jsonDecode(response.body) as Map<String, dynamic>;
+          : await decodeJsonBody(response.body);
 
       /*
        * ONLY WHEN WE WERE HOLDING A TOKEN, and that is the whole condition.
@@ -763,3 +741,13 @@ class ApiBytesResponse {
 
   bool get ok => statusCode >= 200 && statusCode < 300;
 }
+
+/// Decodes a reply; a large one (a 20 MB task board) on another isolate, so
+/// the window keeps painting its spinner (freeze, Jose 2026-11-16).
+Future<Map<String, dynamic>> decodeJsonBody(String text) async =>
+    text.length < 256 * 1024
+    ? jsonDecode(text) as Map<String, dynamic>
+    : await compute(_decodeMap, text);
+
+Map<String, dynamic> _decodeMap(String text) =>
+    jsonDecode(text) as Map<String, dynamic>;

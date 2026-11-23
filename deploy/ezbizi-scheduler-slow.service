@@ -1,0 +1,32 @@
+# The slow lane of Laravel's scheduler (see the TWO LANES note at the end of
+# routes/console.php): only sync-leads, sync-workiz, workiz-web-sales,
+# workiz-web-estimate-links and project-workiz run here, in sequence, so the
+# three fast slots (ezbizi-scheduler@.service) are never held behind them.
+#
+# A 30-minute ceiling instead of 5: these are long by nature, and a kill
+# mid-run strands their locks. systemd does not start a oneshot that is still
+# running, so a long pass simply delays the next one.
+#
+# Install:
+#   sudo cp deploy/ezbizi-scheduler-slow.service deploy/ezbizi-scheduler-slow.timer \
+#           deploy/ezbizi-scheduler-failed@.service deploy/ezbizi-scheduler@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ezbizi-scheduler-slow.timer
+
+[Unit]
+Description=EzBizi scheduled tasks (slow lane)
+After=network.target mysql.service
+OnFailure=ezbizi-scheduler-failed@%N.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+Environment=EZBIZI_SCHEDULE_LANE=slow
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan schedule:run
+TimeoutStartSec=1800
+
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true

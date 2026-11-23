@@ -3,8 +3,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_table.dart';
+
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
+import '../../core/phone_numbers.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 
@@ -1367,56 +1370,32 @@ class _ReportBuilderState extends State<ReportBuilder> {
         child: Center(child: CircularProgressIndicator()),
       );
     } else {
-      body = LayoutBuilder(
-        // At least as wide as the card, so a few columns do not huddle left.
-        builder: (context, box) => SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: box.maxWidth),
-            child: DataTable(
-              key: const Key('builder-preview'),
-              headingRowHeight: 36,
-              dataRowMinHeight: 34,
-              dataRowMaxHeight: 40,
-              columnSpacing: 24,
-              columns: [
-                for (final column in columns)
-                  DataColumn(
-                    numeric: _isNumber(column['type']),
-                    label: Text('${column['label'] ?? column['key']}'),
-                  ),
-              ],
-              rows: [
-                for (final row in rows)
-                  DataRow(
-                    cells: [
-                      for (final column in columns)
-                        DataCell(
-                          Text(_cell(row[column['key']], column['type'])),
-                        ),
-                    ],
-                  ),
-                if (total != null && columns.isNotEmpty)
-                  DataRow(
-                    cells: [
-                      for (var i = 0; i < columns.length; i++)
-                        DataCell(
-                          Text(
-                            total.containsKey(columns[i]['key'])
-                                ? _cell(
-                                    total[columns[i]['key']],
-                                    columns[i]['type'],
-                                  )
-                                : (i == 0 ? 'Total' : ''),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                    ],
-                  ),
-              ],
+      body = ListTable(
+        key: const Key('builder-preview'),
+        columns: [
+          for (final column in columns)
+            ListColumn(
+              '${column['label'] ?? column['key']}',
+              end: _isNumber(column['type']),
             ),
-          ),
-        ),
+        ],
+        rows: [
+          for (final row in rows)
+            [
+              for (final column in columns)
+                Text(_cell(row[column['key']], column['type'], column['key'])),
+            ],
+          if (total != null && columns.isNotEmpty)
+            [
+              for (var i = 0; i < columns.length; i++)
+                Text(
+                  total.containsKey(columns[i]['key'])
+                      ? _cell(total[columns[i]['key']], columns[i]['type'])
+                      : (i == 0 ? 'Total' : ''),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+            ],
+        ],
       );
     }
 
@@ -1460,8 +1439,12 @@ class _ReportBuilderState extends State<ReportBuilder> {
 
   static bool _isNumber(Object? type) => type == 'integer' || type == 'money';
 
-  String _cell(Object? value, Object? type) {
+  String _cell(Object? value, Object? type, [Object? key]) {
     if (value == null) return '—';
+    // A phone written as a number (Jose, 2026-11-16); export keeps the digits.
+    if ('${key ?? ''}'.endsWith('phone')) {
+      return formatPhoneNumber(toE164('$value') ?? '$value');
+    }
     return switch (type) {
       'money' when value is num => formatMoney(value.round()),
       'boolean' => value == true ? 'Yes' : 'No',

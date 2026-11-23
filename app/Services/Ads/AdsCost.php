@@ -38,7 +38,7 @@ final class AdsCost
      */
     public function forBranch(Franchise $branch, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
-        return $this->sum($this->accounts((string) $branch->organization_id)->where('leads_franchise_id', $branch->getKey())->get(), $from, $to, $activeOnly);
+        return $this->sum($this->accounts((string) $branch->organization_id)->whereRaw(SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])->get(), $from, $to, $activeOnly);
     }
 
     /**
@@ -50,9 +50,20 @@ final class AdsCost
      */
     public function unmapped(string $organizationId, ?array $companies, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
-        return $this->sum($this->accounts($organizationId)->whereNull('leads_franchise_id')
+        return $this->sum($this->accounts($organizationId)->whereRaw(SocialConnection::BRANCH_SQL.' IS NULL')
             ->when($companies !== null, fn ($q) => $q->where('scope_type', SocialConnection::SCOPE_COMPANY)->whereIn('scope_id', $companies))
             ->get(), $from, $to, $activeOnly);
+    }
+
+    /**
+     * The spend of the accounts given, in forBranch()'s shape. The caller picks them from the
+     * business's own lists (Reports' sub company sources), never from a request.
+     *
+     * @param  Collection<int, SocialConnection>  $accounts
+     */
+    public function forAccounts(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
+    {
+        return $this->sum($accounts, $from, $to, $activeOnly);
     }
 
     private function accounts(string $organizationId): Builder
@@ -77,7 +88,8 @@ final class AdsCost
             try {
                 $cost = Cache::remember(
                     "ads-cost:{$account->getKey()}:{$from->toDateString()}:{$to->toDateString()}".($activeOnly ? ':active' : ''),
-                    $today ? now()->addMinutes(15) : now()->endOfDay(),
+                    // A past day still settles for hours after its midnight: an hour, not until 23:59 UTC (audit #14, 2026-11-11).
+                    $today ? now()->addMinutes(15) : now()->addHour(),
                     fn () => $this->performance->channelCost($account, Carbon::parse($from), Carbon::parse($to), $activeOnly),
                 );
             } catch (RuntimeException $e) {

@@ -49,7 +49,24 @@ class RolePolicy
 
     public function create(User $user): bool
     {
-        return $user->hasPermission('roles.create');
+        return $user->hasPermission('roles.create') && $this->atOrganization($user);
+    }
+
+    /**
+     * Roles belong to the organization, so writing one needs authority there
+     * (authz sweep, 2026-11-17: a franchise-scoped user edited and deleted
+     * roles). Authority, not the view the switcher stands in: a role is the same
+     * record from every view, so an Administrator standing in A-1 Chimney edits
+     * it as well (Jose 2026-11-20: refusing that "is a bug").
+     */
+    private function atOrganization(User $user): bool
+    {
+        return $user->canActOnOrganization($user->organization);
+    }
+
+    private function notAtOrganization(): Response
+    {
+        return Response::deny('Roles belong to the whole organization, and only somebody who works at the organization level can change them.');
     }
 
     public function update(User $user, Role $role): Response
@@ -69,6 +86,10 @@ class RolePolicy
         // the special one.
         if (! $user->hasPermission('roles.edit')) {
             return Refusal::permission('change roles');
+        }
+
+        if (! $this->atOrganization($user)) {
+            return $this->notAtOrganization();
         }
 
         if ($role->isAdministrator()) {
@@ -91,6 +112,10 @@ class RolePolicy
 
         if (! $user->hasPermission('roles.delete')) {
             return Refusal::permission('delete roles');
+        }
+
+        if (! $this->atOrganization($user)) {
+            return $this->notAtOrganization();
         }
 
         if ($role->isAdministrator()) {

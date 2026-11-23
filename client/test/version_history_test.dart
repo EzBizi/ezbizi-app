@@ -1,11 +1,15 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/version_history.dart';
 import 'package:ezbizi_client/widgets/build_stamp.dart';
 import 'package:ezbizi_client/widgets/version_history_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// The version stamp is how you remember what shipped, and when.
 ///
@@ -35,12 +39,15 @@ void main() {
     // assertion below checks, where nothing races.
     final versionFile = File('VERSION').readAsStringSync().trim();
     final source = File('lib/core/version_history.dart').readAsStringSync();
-    final topOfSource = RegExp(r"version: '([^']+)'").firstMatch(source)?.group(1);
+    final topOfSource = RegExp(
+      r"version: '([^']+)'",
+    ).firstMatch(source)?.group(1);
 
     expect(
       topOfSource,
       isNotNull,
-      reason: 'version_history.dart names no version at all. If its shape has '
+      reason:
+          'version_history.dart names no version at all. If its shape has '
           'changed, this check needs changing with it rather than deleting.',
     );
     expect(
@@ -64,10 +71,11 @@ void main() {
     // went red on main for a day, and bumping to 0.0.0241 made it GREEN again
     // while the hole stayed. Jose found it by opening the sidebar and reading
     // 0.0.0239 under a heading that said v0.0.0240.
-    final numbers = [
-      for (final v in versions) int.parse(v.split('.').last),
-    ]..sort();
+    final numbers = [for (final v in versions) int.parse(v.split('.').last)]
+      ..sort();
     const neverBuilt = <int>{
+      609, // stopped before its precheck finished and folded into 0.0.0610
+      // (one release running, one waiting). Its note shipped in 0.0.0610.
       492, // pinned at 44a9eada and stopped in its backend gate: pto.allow_negative
       // had no Work Hours section. Its notes shipped in 0.0.0493.
       473, // pinned at ebd660b8 and stopped in its backend gate: InvoicesTest ordered
@@ -92,6 +100,11 @@ void main() {
       445, // pinned three times (a4a51667, 05a42380) and stopped in its
       // backend gate each time: the downwards-only view fix turned 14, then 20,
       // reach tests red. No artefact exists; its notes shipped in 0.0.0446.
+      604, // stopped in its box gate and folded into 0605 so it all ships in one go (Jose 11-19)
+      603, // queued behind 0602's web deploy and folded into 0604 before it built
+      595, // pinned at 94267603 and stopped in its client gate: the freeze
+      // watchdog test's 0.3 s real-time margin failed on a loaded machine. No
+      // artefact exists; its notes shipped in 0.0.0596.
     };
     final holes = [
       for (var n = numbers.first; n <= numbers.last; n++)
@@ -100,7 +113,8 @@ void main() {
     expect(
       holes,
       isEmpty,
-      reason: 'These versions have no note and were not recorded as unbuilt. A release nobody wrote a line for is invisible the moment the next one ships.',
+      reason:
+          'These versions have no note and were not recorded as unbuilt. A release nobody wrote a line for is invisible the moment the next one ships.',
     );
 
     for (final release in releases) {
@@ -129,9 +143,7 @@ void main() {
     expect(find.text('What\'s been built'), findsOneWidget);
     expect(find.text('v0.0.0097'), findsOneWidget);
     expect(
-      find.textContaining(
-        'Date fields are month, day and year',
-      ),
+      find.textContaining('Date fields are month, day and year'),
       findsOneWidget,
     );
 
@@ -155,5 +167,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Close What\'s been built'), findsOneWidget);
+  });
+
+  /// Jose 11-12: the Releases bar in What's been built, so people know an
+  /// update is coming. Nothing is drawn when no release is running.
+  testWidgets('a release on its way shows as a bar above the list', (
+    tester,
+  ) async {
+    Object? upcoming = {'version': '0.0.0564', 'percent': 88};
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'data': request.url.path.endsWith('/release/upcoming')
+                ? upcoming
+                : null,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: BuildStamp(api: api)),
+      ),
+    );
+    await tester.tap(find.byType(BuildStamp));
+    await tester.pumpAndSettle();
+
+    expect(find.text('v0.0.0564 is on its way · 88%'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    final bar = tester.getTopLeft(
+      find.byKey(const ValueKey('version-upcoming')),
+    );
+    expect(bar.dy, lessThan(tester.getTopLeft(find.text('v0.0.0001')).dy));
+
+    // Released: the next ask finds nothing running and the bar goes.
+    upcoming = null;
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('version-upcoming')), findsNothing);
   });
 }

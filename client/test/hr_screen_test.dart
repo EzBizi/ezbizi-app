@@ -90,7 +90,7 @@ void main() {
     // Jose is named on Invitations too now, as who sent them (the Invited by
     // column), so the Records list is what must have gone.
     expect(find.byType(RecordsTab), findsNothing);
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
 
     await _tap(tester, _tab('Records'));
 
@@ -394,7 +394,7 @@ void main() {
     await _tap(tester, _tab('Records'));
     expect(queries.last.containsKey('company_id'), isFalse);
 
-    await _choose(tester, 'Filter by company', 'Serenisima › Texas');
+    await _choose(tester, 'Filter by company', 'Serenisima · Texas');
     expect(queries.last['franchise_id'], 'fr-3');
     expect(queries.last.containsKey('company_id'), isFalse);
 
@@ -665,7 +665,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('bea@example.com'),
+      find.text('b•••@example.com'),
       findsOneWidget,
       reason: 'The row vanished as though the revoke had worked.',
     );
@@ -1123,7 +1123,7 @@ void main() {
 
     // And the list is still there. Not being allowed to add to it does not make
     // it unreadable.
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
   });
 
   /// The endpoint that says which roles are this person's to hand out is the
@@ -1458,7 +1458,19 @@ void main() {
     await _tap(tester, _tab('Records'));
     await _openPerson(tester, 'Bea Okafor');
     await _tap(tester, _section('Onboarding'));
-    await _tap(tester, find.byIcon(Icons.chevron_right).first);
+    await _tap(
+      tester,
+      // Not the tab strip's "More tabs" chevron.
+      find
+          .byElementPredicate(
+            (e) =>
+                e.widget is Icon &&
+                (e.widget as Icon).icon == Icons.chevron_right &&
+                e.findAncestorWidgetOfExactType<IconButton>()?.key !=
+                    const Key('tab-bar-chevron'),
+          )
+          .first,
+    );
 
     expect(find.text('Back to Bea Okafor'), findsOneWidget);
 
@@ -1721,6 +1733,69 @@ void main() {
     expect(find.text('Abandoned'), findsOneWidget);
     expect(find.text('Resend'), findsOneWidget);
   });
+
+  testWidgets('Certifications: expired is red, expiring soon is amber, '
+      'and a far one has no tag (Jose 11-20)', (tester) async {
+    String day(int fromToday) {
+      final d = DateTime.now().add(Duration(days: fromToday));
+      return '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
+    await _pump(
+      tester,
+      _handler(
+        certifications: [
+          {
+            'id': 'c-1',
+            'name': 'CSIA Chimney Sweep',
+            'issuer': 'CSIA',
+            'number': '9981',
+            'issued_on': '2024-01-10',
+            'expires_on': day(-3),
+            'note': null,
+          },
+          {
+            'id': 'c-2',
+            'name': 'EPA 608',
+            'issuer': 'EPA',
+            'number': null,
+            'issued_on': null,
+            'expires_on': day(20),
+            'note': null,
+          },
+          {
+            'id': 'c-3',
+            'name': 'OSHA 10',
+            'issuer': null,
+            'number': null,
+            'issued_on': null,
+            'expires_on': day(400),
+            'note': null,
+          },
+        ],
+      ),
+    );
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Certifications'));
+
+    expect(find.text('CSIA Chimney Sweep'), findsOneWidget);
+    expect(find.textContaining('CSIA · #9981 · expires'), findsOneWidget);
+    expect(find.byKey(const ValueKey('cert-expired-c-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('cert-expiring-c-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('cert-expiring-c-3')), findsNothing);
+    expect(find.byKey(const ValueKey('cert-expired-c-3')), findsNothing);
+  });
+
+  testWidgets('Certifications: none says so', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Certifications'));
+    expect(find.text('No certifications recorded.'), findsOneWidget);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -1842,6 +1917,7 @@ MockClientHandler _handler({
   // sends a reader without `hr.pay.view`.
   List<Map<String, Object?>>? payRates,
   List<Map<String, Object?>> equipment = const [],
+  List<Map<String, Object?>> certifications = const [],
   List<Map<String, Object?>> notes = const [],
   void Function(String method, String path, Map<String, dynamic>? body)?
   onDetail,
@@ -2009,6 +2085,8 @@ MockClientHandler _handler({
           'emergency_contacts': <Map<String, Object?>>[],
           'notes': notes,
           'equipment': equipment,
+          'certifications': certifications,
+          'certification_warn_days': 60,
           'pay_rates': payRates,
         },
       });

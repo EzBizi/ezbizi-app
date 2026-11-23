@@ -397,6 +397,7 @@ class GoogleWorkspaceManagementController extends Controller
             $person,
             $this->signatures->userFor($connection, $address),
             $this->workspace->scopeLabel($connection),
+            $this->signatures->companyLogoUrl($connection),
         );
     }
 

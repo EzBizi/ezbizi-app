@@ -81,18 +81,11 @@ String fieldInitials(String name) {
 }
 
 /// A round person marker: the state colour as a ring (dashed for lost
-/// signal) around the initials. Never a filled square, so it cannot be
-/// mistaken for a job.
+/// signal). Never a filled square, so it cannot be mistaken for a job.
 class FieldStateRing extends StatelessWidget {
-  const FieldStateRing({
-    super.key,
-    required this.state,
-    this.initials,
-    this.size = 28,
-  });
+  const FieldStateRing({super.key, required this.state, this.size = 28});
 
   final FieldPersonState state;
-  final String? initials;
   final double size;
 
   @override
@@ -106,22 +99,7 @@ class FieldStateRing extends StatelessWidget {
         dashed: state == FieldPersonState.lostSignal,
         width: size >= 20 ? 3 : 2,
       ),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: initials == null
-            ? null
-            : Center(
-                child: Text(
-                  initials!,
-                  style: TextStyle(
-                    fontSize: size * 0.36,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-      ),
+      child: SizedBox(width: size, height: size),
     );
   }
 }

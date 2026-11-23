@@ -83,7 +83,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 
@@ -102,7 +105,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 
@@ -341,6 +347,24 @@ class NotificationsTest extends TestCase
         $this->assertSame(1, $call($sub->id), 'a missed call on a chosen company arrives');
         $this->assertSame(0, $call($other->id), 'one on another company does not');
         $this->assertSame(0, $call(null), 'nor one whose company is unknown');
+    }
+
+    public function test_a_kind_can_be_switched_off_and_a_burst_of_one_kind_is_one_row(): void
+    {
+        // Jose, 2026-11-17: task board coverage, per-type toggles, no floods.
+        $send = fn (string $kind, string $title) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $title, subject: $this->org['franchise'], onlyTo: $this->org['admin'], source: 'system', kind: $kind,
+        ));
+
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'));
+        $this->assertSame(0, $send('task.assigned', 'Assigned: Call back'), 'the same event again within 10 minutes is grouped');
+        $this->assertSame(1, $send('task.status', 'Status: Done'), 'another kind on the same record is not');
+
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => ['notifications.muted_kinds' => ['task.mentioned']]])->save());
+        $this->assertSame(0, $send('task.mentioned', 'You were mentioned'), 'a kind switched off writes nothing');
+
+        $this->travel(11)->minutes();
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'), 'after the window it notifies again');
     }
 
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void

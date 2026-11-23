@@ -294,6 +294,8 @@ class PluginController extends Controller
                 'locations' => SiteLists::locations($site),
                 'items' => SiteLists::items($site),
                 'reviews' => SiteLists::reviews($site),
+                // The real rating badge (Jose, 2026-11-20): every rated review of the company.
+                'review_summary' => SiteLists::reviewSummary($site),
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

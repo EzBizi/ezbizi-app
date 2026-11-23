@@ -55,19 +55,20 @@ void main() {
 
     await _pumpShell(
       tester,
-      modules: ['dashboard', 'customers', 'jobs'],
-      order: ['jobs', 'customers'],
+      modules: ['dashboard', 'jobs', 'scheduling'],
+      order: ['scheduling', 'jobs'],
     );
 
+    // All three sit under the Work heading, so their saved order rules.
     // Dashboard is not in the saved order at all. It goes last rather than
     // missing, which is what the day a module is added looks like to everybody
     // who has ever arranged their sidebar.
     expect(
-      tester.getTopLeft(_inSidebar('Jobs')).dy,
-      lessThan(tester.getTopLeft(_inSidebar('Customers')).dy),
+      tester.getTopLeft(_inSidebar('Scheduling')).dy,
+      lessThan(tester.getTopLeft(_inSidebar('Jobs')).dy),
     );
     expect(
-      tester.getTopLeft(_inSidebar('Customers')).dy,
+      tester.getTopLeft(_inSidebar('Jobs')).dy,
       lessThan(tester.getTopLeft(_inSidebar('Dashboard')).dy),
     );
   });
@@ -216,6 +217,65 @@ void main() {
     expect(find.byType(ReorderableListView), findsOneWidget);
     expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
   });
+
+  testWidgets(
+    'a phone has a bottom bar: Jobs first, and More opens the drawer',
+    (tester) async {
+      // Mobile review 2026-11-13, P7.
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpShell(
+        tester,
+        modules: ['dashboard', 'customers', 'jobs'],
+        order: ['dashboard', 'customers', 'jobs'],
+      );
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      expect(bar, findsOneWidget);
+      await tester.tap(find.descendant(of: bar, matching: find.text('Jobs')));
+      await tester.pumpAndSettle();
+      expect(_open('Jobs'), findsOneWidget);
+
+      await tester.tap(find.descendant(of: bar, matching: find.text('More')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the phone bar keeps every label on one line at 320 px and large text',
+    (tester) async {
+      // Jose, 2026-11-16: "Communicati / on" on the iOS build.
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpShell(
+        tester,
+        modules: ['jobs', 'scheduling', 'leads', 'phone'],
+        order: ['jobs', 'scheduling', 'leads', 'phone'],
+      );
+      expect(tester.takeException(), isNull);
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      final labels = find.descendant(of: bar, matching: find.byType(Text));
+      expect(labels, findsWidgets);
+      expect(
+        find.descendant(of: bar, matching: find.text('Communication')),
+        findsNothing,
+      );
+      final one = tester
+          .getSize(find.descendant(of: bar, matching: find.text('More')))
+          .height;
+      for (final e in labels.evaluate()) {
+        expect(tester.getSize(find.byWidget(e.widget)).height, one);
+      }
+    },
+  );
 }
 
 // ── harness ────────────────────────────────────────────────────────

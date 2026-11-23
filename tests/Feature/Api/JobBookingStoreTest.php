@@ -62,6 +62,31 @@ class JobBookingStoreTest extends TestCase
         $post([])->assertUnprocessable()->assertJsonValidationErrors('service_area_id');
     }
 
+    /** Desk, 2026-11-18: priced services make the total, tags stay on the job, and a known phone asks first. */
+    public function test_line_items_tags_and_the_duplicate_check(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $f = $alpha['franchise'];
+        $area = $this->inTenant($alpha['org'], function () use ($alpha, $f) {
+            Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'Bob Known', 'phone' => '+1 (305) 555-0123']);
+
+            return ServiceArea::create(['organization_id' => $alpha['org']->id, 'franchise_id' => $f->id, 'name' => 'North']);
+        });
+        $post = fn (array $x) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs/book', $x + [
+            'franchise_id' => $f->id, 'customer' => ['name' => 'Ann', 'phone' => '3055550123'],
+            'location' => ['address_line1' => '1 Main St', 'postal_code' => '43004'], 'service_area_id' => $area->id,
+            'title' => 'Sweep', 'scheduled' => false, 'tags' => ['VIP'],
+            'line_items' => [['name' => 'Chimney sweep', 'price_minor' => 19900, 'qty' => 2], ['name' => 'Cap', 'price_minor' => 5000, 'qty' => 1]]]);
+
+        $post([])->assertStatus(409)->assertJsonPath('matches.0.name', 'Bob Known');
+        $id = $post(['new_customer_confirmed' => true])->assertCreated()->json('data.job.id');
+
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $job = Job::query()->with('lines')->findOrFail($id);
+            $this->assertSame([44800, ['VIP'], ['Chimney sweep', 'Cap']], [$job->amount_minor, $job->tags, $job->lines->sortBy('position')->pluck('name')->all()]);
+        });
+    }
+
     public function test_booking_from_a_lead_converts_it(): void
     {
         $alpha = $this->provisionTenant('Alpha');

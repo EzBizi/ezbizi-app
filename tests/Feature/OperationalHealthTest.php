@@ -68,28 +68,23 @@ class OperationalHealthTest extends TestCase
         $this->assertFalse(app(MailStatus::class)->delivers());
     }
 
-    public function test_ses_without_credentials_names_what_is_missing(): void
+    public function test_smtp_without_credentials_names_what_is_missing(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'noreply@ezbizi.com',
-            'services.ses.key' => null,
-            'services.ses.secret' => null,
+            'mail.mailers.smtp.username' => null,
         ]);
 
-        $missing = app(MailStatus::class)->missing();
-
-        $this->assertContains('AWS_ACCESS_KEY_ID', $missing);
-        $this->assertContains('AWS_SECRET_ACCESS_KEY', $missing);
+        $this->assertContains('MAIL_USERNAME', app(MailStatus::class)->missing());
     }
 
     public function test_the_placeholder_from_address_counts_as_unconfigured(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'hello@example.com',
-            'services.ses.key' => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         // Worse than blank: SES rejects a From it has no identity for, so every
@@ -101,10 +96,9 @@ class OperationalHealthTest extends TestCase
     public function test_a_fully_configured_transport_reports_healthy(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'noreply@ezbizi.com',
-            'services.ses.key' => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         $this->assertTrue(app(MailStatus::class)->delivers());
@@ -313,6 +307,29 @@ class OperationalHealthTest extends TestCase
             ->assertJsonPath('peer.ok', false);
     }
 
+    public function test_a_delayed_event_is_not_an_overdue_outbox(): void
+    {
+        $r = app(ProvisionOrganization::class)(
+            organizationName: 'Alpha',
+            administrator: ['name' => 'Admin', 'email' => 'a@alpha.test', 'password' => 'a-real-password'],
+            companyName: 'Co', franchiseName: 'F1',
+        );
+        $org = $r['organization'] ?? $r->organization ?? \App\Models\Organization::query()->first();
+        $event = fn ($occurred, $available) => app(\App\Support\Tenancy\TenantContext::class)->run($org, fn () => \App\Models\AutomationEvent::create([
+            'organization_id' => $org->id, 'event_key' => 'lead.call_not_booked',
+            'payload' => [], 'occurred_at' => $occurred, 'available_at' => $available,
+        ]));
+        $token = $this->staffToken();
+        $health = fn () => $this->withHeader('Authorization', "Bearer {$token}")->getJson('/api/v1/staff/health');
+
+        // Waiting two hours on purpose: not a stalled scheduler (11-11).
+        $event(now()->subHours(3), now()->addMinutes(30));
+        $health()->assertJsonPath('outbox.ok', true);
+
+        $event(now()->subHour(), now()->subMinutes(30));
+        $health()->assertJsonPath('outbox.ok', false)->assertJsonPath('outbox.oldest_minutes', 30);
+    }
+
     public function test_the_peer_url_does_not_default_to_this_box(): void
     {
         $url = (string) config('ezbizi.peer.url');
@@ -405,10 +422,9 @@ class OperationalHealthTest extends TestCase
         // The same shape as a healthy transport above, so the send is attempted
         // rather than refused at the door — faked, so nothing leaves the box.
         config([
-            'mail.default'        => 'ses',
-            'mail.from.address'   => 'noreply@ezbizi.com',
-            'services.ses.key'    => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.default'               => 'smtp',
+            'mail.from.address'          => 'noreply@ezbizi.com',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         \Illuminate\Support\Facades\Mail::fake();

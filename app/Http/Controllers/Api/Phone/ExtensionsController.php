@@ -297,7 +297,10 @@ class ExtensionsController extends Controller
             ]);
         }
 
-        $connection = $connections->first();
+        // The viewed company's own account when it has one (EverDoors, 2026-11-11).
+        $inView = \App\Support\Scoping\ViewScope::forUser($request->user())->companyIdsInView() ?? [];
+        $connection = $connections->first(fn (PhoneConnection $c) => $c->scope_type === PhoneConnection::SCOPE_COMPANY
+            && in_array($c->scope_id, $inView, true)) ?? $connections->first();
 
         // Anybody still without one gets the next free extension before the list is read.
         \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
@@ -307,7 +310,7 @@ class ExtensionsController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        $rows = User::query()
+        $rows = \App\Support\Phone\PhoneScope::people(User::query(), $request->user())
             ->where('is_active', true)
             ->orderBy('name')
             ->get()

@@ -33,6 +33,9 @@ class SocialNetworkOAuthTest extends TestCase
     {
         parent::setUp();
 
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+
         config([
             'services.meta.client_id' => 'a-meta-app-id',
             'services.meta.client_secret' => 'a-meta-app-secret',
@@ -298,6 +301,46 @@ class SocialNetworkOAuthTest extends TestCase
         );
         Http::assertSent(fn ($request) => $request->url() === 'https://graph.instagram.com/v21.0/me/subscribed_apps'
             && $request['subscribed_fields'] === 'messages');
+    }
+
+    /**
+     * The card shows the TikTok account's picture. TikTok's avatar URL is
+     * signed and expires, so a reconnect must replace it, and the list returns it.
+     */
+    public function test_a_tiktok_connect_stores_the_avatar_and_a_reconnect_replaces_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        // Http::fake stacks rather than replaces, so one fake reads the avatar by reference.
+        $avatar = null;
+        Http::fake(function (Request $request) use (&$avatar) {
+            return match (true) {
+                str_contains($request->url(), '/oauth/token/') => Http::response([
+                    'access_token' => 'act.1', 'refresh_token' => 'rft.1', 'open_id' => 'open-1', 'expires_in' => 86400,
+                    'scope' => 'user.info.basic,video.publish',
+                ]),
+                str_contains($request->url(), '/user/info/') => Http::response(['data' => ['user' => [
+                    'open_id' => 'open-1', 'display_name' => 'A-1 Chimney', 'avatar_url' => $avatar,
+                ]]]),
+                default => Http::response(['data' => [], 'error' => ['code' => 'ok']]),
+            };
+        });
+
+        foreach (['https://p16.tiktokcdn.test/old.jpeg?x-expires=1', 'https://p16.tiktokcdn.test/new.jpeg?x-expires=2'] as $avatar) {
+            $url = $this->signedInAs($t['admin'])
+                ->postJson('/api/v1/social/tiktok/start')
+                ->assertOk()->json('data.authorization_url');
+
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+            $this->get('/api/v1/social/tiktok/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+            Http::assertSent(fn ($r) => str_contains($r->url(), '/user/info/') && str_contains($r->url(), 'avatar_url'));
+        }
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/connections')->assertOk()->json('data'))
+            ->firstWhere('provider', 'tiktok');
+        $this->assertSame('https://p16.tiktokcdn.test/new.jpeg?x-expires=2', $row['avatar_url']);
     }
 
     public function test_youtube_asks_for_pkce_and_offline_access(): void

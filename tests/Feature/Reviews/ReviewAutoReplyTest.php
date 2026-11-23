@@ -197,4 +197,23 @@ class ReviewAutoReplyTest extends TestCase
 
         $this->assertSame(1, $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->count()));
     }
+
+    /** Health sweep 11-09 and 11-12: Google 404s a review it has not indexed yet; the reply is retried an hour later. */
+    public function test_a_google_404_keeps_the_draft_and_retries_an_hour_later(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        Http::swap(new \Illuminate\Http\Client\Factory);   // setUp's fakes stack ahead of new ones
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            '*/reply' => Http::response(['error' => ['code' => 404]], 404),
+        ]);
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+
+        $result = $this->fire();
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        $this->assertTrue($result['skipped'] ?? false);
+        $this->assertSame(ReviewReply::STATUS_DRAFT, ReviewReply::withoutGlobalScopes()->first()->status);
+        \Illuminate\Support\Facades\Queue::assertPushed(\Illuminate\Queue\CallQueuedClosure::class, fn ($job) => $job->delay !== null);
+    }
 }

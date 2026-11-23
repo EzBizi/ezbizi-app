@@ -101,6 +101,26 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose 11-17: a missed-call task opens the caller's lead; no lead, nothing linked. */
+    public function test_a_task_from_a_call_is_about_the_callers_lead(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
+                'source' => 'website_form', 'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'contact_name' => 'Ann', 'phone_digits' => '13055550101']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $call = fn (string $from) => new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['from' => $from],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call back'], $call('+1 (305) 555-0101'), null, automation: $rule);
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call stranger'], $call('+13055550199'), null, automation: $rule);
+
+            $this->assertSame(['lead', $lead->id], [Task::query()->where('title', 'Call back')->value('about_type'), Task::query()->where('title', 'Call back')->value('about_id')]);
+            $this->assertNull(Task::query()->where('title', 'Call stranger')->value('about_type'));
+        });
+    }
+
     public function test_a_rule_moves_a_task_to_a_group_on_its_own_board_only(): void
     {
         $t = $this->provisionTenant('Alpha');
@@ -162,6 +182,244 @@ class TaskStepsTest extends TestCase
             }
             $made = $board->groups()->where('name', 'Project Management')->sole();
             $this->assertSame(2, Task::query()->where('group_id', $made->id)->count());
+        });
+    }
+
+    /** Health sweep 2026-11-17: "{{started_at}}" into a date column crashed every missed-call task. */
+    public function test_a_timestamp_into_a_date_column_is_that_day(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $col = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Date Received', 'type' => 'date', 'position' => 1]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['started_at' => '2026-11-16T22:17:50.883Z'],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Missed', 'assignee' => 'user:'.$t['admin']->id,
+                'values' => ['Date Received' => '{{started_at}}']], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame('2026-11-16', (string) substr((string) Task::query()->sole()->values()->where('column_id', $col->id)->value('value_date'), 0, 10));
+        });
+    }
+
+    /** Jose, 2026-11-17: Area blank on every missed-call task. A label picks the option; an unknown one is left blank and said. */
+    public function test_an_option_column_takes_a_label_and_leaves_an_unknown_one_blank(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $col = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Area', 'type' => 'status', 'position' => 1,
+                'settings' => ['options' => [['id' => 'o1', 'label' => 'Ohio', 'colour' => '#000000'], ['id' => 'o2', 'label' => 'Texas', 'colour' => '#000000']]]]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $run = fn (string $branch) => app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Missed '.$branch, 'assignee' => 'user:'.$t['admin']->id,
+                'values' => ['Area' => '{{branch}}']], new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['branch' => $branch],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($run('ohio')['ok']);
+            $this->assertSame('o1', Task::query()->where('title', 'Missed ohio')->sole()->values()->where('column_id', $col->id)->value('value_text'));
+            $blank = $run('Massachusetts');
+            $this->assertTrue($blank['ok'], $blank['detail']);
+            $this->assertStringContainsString('Area "Massachusetts"', $blank['detail']);
+            $this->assertFalse(Task::query()->where('title', 'Missed Massachusetts')->sole()->values()->where('column_id', $col->id)->exists());
+        });
+    }
+
+    /** Desk for Jose, 2026-11-17: a dispatcher's complaint and the AI's are one task; the AI adds an update. */
+    public function test_a_phone_dedupe_finds_the_caller_in_a_column_and_adds_an_update(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $group = \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => 'Customer Experience', 'position' => 9]);
+            $phoneCol = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Phone number', 'type' => 'text', 'position' => 1]);
+            $mine = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'Angry about the chimney', 'group' => 'Customer Experience',
+                'values' => [$phoneCol->id => '(305) 555-0123']], $t['admin']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => ['phone' => '+13055550123', 'summary' => 'Wants the manager']],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+            $step = ['type' => 'task.create', 'title' => '{{summary}}', 'assignee' => 'user:'.$t['admin']->id, 'group' => 'Customer Experience',
+                'dedupe' => '{{phone}}', 'dedupe_days' => 3, 'on_duplicate' => 'comment', 'duplicate_note' => 'AI review also flagged this call: {{summary}}'];
+
+            $made = app(ActionRunner::class)->run($step, $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame(1, Task::query()->count(), 'no second task');
+            $this->assertStringContainsString('AI review also flagged this call: Wants the manager', (string) $mine->updates()->value('body'));
+
+            $mine->forceFill(['created_at' => now()->subDays(4)])->saveQuietly();
+            app(ActionRunner::class)->run($step, $event, null, automation: $rule);
+            $this->assertSame(2, Task::query()->count(), 'an older one is not the same complaint');
+        });
+    }
+
+    /** Eric via Jose, 2026-11-20: a dispatcher logs a complaint with only name and job number; the AI adds an update, never a twin. */
+    public function test_a_dispatchers_complaint_by_job_number_gets_the_ai_update_and_a_missed_one_is_still_made(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => '🤝 Customer Relations Board - Natalie', 'position' => 9]);
+            $jobCol = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'EzBizi Job #', 'type' => 'text', 'position' => 1]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Joe', 'phone' => '+13307153809']);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            $dispatcher = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'Joe .', 'group' => '🤝 Customer Relations Board - Natalie',
+                'values' => [$jobCol->id => $job->number]], $t['admin']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $step = ['type' => 'task.create', 'title' => '{{summary}}', 'assignee' => 'user:'.$t['admin']->id, 'group' => 'Customer Relations',
+                'dedupe' => '{{phone}}', 'dedupe_days' => 7, 'on_duplicate' => 'comment', 'duplicate_note' => 'AI review also flagged this call: {{summary}}'];
+            $call = fn (string $phone) => new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => ['phone' => $phone, 'summary' => 'Paid half, wants a date']],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run($step, $call('+13307153809'), null, automation: $rule);
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame(1, Task::query()->count(), 'no AI twin of the dispatcher\'s task');
+            $this->assertStringContainsString('Paid half, wants a date', (string) $dispatcher->updates()->value('body'));
+
+            $missed = app(ActionRunner::class)->run($step, $call('+12164097375'), null, automation: $rule);
+            $this->assertTrue($missed['ok'], $missed['detail']);
+            $this->assertSame(2, Task::query()->count(), 'a complaint nobody logged is still added');
+        });
+    }
+
+    /** Desk for Jose, 2026-11-17: the caller replied or booked, so the untouched call-back task closes itself. */
+    public function test_the_callers_untouched_call_back_task_is_closed_with_a_note(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $maker = Automation::create(['name' => 'Missed', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $open = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550123'], $t['admin'], $maker->id);
+            $touched = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550123 again', 'status' => 'Working on it'], $t['admin'], $maker->id);
+            $other = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550999'], $t['admin'], $maker->id);
+            $rule = Automation::create(['name' => 'Close', 'trigger_key' => 'lead.customer_replied', 'is_active' => false, 'created_by' => $t['admin']->id]);
+
+            $done = app(ActionRunner::class)->run(['type' => 'task.complete_matching', 'board' => $board->id, 'made_by' => $maker->id,
+                'phone' => '{{phone}}', 'note' => 'Closed: the caller replied.'], new AutomationEvent(['event_key' => 'lead.customer_replied',
+                    'payload' => ['after' => ['phone' => '(305) 555-0123']]]), null, automation: $rule);
+
+            $this->assertTrue($done['ok'], $done['detail']);
+            $this->assertNotNull($open->fresh()->completed_at);
+            $this->assertSame('Closed: the caller replied.', $open->updates()->value('body'));
+            $this->assertNull($touched->fresh()->completed_at, 'a person already moved it');
+            $this->assertNull($other->fresh()->completed_at, 'another number');
+        });
+    }
+
+    /** Jose, 2026-11-17: the complaint rule made a duplicate "Customer Experience" group and left Area empty. */
+    public function test_a_group_by_part_of_its_name_and_the_records_branch_as_area(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $real = \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => '🤝 Customer Relations Board - Adeline', 'position' => 9]);
+            $area = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Area', 'type' => 'status', 'position' => 1,
+                'settings' => ['options' => [['id' => 'a1', 'label' => $t['franchise']->name, 'colour' => '#000000']]]]);
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => \App\Models\Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'c1', 'contact_name' => 'Pat', 'lead_type' => 'PHONE_CALL', 'status' => \App\Models\Lead::STATUS_NEW, 'received_at' => now()]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint', 'assignee' => 'user:'.$t['admin']->id,
+                'group' => 'Customer Relations', 'values' => ['Area' => '{{branch}}']],
+                new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => []],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), $lead, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame($real->id, $task->group_id, 'the board\'s own group, not a new one');
+            $this->assertSame('a1', $task->values()->where('column_id', $area->id)->value('value_text'));
+        });
+    }
+
+    /** Desk for Jose, 2026-11-18: Done, then back to Working on it; the rule still moved the task to Done. */
+    public function test_a_status_change_undone_before_the_rule_runs_is_not_acted_on(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $rule = Automation::create(['organization_id' => $t['org']->id, 'name' => 'To Done', 'trigger_key' => 'task.status_changed', 'is_active' => true, 'created_by' => $t['admin']->id]);
+            $rule->addVersion(null, [['type' => 'task.move_group', 'group' => 'Done']], $t['admin']);
+            $w = app(\App\Support\Tasks\TaskWriter::class);
+            $task = $w->create($board, ['title' => 'Job'], $t['admin']);
+            $w->update($task->load('board'), ['status' => 'Done'], $t['admin']);
+            $w->update($task->fresh()->load('board'), ['status' => 'Working on it'], $t['admin']);
+            $done = AutomationEvent::query()->where('event_key', 'task.status_changed')->oldest('id')->first();
+
+            app(\App\Support\Automations\AutomationEngine::class)->deliver($done);
+
+            $this->assertSame('skipped', \App\Models\AutomationRun::query()->where('event_id', $done->id)->value('status'));
+            $this->assertNotSame('Done', $task->fresh()->group?->name);
+        });
+    }
+
+    /** Desk, 2026-11-18: two bad reviews got no task; the whole review as title overflowed the New-task bell. */
+    public function test_a_long_title_is_cut_on_a_word_and_kept_whole_as_the_first_update(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $review = str_repeat('They left a mess with soot everywhere and nobody called back. ', 6);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => '{{comment}}', 'assignee' => 'user:'.$t['admin']->id],
+                new AutomationEvent(['event_key' => 'lead.received', 'payload' => ['after' => ['comment' => $review]],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertLessThanOrEqual(121, mb_strlen($task->title));
+            $this->assertStringEndsWith('…', $task->title);
+            $this->assertStringNotContainsString(' …', $task->title);
+            $this->assertSame(trim($review), $task->updates()->value('body'));
+        });
+    }
+
+    /** Desk, 2026-11-18: a task deleted before its "assign creator" rule ran counted as a failure. */
+    public function test_a_step_on_a_task_deleted_before_it_ran_is_skipped(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $done = app(ActionRunner::class)->run(['type' => 'task.assign', 'user_field' => 'created_by_user_id'],
+                new AutomationEvent(['event_key' => 'task.created', 'subject_type' => (new Task)->getMorphClass(), 'subject_id' => (string) \Illuminate\Support\Str::uuid(), 'payload' => []]),
+                null, automation: $rule);
+            $this->assertTrue($done['ok']);
+            $this->assertTrue($done['skipped'] ?? false);
+        });
+    }
+
+    /** Desk for Jose, 11-19: a complaint at another company is made there, owned by its General Manager group person, never a failed run. */
+    public function test_an_owner_who_cannot_be_on_the_board_gives_way_to_its_general_manager(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $other = $this->userWithRole($t, 'Helper', [], 'outside@example.test'); $other->forceFill(['is_active' => false])->saveQuietly(); // not assignable here
+        $this->inTenant($t['org'], function () use ($t, $other) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => 'General Manager - '.$t['admin']->name, 'position' => 9]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint', 'assignees' => ['user:'.$other->id]],
+                new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => []],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame([$t['admin']->id], Task::query()->sole()->owners()->pluck('user_id')->all());
+        });
+    }
+
+    /** Desk, 11-19: a missed-call task (no lead) gets client and job from the caller's number in its title. */
+    public function test_a_missed_call_task_fills_from_the_number_in_its_title(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $name = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 1]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Sam Caller', 'phone' => '(732) 555-0199']);
+            \App\Models\Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => '{{task_title}}', 'assignee' => 'user:'.$t['admin']->id, 'fill_from_record' => true],
+                new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['task_title' => 'NJ - PPC +17325550199'],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame('Sam Caller', \App\Models\TaskColumnValue::query()->where('column_id', $name->id)->value('value_text'));
         });
     }
 
@@ -227,6 +485,62 @@ class TaskStepsTest extends TestCase
             $task = Task::query()->sole();
             $this->assertSame($dispatcher->id, $task->assignee_user_id);
             $this->assertSame(TaskBoard::query()->where('kind', 'company')->where('company_id', $t['company']->id)->value('id'), $task->board_id);
+        });
+    }
+
+    public function test_a_sub_companys_task_lands_on_its_parents_board_with_every_owner(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $second = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $second) {
+            $sub = \App\Models\Company::query()->create(['name' => 'Sub', 'parent_company_id' => $t['company']->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => [],
+                'scope_snapshot' => ['type' => 'company', 'id' => $sub->id, 'company_chain' => [$sub->id, $t['company']->id]]]);
+
+            // Was the first owner's personal board, which refused the second (Complaint call, 11-10).
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint',
+                'assignees' => ['user:'.$second->id, 'user:'.$t['admin']->id]], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame(TaskBoard::query()->where('kind', 'company')->where('company_id', $t['company']->id)->value('id'), $task->board_id);
+            $this->assertSame([$second->id, $t['admin']->id], $task->owners()->pluck('user_id')->all());
+        });
+    }
+
+    public function test_a_named_board_takes_the_task_and_dedupe_skips_a_second_call_while_the_first_is_open(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $viewer) {
+            $board = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($t['franchise']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.missed_call', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = fn (string $phone) => new AutomationEvent(['event_key' => 'lead.missed_call', 'payload' => ['after' => ['phone' => $phone]],
+                'scope_snapshot' => ['type' => 'company', 'id' => $t['company']->id, 'company_chain' => [$t['company']->id]]]);
+            $step = ['type' => 'task.create', 'title' => 'NJ Ads {{phone}}', 'board' => $board->id, 'group' => 'Missed Calls', 'dedupe' => '{{phone}}'];
+
+            $first = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertTrue($first['ok'], $first['detail']);
+            $this->assertSame($board->id, Task::query()->sole()->board_id, 'the named board, not the company one');
+
+            $again = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertTrue($again['skipped'] ?? false, $again['detail']);
+            $this->assertSame(1, Task::query()->count());
+
+            app(ActionRunner::class)->run($step, $event('(305) 555-0101'), null, automation: $rule);
+            $this->assertSame(2, Task::query()->count(), 'another caller is another task');
+
+            Task::query()->where('title', 'like', '%701-1639%')->update(['completed_at' => now()]);
+            app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertSame(3, Task::query()->count(), 'once the first is done, a new call is a new task');
+
+            $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'lead.missed_call', 'is_active' => false, 'created_by' => $viewer->id]);
+            $refused = app(ActionRunner::class)->run([...$step, 'dedupe' => ''], $event('(212) 555-0199'), null, automation: $theirs);
+            $this->assertFalse($refused['ok'], 'the board still decides who may write it');
+            $this->assertSame(3, Task::query()->count());
         });
     }
 

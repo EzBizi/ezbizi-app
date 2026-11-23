@@ -79,6 +79,9 @@ class BusinessProfileReviews
 
             do {
                 $page = $this->page($token, $location, $pageToken);
+                if ($pages === 0) {
+                    $this->keepGoogleTotals($location, $page['total'], $page['average']);
+                }
 
                 foreach ($page['reviews'] as $raw) {
                     $fetched++;
@@ -117,6 +120,19 @@ class BusinessProfileReviews
         $connection->forceFill(['last_reached_at' => now()])->save();
 
         return ['fetched' => $fetched, 'created' => $created, 'updated' => $updated];
+    }
+
+    /** The listing's count and average as Google itself states them; a listing Google lists with none reads 0. */
+    private function keepGoogleTotals(string $location, mixed $total, mixed $average): void
+    {
+        $tail = \App\Support\CustomerExperience\Places::tail($location);
+        if ($tail === null) {
+            return;
+        }
+        \App\Models\BusinessLocation::query()
+            ->where(fn ($q) => $q->where('remote_name', $tail)->orWhere('remote_name', 'like', '%/'.addcslashes($tail, '%_')))
+            ->update(['google_review_count' => is_numeric($total) ? (int) $total : 0,
+                'google_rating' => is_numeric($average) ? round((float) $average, 2) : null, 'google_totals_at' => now()]);
     }
 
     /** Checks a review must miss, two hours apart, before it counts as removed (the A1 Leads rule). */
@@ -305,6 +321,9 @@ class BusinessProfileReviews
         return [
             'reviews' => (array) $response->json('reviews', []),
             'next'    => is_string($next) && $next !== '' ? $next : null,
+            // Google's own totals for the listing, on every page (desk, 2026-11-20).
+            'total'   => $response->json('totalReviewCount'),
+            'average' => $response->json('averageRating'),
         ];
     }
 
@@ -323,9 +342,14 @@ class BusinessProfileReviews
         $reviewer = (array) ($raw['reviewer'] ?? []);
 
         return DB::transaction(function () use ($connection, $location, $raw, $name, $reviewer) {
+            // The review id is the identity: a listing reached through its own account and a manager
+            // account comes back under two names (desk, 2026-11-20: every A-1 review stored twice).
+            $key = substr($name, strrpos($name, '/') + 1);
             $review = Review::query()
                 ->where('organization_id', $connection->organization_id)
-                ->where('remote_name', $name)
+                ->where(fn ($q) => $q->where('remote_name', $name)
+                    ->orWhere(fn ($k) => $k->where('source', Review::SOURCE_GOOGLE)->where('review_key', $key)))
+                ->orderByRaw('remote_name = ? desc', [$name])
                 ->first();
 
             $created = $review === null;
@@ -362,10 +386,12 @@ class BusinessProfileReviews
                         : null),
                     'connection_id'   => $connection->getKey(),
                     'remote_name'     => $name,
+                    'review_key'      => $key,
                     ...$fromGoogle,
                 ]);
             } else {
                 $review->fill($fromGoogle);
+                $review->review_key ??= $key;
                 // Left behind by a disconnected account: the one that returns it now replies to it.
                 $review->connection_id ??= $connection->getKey();
             }

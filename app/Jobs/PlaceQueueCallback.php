@@ -57,7 +57,10 @@ class PlaceQueueCallback implements ShouldQueue
         private readonly string $organizationId,
         private readonly string $connectionId,
         private readonly string $userId,
-    ) {}
+    ) {
+        // A caller is waiting: never behind a backfill (Automations 11-18).
+        $this->onQueue(config('queue.automations_realtime', 'default'));
+    }
 
     public function handle(TenantContext $tenant, TwilioGateway $twilio): void
     {

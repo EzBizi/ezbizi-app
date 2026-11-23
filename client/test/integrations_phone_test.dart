@@ -194,7 +194,10 @@ void main() {
     // The catalogue's fifteen, each once: the two connected ones among them
     // rather than beside them.
     expect(cards(), findsNWidgets(15));
-    expect(find.text('Not connected'), findsNWidgets(13));
+    expect(
+      find.byKey(const ValueKey('status-dot:Not connected')),
+      findsNWidgets(13),
+    );
     expect(find.byKey(const ValueKey('provider:linkedin')), findsOneWidget);
     expect(find.textContaining('Also available:'), findsNothing);
   });

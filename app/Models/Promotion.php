@@ -11,10 +11,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** A promotion text sent to the customers of Done jobs (Jose, 2026-11-06). */
-#[Fillable(['organization_id', 'jobs_from', 'jobs_to', 'body', 'media_path', 'franchise_ids', 'phones', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
+#[Fillable(['organization_id', 'name', 'jobs_from', 'jobs_to', 'body', 'media_path', 'franchise_ids', 'phones', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
 class Promotion extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). It names several branches, so the feed asks which a reader reaches (ChangeFeed::NARROW). */
+    protected static string $changeType = 'membership_promotions';
+
     use HasUuids;
 
     protected function casts(): array

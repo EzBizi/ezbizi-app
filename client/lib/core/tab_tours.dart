@@ -49,17 +49,19 @@ const Map<String, Tour> tabTours = {
     // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
     // 3: design 178 - Calendar, Timeline, Formula, number formats, footers,
     // pinned headings, branch tasks on the company board.
-    version: 3,
+    // 4: the sidebar's names (11-18 staff memo): Personal Task Board, Team
+    // boards, All markets.
+    version: 4,
     steps: [
       TourStep(
         anchor: 'tasks-boards',
         title: 'Your boards',
-        since: 3,
+        since: 4,
         body:
-            "Pick a board here. My board is yours alone; each company's "
-            "board and its franchises' sit under the company, with how many "
-            "open tasks are yours. A company's board also shows its "
-            "branches' tasks, each marked with its branch.",
+            'Pick a board here. Your Personal Task Board is yours alone; '
+            'Team boards are the boards shared with you. Under All markets, '
+            "each company's board shows every one of its markets' tasks "
+            'together, each marked with its market.',
       ),
       TourStep(
         anchor: 'tasks-view',
@@ -212,12 +214,13 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-jobs-money',
         title: 'Money',
-        body: 'Narrows to jobs by where their money stands, with counts.',
+        body:
+            'Billed, paid, due and overdue. Click one to show only those jobs.',
       ),
       TourStep(
-        anchor: 'jobs-where',
-        title: 'Where',
-        body: 'Anywhere, not placed yet, one franchise, or one area.',
+        anchor: 'jobs-filters',
+        title: 'Filters',
+        body: 'Unpaid, partly paid, credit, where, role, type and tags.',
       ),
       TourStep(
         anchor: 'jobs-window',
@@ -277,7 +280,8 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'customers-tag-filter',
         title: 'Tag',
-        body: 'Only the customers with one tag. Appears once a customer is tagged.',
+        body:
+            'Only the customers with one tag. Appears once a customer is tagged.',
         since: 2,
       ),
       TourStep(
@@ -520,6 +524,17 @@ const Map<String, Tour> tabTours = {
         title: 'Bills',
         body:
             "Read a photo of a period's bills into lines. It saves once they add up to the photo's total.",
+      ),
+    ],
+  ),
+  'financials/Markets': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-markets',
+        title: 'Markets',
+        body:
+            "Expenses per market from QuickBooks, by week and category, beside each market's closing rate and cost per closed job.",
       ),
     ],
   ),
@@ -823,12 +838,13 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-marketing-social-panes',
         title: 'Social Media Management',
         body:
-            'Dashboard, Compose, Calendar, Accounts and QR Codes, as your role allows.',
+            'Comments, Connections, QR codes and New post, beside the '
+            'calendar, as your role allows.',
       ),
       TourStep(
-        anchor: 'tour-marketing-social-tiles',
+        anchor: 'tour-marketing-month',
         title: 'Your posts',
-        body: 'Scheduled, Sent and Failed narrow the timeline, with counts.',
+        body: 'Each post on the day it goes out, with its networks and state.',
       ),
       TourStep(
         anchor: 'tour-marketing-new-post',

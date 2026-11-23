@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\ArchiveMondayGroup;
+use App\Jobs\MoveMondayGroup;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
@@ -9,7 +11,10 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Support\Audit\AuditLogger;
+use App\Support\Integrations\DisconnectCode;
+use App\Support\Tasks\BoardRules;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -204,9 +209,27 @@ class TaskBoardSettingsController extends Controller
     {
         $this->authorize('update', $taskBoard);
         $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
-        $row->fill($request->validate($this->groupRules(required: false)));
+        $input = $request->validate($this->groupRules(required: false));
+        $moveTo = array_key_exists('position', $input) ? (int) $input['position'] : null;
+        unset($input['position']);
+        $row->fill($input);
         $this->audit->logChange('task_board.group_updated', $row, $request->user());
         $row->save();
+        if ($moveTo !== null) {
+            // A place in the board's order (Jose 11-19: groups could not be reordered): the others
+            // renumbered around it, and Monday's twin moved after its new neighbour there.
+            $order = TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->get()->values();
+            $at = max(0, min($moveTo, $order->count()));
+            $order->splice($at, 0, [$row]);
+            foreach ($order as $i => $g) {
+                if ($g->position !== $i) {
+                    $g->forceFill(['position' => $i])->save();
+                }
+            }
+            if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+                MoveMondayGroup::dispatch((string) $taskBoard->id, (string) $row->id);
+            }
+        }
 
         return response()->json(['data' => self::presentGroup($row)]);
     }
@@ -223,6 +246,8 @@ class TaskBoardSettingsController extends Controller
         if (! $moveTo && Task::query()->where('group_id', $row->id)->exists()) {
             throw ValidationException::withMessages(['move_to' => 'This group has tasks: choose a group to move them to.']);
         }
+        // A delete takes a fresh authenticator code (Jose 11-19), the integrations' step-up.
+        app(DisconnectCode::class)->require($request, 'delete this group');
 
         // Deleted tasks move too: the group's FK would otherwise hard-delete them.
         $to = $moveTo
@@ -230,11 +255,20 @@ class TaskBoardSettingsController extends Controller
                 ?? throw ValidationException::withMessages(['move_to' => 'That group is not on this board.'])
             : TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->first();
 
+        $live = Task::query()->where('group_id', $row->id)->pluck('id');
         DB::transaction(function () use ($row, $to, $request) {
             Task::query()->withTrashed()->where('group_id', $row->id)->update(['group_id' => $to->id]);
             $this->audit->log('task_board.group_deleted', $row, actor: $request->user());
             $row->delete();
         });
+        // Monday follows: each moved task goes to its new group there; Monday's emptied group is
+        // archived (never delete_group, which deletes its items) once its items have moved.
+        foreach (Task::query()->whereIn('id', $live)->get() as $task) {
+            app(MondayOutbox::class)->record($task, ['group']);
+        }
+        if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+            ArchiveMondayGroup::dispatch((string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+        }
 
         return response()->noContent();
     }
@@ -260,7 +294,11 @@ class TaskBoardSettingsController extends Controller
 
     public static function presentGroup(TaskGroup $g): array
     {
-        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position];
+        // A role group's job, under its heading (management's board rules, Jose 11-17).
+        $roles = BoardRules::rolesOf((string) $g->name);
+
+        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position,
+            'purpose' => $roles === [] ? null : implode(' ', array_map(fn ($r) => BoardRules::PURPOSE[$r], $roles))];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -292,6 +330,10 @@ class TaskBoardSettingsController extends Controller
      * with a stable id generated for any option that has none; other types
      * carry no options.
      */
+    /** The words a formula may use: its functions (the client's evalFormula) and TRUE/FALSE. */
+    private const FORMULA_WORDS = ['IF', 'AND', 'OR', 'NOT', 'VALUE', 'CONCATENATE', 'FLOOR', 'CEILING', 'ROUND', 'MOD', 'ABS',
+        'MIN', 'MAX', 'SUM', 'AVERAGE', 'LEN', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'TRUE', 'FALSE'];
+
     private function settings(string $type, ?array $settings): ?array
     {
         $out = [];
@@ -315,13 +357,32 @@ class TaskBoardSettingsController extends Controller
             }
         }
         if ($type === 'formula') {
-            // Column names in brackets, numbers and + - * / ( ): the client works it out.
+            // Monday's formula language with columns as [Name]; the client works it out.
+            // Checked here only for size and balanced brackets and quotes.
             $expr = $settings['expression'] ?? null;
-            $bare = is_string($expr) ? preg_replace('/\[[^\[\]]{1,255}\]/u', '1', $expr) : null;
-            if ($bare === null || mb_strlen($expr) > 500 || ! preg_match('/^[\d\s.+\-*\/()]+$/', $bare)) {
-                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers and + - × ÷ ( ).']);
+            $bare = is_string($expr) ? preg_replace(['/"(?:[^"]|"")*"/u', '/\[[^\[\]]{1,255}\]/u'], ['""', '1'], $expr) : null;
+            if ($bare === null || mb_strlen($expr) > 2000 || substr_count($bare, '(') !== substr_count($bare, ')')
+                || trim($expr) === '' || preg_match('/[\[\]{};`$]/', $bare) || str_contains($bare, chr(92))
+                || collect(preg_match_all('/[A-Za-z_]\w*/', $bare, $m) ? $m[0] : [])->contains(fn ($w) => ! in_array(strtoupper($w), self::FORMULA_WORDS, true))) {
+                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers, "text", + - × ÷ & and functions like IF, CONCATENATE, FLOOR, MOD.']);
             }
             $out['expression'] = $expr;
+        }
+        if ($type === 'rating') {
+            $max = $settings['max'] ?? 5;
+            is_int($max) && $max >= 1 && $max <= 10
+                ?: throw ValidationException::withMessages(['settings.max' => 'A top rating from 1 to 10.']);
+            $out['max'] = $max;
+        }
+        if ($type === 'mirror') {
+            // Which connect column to follow, and which column of the tasks it names to show.
+            foreach (['connect_column_id', 'column_id'] as $k) {
+                $id = $settings[$k] ?? null;
+                if ($id !== null && (! is_string($id) || ! TaskColumn::query()->whereKey($id)->exists())) {
+                    throw ValidationException::withMessages(["settings.$k" => 'That column does not exist.']);
+                }
+                $out[$k] = $id;
+            }
         }
 
         return $out === [] ? null : $out;

@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'report_text_kinds', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'report_text_kinds', 'reports', 'places', 'templates', 'trainings', 'task_boards', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -834,6 +834,66 @@ class AutomationsApiTest extends TestCase
         $this->assertSame(2, $updated->json('data.version'));
         $this->assertCount(2, $updated->json('data.versions'));
         $this->assertSame('second', $updated->json('data.actions.0.message'));
+    }
+
+    public function test_a_patch_of_only_the_actions_keeps_the_conditions(): void
+    {
+        $conditions = ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]];
+        $id = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Rule', 'trigger_key' => 'job.status_changed', 'conditions' => $conditions,
+            'actions' => [['type' => 'notify', 'message' => 'first']],
+        ])->assertCreated()->json('data.id');
+
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", [
+            'actions' => [['type' => 'notify', 'message' => 'second']],
+        ])->assertOk();
+
+        $this->assertEquals($conditions, $updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+
+        // And the other half: conditions alone keep the actions.
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", ['conditions' => null])->assertOk();
+        $this->assertNull($updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+    }
+
+    /** Jose, 2026-11-17: a fixed rule stayed silently off for twelve hours, and the calls it failed on were lost. */
+    public function test_a_saved_fix_rearms_a_switched_off_rule_and_runs_what_it_failed_on(): void
+    {
+        $id = $this->as()->postJson('/api/v1/automations', ['name' => 'Rule', 'trigger_key' => 'reports.call.missed',
+            'actions' => [['type' => 'notify', 'message' => 'broken']]])->assertCreated()->json('data.id');
+        $this->as()->patchJson("/api/v1/automations/{$id}", ['is_active' => true])->assertOk();
+        $org = $this->org['organization'];
+        [$lost, $didSomething] = app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($id, $org) {
+            $rule = \App\Models\Automation::find($id);
+            $event = fn () => \App\Models\AutomationEvent::create(['organization_id' => $org->id, 'event_key' => 'reports.call.missed',
+                'payload' => ['from' => '+13055550101'], 'occurred_at' => now(), 'available_at' => now(), 'delivered_at' => now()]);
+            [$lost, $didSomething] = [$event(), $event()];
+            foreach ([[$lost, [['type' => 'notify', 'ok' => false]]], [$didSomething, [['type' => 'notify', 'ok' => true], ['type' => 'notify', 'ok' => false]]]] as [$e, $results]) {
+                \App\Models\AutomationRun::create(['organization_id' => $org->id, 'automation_id' => $id, 'automation_version_id' => $rule->active_version_id,
+                    'event_id' => $e->id, 'status' => \App\Models\AutomationRun::FAILED, 'action_results' => $results, 'started_at' => now()]);
+            }
+            $rule->forceFill(['disabled_at' => now(), 'disabled_reason' => 'Disabled after 5 consecutive failures.', 'consecutive_failures' => 5])->save();
+
+            return [$lost, $didSomething];
+        });
+
+        $this->as()->patchJson("/api/v1/automations/{$id}", ['actions' => [['type' => 'notify', 'message' => 'fixed']]])
+            ->assertOk()->assertJsonPath('data.disabled_at', null);
+
+        app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($id, $lost, $didSomething) {
+            $version = \App\Models\Automation::find($id)->active_version_id;
+            $this->assertTrue(\App\Models\AutomationRun::query()->where('event_id', $lost->id)->where('automation_version_id', $version)->exists(), 'the lost call runs on the fix');
+            $this->assertFalse(\App\Models\AutomationRun::query()->where('event_id', $didSomething->id)->where('automation_version_id', $version)->exists(), 'a run that did a step is not repeated');
+        });
+    }
+
+    public function test_texting_every_new_lead_needs_saying_out_loud(): void
+    {
+        $rule = ['name' => 'Text all', 'trigger_key' => 'lead.received', 'actions' => [['type' => 'sms.send']]];
+
+        $this->as()->postJson('/api/v1/automations', $rule)->assertStatus(422)->assertJsonValidationErrors('conditions');
+        $this->as()->postJson('/api/v1/automations', $rule + ['confirm_no_conditions' => true])->assertCreated();
     }
 
     public function test_an_earlier_version_can_be_reactivated(): void

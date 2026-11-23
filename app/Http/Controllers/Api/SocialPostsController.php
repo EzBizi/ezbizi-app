@@ -19,6 +19,7 @@ use App\Support\Social\Publishing\GoogleBusinessProfilePublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\PostState;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
@@ -67,8 +68,11 @@ class SocialPostsController extends Controller
      */
     private const MAX_BODY = 5000;
 
-    /** The Posts tiles, in the order the screen draws them. */
-    private const TILES = ['scheduled', 'sent', 'failed'];
+    /**
+     * The Posts tiles: one per work state (PostState), each post in at most
+     * one. `awaiting` is Needs approval and `sent` is Published.
+     */
+    private const TILES = PostState::ALL;
 
     /** Business Profile's call-to-action buttons (v4 localPosts actionType). */
     private const CTA_TYPES = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
@@ -112,14 +116,24 @@ class SocialPostsController extends Controller
         // The Posts tiles count every post this view can see, not the twenty
         // drawn, so a tile can never say fewer than the list it filters
         // (Mia, 2026-10-02, Posts layout A). Counted before `status` narrows.
+        // Each post is read once by PostState, the same reading every row
+        // carries, so a tile and a pill can never disagree.
+        // ponytail: classified in PHP over the view's posts (ids, schedule and
+        // target statuses only); a SQL form needs per-post timezones.
+        $states = (clone $query)
+            ->with(['targets:id,social_post_id,social_connection_id,status'])
+            ->get(['id', 'scheduled_for', 'scheduled_timezone'])
+            ->mapWithKeys(fn (SocialPost $p) => [$p->getKey() => PostState::of(
+                $p, $p->targets->filter(fn (SocialPostTarget $t) => $visible->has($t->social_connection_id)),
+            )]);
         $tiles = [];
-        foreach (self::TILES as $status) {
-            $tiles[$status] = $this->inStatus(clone $query, $status, $visible->keys()->all())->count();
+        foreach (self::TILES as $state) {
+            $tiles[$state] = $states->filter(fn ($s) => $s === $state)->count();
         }
 
         $status = $request->query('status');
         if (in_array($status, self::TILES, true)) {
-            $this->inStatus($query, $status, $visible->keys()->all());
+            $query->whereIn('id', $states->filter(fn ($s) => $s === $status)->keys()->all());
         }
 
         // The search bar narrows the list like `status` does: after the tiles.
@@ -129,19 +143,40 @@ class SocialPostsController extends Controller
             $query->where(fn ($w) => $w->where('title', 'like', $like)->orWhere('body', 'like', $like));
         }
 
+        // The calendar asks for the days it draws (review 2026-11-09 A1): a
+        // post is on the day it is scheduled for, or else the day it was
+        // made. A range lifts the twenty cap to what a month can hold.
+        $range = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $from = $range['from'] ?? null;
+        $to = $range['to'] ?? null;
+        if ($from !== null && $to !== null) {
+            $start = $from.' 00:00:00';
+            $end = $to.' 23:59:59';
+            $query->where(fn ($w) => $w
+                ->whereBetween('scheduled_for', [$start, $end])
+                ->orWhere(fn ($n) => $n->whereNull('scheduled_for')->whereBetween('created_at', [$start, $end])));
+        }
+
         $posts = $query
             ->with(['targets', 'author:id,name'])
             ->latest()
             // ponytail: the twenty most recent, no paging. This is the "did it
             // send" list under the composer, not an archive; the tiles above
             // carry the whole count and filter on the server.
-            ->limit(20)
+            ->limit($from !== null && $to !== null ? 500 : 20)
             ->get();
 
         return response()->json([
             'meta' => ['tiles' => $tiles],
             'data' => $posts->map(fn (SocialPost $post) => [
                 'id' => $post->getKey(),
+                // Needs approval, Ready, Scheduled, Past due, Published or
+                // Failed (PostState); null while sending or never sent.
+                'state' => PostState::of($post, $post->targets
+                    ->filter(fn (SocialPostTarget $t) => $visible->has($t->social_connection_id))),
                 'body' => $post->body,
                 'title' => $post->title,
                 'has_media' => $post->media_path !== null,
@@ -439,6 +474,7 @@ class SocialPostsController extends Controller
                 'target' => 'Only a post that failed can be sent again. This one is '.$target->status.'.',
             ]);
         }
+        SocialPostTarget::announce($target->getKey());
 
         if ($due) {
             PublishSocialTarget::dispatch($target->getKey());
@@ -483,7 +519,9 @@ class SocialPostsController extends Controller
     public function update(Request $request, SocialPost $post): JsonResponse
     {
         $user = $this->mayManage($request);
-        $this->assertStillScheduled($user, $post);
+        // A post waiting for approval has not gone out either (Jose,
+        // 2026-11-16): its words are edited here, and Approve sends them.
+        $this->assertStillScheduled($user, $post, orAwaiting: true);
 
         $data = $request->validate([
             'body' => ['sometimes', 'nullable', 'string', 'max:'.self::MAX_BODY],
@@ -533,6 +571,83 @@ class SocialPostsController extends Controller
             'scheduled_for' => $post->scheduled_for,
             'targets' => $post->targets->map(fn (SocialPostTarget $t) => $this->presentTarget($t, $t->connection))->all(),
         ]]);
+    }
+
+    /**
+     * POST social/posts/{post}/media: add, replace or remove the picture of a
+     * post nothing has sent yet (scheduled or waiting for approval). Multipart
+     * `media`, or `library_item`, or `remove=1`. A post going to a Business
+     * Profile listing takes only what Google takes (refusesImage).
+     */
+    public function media(Request $request, SocialPost $post): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $this->assertStillScheduled($user, $post, orAwaiting: true);
+        $this->limits->assertUploadArrived($request, 'media');
+
+        $data = $request->validate([
+            'media' => ['nullable', 'file', 'mimes:'.implode(',', SocialMediaKind::extensions()), 'max:'.$this->limits->maxKilobytes()],
+            'library_item' => ['nullable', 'string'],
+            'remove' => ['nullable', 'boolean'],
+        ], [
+            'media.mimes' => 'Social networks take pictures and video: '.implode(', ', SocialMediaKind::extensions()).'.',
+            'media.max' => $this->limits->tooLargeMessage(),
+        ]);
+
+        $file = $request->file('media');
+        [$oldPath, $oldDisk] = [$post->media_path, $post->media_disk];
+
+        if ($file === null && ($data['library_item'] ?? null) === null) {
+            if (! ($data['remove'] ?? false)) {
+                throw ValidationException::withMessages(['media' => 'Pick a picture, or remove the one it has.']);
+            }
+            if (trim((string) $post->body) === '') {
+                throw ValidationException::withMessages(['media' => 'A post with no words needs its picture. Write something first.']);
+            }
+            $post->forceFill(['media_path' => null, 'media_disk' => null]);
+        } else {
+            if ($file !== null) {
+                $bytes = (string) file_get_contents($file->getRealPath());
+                $extension = strtolower($file->getClientOriginalExtension());
+            } else {
+                $item = NewsletterAccess::visible(SocialLibraryItem::query(), $user)->find($data['library_item'])
+                    ?? throw ValidationException::withMessages(['library_item' => 'That picture is no longer in the library for this view.']);
+                $bytes = (string) $this->files->contents($item->path, $item->disk);
+                $extension = strtolower(pathinfo($item->path, PATHINFO_EXTENSION));
+            }
+
+            $toGoogle = $post->targets()->with('connection')->get()
+                ->contains(fn (SocialPostTarget $t) => $t->connection?->providerEnum() === SocialProvider::GoogleBusinessProfile);
+            if ($toGoogle && ($why = GoogleBusinessProfilePublisher::refusesImage($bytes, $extension)) !== null) {
+                throw ValidationException::withMessages(['media' => $why]);
+            }
+
+            $disk = $this->files->defaultDisk();
+            $post->forceFill([
+                'media_disk' => $disk,
+                'media_path' => $this->files->putContents($bytes, $this->files->directoryFor('social', $user->organization_id), $extension, $disk),
+            ]);
+        }
+
+        $this->audit->logChange('social.post_edited', $post, $user);
+        $post->save();
+        if ($oldPath !== null) {
+            $this->files->delete($oldPath, $oldDisk);
+        }
+
+        return response()->json(['data' => ['id' => $post->getKey(), 'has_media' => $post->media_path !== null]]);
+    }
+
+    /** GET social/posts/{post}/media: the post's picture, for the side panel's preview. */
+    public function mediaFile(Request $request, SocialPost $post): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $user = $request->user();
+        abort_unless($post->media_path !== null && $post->targets()->with('connection')->get()->contains(
+            fn (SocialPostTarget $t) => $t->connection !== null && $this->access->inView($user, $t->connection),
+        ), Status::HTTP_NOT_FOUND);
+
+        return $this->files->serve($post->media_path, $post->media_disk, PostPayload::mimeForExtension(
+            pathinfo($post->media_path, PATHINFO_EXTENSION)), basename($post->media_path), 'inline');
     }
 
     /** DELETE social/posts/{post}: cancel a post nobody has received yet. */
@@ -606,8 +721,12 @@ class SocialPostsController extends Controller
     }
 
     /** Every account of the post in view, and every one still waiting for its time. */
-    private function assertStillScheduled(User $user, SocialPost $post): void
+    private function assertStillScheduled(User $user, SocialPost $post, bool $orAwaiting = false): void
     {
+        $unsent = $orAwaiting
+            ? [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL]
+            : [SocialPostTarget::STATUS_SCHEDULED];
+
         $targets = $post->targets()->with('connection')->get();
 
         abort_if($targets->isEmpty() || $targets->contains(
@@ -617,8 +736,8 @@ class SocialPostsController extends Controller
         // A failed account (refused at compose) is not "going out": it does not
         // pin the rest of the post, and cancelling takes it with the post.
         if ($targets->contains(fn (SocialPostTarget $t) => ! in_array(
-            $t->status, [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_FAILED], true,
-        )) || ! $targets->contains(fn (SocialPostTarget $t) => $t->status === SocialPostTarget::STATUS_SCHEDULED)) {
+            $t->status, [...$unsent, SocialPostTarget::STATUS_FAILED], true,
+        )) || ! $targets->contains(fn (SocialPostTarget $t) => in_array($t->status, $unsent, true))) {
             throw ValidationException::withMessages([
                 'post' => 'This post has already started going out, so it can no longer be edited or cancelled.',
             ]);
@@ -704,10 +823,6 @@ class SocialPostsController extends Controller
      */
     private function tiktokChoices(Request $request, Collection $connections): array
     {
-        if (! Publishers::tiktokIsAudited()) {
-            return [];
-        }
-
         $choices = [];
 
         foreach ($connections as $connection) {
@@ -716,6 +831,23 @@ class SocialPostsController extends Controller
             }
 
             $key = 'tiktok.'.$connection->getKey();
+
+            // Profile (Direct Post) or the creator's inbox, chosen per post.
+            // No answer keeps the installation's default (Publishers::for).
+            $mode = data_get($request->validate([
+                $key.'.mode' => ['sometimes', 'nullable', 'string', 'in:direct,inbox'],
+            ]), $key.'.mode');
+
+            if ($mode === 'inbox' || ($mode === null && ! Publishers::tiktokIsAudited())) {
+                // TikTok ignores privacy, interactions and disclosure for a
+                // draft: the creator sets them in the app.
+                if ($mode !== null) {
+                    $choices[$connection->getKey()] = ['mode' => $mode];
+                }
+
+                continue;
+            }
+
             $data = $request->validate([
                 $key.'.privacy_level' => ['required', 'string', 'in:PUBLIC_TO_EVERYONE,MUTUAL_FOLLOW_FRIENDS,FOLLOWER_OF_CREATOR,SELF_ONLY'],
                 $key.'.allow_comment' => ['sometimes', 'boolean'],
@@ -745,7 +877,7 @@ class SocialPostsController extends Controller
                 ]);
             }
 
-            $choices[$connection->getKey()] = [
+            $choices[$connection->getKey()] = array_filter(['mode' => $mode]) + [
                 'privacy_level' => $chosen['privacy_level'],
                 'allow_comment' => filter_var($chosen['allow_comment'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'allow_duet' => filter_var($chosen['allow_duet'] ?? false, FILTER_VALIDATE_BOOLEAN),
@@ -880,34 +1012,35 @@ class SocialPostsController extends Controller
         return $refused;
     }
 
-    /**
-     * Narrow to posts in one tile, judged on the targets THIS view can see -
-     * the same targets the list shows, so the pill and the tile agree.
-     *
-     * The same reading as the screen's colour for a post: any failed account
-     * makes it failed; every account waiting for its time makes it scheduled;
-     * otherwise, once nothing is still queued, it went out. A post still in
-     * the queue is in no tile: it is neither out nor refused yet.
-     *
-     * @param  list<string>  $visible
-     */
-    private function inStatus($query, string $status, array $visible)
+    /** The TikTok target went (or goes) to the inbox: its own mode, else the installation's. */
+    private function inboxTarget(SocialPostTarget $target, ?SocialConnection $connection): bool
     {
-        $targets = fn ($q) => $q->whereIn('social_connection_id', $visible);
+        if ($connection?->providerEnum() !== SocialProvider::TikTok) {
+            return false;
+        }
 
-        return match ($status) {
-            'failed' => $query->whereHas('targets', fn ($q) => $targets($q)
-                ->where('status', SocialPostTarget::STATUS_FAILED)),
-            // Waiting for approval has not gone out yet: it reads as Scheduled, never Sent.
-            'scheduled' => $query->whereDoesntHave('targets', fn ($q) => $targets($q)
-                ->whereNotIn('status', [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL])),
-            'sent' => $query
-                ->whereDoesntHave('targets', fn ($q) => $targets($q)
-                    ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED, SocialPostTarget::STATUS_AWAITING_APPROVAL]))
-                // At least one account really has it. Disapproved and removed
-                // never went out (or were taken down), so they alone are not Sent.
-                ->whereHas('targets', fn ($q) => $targets($q)
-                    ->where('status', SocialPostTarget::STATUS_SENT)),
+        return match ($target->options['mode'] ?? null) {
+            'inbox' => true,
+            'direct' => false,
+            default => ! Publishers::tiktokIsAudited(),
+        };
+    }
+
+    /** @var array<string, ?string> */
+    private array $ownerNames = [];
+
+    /** The company or branch a connection belongs to, by name; null for the organization. */
+    private function ownerName(?SocialConnection $connection): ?string
+    {
+        if ($connection === null || $connection->scope_id === null) {
+            return null;
+        }
+        $key = $connection->scope_type.':'.$connection->scope_id;
+
+        return $this->ownerNames[$key] ??= match ($connection->scope_type) {
+            'company' => \App\Models\Company::query()->whereKey($connection->scope_id)->value('name'),
+            'franchise' => \App\Models\Franchise::query()->whereKey($connection->scope_id)->value('name'),
+            default => null,
         };
     }
 
@@ -921,7 +1054,17 @@ class SocialPostsController extends Controller
             'provider' => $connection?->provider,
             'provider_label' => $connection?->providerLabel(),
             'status' => $target->status,
+            // What "sent" meant, when it is not the profile: TikTok's inbox.
+            'status_label' => $this->inboxTarget($target, $connection) && $target->status === SocialPostTarget::STATUS_SENT
+                ? 'Sent to TikTok inbox' : null,
             'failure' => $target->failure,
+            // Whose account it is: the company or branch it was connected for.
+            'company' => $this->ownerName($connection),
+            // Business Profile's button, when the post has one.
+            'cta_type' => $target->options['cta_type'] ?? null,
+            'cta_url' => $target->options['cta_url'] ?? null,
+            // The account needs reconnecting: nothing posts there until then.
+            'connection_status' => $connection?->status,
             'sent_at' => $target->sent_at?->toIso8601String(),
             'url' => $target->url,
             // The server's answer, so the Delete button never drifts from what works.

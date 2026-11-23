@@ -122,7 +122,22 @@ class BookingBotTest extends TestCase
         $this->assertContains($lead->id, collect($this->signedInAs($t['admin'])
             ->getJson('/api/v1/leads?source=website_booking')->json('data'))->pluck('id')->all(), 'it waits in Online Booking');
 
+        // Desk, 2026-11-17: the window filled since the hold, so approving is refused until it frees.
+        [$seat, $tech] = $this->inTenant($t['org'], function () use ($t, $booking) {
+            $c = \App\Models\Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-9', 'name' => 'Other']);
+            $tech = \App\Models\SchedulingTechnician::create(['franchise_id' => $t['franchise']->id, 'name' => 'Tom Tech', 'is_field_tech' => true, 'is_active' => true]);
+            $tech->areas()->attach($booking->service_area_id);
+
+            return [Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $c->id, 'number' => 'J-9', 'title' => 'Seat', 'status' => 'x', 'currency' => 'USD',
+                'service_area_id' => $booking->service_area_id, 'scheduled_for' => $booking->date->toDateString().' 09:00:00']), $tech];
+        });
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertUnprocessable()->assertJsonPath('can_override', true);
+        $this->assertNull($lead->fresh()->job_id);
+        $this->inTenant($t['org'], fn () => $seat->delete());
+
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk();
+        $this->assertSame([$tech->id], $this->inTenant($t['org'], fn () => \App\Models\JobTechnician::query()->where('job_id', $lead->fresh()->job_id)->pluck('technician_id')->all()),
+            'approving assigns the area\'s technician');
 
         $job = $this->inTenant($t['org'], fn () => Job::query()->with('customer')->findOrFail($lead->fresh()->job_id));
         $this->assertSame('chimney sweep', $job->title);

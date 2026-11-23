@@ -4,6 +4,7 @@ namespace App\Support\Social\Liveness;
 
 use App\Models\SocialConnection;
 use App\Support\Social\BlueskySession;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\Publishing\BlueskyPublisher;
@@ -13,6 +14,9 @@ use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\Publishing\XPublisher;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackClient;
+use App\Support\Social\ThumbtackWebhooks;
+use App\Support\Tasks\Monday\MondayRefused;
+use App\Support\Tasks\Monday\MondayToken;
 use App\Support\Workiz\WorkizV2;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
@@ -61,10 +65,20 @@ final class ConnectionLiveness
         }
 
         try {
-            return $check($c);
+            $result = $check($c);
         } catch (ConnectionException) {
             return Liveness::unknown('The provider did not answer.');
         }
+
+        // A Thumbtack business's webhook is read back and registered again.
+        $result = self::thumbtackHeard($c, $result);
+
+        // A live token whose setup is gone queues that setup again (ConnectionSetup).
+        if ($result->verdict === Liveness::ALIVE) {
+            ConnectionSetup::readBack($c);
+        }
+
+        return $result;
     }
 
     /** @return array<string, Closure(SocialConnection): Liveness> */
@@ -114,7 +128,35 @@ final class ConnectionLiveness
                 fn () => self::stored($c, 'bot_token'),
                 fn (string $t) => Http::timeout(self::TIMEOUT)->get('https://api.telegram.org/bot'.$t.'/getMe')),
             SocialProvider::Mailchimp->value => fn (SocialConnection $c) => self::mailchimp($c),
+            SocialProvider::Monday->value => fn (SocialConnection $c) => self::monday($c),
+            SocialProvider::QuickBooks->value => fn (SocialConnection $c) => self::quickBooks($c),
         ];
+    }
+
+    /**
+     * Monday: who the token is (`me`). Monday answers 200 with an `errors`
+     * array for some refusals, so the body decides, not only the status.
+     */
+    private static function monday(SocialConnection $c): Liveness
+    {
+        try {
+            // Renewed first when it is about to run out (New OAuth Flow tokens expire).
+            $token = app(MondayToken::class)->for($c);
+        } catch (MondayRefused $e) {
+            return Liveness::refused($e->getMessage());
+        } catch (Throwable) {
+            return Liveness::unknown('The Monday token could not be renewed just now.');
+        }
+        $r = Http::withHeaders(['Authorization' => $token])->acceptJson()->timeout(self::TIMEOUT)
+            ->post('https://api.monday.com/v2', ['query' => '{ me { id } }']);
+        if (in_array($r->status(), [401, 403], true)) {
+            return Liveness::refused(self::sentence('Monday'));
+        }
+        if ($r->successful() && $r->json('data.me.id') !== null) {
+            return Liveness::alive();
+        }
+
+        return Liveness::unknown('Monday answered HTTP '.$r->status().' without saying who the token is.');
     }
 
     /**
@@ -195,6 +237,29 @@ final class ConnectionLiveness
         return Liveness::alive();
     }
 
+    /**
+     * A Thumbtack business whose webhook is gone hears nothing, for good: their
+     * API cannot list what it missed (desk audit, 2026-11-12). Read it back and
+     * register it again; per business, so siblings that share a renewal are
+     * each checked. Only what Thumbtack refuses marks the row broken.
+     */
+    public static function thumbtackHeard(SocialConnection $c, Liveness $renewed): Liveness
+    {
+        if ($c->provider !== SocialProvider::Thumbtack->value || $renewed->verdict !== Liveness::ALIVE) {
+            return $renewed;
+        }
+
+        try {
+            ThumbtackWebhooks::for($c)->ensure(route('social.thumbtack.webhook'));
+        } catch (ConnectionException) {
+            return Liveness::unknown('Thumbtack did not answer.');
+        } catch (Throwable) {
+            return Liveness::refused("Thumbtack is not sending this business's leads: its webhook could not be registered. Reconnect Thumbtack.");
+        }
+
+        return $renewed;
+    }
+
     private static function workiz(SocialConnection $c): Liveness
     {
         if (WorkizV2::uses($c)) {
@@ -262,6 +327,23 @@ final class ConnectionLiveness
         return $c->status === SocialConnection::STATUS_BROKEN
             ? Liveness::refused((string) ($c->status_reason ?: self::sentence($c->providerLabel())))
             : Liveness::unknown('The renewal failed without a refusal.');
+    }
+
+    /**
+     * QuickBooks: the company itself (CompanyInfo), with a token renewed
+     * under QuickBooksToken's lock (Intuit rotates the refresh token).
+     */
+    private static function quickBooks(SocialConnection $c): Liveness
+    {
+        try {
+            $name = app(\App\Support\Financials\QuickBooks\QuickBooksClient::class)->companyName($c);
+        } catch (\App\Support\Financials\QuickBooks\QuickBooksRefused $e) {
+            return Liveness::refused($e->getMessage());
+        } catch (\Throwable $e) {
+            return Liveness::unknown('QuickBooks did not answer: '.mb_substr($e->getMessage(), 0, 160));
+        }
+
+        return $name !== null ? Liveness::alive() : Liveness::unknown('QuickBooks answered without naming the company.');
     }
 
     private static function stored(SocialConnection $c, string $key): ?string

@@ -12,10 +12,12 @@ use App\Models\HrNote;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
+use App\Models\PersonCertification;
 use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Auth\PasswordResets;
+use App\Services\Hr\OnboardingForm;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
@@ -136,6 +138,8 @@ class HrPeopleController extends Controller
                 'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // Removed people only when asked for (removed=1); never mixed into the rest.
+            ->removed($request->boolean('removed'))
             // The Active / Inactive chips (Jose, 2026-11-10: "it doesn't load the full list").
             ->when(in_array($request->query('status'), ['active', 'inactive'], true),
                 fn ($q) => $q->where('is_active', $request->query('status') === 'active'))
@@ -363,6 +367,7 @@ class HrPeopleController extends Controller
             'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            ->removed(false)
             ->orderByDesc('is_active')->orderBy('name')->get();
         $ids = $people->map->getKey()->all();
 
@@ -964,9 +969,17 @@ class HrPeopleController extends Controller
             ...$user->addressParts(),
             'gender' => $user->gender,
             'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
+            // How far ahead a certification is "expiring" (the HR overview's
+            // own setting), so the record's warn tag says the same thing.
+            'certification_warn_days' => (int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
             // Only whether it is on file; the photo itself is a reveal on the onboarding.
+            // What their unfinished onboarding still needs (Merav, 2026-11-19),
+            // as labels; empty when none is open or nothing is missing.
+            'onboarding_missing' => ($open = Onboarding::query()->where('user_id', $user->id)
+                ->where('status', Onboarding::IN_PROGRESS)->latest('started_at')->first()) === null
+                ? [] : array_values(app(OnboardingForm::class)->missing($open)),
             'ssn_card' => OnboardingAnswer::query()->where('field_key', Onboarding::SSN_CARD)
                 ->whereHas('onboarding', fn ($q) => $q->where('user_id', $user->id))->get()
                 ->contains(fn (OnboardingAnswer $a) => ! in_array($a->getAttribute('value'), [null, '', 'N/A'], true)) ? 'on_file' : 'missing',
@@ -980,6 +993,9 @@ class HrPeopleController extends Controller
             'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
                 ->latest()->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'certifications' => PersonCertification::query()->where('user_id', $user->id)
+                ->orderByRaw('expires_on is null')->orderBy('expires_on')->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'equipment' => HeldEquipment::query()->where('user_id', $user->id)
                 ->orderByRaw('returned_on is not null')->orderBy('name')->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
@@ -990,6 +1006,14 @@ class HrPeopleController extends Controller
                 ? PayRate::query()->where('user_id', $user->id)
                     ->orderByDesc('effective_on')->get()
                     ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
+                : null,
+            // Which of those applies today, and the next one dated ahead (a rate
+            // stage, Merav 2026-11-17), as ids into pay_rates.
+            'pay_rate_now' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::rateOn($user->id, now()->toDateString())?->id : null,
+            'pay_rate_next' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)->where('basis', 'hourly')
+                    ->whereDate('effective_on', '>', now()->toDateString())->orderBy('effective_on')->value('id')
                 : null,
 
             // Null rather than a zero allowance when the organization has not

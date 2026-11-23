@@ -131,6 +131,27 @@ class MailboxesApiTest extends TestCase
 
     // ── the credential ───────────────────────────────────────────
 
+    /** Whoever connects an inbox can read it (Jose 11-12); nobody else is added. */
+    public function test_the_person_who_adds_an_inbox_is_given_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $manager = $this->userWithRole($t, 'Office', ['email.view', 'email.create', 'email.settings.view'], 'office@a1.test');
+
+        $created = $this->signedInAs($manager)->postJson(self::ENDPOINT, [
+            'scope_type'   => 'organization',
+            'scope_id'     => $t['org']->id,
+            'address'      => 'info@a-1chimney.com',
+            'display_name' => 'Info',
+            'provider'     => 'imap',
+            'mail_server'  => ['imap_host' => self::REACHABLE_HOST, 'imap_port' => 993],
+        ])->assertCreated()->json('data');
+
+        $people = $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()
+            ->where('mailbox_id', $created['id'])->whereNotNull('user_id')->pluck('user_id')->all());
+
+        $this->assertSame([$manager->id], $people);
+    }
+
     /**
      * The secret goes in and never comes back out, through any route here.
      *
@@ -659,6 +680,7 @@ class MailboxesApiTest extends TestCase
             // that collapsed them would draw a switch it cannot honour.
             'mark_read_at_source', 'can_mark_read_at_source',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
+            'send_checked_at', 'send_problem',
             'can_be_opened', 'unavailable_reason', 'mail_server',
             'may_read', 'unread', 'may_read_reason', 'may_manage',
             'read_state_shared', 'read_state_note',

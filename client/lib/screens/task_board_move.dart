@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'task_board_sensitive.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -179,6 +182,15 @@ class _TaskChoicePanelState extends State<TaskChoicePanel> {
 
 /// Link… (Jose, 2026-10-28): the tasks this one is linked to, and a board
 /// then a task to link. Linked tasks show each other; Done carries across.
+/// "Lead", "Customer", "Job" for a record type.
+String recordTypeLabel(String type) => switch (type) {
+  'lead' => 'Lead',
+  'customer' => 'Customer',
+  'job' => 'Job',
+  'vehicle' => 'Vehicle',
+  _ => type,
+};
+
 class TaskLinkPanel extends StatefulWidget {
   const TaskLinkPanel({super.key, required this.api, required this.task});
 
@@ -191,10 +203,11 @@ class TaskLinkPanel extends StatefulWidget {
 
 class _TaskLinkPanelState extends State<TaskLinkPanel> {
   List<_Json> _links = const [];
-  List<_Json> _boards = const [];
-  List<_Json> _tasks = const [];
-  String? _board;
-  String? _pick;
+  List<_Json> _found = const [];
+  List<_Json> _records = const [];
+  late Map? _about = widget.task['about'] as Map?;
+  final _query = TextEditingController();
+  Timer? _wait;
   String? _error;
 
   String get _id => widget.task['id'] as String;
@@ -203,11 +216,13 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
   void initState() {
     super.initState();
     _refresh();
-    widget.api.get('/task-boards').then((res) {
-      if (mounted && res.ok) {
-        setState(() => _boards = (res.body['data'] as List).cast<_Json>());
-      }
-    });
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    _query.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -218,34 +233,63 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     }
   }
 
-  Future<void> _pickBoard(String? id) async {
-    setState(() {
-      _board = id;
-      _pick = null;
-      _tasks = const [];
+  /// One box across every board (Jose 11-17): type, see each task's board.
+  void _search(String q) {
+    _wait?.cancel();
+    if (q.trim().length < 2) {
+      return setState(() {
+        _found = const [];
+        _records = const [];
+      });
+    }
+    _wait = Timer(const Duration(milliseconds: 250), () async {
+      final res = await widget.api.get(
+        '/task-search?q=${Uri.encodeQueryComponent(q.trim())}',
+      );
+      if (!mounted || _query.text != q || !res.ok) return;
+      final linked = {for (final l in _links) l['id']};
+      setState(() {
+        _found = (res.body['data'] as List)
+            .cast<_Json>()
+            .where((t) => t['id'] != _id && !linked.contains(t['id']))
+            .toList();
+        _records = (res.body['records'] as List? ?? const []).cast<_Json>();
+      });
     });
-    if (id == null) return;
-    final res = await widget.api.get('/task-boards/$id');
-    if (!mounted || _board != id || !res.ok) return;
-    setState(
-      () => _tasks = ((res.body['data'] as Map)['tasks'] as List? ?? const [])
-          .cast<_Json>()
-          .where((t) => t['id'] != _id && t['parent_task_id'] == null)
-          .toList(),
-    );
   }
 
-  Future<void> _link() async {
+  Future<void> _link(String other) async {
     final res = await widget.api.post('/tasks/$_id/links', {
-      'linked_task_id': _pick,
+      'linked_task_id': other,
     });
     if (!mounted) return;
     if (!res.ok) return setState(() => _error = res.reason);
+    _query.clear();
     setState(() {
-      _pick = null;
+      _found = const [];
       _error = null;
     });
     await _refresh();
+  }
+
+  /// What the task is about: one lead, customer or job (null clears it).
+  Future<void> _setAbout(_Json? record) async {
+    final res = await widget.api.patch('/tasks/$_id', {
+      'about': record == null
+          ? null
+          : {'type': record['type'], 'id': record['id']},
+    });
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _error = res.reason);
+    _query.clear();
+    setState(() {
+      _about = record == null
+          ? null
+          : {'type': record['type'], 'id': record['id'], 'label': record['label']};
+      _found = const [];
+      _records = const [];
+      _error = null;
+    });
   }
 
   Future<void> _unlink(String other) async {
@@ -260,30 +304,39 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     final theme = Theme.of(context);
     return SidePanel(
       title: 'Linked tasks',
-      subtitle: '${widget.task['title']}',
-      actions: [
-        FilledButton(
-          key: const Key('task-link-go'),
-          onPressed: _pick == null ? null : _link,
-          child: const Text('Link'),
-        ),
-      ],
+      subtitle: taskTitle(widget.task),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            _links.isEmpty
-                ? 'Not linked to any task. Done or reopened on one carries to the others.'
-                : 'Done or reopened on one carries to the others.',
+            'Link a lead, customer or job to open it from the task. Linked tasks show each other, and marking one Done marks them all Done.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+          const SizedBox(height: 8),
+          if (_about case final Map about)
+            Row(
+              key: const Key('task-link-about'),
+              children: [
+                Expanded(
+                  child: Text(
+                    '${about['label']}  ·  ${recordTypeLabel('${about['type']}')}',
+                  ),
+                ),
+                IconButton(
+                  key: const Key('task-unlink-about'),
+                  tooltip: 'Unlink',
+                  icon: const Icon(Icons.link_off, size: 18),
+                  onPressed: () => _setAbout(null),
+                ),
+              ],
+            ),
           for (final l in _links)
             Row(
               key: ValueKey('task-link-${l['id']}'),
               children: [
-                Expanded(child: Text('${l['title']}  ·  ${l['board_name']}')),
+                Expanded(child: Text('${taskTitle(l)}  ·  ${l['board_name']}')),
                 IconButton(
                   key: ValueKey('task-unlink-${l['id']}'),
                   tooltip: 'Unlink',
@@ -292,28 +345,38 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
                 ),
               ],
             ),
-          const SizedBox(height: 16),
-          SearchPickerField<String>(
-            key: const Key('task-link-board'),
-            label: 'Board',
-            value: _board,
-            options: [
-              for (final b in _boards)
-                SearchOption(value: b['id'] as String, label: '${b['name']}'),
-            ],
-            onChanged: _pickBoard,
-          ),
           const SizedBox(height: 12),
-          SearchPickerField<String>(
-            key: const Key('task-link-task'),
-            label: 'Task',
-            value: _pick,
-            options: [
-              for (final t in _tasks)
-                SearchOption(value: t['id'] as String, label: '${t['title']}'),
-            ],
-            onChanged: _tasks.isEmpty ? null : (v) => setState(() => _pick = v),
+          TextField(
+            key: const Key('task-link-search'),
+            controller: _query,
+            onChanged: _search,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Find a task, lead, customer or job',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
           ),
+          for (final r in _records)
+            ListTile(
+              key: ValueKey('task-link-record-${r['type']}-${r['id']}'),
+              dense: true,
+              leading: const Icon(Icons.person_pin_outlined, size: 18),
+              title: Text('${r['label']}'),
+              subtitle: Text(
+                [recordTypeLabel('${r['type']}'), ?r['detail']].join(' · '),
+              ),
+              onTap: () => _setAbout(r),
+            ),
+          for (final t in _found)
+            ListTile(
+              key: ValueKey('task-link-pick-${t['id']}'),
+              dense: true,
+              leading: const Icon(Icons.add_link, size: 18),
+              title: Text(taskTitle(t)),
+              subtitle: Text('${t['board_name'] ?? ''}'),
+              onTap: () => _link(t['id'] as String),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),

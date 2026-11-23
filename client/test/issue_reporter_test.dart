@@ -37,6 +37,16 @@ void main() {
     expect(stall(5 * 60 * 1000), isNull, reason: 'A laptop lid, not a freeze.');
   });
 
+  test('a window ping answered after the computer slept is not a freeze', () {
+    expect(IssueReporter.pingStalled(const Duration(milliseconds: 1500)), isFalse);
+    expect(IssueReporter.pingStalled(const Duration(seconds: 9)), isTrue);
+    expect(
+      IssueReporter.pingStalled(const Duration(milliseconds: 3630650)),
+      isFalse,
+      reason: 'The 11-11 hour-long "freeze": a sleeping PC.',
+    );
+  });
+
   test('a background tab coming back is not a freeze; a real stall while in front is', () {
     // 2026-10-16: 175 web "freezes", and they were hidden tabs. Chrome holds a
     // hidden tab's timer for up to a minute; the late tick fired once the tab
@@ -134,13 +144,18 @@ void main() {
 
     IssueReporter.module = 'scheduling';
     reporter.startWatchdogs();
-    await Future<void>.delayed(const Duration(milliseconds: 7600)); // one ping at 5 s, 2.3 s slow
+    // One ping at 5 s, answered 2.3 s late. ponytail: real timers; 9.5 s leaves 2.2 s for a
+    // loaded release machine (7.6 s left 0.3 s and failed the 0595 cut).
+    await Future<void>.delayed(const Duration(milliseconds: 9500));
     reporter.dispose();
 
-    final freezes = reporter.queued.where((q) => q['kind'] == 'freeze').toList();
-    expect(freezes, isNotEmpty);
-    expect(freezes.first['message'], contains('The window did not respond'));
-    expect(freezes.first['detail'], contains('module: scheduling'));
+    // A loaded machine can also stall the Dart loop itself ("The app did not respond…",
+    // the 0597 cut); that is a second, real freeze, so look for the window one, not the first.
+    final window = reporter.queued
+        .where((q) => q['kind'] == 'freeze' && '${q['message']}'.contains('The window did not respond'))
+        .toList();
+    expect(window, isNotEmpty);
+    expect(window.first['detail'], contains('module: scheduling'));
   }, timeout: const Timeout(Duration(seconds: 20)));
 
   test('a crash marker left by the last run is reported once', () async {
@@ -305,5 +320,10 @@ void main() {
     await ExitHooks.runAll(each: const Duration(milliseconds: 50));
 
     expect(ran, 1);
+  });
+
+  test('uptime counts from markLaunch, not from the first report', () {
+    IssueReporter.markLaunch();
+    expect(IssueReporter.uptimeRunning, isTrue);
   });
 }

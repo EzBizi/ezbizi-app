@@ -123,6 +123,11 @@ class ScoringReportTest extends TestCase
         $ada = fn () => $this->signedInAs($t['admin'])->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data');
 
         $this->assertSame(1, $ada()['people'][0]['rank']);
+        // No user is called Ada: no photo, and nothing guessed.
+        $this->assertNull($ada()['people'][0]['user_id']);
+        // One active user with exactly that name: theirs (Jose, 2026-11-13).
+        $this->inTenant($t['org'], fn () => $t['admin']->forceFill(['name' => 'Ada'])->save());
+        $this->assertSame($t['admin']->id, $ada()['people'][0]['user_id']);
 
         $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('reports.scoring_min_calls', $t['org'], 5));
         $this->assertSame(5, $ada()['min_calls_to_rank']);

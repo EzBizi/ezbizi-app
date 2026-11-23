@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/phone_call_service.dart';
 import '../core/phone_numbers.dart';
@@ -129,6 +132,7 @@ class IncomingCallBar extends StatelessWidget {
             // and this bar is the one part of the phone that is on screen in
             // every module — which is where they will be looking.
             _MoveCallButton(service: service),
+            _Keypad(service: service),
             OutlinedButton(
               key: const Key('on-call-hang-up'),
               onPressed: service.hangUp,
@@ -199,6 +203,97 @@ class _MoveCallButtonState extends State<_MoveCallButton> {
       icon: const Icon(Icons.phonelink_ring_outlined, size: 18),
       label: Text(_moving ? 'Moving…' : 'Move to my phone'),
       onPressed: _moving ? null : _move,
+    );
+  }
+}
+
+/// Keys pressed on the live call, for a menu at the other end (Jose,
+/// 2026-11-11: a call from Meta said "press 1" and there was nothing to
+/// press). Opens in place; digits typed on the keyboard work while it is open.
+class _Keypad extends StatefulWidget {
+  const _Keypad({required this.service});
+
+  final PhoneCallService service;
+
+  @override
+  State<_Keypad> createState() => _KeypadState();
+}
+
+class _KeypadState extends State<_Keypad> {
+  bool _open = false;
+  String _typed = '';
+  final _focus = FocusNode();
+
+  static const _keys = '123456789*0#';
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _press(String key) {
+    widget.service.sendDigits(key);
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _typed += key);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final toggle = TextButton.icon(
+      key: const Key('on-call-keypad'),
+      onPressed: () {
+        setState(() => _open = !_open);
+        if (_open) _focus.requestFocus();
+      },
+      icon: const Icon(Icons.dialpad, size: 18),
+      label: Text(_open ? 'Hide keypad' : 'Keypad'),
+    );
+    if (!_open) return toggle;
+
+    return Focus(
+      focusNode: _focus,
+      onKeyEvent: (node, event) {
+        final key = event.character;
+        if (event is KeyDownEvent && key != null && _keys.contains(key)) {
+          _press(key);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          toggle,
+          Text(
+            _typed.isEmpty ? 'Press a key' : _typed,
+            key: const Key('on-call-keypad-typed'),
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 180,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final key in _keys.split(''))
+                  SizedBox(
+                    width: 52,
+                    height: 40,
+                    child: OutlinedButton(
+                      key: Key('on-call-key-$key'),
+                      style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                      onPressed: () => _press(key),
+                      child: Text(key, style: theme.textTheme.titleMedium),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

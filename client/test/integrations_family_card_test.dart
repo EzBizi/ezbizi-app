@@ -22,21 +22,31 @@ void main() {
       // No card of their own for products a sign-in brings.
       expect(find.byKey(const ValueKey('provider:facebook_ads')), findsNothing);
       expect(find.byKey(const ValueKey('provider:youtube')), findsNothing);
+      // One equal tile each; the family card opens in a SidePanel.
       expect(
-        find.byKey(const ValueKey('family:facebook_page')),
+        find.byKey(const ValueKey('provider:facebook_page')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('family:google_business_profile')),
+        find.byKey(const ValueKey('provider:google_business_profile')),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('family:facebook_page')), findsNothing);
+      await _open(tester, 'google_business_profile');
+      // YouTube was not granted: Add access, not a status.
+      expect(find.byKey(const ValueKey('add-access:youtube')), findsOneWidget);
+      Navigator.of(
+        tester.element(
+          find.byKey(const ValueKey('family:google_business_profile')),
+        ),
+      ).pop();
+      await tester.pumpAndSettle();
+
+      await _open(tester, 'facebook_page');
       expect(
         find.byKey(const ValueKey('family-product:facebook_ads')),
         findsOneWidget,
       );
-      // YouTube was not granted: Add access, not a status.
-      expect(find.byKey(const ValueKey('add-access:youtube')), findsOneWidget);
-
       // Disconnect is a two-step: the first tap lists, nothing is sent.
       final go = find.byKey(const ValueKey('family-disconnect:facebook_page'));
       await tester.ensureVisible(go);
@@ -54,11 +64,48 @@ void main() {
     });
   }
 
+  // Mobile review 2026-11-13: on a phone a family drew as the desktop's
+  // fixed 240 x 168 card, its status lines ran out of the box, and the next
+  // row (Telegram) was painted over WhatsApp's status. A phone draws every
+  // family as a full-width row that grows with its lines.
+  testWidgets(
+    'on a phone a family is a full-width row and rows never overlap',
+    (tester) async {
+      await _pump(tester, 390);
+
+      final fb = tester.getRect(
+        find.byKey(const ValueKey('provider:facebook_page')),
+      );
+      expect(fb.width, greaterThan(300));
+      // Not the card's fixed 168 px box: a row as tall as its lines, so a
+      // longer status pushes the next row down instead of running under it.
+      expect(fb.height, lessThan(168), reason: 'A row, not the fixed card.');
+
+      final rects = [
+        for (final e
+            in find
+                .byWidgetPredicate(
+                  (w) =>
+                      w is InkWell &&
+                      w.key is ValueKey &&
+                      '${(w.key as ValueKey).value}'.startsWith('provider:'),
+                )
+                .evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ]..sort((a, b) => a.top.compareTo(b.top));
+      for (var i = 1; i < rects.length; i++) {
+        expect(rects[i].top, greaterThanOrEqualTo(rects[i - 1].bottom - 0.5));
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('Confirm sends one family disconnect with the code', (
     tester,
   ) async {
     final deletes = await _pump(tester, 1280);
 
+    await _open(tester, 'facebook_page');
     await tester.tap(
       find.byKey(const ValueKey('family-disconnect:facebook_page')),
     );
@@ -181,3 +228,10 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: const {'content-type': 'application/json'},
 );
+
+Future<void> _open(WidgetTester tester, String head) async {
+  final tile = find.byKey(ValueKey('provider:$head'));
+  await tester.ensureVisible(tile);
+  await tester.tap(tile);
+  await tester.pumpAndSettle();
+}

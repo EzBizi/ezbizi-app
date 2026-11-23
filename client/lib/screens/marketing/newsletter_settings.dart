@@ -6,6 +6,7 @@ import '../../widgets/disconnect_panel.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/social_network_mark.dart';
+import 'connection_setup.dart';
 
 /// Newsletter › Settings — the mailing account this view sends through.
 ///
@@ -213,11 +214,24 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
       contentPadding: EdgeInsets.zero,
       leading: const SocialNetworkMark(network: 'mailchimp', size: 24),
       title: Text(name),
-      subtitle: Text(
-        healthy
-            ? 'Connected · newsletters send through this account'
-            : (c['status_reason'] as String? ??
-                  'This connection needs attention.'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            healthy
+                ? 'Connected · newsletters send through this account'
+                : (c['status_reason'] as String? ??
+                      'This connection needs attention.'),
+          ),
+          // Connect's check, and which audience it sends to (ConnectSetup).
+          ConnectionSetup(
+            api: widget.api,
+            connectionId: c['id'] as String? ?? '',
+            check: c['connect_check'] as Map<String, dynamic>?,
+            choices: c['choices'] as List<dynamic>? ?? const [],
+            canChange: refusal == null,
+          ),
+        ],
       ),
       trailing: Refused(
         reason: refusal,

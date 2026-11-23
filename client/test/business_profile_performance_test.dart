@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/business_profile/performance_view.dart';
 import 'package:ezbizi_client/screens/business_profile_screen.dart';
-import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -38,15 +38,15 @@ void main() {
     final from = DateTime(yesterday.year, yesterday.month, yesterday.day - 27);
     final before = DateTime(from.year, from.month, from.day - 1);
     final current = fake.performance.firstWhere(
-      (q) => q['to'] == dayKey(yesterday),
+      (q) => q['to'] == formatCalendarDay(yesterday),
     );
     final previous = fake.performance.firstWhere(
-      (q) => q['to'] == dayKey(before),
+      (q) => q['to'] == formatCalendarDay(before),
     );
-    expect(current['from'], dayKey(from));
+    expect(current['from'], formatCalendarDay(from));
     expect(
       previous['from'],
-      dayKey(DateTime(before.year, before.month, before.day - 27)),
+      formatCalendarDay(DateTime(before.year, before.month, before.day - 27)),
     );
 
     // Up and down are drawn in different colours, both off the theme.
@@ -194,6 +194,36 @@ void main() {
     },
   );
 
+  // Jose, 2026-11-16: on a phone a tap on the picker's dates did nothing.
+  testWidgets('narrow: Custom opens the dates on a page, one tap takes one', (
+    tester,
+  ) async {
+    final fake = _Fake();
+    await _pumpView(tester, fake, size: const Size(390, 844));
+
+    await tester.tap(find.byKey(const ValueKey('gbp-performance-range')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Custom').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('date-range-sheet')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('date-preset-yesterday')));
+    await tester.pumpAndSettle();
+
+    // The panel's "today" is Google's last day, so its Yesterday is the day
+    // before that one.
+    final last = _yesterday();
+    final day = formatCalendarDay(
+      DateTime(last.year, last.month, last.day - 1),
+    );
+    expect(find.byKey(const Key('date-range-sheet')), findsNothing);
+    expect(
+      fake.performance.where((q) => q['from'] == day && q['to'] == day),
+      isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('no listings, and no numbers, each say so', (tester) async {
     await _pumpView(tester, _Fake()..noListings = true);
     expect(find.text('No listings yet'), findsOneWidget);
@@ -263,7 +293,7 @@ class _Fake {
     if (path.endsWith('/business-profile/performance')) {
       final q = request.url.queryParameters;
       performance.add(q);
-      final current = q['to'] == dayKey(_yesterday());
+      final current = q['to'] == formatCalendarDay(_yesterday());
       return _json({'data': _performance(q, current)});
     }
     if (path.contains('/search-terms')) {
@@ -356,7 +386,9 @@ class _Fake {
           : [
               for (var i = 0; i < 3; i++)
                 {
-                  'date': dayKey(DateTime(from.year, from.month, from.day + i)),
+                  'date': formatCalendarDay(
+                    DateTime(from.year, from.month, from.day + i),
+                  ),
                   ..._metrics(calls: 10 + i, website: 20, desktopMaps: 30),
                 },
             ],

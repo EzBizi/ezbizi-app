@@ -178,10 +178,17 @@ class SocialConnectionsApiTest extends TestCase
         // added 2026-09-16 by the Reports module - the tenant's own name for a
         // connection, which nothing listed before, so naming one had no
         // visible effect anywhere.
+        // `whatsapp` (2026-11-12) is only the number's purpose, never its token.
+        // `connect_check` and `choices` (Marketing 3bdbd58e9) are ConnectSetup's
+        // pass/fail summary (scope names, "renews automatically") and the
+        // audience/board options, never a credential value.
+        // `avatar_url` (Marketing 669a4a356) is the account's public profile
+        // picture URL, shown on its card - an image address, not a token.
         $this->assertSame([
-            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
-            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'last_reached_at', 'last_checked_at',
-            'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices',
+            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'avatar_url', 'account_email',
+            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'whatsapp', 'last_reached_at', 'last_checked_at',
+            'connect_check', 'choices',
+            'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices', 'tiktok_mode', 'body_limit', 'refuses',
         ], array_keys($row));
 
         $this->assertArrayNotHasKey('credentials', $row);

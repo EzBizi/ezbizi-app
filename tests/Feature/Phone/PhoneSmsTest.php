@@ -369,6 +369,12 @@ class PhoneSmsTest extends TestCase
         $this->assertNull(collect($all)->firstWhere('id', $hidden->id)['customer_name']);
         $this->assertArrayNotHasKey('credentials', $all[0]);
 
+        // Paged on request (Desk 11-13: the whole history froze the screen).
+        $page = fn (int $n) => array_column($this->signedInAs($desk)
+            ->getJson('/api/v1/phone/messages?per_page=2&page='.$n)->assertOk()->json('data'), 'id');
+        $this->assertCount(2, $page(1));
+        $this->assertSame(array_column($all, 'id'), [...$page(1), ...$page(2)]);
+
         $thread = $this->signedInAs($desk)
             ->getJson('/api/v1/phone/messages?'.http_build_query([
                 'number_id' => $visible->id,

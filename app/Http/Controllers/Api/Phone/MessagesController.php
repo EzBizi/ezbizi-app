@@ -63,13 +63,21 @@ class MessagesController extends Controller
 
         $query = PhoneMessage::query()
             ->whereIn('number_id', $readable)
-            ->orderByDesc('created_at');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id'); // a tie-breaker, so pages never overlap
 
         if (filled($input['peer'] ?? null)) {
             $peer = (string) $input['peer'];
             $query->where(fn ($q) => $q
                 ->where('from_e164', $peer)
                 ->orWhere('to_e164', $peer));
+        }
+
+        // Records asks a page at a time (Desk 11-13: 2.27 MB per open froze the
+        // screen); no per_page is still everything, for older callers.
+        $perPage = (int) $request->query('per_page', 0);
+        if ($perPage > 0) {
+            $query->forPage(max(1, (int) $request->query('page', 1)), min($perPage, 500));
         }
 
         $messages = $query->get();

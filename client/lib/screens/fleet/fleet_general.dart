@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -63,6 +66,18 @@ class _FleetGeneralState extends State<FleetGeneral> {
   void initState() {
     super.initState();
     _load();
+    // A vehicle changed anywhere moves the figures: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'vehicles'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: () => widget.visible && LiveChanges.visible(this)());
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -71,18 +86,22 @@ class _FleetGeneralState extends State<FleetGeneral> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the figures on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
-    setState(() {
-      _loading = _data == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _data == null;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/vehicles/summary', {
       'period': _period,
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -110,25 +129,13 @@ class _FleetGeneralState extends State<FleetGeneral> {
     final health = (data['health'] as Map?)?.cast<String, dynamic>() ?? {};
 
     if (health['empty'] == true) {
-      return ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            '${health['sentence'] ?? 'No vehicles to show.'}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          if (widget.canAdd) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: widget.onAdd,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add vehicle'),
-              ),
-            ),
-          ],
-        ],
+      return EmptyState(
+        key: const ValueKey('fleet-general-empty'),
+        icon: Icons.local_shipping_outlined,
+        title: 'No vehicles yet',
+        message: '${health['sentence'] ?? 'No vehicles to show.'}',
+        actionLabel: 'Add vehicle',
+        onAction: widget.canAdd ? widget.onAdd : null,
       );
     }
 
@@ -299,9 +306,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final row in rows) _attentionRow(context, row),
-              ],
+              children: [for (final row in rows) _attentionRow(context, row)],
             ),
     );
   }
@@ -426,7 +431,8 @@ class _FleetGeneralState extends State<FleetGeneral> {
     );
   }
 
-  static String _date(DateTime day) => '${shortMonths[day.month - 1]} ${day.day}';
+  static String _date(DateTime day) =>
+      '${shortMonths[day.month - 1]} ${day.day}';
 
   // --- Spending -----------------------------------------------------------
 

@@ -8,9 +8,9 @@
 |---|---|
 | **Dev URL** | **https://dev.ezbizi.com** — Laravel 13.24.0, HTTP 200 |
 | Framework | Laravel **13.24.0** |
-| PHP | **8.4.24** (FPM socket `/run/php/php8.4-fpm.sock`) |
+| PHP | **8.4.27** as measured 2026-11-13 (FPM socket `/run/php/php8.4-fpm.sock`) |
 | Database | MySQL 8.0, schema **`ezbizi`**, base migrations applied |
-| Server path | `/var/www/ezbizi` (web root `public/`) |
+| Server path | `/var/www/ezbizi-current` → the live release (Laravel `public/`); `/var/www/ezbizi` holds only shared `.env`, `storage/` and the Flutter bundle `public-app/` — see [DEPLOY](DEPLOY.md#where-things-are) |
 | nginx vhost | `/etc/nginx/sites-available/dev.ezbizi.com.conf` |
 | SSL | wildcard `ezbizi.com-0002` (`*.ezbizi.com`), auto-renewing |
 
@@ -82,7 +82,7 @@ green gate. Three are missing libraries; one was fixed.
 
 | | Symptom | State |
 |---|---|---|
-| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **fixed 2026-08-18** — MySQL 8.4.9 Community, schema `ezbizi_testing`. `php artisan test` talks to it. The Windows service could not be installed without elevation, so `mysqld` is a user process (`C:\ProgramData\MySQL\Data`). Start it with `mysqld --datadir=C:\ProgramData\MySQL\Data` if port 3306 is refused. |
+| MySQL | `Access denied for user 'root'@'localhost'` on ~1100 tests | **fixed 2026-08-18** — MySQL 8.4.9 Community, schema `ezbizi_testing`. `php artisan test` talks to it. The Windows service could not be installed without elevation, so `mysqld` is a user process (`C:\ProgramData\MySQL\Data`). Start it with `mysqld --datadir=C:\ProgramData\MySQL\Data` if port 3306 is refused. *(Since 2026-08-31 the Startup-folder script `EzBizi-start-mysql.cmd` starts it at logon and checks first; check for a running `mysqld` before starting another.)* |
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
 | GD | `GD extension is not installed` — image tests | **fixed 2026-08-19** — `extension=gd` in this machine's `php.ini`. Not a repo file. |
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | **fixed 2026-08-19** — `composer.phar install` pulled `dompdf/dompdf` from the lockfile; it had been missing from `vendor/`. |
@@ -90,7 +90,7 @@ green gate. Three are missing libraries; one was fixed.
 | Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
 | Local TLS | **Thirteen red, not one** (count it, do not trust this number: it grows with every test added to those two files) — every `ImapTransportTest` and `ImapReplySenderTest` case that opens the fake IMAP/SMTP server. The connection to `localhost` fails on the certificate *before* anything the test is about, so each one reports the certificate instead (e.g. `test_a_credential_containing_a_line_break_is_refused` names the certificate rather than the line break). Confirmed 2026-08-28. | **Windows only** |
 
-**A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
+**A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh --gates` (or `scripts/preflight-backend.sh`) pipes `git archive <pinned-sha>` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
 
 **It runs the other way too: this machine accepts a migration a stock MySQL refuses.**
 A migration that creates a trigger through `DB::unprepared` is the case. A `CHECK` constraint
@@ -171,8 +171,8 @@ config it was not pointed at:
 Set for this machine's user on 2026-08-17. A new shell picks it up; an already-open one needs
 restarting. Verify with `php -r 'var_dump(openssl_pkey_new([]) !== false);'`.
 
-A sqlite `:memory:` run is still not the gate (StartUp.md §8). This machine now has MySQL;
-use `php artisan test` with no sqlite overrides. GD and Dompdf are present as of 2026-08-19.
+A sqlite `:memory:` run is still not the gate (§8 of the [former StartUp](history/2026-09-08-startup.md); [DEVELOPMENT-RULES](DEVELOPMENT-RULES.md)). This machine now has MySQL;
+run with no sqlite overrides, using the `phpunit` command above for a full run. GD and Dompdf are present as of 2026-08-19.
 
 ## Permissions model
 
@@ -185,7 +185,13 @@ use `php artisan test` with no sqlite overrides. GD and Dompdf are present as of
 
 Only those two paths are writable by the web server. Nothing else needs to be.
 
+*(Phase 0 layout. Since releases, code lives in `/var/www/ezbizi-releases/*` and ownership is described, with 2026-11-13 measurements, in [DEPLOY › Ownership](DEPLOY.md#ownership).)*
+
 ## Working on it
+
+> **Superseded:** `/var/www/ezbizi` no longer holds the code, and migrations run only
+> through the deploy hook. Do not run the commands below; see [DEPLOY](DEPLOY.md). Kept
+> as the Phase 0 record.
 
 Local is the source of truth (plan §11). Edit in `H:\Development\EzBizi`, deploy to the server.
 
@@ -196,7 +202,7 @@ php8.4 artisan migrate
 php8.4 artisan config:clear
 ```
 
-**Always `php8.4`, never bare `php`** — that still resolves to 8.2, which Laravel 13 refuses.
+**Always `php8.4`, never bare `php`** — that still resolves to 8.2, which Laravel 13 refuses. *(Measured 2026-11-13: bare `php` now resolves to 8.4 via `/etc/alternatives/php`; the scripts and units still call `php8.4` explicitly.)*
 
 ## Phase 0 remaining
 
@@ -208,8 +214,8 @@ php8.4 artisan config:clear
 | dev vhost + SSL | ✅ done |
 | Local repo, secrets excluded | ✅ done |
 | Remove unused PHP 8.2 packages | ⬜ nothing uses them; safe to purge |
-| GitHub remote | ⬜ name/owner undecided |
-| CI pipeline | ⬜ |
+| GitHub remote | ✅ `origin` = `github.com/EzBizi/ezbizi-app` |
+| CI pipeline | ⬜ none (no `.github/workflows`); gates are `scripts/deploy.sh --gates`, opt-in |
 | Automated backups (this box) | ✅ encrypted, off-instance, restore-checked nightly; the versioned private-file manifest is locally proven and awaits the Task 10A production-sized off-instance proof |
-| Staging/production split (`app.ezbizi.com`) | ⬜ dev only so far |
-| BIND secondary on the Websites box | ⬜ per README — removes the single-nameserver weakness |
+| Staging/production split (`app.ezbizi.com`) | ◐ `app.ezbizi.com` is production for customers and `dev.ezbizi.com` the production control plane; there is no staging ([DEPLOY](DEPLOY.md#not-yet-done)) |
+| BIND secondary on the Websites box | ⬜ per README — removes the single-nameserver weakness (2026-11-13: `ns1` and `ns2` both still resolve to 100.24.188.241) |

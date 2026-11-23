@@ -44,6 +44,9 @@ class PinterestOAuthTest extends TestCase
     {
         parent::setUp();
 
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+
         config([
             'services.pinterest.client_id'     => 'a-pinterest-app-id',
             'services.pinterest.client_secret' => 'a-pinterest-app-secret',

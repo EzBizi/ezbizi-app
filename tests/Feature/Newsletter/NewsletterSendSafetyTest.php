@@ -224,7 +224,10 @@ class NewsletterSendSafetyTest extends TestCase
         $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Renamed'])
             ->assertOk()->assertJsonPath('data.html_override', '<p>Mine</p>');
 
+        // A view switch (null HTML) keeps it (01a1f9ed); only an explicit discard removes it.
         $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Blocks', 'html_override' => null])
+            ->assertOk()->assertJsonPath('data.html_override', '<p>Mine</p>');
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Blocks', 'discard_html' => true])
             ->assertOk()->assertJsonPath('data.html_override', null);
     }
 

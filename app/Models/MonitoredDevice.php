@@ -24,6 +24,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MonitoredDevice extends Model implements HoldsPersonalData
 {
     use BelongsToTenant, HasFactory, HasUuids;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). A machine is its user's, so the feed asks ScopeReach (ChangeFeed::NARROW). */
+    protected static string $changeType = 'monitoring_devices';
+
+    /** Rewritten on every beat (about once a minute): not news; online and offline are (RecordsChanges). */
+    protected static array $changeFeedIgnores = [
+        'last_seen_at', 'user_agent', 'ip_address', 'specs', 'screen_context', 'capture_last_attempt_at',
+    ];
+
 
     protected $fillable = [
         'organization_id', 'user_id', 'device_key', 'label', 'platform',

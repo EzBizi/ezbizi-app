@@ -335,6 +335,54 @@ void main() {
     expect(server.lists.length, 2);
   });
 
+  testWidgets('back from an open mail finds the list where it was scrolled '
+      '(Jose 11-11)', (tester) async {
+    final server = _Server();
+    // Short enough that the fixture's rows scroll (360 since the underlined
+    // module tabs, 2026-11-13, are shorter than the old pills).
+    await _pump(tester, server, size: const Size(1500, 360));
+
+    ScrollPosition position() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('tour-email-list')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+
+    position().jumpTo(position().maxScrollExtent);
+    await tester.pumpAndSettle();
+    final scrolled = position().pixels;
+    expect(scrolled, greaterThan(0), reason: 'The fixture must scroll.');
+
+    await _tap(tester, find.textContaining('You received money').first);
+    expect(find.byKey(const ValueKey('email-reader')), findsOneWidget);
+    await _tap(tester, find.byTooltip('Back to the messages'));
+
+    expect(position().pixels, scrolled);
+  });
+
+  testWidgets('one Primary tab holds everything, its badge is all unread '
+      '(Jose 11-11: no All beside a Primary)', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    expect(find.text('All'), findsNothing);
+    expect(find.text('Primary'), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-category-primary')), findsNothing);
+    // unread_loaded is 2; the old Primary's own count was 3.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('email-category-count-all')))
+          .data,
+      '2',
+    );
+    expect(server.lists.last.queryParameters.containsKey('category'), isFalse);
+  });
+
   testWidgets('the reading pane setting is remembered', (tester) async {
     final server = _Server();
     await _pump(tester, server);
@@ -342,7 +390,7 @@ void main() {
     await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
     await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
 
-    expect(local_store.readItem('email_reading_pane_u-1'), 'below');
+    expect(local_store.readItem('email_reading_pane_v2_u-1'), 'below');
 
     await _tap(tester, find.textContaining('You received money').first);
     final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
@@ -485,7 +533,10 @@ void main() {
     final info = find.byKey(const ValueKey('email-inbox-mb-info'));
     expect(find.descendant(of: info, matching: find.text('12')), findsNothing);
     final billing = find.byKey(const ValueKey('email-inbox-mb-billing'));
-    expect(find.descendant(of: billing, matching: find.text('—')), findsNothing);
+    expect(
+      find.descendant(of: billing, matching: find.text('—')),
+      findsNothing,
+    );
   });
 
   testWidgets('a handled mail has a tick on its row, and the reader says who '

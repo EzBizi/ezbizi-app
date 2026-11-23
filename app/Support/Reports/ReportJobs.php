@@ -78,11 +78,19 @@ final class ReportJobs
             ->map(fn ($a) => (float) $a)->all();
     }
 
+    /** A branch's payments between two wall-clock stamps, each with its job's team (null when the job isn't synced). */
+    public static function paidFor(string $branchId, string $from, string $to): Collection
+    {
+        return self::received($branchId)->whereBetween('workiz_records.starts_at', [$from, $to])
+            ->leftJoin('workiz_jobs as j', fn ($on) => $on->on('j.franchise_id', '=', 'workiz_records.franchise_id')->on('j.v2_id', '=', 'workiz_records.job_remote_id'))
+            ->get(['workiz_records.user_remote_id as user_ref', 'workiz_records.amount', DB::raw("json_extract(j.payload, '$.Team') as team")]);
+    }
+
     /** A branch's payments that went through: a pending ACH is not money yet ($1,459.08 at 1 AM, 2026-11-10). */
     private static function received(string $branchId): Builder
     {
-        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'payment')
-            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', 'succeeded'));
+        return DB::table('workiz_records')->where('workiz_records.franchise_id', $branchId)->where('workiz_records.type', 'payment')
+            ->where(fn ($q) => $q->whereNull('workiz_records.status')->orWhere('workiz_records.status', 'succeeded'));
     }
 
     /** Who a user_ref / team id is, by name, in a branch. @return array<string, string> */
@@ -113,18 +121,35 @@ final class ReportJobs
     }
 
     /**
+     * Workiz's copy of a finished job (Jose, 2026-11-16: "without the duplicates ... its a workiz
+     * issue"): made seconds after the job ends, same client, notes and team, no line items, $0, this
+     * status. 1,569 of A1-Group's 6,938 jobs, Oct 18 - Nov 16; 362 of them carry no tag the business
+     * leaves out ("Free – Estimated" and others).
+     */
+    public const COPY_STATUS = 'done pending approval';
+
+    /** A row with its status and total that is such a copy. A row without its total is not. */
+    public static function copy(mixed $job): bool
+    {
+        $total = data_get($job, 'total');
+
+        return mb_strtolower(trim((string) data_get($job, 'status'))) === self::COPY_STATUS && is_numeric($total) && (float) $total == 0.0;
+    }
+
+    /**
      * The jobs that count as created: less those with a tag the business
      * leaves out (Settings › Lists, reports.tags_not_created: "Paid –
-     * Estimated", 22% of Nov 2-8's). Every "jobs created" figure reads it.
+     * Estimated", 22% of Nov 2-8's), and less Workiz's copies (copy()).
+     * Every "jobs created" figure reads it.
      *
-     * @param  Collection<int, object|array>  $jobs  rows with their tags
+     * @param  Collection<int, object|array>  $jobs  rows with their tags, status and total
      * @return Collection<int, object|array>
      */
     public static function created(Collection $jobs): Collection
     {
         $skip = self::tags('reports.tags_not_created');
 
-        return $jobs->reject(fn ($job) => self::tagged(data_get($job, 'tags') ?? [], $skip))->values();
+        return $jobs->reject(fn ($job) => self::tagged(data_get($job, 'tags') ?? [], $skip) || self::copy($job))->values();
     }
 
     /** A tag as a person reads it, letters and digits only: "Paid – Estimated" with any dot in front is "paidestimated". */

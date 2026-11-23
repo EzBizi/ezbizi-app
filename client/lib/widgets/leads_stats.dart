@@ -8,6 +8,7 @@ import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import 'map_attribution.dart';
 import 'search_picker.dart';
 
@@ -77,9 +78,7 @@ class _LeadsStatsState extends State<LeadsStats> {
   (String, String) get _range {
     final now = DateTime.now();
     final from = now.subtract(Duration(days: int.parse(_period) - 1));
-    String day(DateTime d) =>
-        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
-    return (day(from), day(now));
+    return (formatCalendarDay(from), formatCalendarDay(now));
   }
 
   Future<void> _load() async {

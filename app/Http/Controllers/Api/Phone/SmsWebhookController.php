@@ -9,7 +9,12 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\ScheduleTexts;
+use App\Support\Leads\LeadTexts;
+use App\Support\Phone\SmsConsent;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Promotions\Promotions;
+use App\Support\Scheduling\RescheduleOffers;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -67,16 +72,20 @@ class SmsWebhookController extends Controller
             $this->events->emit('phone.sms.received', $message, $this->payload($message));
 
             // STOP / START, for every sender of this company (Jose, 2026-11-03).
-            \App\Support\Phone\SmsConsent::absorb((string) $connection->organization_id, $from, $body);
+            SmsConsent::absorb((string) $connection->organization_id, $from, $body);
 
             // An answer to a text we sent about a lead goes on that lead's thread (Leads, 2026-10-13).
             // Never at the cost of the text itself: a failure here must not roll back
             // the PhoneMessage above (desk, 2026-10-13).
             try {
+                // NO to a Re-Scheduling offer keeps the time; the reply still goes to its lead (2026-11-12).
+                app(RescheduleOffers::class)->absorbNo($from, $body);
                 // A first answer to a promotion text opens its lead (2026-11-06).
-                app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid)
-                    || app(\App\Support\Promotions\Promotions::class)->absorbReply($from, $body, $sid);
-            } catch (\Throwable $e) {
+                // YES / NO to a Project Management scheduling text (2026-11-11).
+                app(ScheduleTexts::class)->absorb($from, $body, $sid)
+                    || app(LeadTexts::class)->absorbInbound($from, $body, $sid)
+                    || app(Promotions::class)->absorbReply($from, $body, $sid);
+            } catch (Throwable $e) {
                 report($e);
             }
         });

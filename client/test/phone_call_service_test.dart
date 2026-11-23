@@ -23,6 +23,8 @@ import 'package:http/testing.dart';
 /// tab being thrown away, and that it never substitutes its own line for the
 /// one somebody chose.
 void main() {
+  _otherAccountsCase();
+
   // start() awaits a frame before it registers — see the ordering test — so
   // these need a binding even though none of them build a widget.
   /// A desk that has been running for an hour must not go quiet.
@@ -79,12 +81,17 @@ void main() {
     tester,
   ) async {
     final device = _FakeDevice()
-      ..refusesCalls = 'Android has not given EzBizi permission to place calls.';
+      ..refusesCalls =
+          'Android has not given EzBizi permission to place calls.';
     final service = await _started(tester, device: device);
 
     await service.connect(to: '+13055550100', callerId: '+12035550142');
 
-    expect(service.onCall, isFalse, reason: 'marked on a call that never started');
+    expect(
+      service.onCall,
+      isFalse,
+      reason: 'marked on a call that never started',
+    );
     expect(service.callRefusal, contains('permission to place calls'));
 
     // In the body, as every other case in this file does. The helper's
@@ -686,6 +693,74 @@ void main() {
 /// registers, and outside a pumped test no frame ever comes — the await simply
 /// never returns. That await is not ceremony: it is what puts the WebView2
 /// host in the tree before the microphone is asked for.
+/// EverDoors' "Owners" ring group rang nobody: a token belongs to one Twilio
+/// account, and the desk registered only on its own line's (Jose 2026-11-11).
+/// So it registers once more per other account, and a call ringing there is
+/// answered on THAT device.
+void _otherAccountsCase() {
+  testWidgets(
+    'the desk registers on every account and answers on the one that rang',
+    (tester) async {
+      final primary = _FakeDevice();
+      final extra = _FakeDevice();
+      final presence = <String>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          final path = request.url.path;
+          if (path.endsWith('/phone/numbers')) {
+            return _json([
+              {
+                'id': 'n-1',
+                'connection_id': 'cx-1',
+                'e164': '+12035550142',
+                'assigned_to_me': true,
+              },
+            ]);
+          }
+          if (path.endsWith('/phone/registrations')) {
+            return _json([
+              {'connection_id': 'cx-1'},
+              {'connection_id': 'cx-everdoors'},
+            ]);
+          }
+          if (path.endsWith('/phone/tokens')) {
+            return http.Response(
+              jsonEncode({'token': 'a-token', 'expires_in': 1800}),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (path.endsWith('/phone/presence') && request.method == 'PUT') {
+            presence.add(
+              (jsonDecode(request.body) as Map)['connection_id'] as String,
+            );
+          }
+          return _json(const []);
+        }),
+      );
+
+      final service = PhoneCallService.forTest(primary)..stop();
+      service.newDevice = () => extra;
+      final starting = service.start(api, device: primary);
+      await tester.pumpAndSettle();
+      await starting;
+      await tester.pumpAndSettle();
+
+      expect(extra.setups, 1, reason: 'the other account was never registered');
+      expect(presence, containsAll(['cx-1', 'cx-everdoors']));
+
+      extra.ring('+15555550100');
+      expect(service.incomingFrom, '+15555550100');
+      service.accept();
+      expect(extra.accepted, isTrue, reason: 'answered on the wrong device');
+      expect(primary.accepted, isFalse);
+
+      service.stop();
+      expect(extra.disposed, isTrue);
+    },
+  );
+}
+
 Future<PhoneCallService> _started(
   WidgetTester tester, {
   required VoiceDevice device,

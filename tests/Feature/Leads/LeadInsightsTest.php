@@ -5,11 +5,7 @@ namespace Tests\Feature\Leads;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Services\Leads\LeadInsights;
-use App\Support\Leads\LeadThread;
 use App\Support\Settings\SettingsResolver;
-use Aws\BedrockRuntime\BedrockRuntimeClient;
-use Aws\MockHandler;
-use Aws\Result;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -17,43 +13,40 @@ use Tests\TestCase;
 /**
  * What a model can say about an enquiry, and what it may never do.
  *
- * Item 5 of the a1tools list. Classification into BOOK / SUPPORT / ARCHIVE
- * with a one-line summary, once, the first time the enquirer has said
- * something in words; and a draft reply the desk reads and sends itself.
- * Off until AWS keys and a model id exist; nothing on screen depends on it.
+ * Item 5 of the a1tools list: a draft reply the desk reads and sends itself,
+ * and a proofread it may take or leave. Sorting into BOOK / SUPPORT / ARCHIVE
+ * is ezbizi:leads-read's (LeadsReadTest). Off until LEADS_AI_GROK is on;
+ * nothing on screen depends on it.
  */
 class LeadInsightsTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
 
-    /** A Bedrock client that answers from a queue, no network. */
-    private function bedrock(array $answers): BedrockRuntimeClient
-    {
-        $handler = new MockHandler;
-
-        foreach ($answers as $text) {
-            $handler->append(new Result([
-                'output' => ['message' => ['role' => 'assistant', 'content' => [['text' => $text]]]],
-            ]));
-        }
-
-        return new BedrockRuntimeClient([
-            'version'     => 'latest',
-            'region'      => 'us-east-1',
-            'credentials' => ['key' => 'k', 'secret' => 's'],
-            'handler'     => $handler,
-        ]);
-    }
-
+    /** Grok answering from a queue, one structured answer per question, no CLI. */
     private function on(array $answers): void
     {
-        $this->app->instance(LeadInsights::class, new LeadInsights($this->bedrock($answers), 'test-model'));
+        config(['ezbizi.leads_ai_grok' => true, 'services.ai.provider' => 'grok']);
+        $this->app->instance(\App\Support\Ai\GrokCliProvider::class, new class($answers) implements \App\Support\Ai\AiProvider
+        {
+            public function __construct(private array $answers) {}
+
+            public function name(): string { return 'grok'; }
+
+            public function configured(): bool { return true; }
+
+            public function askMany(array $prompts, array $schema, int $timeout, array $files = []): array
+            {
+                $key = array_key_first($schema['properties']);
+
+                return array_map(fn () => [$key => array_shift($this->answers)], $prompts);
+            }
+        });
     }
 
     private function off(): void
     {
-        $this->app->instance(LeadInsights::class, new LeadInsights(null, ''));
+        config(['ezbizi.leads_ai_grok' => false]);
     }
 
     private function lead(array $t, array $extra = []): Lead
@@ -71,56 +64,6 @@ class LeadInsightsTest extends TestCase
         ]));
     }
 
-    public function test_a_lead_is_classified_once_the_enquirer_has_said_something(): void
-    {
-        $t = $this->provisionTenant('A1-Chimney');
-        $this->on(['```json'."\n".'{"classification":"book","summary":"Wants the chimney at 14 Ash Lane inspected before winter."}'."\n".'```']);
-        $lead = $this->lead($t);
-
-        $this->inTenant($t['org'], function () use ($lead) {
-            $threads = app(LeadThread::class);
-
-            // The business speaks first: nothing to read yet.
-            $threads->store($lead, 'm-0', ['channel' => 'LIVECHAT', 'participant' => 'ADVERTISER', 'occurred_at' => now()->subMinutes(2), 'text' => 'Hello, how can we help?']);
-            $threads->refresh($lead);
-            $this->assertNull($lead->fresh()->classification, 'nothing the enquirer said yet');
-
-            $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => now()->subMinute(), 'text' => 'Can you inspect my chimney before winter? 14 Ash Lane.']);
-            $threads->refresh($lead);
-        });
-
-        $fresh = $this->inTenant($t['org'], fn () => $lead->fresh());
-        $this->assertSame('BOOK', $fresh->classification, 'the wire word, upper-cased, from a fenced answer');
-        $this->assertSame('Wants the chimney at 14 Ash Lane inspected before winter.', $fresh->summary);
-        $this->assertNotNull($fresh->classified_at);
-        $this->assertSame(Lead::STATUS_NEW, $fresh->status, 'a reading never moves the status');
-
-        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data');
-        $this->assertSame('BOOK', $detail['classification']);
-    }
-
-    public function test_classification_happens_once_and_a_nonsense_answer_stores_nothing(): void
-    {
-        $t = $this->provisionTenant('A1-Chimney');
-        $this->on(['I am not sure what this is.', '{"classification":"ARCHIVE","summary":"Spam."}']);
-        $lead = $this->lead($t);
-
-        $this->inTenant($t['org'], function () use ($lead) {
-            $threads = app(LeadThread::class);
-            $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => now(), 'text' => 'hi']);
-            $threads->refresh($lead);
-            $this->assertNull($lead->fresh()->classification, 'an answer outside the three words is no answer');
-
-            // Second refresh asks again (still unclassified) and gets ARCHIVE.
-            $threads->refresh($lead);
-            $this->assertSame('ARCHIVE', $lead->fresh()->classification);
-
-            // Third refresh does not ask: the pile a lead landed on stays.
-            $threads->refresh($lead);
-            $this->assertSame('ARCHIVE', $lead->fresh()->classification);
-        });
-    }
-
     public function test_with_no_keys_nothing_is_classified_and_nothing_is_offered(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
@@ -128,7 +71,7 @@ class LeadInsightsTest extends TestCase
         $lead = $this->lead($t);
 
         $this->inTenant($t['org'], function () use ($lead) {
-            $threads = app(LeadThread::class);
+            $threads = app(\App\Support\Leads\LeadThread::class);
             $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => now(), 'text' => 'Can you come Saturday?']);
             $threads->refresh($lead);
         });
@@ -210,5 +153,34 @@ class LeadInsightsTest extends TestCase
 
         $this->signedInAs($t['admin'])->postJson('/api/v1/proofread', ['text' => 'Yes, I call you right away'])
             ->assertOk()->assertJsonPath('data.suggestion', "Yes, I'll call you right away");
+    }
+
+    /** 11-10: 10 x 504 while Grok had its 300 s default; a proofread gives up first. */
+    public function test_a_proofread_on_grok_gives_up_inside_the_gateway_limit(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        config(['ezbizi.leads_ai_grok' => true, 'services.ai.provider' => 'grok']);
+        $grok = new class implements \App\Support\Ai\AiProvider
+        {
+            public array $timeouts = [];
+
+            public function name(): string { return 'grok'; }
+
+            public function configured(): bool { return true; }
+
+            public function askMany(array $prompts, array $schema, int $timeout, array $files = []): array
+            {
+                $this->timeouts[] = $timeout;
+
+                return [new \RuntimeException('timed out')];
+            }
+        };
+        $this->app->instance(\App\Support\Ai\GrokCliProvider::class, $grok);
+        $lead = $this->lead($t);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/proofread", ['text' => 'Yes, I call you right away'])
+            ->assertOk()->assertJsonPath('data.suggestion', null);
+        $this->assertSame([LeadInsights::PROOFREAD_TIMEOUT], $grok->timeouts);
+        $this->assertLessThan(60, LeadInsights::PROOFREAD_TIMEOUT);
     }
 }

@@ -2,6 +2,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/job_money.dart';
 import '../../core/money.dart';
 import '../../core/phone_numbers.dart';
@@ -60,19 +61,40 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
   void initState() {
     super.initState();
     _load();
+    // A member joined (the public page), renewed, paid or cancelled
+    // elsewhere: the list re-reads quietly; tile, search and the open
+    // member kept.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'memberships', 'membership_plans'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _rows.isEmpty;
-      _error = null;
-    });
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _rows.isEmpty;
+        _error = null;
+      });
+    }
 
     final results = await Future.wait([
       widget.api.get('/memberships'),
       widget.api.get('/memberships/plans'),
     ]);
-    if (!mounted) return;
+    if (!mounted || (quiet && !results[0].ok)) return;
 
     setState(() {
       _loading = false;
@@ -124,18 +146,7 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final open = _rows.where((r) => r.id == _open).firstOrNull;
@@ -423,6 +434,20 @@ class _MembershipDetailState extends State<MembershipDetail> {
   void initState() {
     super.initState();
     _loadYears();
+  }
+
+  /// The list re-read (somebody else's change): the member shown follows,
+  /// unless the paid amount is being typed, saved or a cancel confirmed.
+  @override
+  void didUpdateWidget(covariant MembershipDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.membership != widget.membership &&
+        !_editingPaid &&
+        !_saving &&
+        !_confirmCancel) {
+      _row = widget.membership;
+      _loadYears();
+    }
   }
 
   @override

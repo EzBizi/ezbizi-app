@@ -278,6 +278,28 @@ void main() {
     expect(find.text('No bill matches "zzz".'), findsOneWidget);
   });
 
+  testWidgets('Financials › Bills on a phone: the title keeps one line', (
+    tester,
+  ) async {
+    // Phone review 2026-11-13, item 5: the buttons squeezed it to "Bill / s".
+    final server = _Server({
+      '/financials/bills': (_) => {'data': <Object>[]},
+    });
+    final session = await server.session(tester, const [
+      'financials.view',
+      'financials.edit',
+    ]);
+    await _pump(
+      tester,
+      FinancialBillsTab(api: server.api, me: session.me!),
+      size: const Size(390, 844),
+    );
+
+    final title = find.text('Bills');
+    expect(title, findsOneWidget);
+    expect(tester.getSize(title).height, lessThan(30));
+  });
+
   testWidgets('Financials › adjustments: q is sent and rows narrow', (
     tester,
   ) async {
@@ -358,7 +380,7 @@ void main() {
     expect(find.textContaining('Fall chimney sweep'), findsOneWidget);
     expect(find.textContaining('Meet our new'), findsOneWidget);
 
-    await _search(tester, const Key('social-posts-search'), 'technician');
+    await _search(tester, const Key('plan-search'), 'technician');
 
     final sent = server.last('/social/posts');
     expect(sent['q'], 'technician');
@@ -366,7 +388,7 @@ void main() {
     expect(find.textContaining('Fall chimney sweep'), findsNothing);
     expect(find.textContaining('Meet our new'), findsOneWidget);
 
-    await _search(tester, const Key('social-posts-search'), 'zzz');
+    await _search(tester, const Key('plan-search'), 'zzz');
     expect(find.text('No post matches "zzz".'), findsOneWidget);
   });
 
@@ -565,7 +587,8 @@ Map<String, Object?> _bill(String id, String place) => {
 Map<String, Object?> _post(String id, String body) => {
   'id': id,
   'body': body,
-  'created_at': '2026-10-20T10:00:00Z',
+  // Today: the planner draws this month (UI queue 199).
+  'created_at': DateTime.now().toUtc().toIso8601String(),
   'targets': [
     {
       'id': 't-$id',

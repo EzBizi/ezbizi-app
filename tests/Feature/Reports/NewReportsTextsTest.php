@@ -109,6 +109,19 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringStartsWith("_Payments received, as of Nov 8, 1:00 AM_\n\n• *New Jersey*: $100.00", $text);
     }
 
+    /** Audit #14, 2026-11-11: the Sunday weekly no longer opens on a bare "_Through 8:01 PM_"; its sections say it. */
+    public function test_the_weekly_opens_on_its_first_section_not_a_bare_through(): void
+    {
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([]);
+
+        [$title, $text] = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)
+            ->headed('weekly', 'A-1 Chimney', $this->t['org'], CarbonImmutable::parse('2026-11-08 20:01:00')));
+
+        $this->assertSame("\u{1F4C5} A-1 Chimney · Weekly report · Nov 2 - Nov 8", $title);
+        $this->assertStringStartsNotWith('_Through', $text);
+        $this->assertStringContainsString('Nov 2 - Nov 8, 2026 · through 8:01 PM', $text);
+    }
+
     public function test_a_sub_companys_empty_branch_of_a_listed_name_is_not_a_second_line(): void
     {
         // A-1's sister brands carry empty branches named "Texas" too.
@@ -176,6 +189,43 @@ class NewReportsTextsTest extends TestCase
         $text = $this->text('evening');
 
         $this->assertStringContainsString('• *New Jersey*: spent $300.00 · 2 jobs · $150.00 per job', $text);
+        $this->assertStringContainsString('• *TOTAL*: spent $300.00 · 2 jobs', $text);
+    }
+
+    /** Audit, 2026-11-11 (#6): a week ending on the run's own day still reads every campaign that spent in it (DMV's $142.53). */
+    public function test_the_sunday_weekly_reads_paused_campaigns_spend(): void
+    {
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([]);
+        $this->mock(CampaignPerformance::class)->shouldReceive('channelCost')
+            ->withArgs(fn ($connection, $from, $to, $activeOnly = false) => $activeOnly === false)
+            ->andReturn(['currency' => 'USD', 'lsa' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0],
+                'ppc' => ['cost_minor' => 30000, 'clicks' => 5, 'conversions' => 0.0]]);
+        $this->googleAds($this->nj);
+
+        $text = $this->text('weekly');
+
+        $this->assertStringContainsString('*Google Ads · campaigns*', $text);
+        $this->assertStringContainsString('• *New Jersey*: spent $300.00', $text);
+    }
+
+    /** Audit, 2026-11-11 (#7): a sub-company's jobs sit in its parent's Workiz under its own source; ACE's 6 on Nov 10 read 0. */
+    public function test_google_ads_count_a_sub_companys_jobs_by_its_source(): void
+    {
+        $this->mock(CampaignPerformance::class)->shouldReceive('channelCost')
+            ->andReturn(['currency' => 'USD', 'lsa' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0],
+                'ppc' => ['cost_minor' => 30000, 'clicks' => 5, 'conversions' => 0.0]]);
+        $ace = $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => Company::query()->create(['organization_id' => $this->t['org']->id, 'parent_company_id' => $this->t['company']->id,
+                'name' => 'Ace Fireplace Services', 'is_active' => true])->id,
+            'name' => 'Main', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
+        $this->googleAds($ace);
+        $this->job($this->t['franchise'], 'J1', 'Ace Fireplace Services', '2026-11-08 09:00:00');
+        $this->job($this->nj, 'J2', 'Ace Fireplace Services', '2026-11-08 10:00:00');
+        $this->job($this->t['franchise'], 'J3', 'GMB /SEO', '2026-11-08 10:00:00');
+        $this->job($this->t['franchise'], 'J4', 'Ace Fireplace Services', '2026-11-07 10:00:00');
+
+        $text = $this->text('evening');
+
         $this->assertStringContainsString('• *TOTAL*: spent $300.00 · 2 jobs', $text);
     }
 
@@ -271,7 +321,7 @@ class NewReportsTextsTest extends TestCase
         $text = $this->text('weekly');
 
         foreach (['*Weekly report*', '*Revenue collected*', 'In Progress jobs by technician*', '*Jobs created*', 'new clients*', 'existing clients*',
-            '*Google Ads · active campaigns*', '*Meta Ads · active campaigns*', 'Local Services · locations losing money*'] as $section) {
+            '*Google Ads · campaigns*', '*Meta Ads · active campaigns*', 'Local Services · locations losing money*'] as $section) {
             $this->assertStringContainsString($section, $text);
         }
         $this->assertStringContainsString('_Excludes jobs tagged DEPOSIT RECEIVED._', $text);

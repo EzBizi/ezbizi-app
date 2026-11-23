@@ -3,14 +3,19 @@
 namespace App\Support\Social;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 final class PinterestOAuth implements SocialOAuth
 {
     public const SCOPE_USER_READ = 'user_accounts:read';
+
     public const SCOPE_BOARDS_READ = 'boards:read';
+
     public const SCOPE_BOARDS_WRITE = 'boards:write';
+
     public const SCOPE_PINS_READ = 'pins:read';
+
     public const SCOPE_PINS_WRITE = 'pins:write';
 
     /** @var string[] */
@@ -25,8 +30,11 @@ final class PinterestOAuth implements SocialOAuth
     public const CALLBACK_PATH = '/api/v1/social/pinterest/callback';
 
     private const AUTHORIZE_ENDPOINT = 'https://www.pinterest.com/oauth/';
+
     private const TOKEN_ENDPOINT = 'https://api.pinterest.com/v5/oauth/token';
+
     private const ACCOUNT_ENDPOINT = 'https://api.pinterest.com/v5/user_account';
+
     private const TIMEOUT = 10;
 
     public function provider(): SocialProvider
@@ -80,92 +88,42 @@ final class PinterestOAuth implements SocialOAuth
     public function authorizeUrl(string $state, ?string $verifier = null): string
     {
         return self::AUTHORIZE_ENDPOINT.'?'.http_build_query([
-            'client_id'     => (string) config('services.pinterest.client_id'),
-            'redirect_uri'  => $this->redirectUri(),
+            'client_id' => (string) config('services.pinterest.client_id'),
+            'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(',', self::SCOPES),
-            'state'         => $state,
+            'scope' => implode(',', self::SCOPES),
+            'state' => $state,
         ]);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth(
-                    (string) config('services.pinterest.client_id'),
-                    (string) config('services.pinterest.client_secret'),
-                )
-                ->timeout(self::TIMEOUT)
-                ->post(self::TOKEN_ENDPOINT, [
-                    'grant_type'   => 'authorization_code',
-                    'code'         => $code,
-                    'redirect_uri' => $this->redirectUri(),
-                ]);
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('Pinterest');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('Pinterest');
-        }
-
-        $access  = $response->json('access_token');
-        $refresh = $response->json('refresh_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('Pinterest');
-        }
-
-        if (! is_string($refresh) || $refresh === '') {
-            throw SocialOAuthRefused::noLastingPermission('Pinterest');
-        }
-
-        $scopes = preg_split('/\s+/', trim((string) $response->json('scope')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: $refresh,
-            scopes: $scopes,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::exchanged(OAuthTokens::post($this->tokenRequest(), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => $this->redirectUri(),
+        ], 'Pinterest'), 'Pinterest');
     }
 
     /** Access tokens last 30 days; the refresh token renews them without the person. */
     public function refresh(string $refreshToken): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth(
-                    (string) config('services.pinterest.client_id'),
-                    (string) config('services.pinterest.client_secret'),
-                )
-                ->timeout(self::TIMEOUT)
-                ->post(self::TOKEN_ENDPOINT, [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                ]);
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('Pinterest');
-        }
+        $response = OAuthTokens::post($this->tokenRequest(), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refreshToken,
+        ], 'Pinterest');
 
-        if (in_array($response->status(), [400, 401], strict: true)) {
-            throw SocialOAuthRefused::noLongerPermitted('Pinterest no longer accepts this connection. It needs connecting again.');
-        }
+        return OAuthTokens::refreshed($response, 'Pinterest', $refreshToken, in_array($response->status(), [400, 401], strict: true));
+    }
 
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('Pinterest');
-        }
-
-        $rotated = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+    private function tokenRequest(): PendingRequest
+    {
+        return Http::asForm()
+            ->withBasicAuth(
+                (string) config('services.pinterest.client_id'),
+                (string) config('services.pinterest.client_secret'),
+            )
+            ->timeout(self::TIMEOUT);
     }
 
     public function identify(SocialOAuthGrant $grant): array
@@ -191,7 +149,7 @@ final class PinterestOAuth implements SocialOAuth
         }
 
         $business = $response->json('business_name');
-        $display  = is_string($business) && trim($business) !== '' ? trim($business) : $username;
+        $display = is_string($business) && trim($business) !== '' ? trim($business) : $username;
 
         return [new SocialAccount($id, $display, $username)];
     }

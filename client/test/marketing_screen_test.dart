@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
@@ -7,11 +7,16 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/marketing/media_library_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_history.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_studio.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_templates.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
+import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/month_calendar.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
@@ -20,10 +25,12 @@ import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:video_player/video_player.dart';
 
 /// Marketing — Newsletter and Social Media Management, both built.
@@ -41,6 +48,11 @@ import 'package:video_player/video_player.dart';
 /// truth, and a test kept alive past the thing it describes is how a suite
 /// starts defending the wrong behaviour.
 void main() {
+  _studioTests();
+  _templateTests();
+
+  _jose1116Tests();
+
   group('the tab says what it is rather than showing nothing', () {
     testWidgets('the sub-module is named, and named as unbuilt', (
       tester,
@@ -108,24 +120,26 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      // UI queue 76 (Jose's pick 2): one row of tabs, opening on Dashboard,
-      // where the Accounts card says what is connected.
-      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsNothing);
-      expect(find.widgetWithText(ChoiceChip, 'Dashboard'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
-      expect(find.text('No pages connected in Everdoors yet'), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Connect'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      // UI queue 199 (Rodrigo 01a1ef71): no row of six tabs; it opens on
+      // the calendar, with the tools beside it.
+      for (final old in ['Dashboard', 'Compose', 'Calendar', 'Accounts']) {
+        expect(find.widgetWithText(ChoiceChip, old), findsNothing);
+      }
+      expect(find.byKey(const Key('tour-marketing-month')), findsOneWidget);
+      expect(find.text(_monthTitle(DateTime.now())), findsOneWidget);
+      expect(find.byKey(const Key('social-connections')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsOneWidget);
       expect(find.text('Publish now'), findsNothing);
 
       await _openCompose(tester);
       expect(find.text('How it will look'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
-      expect(find.text('Weekly Calendar'), findsNothing);
 
-      await _openCalendar(tester);
-      expect(find.text('Weekly Calendar'), findsOneWidget);
-      expect(find.text('Monthly Calendar'), findsOneWidget);
+      // Closing keeps the calendar where it was.
+      await tester.tap(find.byKey(const Key('social-composer-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('Publish now'), findsNothing);
+      expect(find.byKey(const Key('tour-marketing-month')), findsOneWidget);
     });
 
     testWidgets('the month calendar can be moved back and forth', (
@@ -144,32 +158,38 @@ void main() {
 
       expect(find.text(thisMonth), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.byTooltip('Next'));
       await tester.pumpAndSettle();
       expect(find.text(nextMonth), findsOneWidget);
       expect(find.text(thisMonth), findsNothing);
 
-      await tester.tap(find.byTooltip('Previous month'));
+      await tester.tap(find.byTooltip('Previous'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Previous month'));
+      await tester.tap(find.byTooltip('Previous'));
       await tester.pumpAndSettle();
       expect(find.text(previousMonth), findsOneWidget);
     });
 
-    testWidgets('the week calendar stays on this week', (tester) async {
+    testWidgets('Week shows this week, and Next moves it by a week', (
+      tester,
+    ) async {
       await _pumpScreen(tester, _handler());
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await _openCalendar(tester);
-
-      expect(find.byTooltip('Previous week'), findsNothing);
-      expect(find.byTooltip('Next week'), findsNothing);
-      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.text('Week'));
       await tester.pumpAndSettle();
-      expect(find.text(_weekRange(_mondayOf(DateTime.now()))), findsOneWidget);
+
+      final monday = _mondayOf(DateTime.now());
+      String title(DateTime d) =>
+          'Week of ${_shortWeekday(d)}, ${_shortMonths[d.month - 1]} ${d.day}';
+      expect(find.byKey(const Key('tour-marketing-week')), findsOneWidget);
+      expect(find.text(title(monday)), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Next'));
+      await tester.pumpAndSettle();
+      final next = DateTime(monday.year, monday.month, monday.day + 7);
+      expect(find.text(title(next)), findsOneWidget);
     });
 
     testWidgets('Publish now is disabled until this view has a page', (
@@ -202,7 +222,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       expect(find.text('Pinterest'), findsOneWidget);
@@ -222,7 +242,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       // The page itself, in the card that owns it.
@@ -252,6 +272,50 @@ void main() {
       );
     });
 
+    testWidgets('a TikTok account shows its own avatar on both cards; a '
+        'provider with none keeps its network mark', (tester) async {
+      const avatar = 'https://p16.tiktokcdn.test/ezbizi.jpeg?x-expires=1';
+      await _pumpScreen(
+        tester,
+        _handler(
+          connections: const [
+            {..._tiktokDirect, 'avatar_url': avatar},
+            _facebookPage,
+          ],
+        ),
+      );
+
+      String? urlOf(Finder card) {
+        final images = find.descendant(
+          of: card,
+          matching: find.byKey(const ValueKey('social-account-avatar')),
+        );
+        if (images.evaluate().isEmpty) return null;
+        return (tester.widget<Image>(images.first).image as NetworkImage).url;
+      }
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      // UI queue 199: the dashboard's accounts card went with the dashboard;
+      // Connections is where the accounts are.
+      await tester.tap(find.byKey(const Key('social-connections')));
+      await tester.pumpAndSettle();
+      final card = find.widgetWithText(DashboardCard, 'Accounts in Everdoors');
+      expect(urlOf(card), avatar);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byKey(const ValueKey('social-account-avatar')),
+        ),
+        findsOneWidget,
+        reason: 'Facebook sends no avatar_url, so it keeps the network mark.',
+      );
+      expect(
+        find.descendant(of: card, matching: find.byType(SocialNetworkMark)),
+        findsWidgets,
+      );
+    });
+
     /*
      * The reason a network cannot be connected is shown WHOLE on a phone.
      *
@@ -269,8 +333,10 @@ void main() {
 
       // At phone width the chip strips scroll sideways, so a chip can be off
       // screen and a bare tap() misses it with only a warning.
-      for (final chip in ['Social Media Management', 'Accounts']) {
-        final target = find.widgetWithText(ChoiceChip, chip);
+      for (final target in [
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        find.byKey(const Key('social-connections')),
+      ]) {
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
         await tester.tap(target);
@@ -302,7 +368,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
@@ -343,7 +409,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
 
       final catalogue = find.widgetWithText(DashboardCard, 'Catalogue');
@@ -394,7 +460,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
       await tester.pumpAndSettle();
@@ -415,7 +481,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.tap(find.byKey(const Key('social-connections')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Connect a page to Everdoors'));
       await tester.pumpAndSettle();
@@ -509,15 +575,16 @@ void main() {
       await _openCompose(tester);
 
       expect(tester.takeException(), isNull);
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsOneWidget);
       expect(find.text('How it will look'), findsOneWidget);
 
-      // A month grid does not fit a phone: the calendar is an agenda there
-      // (design 27, Jose's pick 4).
-      await _openCalendar(tester);
+      // A month grid does not fit a phone: a week strip and the day's posts
+      // (UI queue 199, phone 4).
+      await tester.tap(find.byKey(const Key('social-composer-close')));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('Your posts'), findsOneWidget);
-      expect(find.text('Monthly Calendar'), findsNothing);
+      expect(find.byKey(const Key('tour-marketing-agenda')), findsOneWidget);
+      expect(find.byKey(const Key('month-grid')), findsNothing);
     });
 
     testWidgets(
@@ -544,23 +611,9 @@ void main() {
         expect(tester.getRect(first).top, greaterThanOrEqualTo(0));
         expect(tester.getRect(last).bottom, lessThanOrEqualTo(900));
 
-        final card = tester.getRect(
-          find.ancestor(
-            of: find.text('Monthly Calendar'),
-            matching: find.byType(DashboardCard),
-          ),
-        );
+        // The grid takes the stage: nearly the whole width of the pane.
         final grid = tester.getRect(find.byKey(const Key('month-grid')));
-        expect(
-          grid.left,
-          closeTo(card.left + DashboardCard.padding, 2),
-          reason: 'The month grid should start at the card’s left padding.',
-        );
-        expect(
-          grid.right,
-          closeTo(card.right - DashboardCard.padding, 2),
-          reason: 'The month grid should use the full card width, like the week.',
-        );
+        expect(grid.width, greaterThan(1400 - 80));
       },
     );
 
@@ -746,12 +799,13 @@ void main() {
         _handler(
           canEdit: true,
           connections: const [_pinterestBoard],
-          posts: const [
+          posts: [
             {
               'id': 'post-1',
               'body': 'Chimney sweeping season is here.',
               'has_media': true,
               'author': 'Jose Silva',
+              'created_at': DateTime.now().toUtc().toIso8601String(),
               'targets': [
                 {
                   'account': 'Everdoors Boards',
@@ -771,7 +825,9 @@ void main() {
       expect(find.widgetWithText(StatusPill, 'Failed'), findsOneWidget);
       expect(find.text('Chimney sweeping season is here.'), findsOneWidget);
 
-      // The whole sentence, not the word "failed".
+      // The whole sentence, not the word "failed", where the post opens.
+      await tester.tap(find.text('Chimney sweeping season is here.'));
+      await tester.pumpAndSettle();
       expect(find.textContaining('has no boards'), findsOneWidget);
     });
   });
@@ -782,6 +838,68 @@ void main() {
   /// is invisible to every other assertion on this screen, because a dialog and
   /// a panel both show the same words and both return the same answer; only the
   /// type tells them apart, so only a test on the type holds the rule.
+  // Review 2026-11-09 C3 (A24): an expired account looks expired, with the
+  // way back on its row and above the dashboard.
+  testWidgets('a broken account shows its health, a banner and Reconnect', (
+    tester,
+  ) async {
+    final checked = DateTime.now()
+        .subtract(const Duration(hours: 2))
+        .toUtc()
+        .toIso8601String();
+    await _pumpScreen(
+      tester,
+      _handler(
+        canEdit: true,
+        connections: [
+          {
+            ..._pinterestBoard,
+            'status': 'broken',
+            'status_reason': 'Pinterest sign-in expired',
+            'last_checked_at': checked,
+          },
+        ],
+      ),
+    );
+    await _openPosts(tester);
+
+    // UI queue 199: the banner above the dashboard became a mark on
+    // Connections, which says how many.
+    expect(find.textContaining('1 need attention'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('social-connections')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        'Needs reconnect: Pinterest sign-in expired · checked 2h ago',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('social-reconnect-conn-2')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('social-reconnect-conn-2')));
+    await tester.pumpAndSettle();
+    // The reconnect form, over Connections' own panel.
+    expect(find.byType(SidePanel), findsNWidgets(2));
+  });
+
+  testWidgets('a healthy account reads Healthy and offers no Reconnect', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _handler(canEdit: true, connections: const [_pinterestBoard]),
+    );
+    await _openPosts(tester);
+    expect(find.textContaining('need attention'), findsNothing);
+    await tester.tap(find.byKey(const Key('social-connections')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Healthy'), findsOneWidget);
+    expect(find.byKey(const ValueKey('social-reconnect-conn-2')), findsNothing);
+  });
+
   testWidgets('disconnect confirms in a panel, never a dialog', (tester) async {
     await _pumpScreen(
       tester,
@@ -792,14 +910,15 @@ void main() {
       find.widgetWithText(ChoiceChip, 'Social Media Management'),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.tap(find.byKey(const Key('social-connections')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
     await tester.pumpAndSettle();
 
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byType(SidePanel), findsOneWidget);
+    // Connections' own panel, and the question over it.
+    expect(find.byType(SidePanel), findsNWidgets(2));
     expect(find.text('Disconnect Everdoors Boards?'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Keep it'), findsOneWidget);
   });
@@ -837,6 +956,40 @@ void main() {
 
       expect(find.widgetWithText(StatusPill, 'Not posted'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Sent'), findsNothing);
+    });
+
+    // Review 2026-11-09 C7 (A21): the edit picks its time like the composer.
+    testWidgets('editing a scheduled post picks the time from a calendar', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            {
+              ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
+              'id': 'c1',
+              'body': 'Free inspection week',
+            },
+          ],
+        ),
+      );
+      await tester.tap(find.text('Free inspection week').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-edit')));
+      await tester.pumpAndSettle();
+
+      final field = find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.byType(CalendarDayField),
+      );
+      expect(field, findsOneWidget);
+      expect(
+        tester.widget<CalendarDayField>(field).controller.text,
+        '2099-03-04 09:00',
+      );
     });
 
     // Bug review 2026-11-09 #9: fixing the words does not re-send the time,
@@ -888,8 +1041,8 @@ void main() {
       expect(patches.last['scheduled_for'], '2099-03-05 10:00');
     });
 
-    testWidgets('what is coming sits above today, and a refusal is said with '
-        'its Retry', (tester) async {
+    testWidgets('a post sits on its day, one with no time under Needs '
+        'attention, and a refusal opens with its reason', (tester) async {
       await _pumpSocial(
         tester,
         _handler(
@@ -920,42 +1073,34 @@ void main() {
         ),
       );
 
-      final today = tester.getRect(find.text('TODAY')).top;
-      expect(tester.getRect(find.text('COMING UP')).top, lessThan(today));
-      expect(
-        tester.getRect(find.text('Free inspection week')).top,
-        lessThan(today),
-      );
-      expect(
-        tester.getRect(find.text('Chimney season is here')).top,
-        greaterThan(today),
-      );
+      // UI queue 199 (Rodrigo 01a1ef57): the Agenda lists posts on the days
+      // they sit, from this month on (2099 included); one held for approval
+      // with no time sits on no day but under Needs attention.
+      expect(find.text('A look inside a flue camera inspection'), findsOneWidget);
+      expect(find.text('Chimney season is here'), findsOneWidget);
+      expect(find.text('Free inspection week'), findsOneWidget);
       expect(find.textContaining('Goes out 2099-03-04 09:00'), findsOneWidget);
-
-      // The network's sentence and a Retry on the refused post only.
-      expect(find.textContaining('That account has no boards.'), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
-      // A sent post opens where it went out, from the timeline itself.
-      expect(
-        find.byKey(const ValueKey('social-open-s1-target-1')),
-        findsOneWidget,
-      );
-      expect(find.byTooltip('Open post on Pinterest'), findsOneWidget);
-      expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
-
-      // A post waiting for approval has not gone out: never "Sent".
-      expect(
-        find.widgetWithText(StatusPill, 'Waiting for approval'),
-        findsOneWidget,
-      );
+      expect(find.text('Weekly Google post'), findsNothing);
+      expect(find.widgetWithText(StatusPill, 'Failed'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Sent'), findsOneWidget);
 
-      // A fact beside the filters, and the composer one tab away.
-      expect(find.text('it can post'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'New post'));
+      await tester.tap(find.byKey(const Key('plan-attention')));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(FilledButton, 'Publish now'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('plan-attention-panel')),
+          matching: find.widgetWithText(StatusPill, 'Needs approval'),
+        ),
+        findsOneWidget,
+      );
+
+      // The refused post opens beside the list with its reason and a Retry.
+      await tester.tap(find.text('Weekly Google post'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A look inside a flue camera inspection'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('plan-inspector')), findsOneWidget);
+      expect(find.textContaining('That account has no boards.'), findsWidgets);
     });
   });
 
@@ -996,7 +1141,8 @@ void main() {
       // hand, which is also a fair model of what the user does: waits.
       await _tick(tester);
 
-      // It polled, saw the truth, and said so.
+      // It polled, saw the truth, and said so where the post opens.
+      await _openPostRow(tester, 'Chimney sweeping season is here.');
       expect(find.textContaining('has no boards'), findsOneWidget);
       expect(find.textContaining('waiting to send'), findsNothing);
       expect(call, greaterThan(1), reason: 'It never re-read the Sent list.');
@@ -1242,16 +1388,293 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pumpAndSettle();
 
-      // Landed ON the agenda, not merely somewhere below: built lazily, it
-      // had no context to scroll to, and Done left the page at the top.
-      final agenda = tester.getRect(find.text('Your posts'));
-      expect(agenda.top, inInclusiveRange(0, 900 - agenda.height));
-      expect(find.text('Today'), findsOneWidget);
+      // Landed on today's day in the week strip, the new post outlined.
+      final post = find.byKey(const ValueKey('plan-row-post-1'));
+      expect(post, findsOneWidget);
+      expect(tester.getRect(post).bottom, lessThanOrEqualTo(900));
       final row = tester.widget<Material>(
-        find.byKey(const ValueKey('agenda-post-1')),
+        find.ancestor(of: post, matching: find.byType(Material)).first,
       );
       expect((row.shape! as RoundedRectangleBorder).side.width, 2);
       expect(tester.takeException(), isNull);
+    });
+
+    // Review 2026-11-09 C8 (A23): a day on the calendar is where a post starts.
+    testWidgets('tapping a calendar day opens Compose set to 9:00 that day', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final now = DateTime.now();
+      // UI queue 199: each day from today has its own Add post.
+      await tester.tap(find.byKey(Key('plan-add-${now.month}-${now.day}')));
+      await tester.pumpAndSettle();
+
+      String two(int n) => n.toString().padLeft(2, '0');
+      final field = tester.widget<CalendarDayField>(
+        find.byType(CalendarDayField),
+      );
+      expect(
+        field.controller.text,
+        '${now.year}-${two(now.month)}-${two(now.day)} 09:00',
+      );
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Later'))
+            .selected,
+        isTrue,
+      );
+    });
+
+    // Review 2026-11-09 C2: the month is asked for by its days, so a post
+    // older than the newest twenty is still drawn on its day.
+    testWidgets('the calendar asks for the days it draws', (tester) async {
+      final ranges = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+      );
+      await _pumpSocial(tester, (request) async {
+        final from = request.url.queryParameters['from'];
+        if (request.url.path.endsWith('/social/posts') && from != null) {
+          ranges.add('$from..${request.url.queryParameters['to']}');
+          return _json({
+            'data': [_landed('sent')],
+            'meta': {'tiles': <String, int>{}},
+          });
+        }
+        return inner(request);
+      });
+
+      await _openCalendar(tester);
+      expect(ranges, isNotEmpty);
+      expect(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Next'));
+      await tester.pumpAndSettle();
+      expect(ranges.length, greaterThan(1));
+    });
+
+    // Review 2026-11-09 C6 (A16, A17): a campaign's listings are one line.
+    testWidgets('a post to many listings reads as one Google line', (
+      tester,
+    ) async {
+      final post = {
+        ..._landed('sent'),
+        'targets': [
+          for (var i = 0; i < 5; i++)
+            {
+              'id': 'gbp-$i',
+              'connection_id': 'conn-g',
+              'account': 'Listing $i',
+              'provider': 'google_business_profile',
+              'provider_label': 'Google Business Profile',
+              'status': i == 4 ? 'failed' : 'sent',
+              'failure': i == 4 ? 'Suspended' : null,
+              'url': null,
+            },
+        ],
+      };
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [post],
+        ),
+      );
+
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('social-post-listings-post-1')),
+            )
+            .data,
+        'Google · 5 listings ✓4 ✗1',
+      );
+      expect(find.text('Listing 0'), findsNothing);
+    });
+
+    // Review 2026-11-09 C9 (B5): every failed account again, in one action.
+    testWidgets('Retry all failed tries each failed account and no other', (
+      tester,
+    ) async {
+      final retried = <String>[];
+      Map<String, Object?> target(String id, String status) => {
+        'id': id,
+        'connection_id': 'conn-2',
+        'account': 'Account $id',
+        'provider': 'pinterest',
+        'provider_label': 'Pinterest',
+        'status': status,
+        'failure': status == 'failed' ? 'Refused' : null,
+        'url': null,
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          {
+            ..._landed('sent'),
+            'targets': [
+              target('a', 'failed'),
+              target('b', 'failed'),
+              target('c', 'sent'),
+            ],
+          },
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' && request.url.path.endsWith('/retry')) {
+          retried.add(
+            request.url.pathSegments[request.url.pathSegments.length - 2],
+          );
+          return _json({'data': {}});
+        }
+        return inner(request);
+      });
+
+      await _openCalendar(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Retry all failed (2)'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-retry-all')));
+      await tester.pumpAndSettle();
+      expect(retried, ['a', 'b']);
+    });
+
+    // Review 2026-11-09 C5 (A13): approve inside Marketing.
+    testWidgets('a post waiting for approval is approved from its panel', (
+      tester,
+    ) async {
+      String? decided;
+      Object? body;
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [_landed('awaiting_approval')],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' &&
+            request.url.path.contains('/business-profile/post-queue/')) {
+          decided = request.url.path;
+          body = jsonDecode(request.body);
+          return _json({
+            'data': {'id': 'target-1', 'status': 'queued'},
+          });
+        }
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/social/posts')) {
+          return _json({
+            'data': [_landed('awaiting_approval')],
+            'meta': {
+              'tiles': {'scheduled': 0, 'sent': 0, 'failed': 0, 'awaiting': 1},
+            },
+          });
+        }
+        return inner(request);
+      });
+
+      // Held for approval with no time: on no day, under Needs attention.
+      expect(find.byKey(const Key('plan-attention')), findsOneWidget);
+      await _openPostRow(tester, 'New flue liner, same day.');
+      expect(find.text('Waiting for approval'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      // No time set: Jose's ruling, it says it posts now before it does.
+      expect(decided, isNull);
+      expect(
+        find.text(
+          'This post has no time set — approving publishes it now to '
+          'Everdoors Boards.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('social-post-now-yes')));
+      await tester.pumpAndSettle();
+      expect(
+        decided,
+        endsWith('/business-profile/post-queue/target-1/approve'),
+      );
+      expect(body, {'publish_now': true});
+    });
+
+    testWidgets('a server that says the time is gone asks the same question, '
+        'and Post now resends with publish_now', (tester) async {
+      final bodies = <Object?>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          _landed('awaiting_approval', scheduledFor: '2099-03-04 09:00'),
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/post-queue/target-1/approve')) {
+          final body = jsonDecode(request.body);
+          bodies.add(body);
+          if (body is Map && body['publish_now'] == true) {
+            return _json({
+              'data': {'id': 'target-1', 'status': 'queued'},
+            });
+          }
+          return _json({
+            'message': 'This post has no time set.',
+            'code': 'needs_publish_now_confirm',
+          }, 422);
+        }
+        return inner(request);
+      });
+      await _openPostRow(tester, 'New flue liner, same day.');
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      // With a time here, no question first; the server's refusal asks it.
+      expect(find.byKey(const Key('social-post-now-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-now-yes')));
+      await tester.pumpAndSettle();
+      expect(bodies, [
+        <String, Object?>{},
+        {'publish_now': true},
+      ]);
+    });
+
+    testWidgets('Set a time, from the post-now question, opens the time '
+        'instead of approving', (tester) async {
+      String? decided;
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [_landed('awaiting_approval')],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' &&
+            request.url.path.contains('/business-profile/post-queue/')) {
+          decided = request.url.path;
+        }
+        return inner(request);
+      });
+      await _openPostRow(tester, 'New flue liner, same day.');
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-now-set-time')));
+      await tester.pumpAndSettle();
+      expect(decided, isNull);
+      expect(find.byKey(const Key('social-edit-when')), findsOneWidget);
     });
 
     testWidgets('a post on the calendar opens in a panel with each account', (
@@ -1515,18 +1938,18 @@ void main() {
         await open(tester);
 
         expect(find.byKey(const ValueKey('social-place-ct-0')), findsNothing);
-        expect(count(tester), '0 of 5 selected');
+        expect(count(tester), '0 of 4 selected');
         expect(switchOn(tester), isFalse);
 
         await tester.tap(find.byKey(const ValueKey('social-places-all')));
         await tester.pumpAndSettle();
         // Every listing that can take a post; the unverified one stays off.
-        expect(count(tester), '4 of 5 selected');
+        expect(count(tester), '4 of 4 selected');
         expect(switchOn(tester), isTrue);
 
         await tester.tap(find.byKey(const ValueKey('social-places-all')));
         await tester.pumpAndSettle();
-        expect(count(tester), '0 of 5 selected');
+        expect(count(tester), '0 of 4 selected');
       });
 
       testWidgets('expanded: groups, a group tick, partial state, city names', (
@@ -1547,7 +1970,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('social-places-group-0')));
         await tester.pumpAndSettle();
-        expect(count(tester), '3 of 5 selected');
+        expect(count(tester), '3 of 4 selected');
         expect(switchOn(tester), isFalse);
         final groupBox = find.descendant(
           of: find.byKey(const ValueKey('social-places-group-0')),
@@ -1557,7 +1980,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('social-place-ct-1')));
         await tester.pumpAndSettle();
-        expect(count(tester), '2 of 5 selected');
+        expect(count(tester), '2 of 4 selected');
         expect(tester.widget<Checkbox>(groupBox).value, isNull);
       });
 
@@ -1606,6 +2029,39 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         expect(find.text('Stamford, CT'), findsOneWidget);
+      });
+
+      // Review 2026-11-09 C1 (A2, A3, A8, A9).
+      testWidgets('a listing that cannot post is named apart and cannot be ticked', (
+        tester,
+      ) async {
+        await open(tester);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('social-places-blocked')))
+              .data,
+          '1 cannot post (suspended or unverified)',
+        );
+        await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('social-place-ma-1')));
+        await tester.pumpAndSettle();
+        expect(count(tester), '0 of 4 selected');
+      });
+
+      testWidgets('listings alone fill the bar and the preview', (tester) async {
+        await open(tester);
+        expect(find.text('No account ticked yet'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('social-places-all')));
+        await tester.pumpAndSettle();
+        expect(find.text('Going to 4 listings · now'), findsOneWidget);
+        expect(
+          find.text(
+            'Tick an account to see the post the way it will look there.',
+          ),
+          findsNothing,
+        );
+        expect(find.text('4 listings'), findsWidgets);
       });
     });
 
@@ -1711,6 +2167,45 @@ void main() {
 
     // Bug review 2026-11-09 #8: Pinterest's 800 and a ticked listing's
     // Google 1500 are checked before Publish, like X's 280.
+    // Review 2026-11-09 C4: the limit and the caution are the server's.
+    testWidgets('the server sets the limit and says what a network will skip', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [
+            {
+              ..._pinterestBoard,
+              'body_limit': 10,
+              'refuses': {
+                'text':
+                    'Pinterest does not post words on their own. Attach a picture or a video.',
+                'image': null,
+                'video': null,
+              },
+            },
+          ],
+        ),
+      );
+      await _openCompose(tester);
+      await _write(tester);
+
+      expect(_publishRefusal(tester), contains('10 characters at most'));
+      expect(
+        find.byKey(const ValueKey('social-caution-conn-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'does not post words on their own. Attach a '
+          'picture or a video. It will be skipped.',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('too long for Pinterest, or for a ticked listing, is refused', (
       tester,
     ) async {
@@ -1811,6 +2306,48 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('Paid partnership'), findsOneWidget);
       expect(find.textContaining('Branded Content Policy'), findsOneWidget);
+      expect(_publishRefusal(tester), isNull);
+    });
+
+    testWidgets('TikTok offers profile or inbox; the inbox hides privacy', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_tiktokDirect]),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+      );
+      await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+
+      // Both ways in are offered; the profile starts with its privacy picker.
+      expect(find.text('Post to profile'), findsOneWidget);
+      expect(find.text('Send to TikTok inbox as a draft'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')),
+          findsOneWidget);
+
+      await tester.tap(find.text('Send to TikTok inbox as a draft'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('tiktok-disclose-ezbizi_us')),
+          findsNothing);
+      expect(find.widgetWithText(CheckboxListTile, 'Comment'), findsNothing);
+      expect(
+        find.text(
+          "TikTok sends it to the account's inbox; finish posting in the "
+          'TikTok app.',
+        ),
+        findsOneWidget,
+      );
+      // Nothing to choose for a draft, so nothing blocks Publish.
       expect(_publishRefusal(tester), isNull);
     });
 
@@ -2246,8 +2783,8 @@ void main() {
       expect(find.textContaining('A close likeness'), findsOneWidget);
     });
 
-    testWidgets('the tiles carry the server’s counts, and a tile asks the '
-        'server for its posts', (tester) async {
+    testWidgets('the legend counts what is drawn, and the status filter '
+        'narrows it', (tester) async {
       final asked = <String?>[];
       Map<String, Object?> post(String id, String status) => {
         ..._landed(status, failure: status == 'failed' ? 'No boards.' : null),
@@ -2283,41 +2820,28 @@ void main() {
         return inner(request);
       });
 
-      String count(String key) => tester
-          .widget<Text>(
-            find.descendant(
-              of: find.byKey(Key('social-posts-tile-$key')),
-              matching: find.byWidgetPredicate(
-                (w) => w is Text && RegExp(r'^\d+$').hasMatch(w.data ?? ''),
-              ),
-            ),
-          )
-          .data!;
+      // UI queue 199: the tiles became the planner's legend and its status
+      // filter, both reading the one list the calendar draws.
+      expect(find.byKey(const ValueKey('plan-row-s1')), findsOneWidget);
+      expect(find.text('Sent 2'), findsOneWidget);
+      expect(find.text('Failed 1'), findsOneWidget);
 
-      expect(count('sent'), '37');
-      expect(count('failed'), '1');
-      expect(count('scheduled'), '1');
-      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
+      await tester.tap(find.byKey(const Key('plan-state')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Failed').last);
       await tester.pumpAndSettle();
 
-      expect(asked.last, 'failed');
-      expect(find.byKey(const ValueKey('social-post-f1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('social-post-s1')), findsNothing);
-      expect(find.byKey(const ValueKey('social-post-c1')), findsNothing);
-      expect(find.textContaining('No boards.'), findsOneWidget);
-
-      // Tapping it again shows everything.
-      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-row-f1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-row-s1')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-row-c1')), findsNothing);
+      expect(find.text('Sent 2'), findsNothing);
     });
 
     // UI queue 100: an All tile, and a post some accounts took and one
     // refused says so rather than reading as a plain failure.
-    testWidgets('All counts every tile, and a part-sent post is Partly '
-        'posted', (tester) async {
+    testWidgets('a part-sent post is Partly posted, not Failed', (
+      tester,
+    ) async {
       final sent = _landed('sent');
       final failed = _landed('failed', failure: 'No boards.');
       final partly = {
@@ -2346,24 +2870,10 @@ void main() {
       });
 
       expect(
-        find.descendant(
-          of: find.byKey(const Key('social-posts-tile-all')),
-          matching: find.text('39'),
-        ),
+        find.widgetWithText(StatusPill, 'Partly posted · 1 of 2'),
         findsOneWidget,
       );
-      expect(find.text('Partly posted · 1 of 2'), findsOneWidget);
-
-      // Board puts it under Posted, not Failed.
-      await tester.tap(find.text('Board'));
-      await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('social-board-posted')),
-          matching: find.byKey(const ValueKey('social-post-p1')),
-        ),
-        findsOneWidget,
-      );
+      expect(find.widgetWithText(StatusPill, 'Failed'), findsNothing);
     });
 
     testWidgets('Retry on a failed row sends that account again', (
@@ -2387,7 +2897,8 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const ValueKey('social-retry-post-1')));
+      await _openPostRow(tester, 'New flue liner, same day.');
+      await tester.tap(find.widgetWithText(TextButton, 'Try again'));
       await tester.pumpAndSettle();
 
       expect(retried, isTrue);
@@ -2437,7 +2948,7 @@ void main() {
         return inner(request);
       });
 
-      await tester.tap(find.byKey(const ValueKey('social-post-post-1')));
+      await tester.tap(find.byKey(const ValueKey('plan-row-post-1')));
       await tester.pumpAndSettle();
 
       expect(
@@ -2464,7 +2975,7 @@ void main() {
         endsWith('/social/posts/post-1/targets/target-1/remote'),
       ]);
 
-      await tester.tap(find.byKey(const ValueKey('social-post-post-2')));
+      await tester.tap(find.byKey(const ValueKey('plan-row-post-2')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('social-post-edit')), findsOneWidget);
       await tester.tap(find.byKey(const Key('social-post-cancel')));
@@ -2497,7 +3008,7 @@ void main() {
         recording(_handler(tabs: const ['marketing.accounts.view']), paths),
       );
 
-      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
+      expect(find.byKey(const Key('social-connections')), findsOneWidget);
       // The three that were Posts (UI queue 76).
       for (final pane in ['Dashboard', 'Compose', 'Calendar']) {
         expect(find.widgetWithText(ChoiceChip, pane), findsNothing);
@@ -2526,8 +3037,8 @@ void main() {
         recording(_handler(tabs: const ['marketing.dashboard.view']), paths),
       );
 
-      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsNothing);
-      expect(find.text('Timeline'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-marketing-new-post')), findsNothing);
+      expect(find.byKey(const Key('plan-view')), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'New post'), findsNothing);
       expect(paths.where((p) => p.endsWith('/social/posts')), isNotEmpty);
     });
@@ -2576,7 +3087,10 @@ void main() {
         },
       );
 
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      // Delete lives in the overflow (redesign 2026-11-17).
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-delete')));
       await tester.pumpAndSettle();
 
       // Nothing sent yet: the first tap only arms it.
@@ -2591,8 +3105,12 @@ void main() {
     testWidgets('is not offered to a role without the delete permission', (tester) async {
       await _pumpComposer(tester, _handler(newsletters: const [_draft]));
 
-      final button = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Delete'));
-      expect(button.onPressed, isNull);
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.byKey(const ValueKey('newsletter-delete')),
+      );
+      expect(item.enabled, isFalse);
     });
   });
 
@@ -2617,8 +3135,9 @@ void main() {
 
       // The email is never out of sight: drawn from the blocks by default
       // (layout A, 2026-10-02), the server's own HTML one switch away.
-      expect(find.text('Newsletter'), findsWidgets);
-      expect(find.text('What they will get'), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-proof')), findsOneWidget);
+      await _toStep(tester, 'design');
+      expect(find.byKey(const ValueKey('tour-newsletter-email')), findsOneWidget);
       expect(find.byType(NewsletterEmail), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
@@ -2715,6 +3234,7 @@ void main() {
         ),
       );
 
+      await _toStep(tester, 'design');
       await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
       await tester.pumpAndSettle();
 
@@ -2741,6 +3261,7 @@ void main() {
         tester,
         _handler(newsletters: const [_draft]),
       );
+      await _toStep(tester, 'review');
 
       expect(
         _refusalOn(tester, 'Send now'),
@@ -2761,6 +3282,7 @@ void main() {
               'nowhere to send from.',
         ),
       );
+      await _toStep(tester, 'review');
 
       // The server's words, not the screen's — the same rule the social
       // composer follows, so the two cannot drift apart.
@@ -2781,8 +3303,11 @@ void main() {
           audiences: const [_audience],
         ),
       );
+      await _toStep(tester, 'review');
 
       expect(_refusalOn(tester, 'Send now'), contains('Choose who this goes to'));
+      // And the Review step says it in words, not only on the disabled button.
+      expect(find.byKey(const ValueKey('newsletter-send-blocker')), findsOneWidget);
     });
 
     // UI queue 173: "+ New list" opens a side panel, posts the list (the tag
@@ -2854,12 +3379,13 @@ void main() {
         tester,
         _handler(canEdit: true, newsletters: const [_draft]),
       );
+      await _toStep(tester, 'design');
 
       // The full vocabulary the server can render, columns included — Jose
       // asked for columns specifically.
       for (final label in ['Heading', 'Text', 'Image', 'Button', 'Columns']) {
         expect(
-          find.widgetWithText(OutlinedButton, label),
+          find.widgetWithText(StudioBlockTile, label),
           findsOneWidget,
           reason: '$label is missing from the block palette.',
         );
@@ -2872,6 +3398,7 @@ void main() {
         _handler(canEdit: true, newsletters: const [_draft]),
       );
 
+      await _toStep(tester, 'design');
       await tester.tap(find.text('Write HTML'));
       await tester.pumpAndSettle();
 
@@ -2883,8 +3410,8 @@ void main() {
 
     // ── Newsletter audit 2026-11-10 (Rodrigo) ─────────────────────
 
-    testWidgets('the composer says which version goes out, and Back to blocks '
-        'clears the HTML with an Undo', (tester) async {
+    testWidgets('switching views keeps the HTML; only Use this design '
+        'changes what goes out (01a1f9ed)', (tester) async {
       final puts = <Map<String, dynamic>>[];
       final base = _handler(canEdit: true, newsletters: const [_draftWithHtml]);
       await _pumpComposer(tester, (request) async {
@@ -2893,32 +3420,116 @@ void main() {
         }
         return base(request);
       });
+      await _toStep(tester, 'design');
 
-      expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
-      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(find.text('Active: Custom HTML'), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-use-design')), findsNothing);
 
       await tester.tap(find.text('Back to blocks'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
-      expect(find.text('Sending: the blocks'), findsOneWidget);
-      expect(puts.last['html_override'], anyOf(isNull, ''));
-
-      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Navigation only: still the HTML, offered as an explicit choice.
+      expect(find.text('Active: Custom HTML'), findsOneWidget);
       expect(find.text('Sending: custom HTML'), findsOneWidget);
+      for (final put in puts) {
+        expect(put['html_override'], '<p>Mine</p>');
+      }
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-use-design')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Active: Blocks'), findsOneWidget);
+      expect(puts.last['active_design'], 'blocks');
       expect(puts.last['html_override'], '<p>Mine</p>');
     });
 
-    testWidgets('pasted HTML is checked, previewed, refused with a script, and '
-        'undoable once used', (tester) async {
-      await _pumpComposer(
-        tester,
-        _handler(canEdit: true, newsletters: const [_draft]),
-      );
+    testWidgets('HTML with no blocks is read-only in Blocks, and Create '
+        'editable copy previews in a side panel before saving', (tester) async {
+      final copies = <Map<String, dynamic>>[];
+      const htmlOnly = {
+        'id': 'n-1',
+        'subject': 'Autumn sweeps',
+        'status': 'draft',
+        'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+        'html_override': '<p>Mine</p>',
+        'active_design': 'html',
+        'blocks': <Map<String, dynamic>>[],
+      };
+      final base = _handler(canEdit: true, newsletters: const [htmlOnly]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/editable-copy')) {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          copies.add(body);
+          if (body['confirm'] == true) return _json({'data': htmlOnly});
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'text', 'text': 'Mine'},
+              ],
+              'preview_html': '<p>Mine</p>',
+              'original_html': '<p>Mine</p>',
+              'faithful': false,
+              'lost': ['Rounded card corners'],
+              'preserved': 0,
+              'issues': <Map<String, dynamic>>[],
+            },
+          });
+        }
+        return base(request);
+      });
+      await _toStep(tester, 'design');
+      await tester.tap(find.text('Back to blocks'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
 
+      expect(find.byKey(const ValueKey('newsletter-blocks-readonly')), findsOneWidget);
+      expect(find.textContaining("This draft's design is Custom HTML."), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-editable-copy')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.text('Create editable copy').last, findsOneWidget);
+      expect(find.text("Won't carry over"), findsOneWidget);
+      expect(find.textContaining('Rounded card corners'), findsOneWidget);
+      expect(copies.single['confirm'], isNull, reason: 'the preview saves nothing');
+
+      await tester.tap(find.byKey(const ValueKey('editable-copy-create')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(copies.last['confirm'], true);
+    });
+
+    testWidgets('pasted HTML is checked, compared, refused with a script, and '
+        'applied after a Before import restore point, undoably', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      Map<String, dynamic>? imported;
+      Map<String, dynamic>? checkpoint;
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/import/html')) {
+          imported = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {
+              'import_id': 'imp-1',
+              'mode': 'keep',
+              'blocks': null,
+              'html_override': '<p>Imported</p>',
+              'issues': [
+                {'kind': 'note', 'message': 'EzBizi adds the company address and unsubscribe footer at the end.'},
+              ],
+              'lost': [],
+              'preserved': 0,
+              'preview_html': '<html><body><p>Imported</p>footer</body></html>',
+            },
+          });
+        }
+        if (path.endsWith('/n-1/checkpoint')) {
+          checkpoint = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': {'revision': 1, 'label': 'Before import'}});
+        }
+        return base(request);
+      });
+
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
       await tester.pumpAndSettle();
       expect(find.text('There is no HTML to import.'), findsOneWidget);
 
@@ -2926,17 +3537,20 @@ void main() {
         find.byKey(const ValueKey('newsletter-import-source')),
         '<p>x</p><script>alert(1)</script>',
       );
-      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('newsletter-import-error')), findsOneWidget);
-      expect(find.byKey(const ValueKey('newsletter-import-use')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-import-check')), findsNothing);
 
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<p>Imported</p>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
+      expect(imported, {'html': '<p>Imported</p>', 'mode': 'keep', 'newsletter_id': 'n-1'});
       expect(
         tester
             .widgetList<MessageHtmlView>(find.byType(MessageHtmlView))
@@ -2944,9 +3558,13 @@ void main() {
         isTrue,
       );
       expect(find.textContaining('unsubscribe footer'), findsWidgets);
+      // Nothing changed yet.
+      expect(find.text('Sending: the blocks'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.pumpAndSettle();
+      expect(checkpoint, {'label': 'Before import'});
       expect(find.text('Sending: custom HTML'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
@@ -2968,28 +3586,36 @@ void main() {
               'artwork_svg': null,
               'alt': 'Spring',
               'warnings': ['Custom fonts are not carried over.'],
+              'import_id': 'imp-2',
             },
           });
+        }
+        if (request.url.path.endsWith('/n-1/checkpoint')) {
+          return _json({'data': {'revision': 1, 'label': 'Before import'}});
         }
         return base(request);
       });
 
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('SVG design'));
+      await tester.tap(find.text('SVG or artwork'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<svg xmlns="http://www.w3.org/2000/svg"><text>Spring sale</text></svg>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Custom fonts'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
-      expect(find.text('Spring sale'), findsOneWidget);
+      expect(find.descendant(of: find.byType(NewsletterEmail), matching: find.text('Spring sale')), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(NewsletterEmail),
@@ -3047,12 +3673,14 @@ void main() {
           ),
         ),
       ));
-      await tester.tap(find.text('SVG design'));
+      await tester.tap(find.text('SVG or artwork'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<svg/>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
@@ -3068,8 +3696,8 @@ void main() {
       expect(used![1]['text'], 'Hello');
     });
 
-    testWidgets('preflight lists the checks and a test goes to the one typed '
-        'address', (tester) async {
+    testWidgets('Review lists the checks; Preview & test sends one test bound '
+        'to the revision and says Accepted, never delivered', (tester) async {
       Map<String, dynamic>? tested;
       final base = _handler(
         canEdit: true,
@@ -3085,26 +3713,302 @@ void main() {
                 {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
                 {'key': 'from_name', 'ok': true, 'label': 'From name', 'detail': 'A-1 Chimney'},
               ],
+              'revision': 1,
             },
           });
         }
         if (path.endsWith('/n-1/test')) {
           tested = jsonDecode(request.body) as Map<String, dynamic>;
-          return _json({'data': {'sent_to': 'me@example.com'}});
+          return _json({
+            'data': {
+              'sent_to': 'me@example.com',
+              'last_test': {'revision': 1, 'to': 'me@example.com', 'result': 'accepted'},
+            },
+          });
         }
         return base(request);
       });
 
       expect(find.byKey(const ValueKey('newsletter-audience-explainer')), findsOneWidget);
+      await _toStep(tester, 'review');
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-preview-test')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Browser preview — not an inbox test'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-email')));
       await tester.enterText(find.byKey(const ValueKey('newsletter-test-email')), 'me@example.com');
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-send')));
       await tester.tap(find.byKey(const ValueKey('newsletter-test-send')));
       await tester.pumpAndSettle(const Duration(seconds: 1));
 
-      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
-      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
-      expect(tested, {'email': 'me@example.com'});
-      expect(find.textContaining('Test sent to me@example.com'), findsOneWidget);
+      expect(tested, {'email': 'me@example.com', 'revision': 1});
+      expect(find.text('Accepted by Mailchimp for me@example.com · revision 1'), findsOneWidget);
+      expect(find.textContaining('delivered'), findsNothing);
+    });
+
+    // ── Redesign stage 1 (2026-11-17) ─────────────────────────────
+
+    testWidgets('the composer walks Setup → Design → Review with one primary '
+        'action per step', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      expect(find.byKey(const ValueKey('newsletter-inbox-preview')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Continue to design'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-newsletter-email')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-proof-email')), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Continue to design'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Review campaign'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Review campaign'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-summary')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Send now'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Continue to design'), findsNothing);
+    });
+
+    testWidgets('Duplicate and Delete live in the overflow, not on the bar', (
+      tester,
+    ) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      expect(find.text('Duplicate'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-duplicate')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-delete')), findsOneWidget);
+    });
+
+    testWidgets('import wizard Save as new draft opens the new draft in the '
+        'composer', (tester) async {
+      const imported = {
+        'id': 'n-9',
+        'subject': 'Imported spring',
+        'status': 'draft',
+        'audience': null,
+        'html_override': '<p>Imported</p>',
+        'blocks': <Map<String, Object?>>[],
+      };
+      var created = false;
+      Map<String, dynamic>? posted;
+      final before = _handler(canEdit: true, newsletters: const [_draft]);
+      final after = _handler(canEdit: true, newsletters: const [_draft, imported]);
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/import/html')) {
+          return _json({
+            'data': {
+              'mode': 'keep',
+              'html_override': '<p>Imported</p>',
+              'issues': [],
+              'lost': [],
+              'preview_html': '<p>Imported</p>',
+            },
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletters')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          created = true;
+          return _json({'data': imported}, 201);
+        }
+        return (created ? after : before)(request);
+      });
+
+      await _toStep(tester, 'design');
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('newsletter-import-source')), '<p>Imported</p>');
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-new')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-new')));
+      await tester.pumpAndSettle();
+
+      expect(posted!['html_override'], '<p>Imported</p>');
+      final subject = tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject')));
+      expect(subject.controller!.text, 'Imported spring', reason: 'the new draft is the one open');
+      expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
+    });
+
+    testWidgets('a save refused as stale stops autosave, keeps the edits and '
+        'offers Reload', (tester) async {
+      var puts = 0;
+      Map<String, dynamic>? sent;
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts++;
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'message': 'This newsletter changed in another tab or by someone else.',
+              'revision': 5,
+            }),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return base(request);
+      });
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Mine, typed here');
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(sent!['revision'], 1);
+      expect(find.byKey(const ValueKey('newsletter-conflict-banner')), findsOneWidget);
+      expect(find.text('Changed elsewhere — Reload'), findsOneWidget);
+      expect(find.text('Mine, typed here'), findsWidgets);
+
+      // Typing more saves nothing until a reload.
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Mine, still typing');
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+      expect(puts, 1);
+    });
+
+    testWidgets('a failed save keeps the edits and offers Retry', (tester) async {
+      var fail = true;
+      var puts = 0;
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts++;
+          if (fail) return _json({'message': 'The server could not be reached.'}, 503);
+          return _json({'data': {..._draft, 'subject': 'Retried', 'revision': 2}});
+        }
+        return base(request);
+      });
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Retried');
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Not saved — Retry'), findsOneWidget);
+      expect(find.text('Retried'), findsWidgets);
+
+      fail = false;
+      await tester.tap(find.text('Not saved — Retry'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(puts, 2);
+      expect(find.text('Saved'), findsOneWidget);
+    });
+
+    for (final known in [true, false]) {
+      testWidgets('recipients read ${known ? 'a known eligible count' : 'unknown, '
+          'never the member total'}', (tester) async {
+        final base = _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          audiences: const [
+            {'id': 'a-1', 'name': 'Customers', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'},
+          ],
+        );
+        await _pumpComposer(tester, (request) async {
+          final path = request.url.path;
+          if (path.endsWith('/newsletter/mailchimp/lists')) {
+            return _json({
+              'data': [
+                {'id': 'mc-9', 'name': 'A1 main list', 'members': 3195},
+              ],
+            });
+          }
+          if (path.endsWith('/preflight')) {
+            return _json({
+              'data': {
+                'checks': const [],
+                'revision': 1,
+                'audience_detail': {
+                  'id': 'a-1',
+                  'kind': known ? 'customers' : 'mailchimp',
+                  'eligible': known ? 42 : null,
+                  'eligible_state': known ? 'known' : 'unknown',
+                },
+              },
+            });
+          }
+          return base(request);
+        });
+
+        final eligible = tester.widget<Text>(find.byKey(const ValueKey('newsletter-eligible'))).data!;
+        if (known) {
+          expect(eligible, 'Eligible: 42');
+        } else {
+          expect(eligible, contains('unknown'));
+          expect(eligible, isNot(contains('3195')));
+        }
+        // The member total is labelled as what it is.
+        expect(find.text('Members in Mailchimp list: 3195'), findsOneWidget);
+      });
+    }
+
+    testWidgets('picking a connected Mailchimp list posts it as an audience '
+        'and selects it', (tester) async {
+      Map<String, dynamic>? posted;
+      final base = _handler(canEdit: true, newsletters: const [_draftWithoutAudience]);
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/mailchimp/lists')) {
+          return _json({
+            'data': [
+              {'id': 'mc-9', 'name': 'A1 main list', 'members': 3195},
+            ],
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletter/audiences')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {'id': 'a-9', 'name': 'A1 main list', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'},
+          });
+        }
+        return base(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-audience-picker')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A1 main list · Mailchimp list').last);
+      await tester.pumpAndSettle();
+
+      expect(posted, {'name': 'A1 main list', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'});
+      await _openAudienceDetails(tester);
+      expect(find.byKey(const ValueKey('newsletter-audience-mapping')), findsOneWidget);
+    });
+
+    testWidgets('a failed check jumps to the step that fixes it', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/preflight')) {
+          return _json({
+            'data': {
+              'checks': [
+                {'key': 'links', 'ok': false, 'label': 'Links', 'detail': 'Fix: /relative'},
+              ],
+              'revision': 1,
+            },
+          });
+        }
+        return base(request);
+      });
+
+      await _toStep(tester, 'review');
+      await tester.tap(find.byKey(const ValueKey('newsletter-fix-links')));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+    });
+
+    testWidgets('the workspace lays out at 1280 without overflowing', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+        size: const Size(1280, 800),
+      );
+      for (final step in ['setup', 'design', 'review']) {
+        await _toStep(tester, step);
+        expect(tester.takeException(), isNull, reason: step);
+      }
     });
 
     testWidgets('the chosen list shows which Mailchimp list it sends through', (
@@ -3121,6 +4025,7 @@ void main() {
         ),
       );
 
+      await _openAudienceDetails(tester);
       expect(
         find.text('Customers (EzBizi, built from your customers) → Mailchimp list mc-9'),
         findsOneWidget,
@@ -3137,11 +4042,13 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+      await _toStep(tester, 'design');
+      expect(tester.takeException(), isNull);
 
       // Not merely "no exception" — a screen that rendered nothing throws
       // nothing either. The preview is still there, below rather than beside,
       // because a newsletter you cannot see is what this layout prevents.
-      expect(find.text('What they will get'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tour-newsletter-email')), findsOneWidget);
     });
   });
 
@@ -3195,7 +4102,7 @@ void main() {
 
       // Named honestly. EzBizi knows what the provider ACCEPTED; "delivered"
       // would be a claim it cannot stand behind.
-      expect(find.text('ADDRESSES REACHED'), findsOneWidget);
+      expect(find.text('Accepted: '), findsOneWidget);
       expect(find.textContaining('delivered'), findsNothing);
     });
 
@@ -3226,6 +4133,10 @@ void main() {
         ),
       );
 
+      // The calendar is a secondary view, collapsed by default (P1c).
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       // On the calendar, in the current month, by subject.
       expect(find.text('Scheduled'), findsWidgets);
       // In the calendar; the table beside it carries the subject too.
@@ -3233,12 +4144,14 @@ void main() {
 
       // "Review them or edit them" — tapping it lands in the composer with
       // that mailing open. A date with no way in is a poster.
+      await tester.ensureVisible(_inCalendar('Autumn sweeps'));
       await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
-      expect(find.text('What they will get'), findsOneWidget);
+      // A scheduled one opens on Review, where its time and clock are.
+      expect(find.byKey(const ValueKey('newsletter-summary')), findsOneWidget);
       expect(
-        tester.widget<TextField>(find.widgetWithText(TextField, 'Subject')).controller?.text,
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-title'))).data,
         'Autumn sweeps',
       );
     });
@@ -3281,6 +4194,9 @@ void main() {
         ),
       );
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       // The calendar carries it too, so the clock is readable without
       // opening the mailing at all. It lives in the cell's tooltip, which is
       // the only place a month grid has room for a time.
@@ -3293,6 +4209,7 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.ensureVisible(_inCalendar('Autumn sweeps'));
       await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
@@ -3333,6 +4250,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
       await tester.pumpAndSettle();
+      await _toStep(tester, 'review');
       await tester.tap(find.text('Later'));
       await tester.pumpAndSettle();
 
@@ -3348,6 +4266,11 @@ void main() {
     ) async {
       await _pumpNewsletter(tester, _handler(canEdit: true));
 
+      // Collapsed by default (P1c): the empty grid no longer fills the page.
+      expect(find.textContaining('Nothing is scheduled this month'), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       expect(find.textContaining('Nothing is scheduled this month'), findsOneWidget);
     });
 
@@ -3410,6 +4333,40 @@ void main() {
       'blocks': [],
     };
 
+    // The server already counts and filters `failed`; the dashboard shows it.
+    testWidgets('a Failed tile counts failed sends and filters to them', (
+      tester,
+    ) async {
+      final asked = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        newsletters: const [_draft],
+        stats: const {
+          'drafts': 1,
+          'scheduled': 0,
+          'sent': 0,
+          'failed': 2,
+          'recipients': 0,
+        },
+      );
+      await _pumpNewsletter(tester, (request) {
+        final status = request.url.queryParameters['status'];
+        if (status != null) asked.add(status);
+        return inner(request);
+      });
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('newsletters-tile-failed')),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('newsletters-tile-failed')));
+      await tester.pumpAndSettle();
+      expect(asked, contains('failed'));
+    });
+
     testWidgets('a dashboard tile counts and filters the table', (tester) async {
       final asked = <String>[];
       final inner = _handler(
@@ -3444,7 +4401,7 @@ void main() {
         expect(find.byKey(ValueKey('newsletter-$id')), findsOneWidget);
       }
       final sentRow = find.byKey(const ValueKey('newsletter-n-5'));
-      expect(find.descendant(of: sentRow, matching: find.text('412')), findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.textContaining('412 addresses')), findsOneWidget);
       expect(find.descendant(of: sentRow, matching: find.text('Customers · built from your customers')),
           findsOneWidget);
       expect(find.descendant(of: sentRow, matching: find.text('View')), findsOneWidget);
@@ -3468,6 +4425,219 @@ void main() {
       expect(find.byKey(const ValueKey('newsletter-n-1')), findsOneWidget);
     });
 
+    // Review 2026-11-09 C13 (A29): the image block takes a library picture.
+    testWidgets('Choose picture puts a library picture in the image block', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final draft = <String, Object?>{
+        ..._draft,
+        'blocks': [
+          {'type': 'image', 'src': '', 'alt': ''},
+        ],
+      };
+      final inner = _handler(canEdit: true, newsletters: [draft]);
+      await _pumpComposer(tester, (request) {
+        final path = request.url.path;
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': draft}));
+        }
+        if (path.endsWith('/newsletter/images') && request.method == 'GET') {
+          return Future.value(
+            _json({
+              'data': [
+                {
+                  'id': 'lib-1',
+                  'name': 'Van',
+                  'kind': 'image',
+                  'size': 1000,
+                  'scope_type': 'company',
+                  'created_at': '2026-10-16T12:00:00Z',
+                },
+              ],
+            }),
+          );
+        }
+        if (path.endsWith('/newsletter/images/lib-1/file')) {
+          return Future.value(http.Response('', 404));
+        }
+        if (path.endsWith('/newsletter/import/library/lib-1')) {
+          return Future.value(
+            _json({
+              'data': {
+                'url': 'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+              },
+            }, 201),
+          );
+        }
+        return inner(request);
+      });
+      await _toStep(tester, 'design');
+
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-image-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-use')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.widgetWithText(
+          TextFormField,
+          'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+        ),
+        findsOneWidget,
+      );
+      final blocks = saved.last['blocks'] as List;
+      expect(
+        (blocks.first as Map)['src'],
+        'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+      );
+    });
+
+    // Newsletter P0 (2026-11-17): upload from the composer's image picker.
+    group('image upload', () {
+      final png = img.encodePng(img.Image(width: 2, height: 2));
+      const artwork = 'https://app.example/api/v1/newsletter/artwork/o/new.png';
+      const uploaded = {
+        'id': 'up-1',
+        'name': 'van.png',
+        'kind': 'image',
+        'size': 70,
+        'scope_type': 'company',
+        'created_at': '2026-11-17T12:00:00Z',
+        'url': artwork,
+        'duplicate': false,
+      };
+
+      setUp(() {
+        libraryPickPicture = () async => PickedBytes('van.png', png);
+      });
+      tearDown(() {
+        libraryPickPicture = Files.pickImage;
+      });
+
+      Future<List<Map<String, dynamic>>> pumpWithImage(
+        WidgetTester tester,
+        Map<String, Object?> image,
+        Future<http.Response> Function() onUpload,
+      ) async {
+        final saved = <Map<String, dynamic>>[];
+        final draft = <String, Object?>{
+          ..._draft,
+          'blocks': [image],
+        };
+        final inner = _handler(canEdit: true, newsletters: [draft]);
+        await _pumpComposer(tester, (request) {
+          final path = request.url.path;
+          if (request.method == 'PUT') {
+            saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return Future.value(_json({'data': draft}));
+          }
+          if (path.endsWith('/newsletter/images') && request.method == 'GET') {
+            return Future.value(_json({'data': <Object>[]}));
+          }
+          if (path.endsWith('/newsletter/images')) return onUpload();
+          return inner(request);
+        });
+        await _toStep(tester, 'design');
+        await tester.tap(find.byKey(const Key('newsletter-block-0')));
+        await tester.pumpAndSettle();
+        return saved;
+      }
+
+      testWidgets('an empty image block offers Upload images; a finished upload is selected and inserted', (
+        tester,
+      ) async {
+        final saved = await pumpWithImage(
+          tester,
+          {'type': 'image', 'src': '', 'alt': ''},
+          () async => _json({'data': uploaded}, 201),
+        );
+
+        // The empty block shows the choices at once.
+        expect(find.byKey(const ValueKey('newsletter-image-upload')), findsOneWidget);
+        expect(find.byKey(const ValueKey('newsletter-image-library')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-library')));
+        await tester.pumpAndSettle();
+        // The picker itself has Upload images, and Pictures is the filter.
+        expect(find.byKey(const ValueKey('library-upload')), findsOneWidget);
+        expect(find.textContaining('up to 2 MB'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('library-upload')));
+        await tester.pumpAndSettle();
+
+        // Selected without reopening, and Use it is enabled.
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsOneWidget);
+        final use = tester.widget<FilledButton>(find.byKey(const ValueKey('library-use')));
+        expect(use.onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const ValueKey('library-use')));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+
+        expect(((saved.last['blocks'] as List).first as Map)['src'], artwork);
+      });
+
+      testWidgets('a refused upload shows the reason and Retry sends it again', (tester) async {
+        var calls = 0;
+        await pumpWithImage(tester, {'type': 'image', 'src': '', 'alt': ''}, () async {
+          calls++;
+          return calls == 1
+              ? _json({
+                  'message': 'The given data was invalid.',
+                  'errors': {
+                    'file': ['That file is not a PNG, JPEG, GIF or WebP picture.'],
+                  },
+                }, 422)
+              : _json({'data': uploaded}, 201);
+        });
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-upload')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('That file is not a PNG, JPEG, GIF or WebP picture.'), findsOneWidget);
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('library-upload-retry-0')));
+        await tester.pumpAndSettle();
+
+        expect(calls, 2);
+        expect(find.text('That file is not a PNG, JPEG, GIF or WebP picture.'), findsNothing);
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsOneWidget);
+      });
+
+      testWidgets('cancelling Replace keeps the picture the block had', (tester) async {
+        const old = 'https://app.example/api/v1/newsletter/artwork/o/old.png';
+        final saved = await pumpWithImage(
+          tester,
+          {'type': 'image', 'src': old, 'alt': 'Old'},
+          () async => _json({'data': uploaded}, 201),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-replace')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-upload')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Cancel').last);
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(TextFormField, old), findsOneWidget);
+        for (final body in saved) {
+          expect(((body['blocks'] as List).first as Map)['src'], old);
+        }
+      });
+    });
+
     testWidgets('clicking a block edits it in place, and the edit autosaves', (tester) async {
       final saved = <Map<String, dynamic>>[];
       final inner = _handler(canEdit: true, newsletters: const [_draft]);
@@ -3478,18 +4648,20 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       final block = find.byKey(const Key('newsletter-block-0'));
-      expect(find.descendant(of: block, matching: find.byType(TextFormField)), findsNothing);
+      // No permanent controls on an unselected block.
+      expect(find.byKey(const ValueKey('newsletter-block-chrome')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsNothing);
+      expect(find.text('Move down'), findsNothing);
 
       await tester.tap(block);
       await tester.pumpAndSettle();
 
-      // The fields replace the block, where it was, with the moves beside them.
-      final field = find.descendant(of: block, matching: find.widgetWithText(TextFormField, 'Heading'));
-      expect(field, findsOneWidget);
-      expect(find.descendant(of: block, matching: find.text('Remove')), findsOneWidget);
-      expect(find.descendant(of: block, matching: find.text('Move down')), findsOneWidget);
+      final field = find.byKey(const ValueKey('newsletter-inline-0'));
+      expect(find.descendant(of: block, matching: field), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-block-chrome')), findsOneWidget);
 
       await tester.enterText(field, 'Winter sweeps');
       await tester.pump(const Duration(seconds: 1));
@@ -3498,10 +4670,11 @@ void main() {
       expect(saved, isNotEmpty, reason: 'Typing in place must autosave.');
       expect((saved.last['blocks'] as List).first['text'], 'Winter sweeps');
 
-      // Done puts the drawn block back, showing the new words.
-      await tester.tap(find.descendant(of: block, matching: find.text('Done')));
+      // Closing the inspector puts the drawn block back, with the new words.
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-close')));
       await tester.pumpAndSettle();
       expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-block-chrome')), findsNothing);
     });
 
     testWidgets('dragging a block by its handle reorders it, and the save follows', (tester) async {
@@ -3514,14 +4687,17 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
-      // The first block's handle, dragged below the third.
+      // Selected, the first block shows its handle; dragged below the third.
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
       final handle = find.byKey(const Key('newsletter-block-handle-0'));
       final third = tester.getBottomLeft(find.byKey(const Key('newsletter-block-2')));
       final gesture = await tester.startGesture(tester.getCenter(handle));
       await gesture.moveTo(tester.getCenter(handle) + const Offset(0, 10));
       await tester.pump();
-      await gesture.moveTo(Offset(tester.getCenter(handle).dx, third.dy + 20));
+      await gesture.moveTo(Offset(tester.getCenter(handle).dx, third.dy + 90));
       await tester.pump(const Duration(milliseconds: 300));
       await gesture.up();
       await tester.pump(const Duration(seconds: 1));
@@ -3541,6 +4717,7 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       // Dropped on the second block: it goes above it, not at the end.
       final source = tester.getCenter(find.byKey(const Key('newsletter-add-divider')));
@@ -3558,6 +4735,42 @@ void main() {
       expect([for (final b in saved.last['blocks'] as List) b['type']], ['text', 'divider', 'text', 'text']);
     });
 
+    // Review 2026-11-09 C13 (A32): the confirmation says how many it reaches.
+    testWidgets('the send confirmation says how many people it goes to', (
+      tester,
+    ) async {
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          return Future.value(_json({'data': _draft}));
+        }
+        if (request.url.path.endsWith('/preflight')) {
+          return Future.value(
+            _json({
+              'data': {
+                'checks': [],
+                'recipients': 1284,
+                'audience': 'Customers',
+              },
+            }),
+          );
+        }
+        return inner(request);
+      });
+
+      await _toStep(tester, 'review');
+      await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send this newsletter?'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('newsletter-send-reach')))
+            .data,
+        startsWith('Sends to 1284 people on “Customers”. '),
+      );
+    });
+
     testWidgets('Send stops with the error when the save before it fails', (tester) async {
       final posts = <String>[];
       final inner = _handler(canEdit: true, newsletters: const [_draft]);
@@ -3569,6 +4782,7 @@ void main() {
         return inner(request);
       });
 
+      await _toStep(tester, 'review');
       await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
       await tester.pumpAndSettle();
 
@@ -3590,10 +4804,12 @@ void main() {
         return inner(request);
       });
 
+      await _toStep(tester, 'design');
       expect(find.text('Back to blocks'), findsOneWidget);
       expect(find.widgetWithText(TextField, '<p>Mine</p>'), findsOneWidget);
 
-      await tester.enterText(find.widgetWithText(TextField, 'Autumn sweeps').first, 'Renamed');
+      await _toStep(tester, 'setup');
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Renamed');
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
 
@@ -3615,14 +4831,51 @@ void main() {
 
     testWidgets('the Desktop / Phone switch narrows the email', (tester) async {
       await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+      await _toStep(tester, 'design');
 
       final email = find.byKey(const Key('newsletter-email'));
       expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
 
-      await tester.tap(find.text('Phone'));
+      await tester.tap(find.byKey(const ValueKey('newsletter-canvas-phone')));
       await tester.pumpAndSettle();
 
-      expect(tester.getSize(email).width, NewsletterEmail.phoneWidth);
+      // P1b: Mobile designs at 375 by default (320 and 414 are choices).
+      expect(tester.getSize(email).width, 375);
+    });
+
+    // Review 2026-11-09 C14 (A28, A34): a scheduled one comes back to a
+    // draft, and any one can be copied.
+    testWidgets('Unschedule and Duplicate ask the server for each', (
+      tester,
+    ) async {
+      final posts = <String>[];
+      final scheduled = <String, Object?>{
+        ..._draft,
+        'status': 'scheduled',
+        'scheduled_for': '2099-03-04 09:00',
+      };
+      final inner = _handler(canEdit: true, newsletters: [scheduled]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'POST') {
+          posts.add(request.url.path);
+          return Future.value(_json({'data': _draft}, 201));
+        }
+        return inner(request);
+      });
+
+      expect(
+        find.textContaining('Unschedule it to edit it again'),
+        findsWidgets,
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-unschedule')));
+      await tester.pumpAndSettle();
+      expect(posts.last, endsWith('/newsletters/n-1/unschedule'));
+
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-duplicate')));
+      await tester.pumpAndSettle();
+      expect(posts.last, endsWith('/newsletters/n-1/duplicate'));
     });
 
     testWidgets('a sent newsletter is read-only', (tester) async {
@@ -3630,12 +4883,13 @@ void main() {
 
       expect(find.textContaining('has gone out, so it cannot be changed'), findsWidgets);
 
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const Key('newsletter-block-0')));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextFormField, 'Heading'), findsNothing);
 
-      final add = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Heading'));
-      expect(add.onPressed, isNull);
+      final add = tester.widget<StudioBlockTile>(find.widgetWithText(StudioBlockTile, 'Heading'));
+      expect(add.onTap, isNull);
     });
   });
 
@@ -3686,6 +4940,402 @@ void main() {
       expect(find.byType(NewsletterTab), findsNothing);
     });
   });
+
+  // Newsletter P1a (2026-11-17): the contextual editor.
+  group('newsletter P1a editor', () {
+    setUp(() => NewsletterHistory.coalesce = Duration.zero);
+    tearDown(() => NewsletterHistory.coalesce = const Duration(milliseconds: 900));
+
+    const mixed = {
+      'id': 'n-7',
+      'subject': 'Mixed',
+      'status': 'draft',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'blocks': [
+        {'type': 'heading', 'text': 'Hello', 'align': 'left'},
+        {'type': 'button', 'text': 'Book', 'url': 'https://a.test', 'align': 'left'},
+        {'type': 'divider'},
+      ],
+    };
+
+    Future<List<Map<String, dynamic>>> pumpMixed(WidgetTester tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [mixed]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': {...mixed, 'revision': saved.length + 1}}));
+        }
+        return inner(request);
+      });
+      await _toStep(tester, 'design');
+      return saved;
+    }
+
+    testWidgets('the inspector appears on selection with only that block type\'s settings', (tester) async {
+      await pumpMixed(tester);
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsOneWidget);
+      for (final f in ['size', 'align', 'line_height', 'color', 'spacing']) {
+        expect(find.byKey(ValueKey('newsletter-field-$f')), findsOneWidget, reason: f);
+      }
+      for (final f in ['url', 'background', 'full_width', 'src', 'ratio']) {
+        expect(find.byKey(ValueKey('newsletter-field-$f')), findsNothing, reason: f);
+      }
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('newsletter-block-1')));
+      await tester.pumpAndSettle();
+      for (final f in ['text', 'url', 'background', 'color', 'full_width', 'align']) {
+        expect(find.byKey(ValueKey('newsletter-field-$f')), findsOneWidget, reason: f);
+      }
+      for (final f in ['size', 'line_height', 'src', 'ratio']) {
+        expect(find.byKey(ValueKey('newsletter-field-$f')), findsNothing, reason: f);
+      }
+
+      // Full width hides alignment, which no longer means anything.
+      await tester.tap(find.byKey(const ValueKey('newsletter-field-full_width')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-field-align')), findsNothing);
+
+      // A divider draws almost nothing and is still selectable.
+      await tester.tap(find.byKey(const Key('newsletter-block-2')));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const ValueKey('newsletter-inspector-kind')), matching: find.text('Divider')), findsOneWidget);
+    });
+
+    testWidgets('block chrome moves, duplicates and deletes; Ctrl+D duplicates the selection', (tester) async {
+      final saved = await pumpMixed(tester);
+      await tester.tap(find.byKey(const Key('newsletter-block-1')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-block-up')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['button', 'heading', 'divider']);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['button', 'button', 'heading', 'divider']);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-block-delete')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['button', 'heading', 'divider']);
+    });
+
+    testWidgets('undo and redo follow real history and are disabled when empty', (tester) async {
+      final saved = await pumpMixed(tester);
+      IconButton button(String key) => tester.widget<IconButton>(find.byKey(ValueKey(key)));
+      expect(button('newsletter-undo-edit').onPressed, isNull);
+      expect(button('newsletter-redo-edit').onPressed, isNull);
+
+      await tester.tap(find.byKey(const Key('newsletter-block-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-block-delete')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect((saved.last['blocks'] as List).length, 2);
+      expect(button('newsletter-undo-edit').onPressed, isNotNull);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo-edit')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['heading', 'button', 'divider']);
+      expect(button('newsletter-redo-edit').onPressed, isNotNull);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-redo-edit')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect((saved.last['blocks'] as List).length, 2);
+      expect(button('newsletter-redo-edit').onPressed, isNull);
+
+      // The internal name is part of history too.
+      await _toStep(tester, 'setup');
+      await tester.enterText(find.byKey(const ValueKey('newsletter-name')), 'Q4 promo');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(saved.last['name'], 'Q4 promo');
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo-edit')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(saved.last['name'], '');
+    });
+
+    testWidgets('bold wraps the selection and marks the text formatted', (tester) async {
+      final saved = await pumpMixed(tester);
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      final field = find.byKey(const ValueKey('newsletter-inline-0'));
+      tester.widget<TextField>(field).controller!.selection =
+          const TextSelection(baseOffset: 0, extentOffset: 5);
+      await tester.tap(find.byKey(const ValueKey('newsletter-format-bold')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final first = (saved.last['blocks'] as List).first as Map;
+      expect(first['text'], '<b>Hello</b>');
+      expect(first['rich'], true);
+    });
+
+    testWidgets('a bad-link issue in Review jumps to its block on the canvas and selects it', (tester) async {
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.url.path.endsWith('/preflight')) {
+          return Future.value(_json({
+            'data': {
+              'checks': [
+                {
+                  'key': 'links',
+                  'ok': false,
+                  'label': 'Links',
+                  'detail': 'Block 3 (text): “#” is not a full web address.',
+                  'issues': [
+                    {'index': 2, 'column': null, 'child': null, 'type': 'text', 'url': '#', 'where': 'Block 3 (text)'},
+                  ],
+                },
+              ],
+              'revision': 1,
+            },
+          }));
+        }
+        return inner(request);
+      });
+
+      await _toStep(tester, 'review');
+      expect(find.text('Show block 3'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-fix-link-0')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('newsletter-block-2')),
+          matching: find.byKey(const ValueKey('newsletter-block-chrome')),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a refused save offers Reload, Compare and Save as copy; the copy carries the local edits', (tester) async {
+      final posts = <Map<String, dynamic>>[];
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          return http.Response(
+            jsonEncode({'message': 'This newsletter changed in another tab.', 'revision': 5}),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        if (request.method == 'POST' && request.url.path.endsWith('/newsletters')) {
+          posts.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return _json({'data': {..._draft, 'id': 'n-copy', 'subject': 'Mine, local'}}, 201);
+        }
+        if (request.url.path.endsWith('/n-1/preview')) {
+          return _json({'data': {'html': '<p>Server</p>', 'revision': 5}});
+        }
+        return base(request);
+      });
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Mine, local');
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.byKey(const ValueKey('newsletter-conflict-banner')), findsOneWidget);
+      expect(find.textContaining('local copy, not saved'), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-conflict-reload')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-conflict-compare')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-compare')), findsOneWidget);
+      expect(find.text('Your local copy · not saved'), findsOneWidget);
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-conflict-copy')));
+      await tester.pumpAndSettle();
+      expect(posts.single['subject'], 'Mine, local');
+      expect(posts.single['name'], 'Copy of Mine, local');
+      expect((posts.single['blocks'] as List).first['text'], 'Autumn sweeps');
+    });
+
+    testWidgets('Saved shows only once the server acknowledged the latest change', (tester) async {
+      final replies = <Completer<http.Response>>[];
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          final c = Completer<http.Response>();
+          replies.add(c);
+          return c.future;
+        }
+        return base(request);
+      });
+      String state() => tester.widget<Text>(find.byKey(const ValueKey('newsletter-save-state'))).data!;
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'One');
+      await tester.pump(const Duration(seconds: 1));
+      expect(replies, hasLength(1));
+      // Typed again while the first save is in flight.
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Two');
+      replies.first.complete(_json({'data': {..._draft, 'subject': 'One', 'revision': 2}}));
+      await tester.pump();
+      await tester.pump();
+      expect(state(), 'Saving…', reason: 'The ack was for an older change.');
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(replies, hasLength(2));
+      replies.last.complete(_json({'data': {..._draft, 'subject': 'Two', 'revision': 3}}));
+      await tester.pumpAndSettle();
+      expect(state(), 'Saved');
+    });
+  });
+
+  group('newsletter P1b brand, saved sections and mobile styles', () {
+    setUp(() => NewsletterHistory.coalesce = Duration.zero);
+    tearDown(() => NewsletterHistory.coalesce = const Duration(milliseconds: 900));
+
+    const letter = {
+      'id': 'n-9',
+      'subject': 'Brandable',
+      'status': 'draft',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'blocks': [
+        {'type': 'heading', 'text': 'Hello', 'size': 28, 'align': 'left'},
+      ],
+    };
+
+    Future<({List<Map<String, dynamic>> saved, List<Map<String, dynamic>> brandPuts})> pump(
+      WidgetTester tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final brandPuts = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [letter]);
+      await _pumpComposer(tester, (request) {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/brand')) {
+          if (request.method == 'PUT') {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            brandPuts.add(body);
+            return Future.value(_json({'data': {'settings': body['settings'], 'may_edit': true}}));
+          }
+          return Future.value(_json({'data': {'settings': {'primary': '#00708F'}, 'may_edit': true}}));
+        }
+        if (path.endsWith('/newsletter/sections')) {
+          return Future.value(_json({
+            'data': [
+              {
+                'id': 's-1', 'name': 'Offer', 'version': 2, 'may_edit': true,
+                'blocks': [{'type': 'text', 'text': 'Saved words'}],
+              },
+            ],
+            'starters': [
+              {'key': 'booking-cta', 'name': 'Booking call to action', 'blocks': [{'type': 'heading', 'text': 'Ready?'}]},
+            ],
+          }));
+        }
+        if (request.method == 'PUT' && path.contains('/newsletters/')) {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': {...letter, 'revision': saved.length + 1}}));
+        }
+        return inner(request);
+      });
+      await _toStep(tester, 'design');
+      return (saved: saved, brandPuts: brandPuts);
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Mobile switches the inspector to mobile overrides with inherited values and a reset', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-field-size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-font_size')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-canvas-phone')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-editing-mobile')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-field-size')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')), findsNothing);
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-mobile-font_size')), '18');
+      await settle(tester);
+      final first = (r.saved.last['blocks'] as List).first as Map;
+      expect(first['mobile'], {'font_size': 18});
+      expect(first['size'], 28, reason: 'Desktop keeps its own size.');
+      expect(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsNothing);
+
+      // 320 is a choice too, and the canvas narrows to it.
+      await tester.tap(find.byKey(const ValueKey('newsletter-device-320')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('newsletter-email'))).width, lessThanOrEqualTo(320));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')));
+      await settle(tester);
+      expect(((r.saved.last['blocks'] as List).first as Map).containsKey('mobile'), isFalse);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsOneWidget);
+    });
+
+    testWidgets('Saved inserts a copy as independent blocks and linked as a pinned reference', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('newsletter-left-tabs')), matching: find.text('Saved')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-saved-s-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-saved-booking-cta')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-saved-linked-booking-cta')), findsNothing,
+          reason: 'Starters are copies only.');
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-saved-copy-s-1')));
+      await settle(tester);
+      var blocks = r.saved.last['blocks'] as List;
+      expect(blocks.last, {'type': 'text', 'text': 'Saved words'});
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-saved-linked-s-1')));
+      await settle(tester);
+      blocks = r.saved.last['blocks'] as List;
+      expect((blocks.last as Map)['type'], 'section_ref');
+      expect((blocks.last as Map)['section_id'], 's-1');
+      expect((blocks.last as Map)['version'], 2);
+      expect(find.byKey(const ValueKey('newsletter-linked-section')), findsOneWidget);
+    });
+
+    testWidgets('Brand tab saves the company brand and applies it to the newsletter', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('newsletter-left-tabs')), matching: find.text('Brand')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-brand-panel')), findsOneWidget);
+
+      await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('newsletter-brand-button_fill')),
+        matching: find.byType(InkWell),
+      ).at(4));
+      await tester.enterText(find.byKey(const ValueKey('newsletter-brand-footer')), 'Family owned');
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-brand-save')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-brand-save')));
+      await tester.pumpAndSettle();
+      expect(r.brandPuts.single['settings'], {'primary': '#00708F', 'button_fill': '#B3261E', 'footer_note': 'Family owned'});
+      expect(find.text('Brand saved.'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-brand-apply')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-brand-apply')));
+      await settle(tester);
+      expect(r.saved.last['brand'], {'primary': '#00708F', 'button_fill': '#B3261E', 'footer_note': 'Family owned'});
+    });
+  });
 }
 
 
@@ -3707,6 +5357,25 @@ Future<void> _pumpComposer(
 }) async {
   await _pumpNewsletter(tester, handler, size: size);
   await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
+  await tester.pumpAndSettle();
+}
+
+/// Setup's audience Details, where the Mailchimp ids are.
+Future<void> _openAudienceDetails(WidgetTester tester) async {
+  final details = find.descendant(
+    of: find.byKey(const ValueKey('newsletter-audience-details')),
+    matching: find.text('Details'),
+  );
+  await tester.ensureVisible(details);
+  await tester.tap(details);
+  await tester.pumpAndSettle();
+}
+
+/// One of the composer's three steps, by its key suffix.
+Future<void> _toStep(WidgetTester tester, String step) async {
+  final chip = find.byKey(ValueKey('newsletter-step-$step'));
+  await tester.ensureVisible(chip);
+  await tester.tap(chip);
   await tester.pumpAndSettle();
 }
 
@@ -3859,7 +5528,7 @@ Future<void> _pumpSocial(
           session: session,
           pickMedia: pickMedia ?? () async => null,
           videoPlayer: videoPlayer ?? (_) => null,
-        ));
+        )).then((_) => _toAgenda(tester));
 
 /// A player with no platform behind it: 16:9, 42 seconds, or a refusal.
 class _FakeVideo extends VideoPlayerController {
@@ -3895,23 +5564,58 @@ class _FakeVideo extends VideoPlayerController {
   }
 }
 
-/// Marketing → Social Media Management → Posts, which is where compose lives.
+/// Marketing → Social Media Management, on the planner's Agenda: the list of
+/// this month's posts, each with its pill (UI queue 199).
 Future<void> _openPosts(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+  await tester.pumpAndSettle();
+  await _toAgenda(tester);
+}
+
+/// Open a post from the planner: its row if it sits on a day this month,
+/// else from Needs attention (a post with no time sits on no day).
+Future<void> _openPostRow(WidgetTester tester, String text) async {
+  if (find.text(text).evaluate().isEmpty) {
+    await tester.tap(find.byKey(const Key('plan-attention')));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text(text).last);
+  await tester.pumpAndSettle();
+}
+
+/// The planner's Agenda view, where there is one (a phone has none).
+Future<void> _toAgenda(WidgetTester tester) async {
+  final agenda = find.descendant(
+    of: find.byKey(const Key('plan-view')),
+    matching: find.text('Agenda'),
+  );
+  if (agenda.evaluate().isEmpty) return;
+  await tester.tap(agenda);
   await tester.pumpAndSettle();
 }
 
 /// Social → Compose. Social opens on its Dashboard since UI queue 76, so a
 /// test about writing a post walks there the way a person would.
 Future<void> _openCompose(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Compose'));
+  await tester.tap(find.byKey(const ValueKey('tour-marketing-new-post')));
   await tester.pumpAndSettle();
 }
 
 /// Posts → Calendar, where the week and month calendars (or the phone's
 /// agenda) live since layout A (Mia, 2026-10-02).
 Future<void> _openCalendar(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Calendar'));
+  // UI queue 199: the calendar is the page. Put the composer away and show
+  // the month.
+  final close = find.byKey(const Key('social-composer-close'));
+  if (close.evaluate().isNotEmpty) {
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+  }
+  final month = find.descendant(
+    of: find.byKey(const Key('plan-view')),
+    matching: find.text('Month'),
+  );
+  if (month.evaluate().isNotEmpty) await tester.tap(month);
   await tester.pumpAndSettle();
 }
 
@@ -3947,7 +5651,7 @@ MockClientHandler _refusingHandler(String because) {
 Future<void> _openConnectPanel(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+  await tester.tap(find.byKey(const Key('social-connections')));
   await tester.pumpAndSettle();
   await tester.tap(
     find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
@@ -4183,7 +5887,12 @@ MockClientHandler _handler({
 
       // As the server answers: the tiles counted across the whole list, and
       // `status` narrowing the rows (SocialPostsController::index).
-      final all = postsFor != null ? postsFor() : (posts ?? <Map<String, Object?>>[]);
+      // The calendar's own date-range read is not one of the list reads a
+      // test counts through postsFor.
+      final range = request.url.queryParameters.containsKey('from');
+      final all = postsFor != null
+          ? (range ? <Map<String, Object?>>[] : postsFor())
+          : (posts ?? <Map<String, Object?>>[]);
       final status = request.url.queryParameters['status'];
 
       return _json({
@@ -4504,11 +6213,1069 @@ DateTime _mondayOf(DateTime d) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
-String _weekRange(DateTime monday) {
-  final sunday = monday.add(const Duration(days: 7 - 1));
-  if (monday.month == sunday.month) {
-    return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
-  }
-  return '${monday.day} ${_shortMonths[monday.month - 1]} – '
-      '${sunday.day} ${_shortMonths[sunday.month - 1]}';
+String _shortWeekday(DateTime d) =>
+    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1];
+
+// Jose 2026-11-16: the post panel edits in place; the calendar days answer the
+// mouse and open their list; Comments is a tab of its own.
+void _jose1116Tests() {
+  group('Jose 2026-11-16', () {
+    const longBody =
+        'Fall is here and the first cold night is closer than it looks. '
+        'Book your chimney sweep now, before the rush, and we will check the '
+        'flue, the cap, the crown and the damper while we are up there. '
+        'Line two of the draft.\nLine three.\nLine four.\nLine five.\n'
+        'Line six.\nLine seven.\nThe very last words of the AI draft.';
+
+    Map<String, Object?> draft() => {
+      ..._landed('awaiting_approval'),
+      'body': longBody,
+    };
+
+    testWidgets('the post panel shows the whole text in a field that saves '
+        'before Approve', (tester) async {
+      final calls = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [draft()],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'PATCH' &&
+            request.url.path.endsWith('/social/posts/post-1')) {
+          calls.add('PATCH ${jsonDecode(request.body)['body']}');
+          return _json({
+            'data': {'id': 'post-1'},
+          });
+        }
+        if (request.method == 'POST' &&
+            request.url.path.contains('/business-profile/post-queue/')) {
+          calls.add('APPROVE');
+          return _json({
+            'data': {'id': 'target-1', 'status': 'queued'},
+          });
+        }
+        return inner(request);
+      });
+
+      // Held for approval with no time: it opens from Needs attention.
+      await tester.tap(find.byKey(const Key('plan-attention')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Fall is here').last);
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(const Key('social-post-text'));
+      expect(field, findsOneWidget);
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        longBody,
+        reason: 'the whole text, not cut with an ellipsis',
+      );
+      expect(find.textContaining('The very last words'), findsWidgets);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('social-post-count'))).data,
+        '${longBody.characters.length} / 800',
+      );
+
+      await tester.enterText(field, 'Edited by hand.');
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('social-post-count'))).data,
+        '15 / 800',
+      );
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-now-yes')));
+      await tester.pumpAndSettle();
+
+      expect(calls, ['PATCH Edited by hand.', 'APPROVE']);
+    });
+
+    testWidgets('a picture Google would refuse is refused before it is sent', (
+      tester,
+    ) async {
+      final uploads = <String>[];
+      final gbp = {
+        ...draft(),
+        'targets': [
+          {
+            'id': 'target-1',
+            'connection_id': 'conn-9',
+            'account': 'Dayton',
+            'provider': 'google_business_profile',
+            'provider_label': 'Google Business Profile',
+            'status': 'awaiting_approval',
+          },
+        ],
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [gbp],
+      );
+      await _pumpSocial(
+        tester,
+        (request) async {
+          if (request.url.path.endsWith('/social/posts/post-1/media')) {
+            uploads.add(request.method);
+            return _json({
+              'data': {'id': 'post-1', 'has_media': true},
+            });
+          }
+          return inner(request);
+        },
+        pickMedia: () async => PickedBytes('tiny.gif', List.filled(50, 1)),
+      );
+
+      // Held for approval with no time: it opens from Needs attention.
+      await tester.tap(find.byKey(const Key('plan-attention')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Fall is here').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-upload')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Google Business Profile takes a JPG or PNG picture.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('social-post-image')), findsNothing);
+      expect(uploads, isEmpty);
+    });
+
+    testWidgets('each day from today has its own Add post; a past day has '
+        'none', (tester) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final now = DateTime.now();
+      expect(
+        find.byKey(Key('plan-add-${now.month}-${now.day}')),
+        findsOneWidget,
+      );
+      if (now.day > 1) {
+        expect(
+          find.byKey(Key('plan-add-${now.month}-${now.day - 1}')),
+          findsNothing,
+        );
+      }
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(Key('plan-add-${now.month}-${now.day}')),
+            )
+            .tooltip,
+        startsWith('Add post on '),
+      );
+    });
+
+    testWidgets('a day with more than fits opens its whole list, and a row '
+        'opens the post', (tester) async {
+      final now = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final busy = [
+        for (var i = 0; i < 12; i++)
+          {
+            ..._landed(
+              'scheduled',
+              scheduledFor:
+                  '${now.year}-${two(now.month)}-${two(now.day)} '
+                  '${two(8 + i)}:00',
+            ),
+            'id': 'busy-$i',
+            'body': 'Busy post number $i',
+          },
+      ];
+      final ranges = <Map<String, String>>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: busy,
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.url.path.endsWith('/social/posts') &&
+            request.url.queryParameters.containsKey('from')) {
+          ranges.add(request.url.queryParameters);
+        }
+        return inner(request);
+      });
+      await _openCalendar(tester);
+
+      // Every post of the day is in the range the month asked for.
+      expect(ranges, isNotEmpty);
+      final more = find.byKey(Key('plan-more-${now.month}-${now.day}'));
+      expect(more, findsOneWidget);
+      expect(find.textContaining(' more'), findsWidgets);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+
+      final panel = find.byKey(const Key('plan-day-panel'));
+      expect(panel, findsOneWidget);
+      expect(
+        find.descendant(of: panel, matching: find.text('12 posts')),
+        findsOneWidget,
+      );
+      final last = find.byKey(const ValueKey('plan-row-busy-11'));
+      await tester.ensureVisible(last);
+      await tester.pumpAndSettle();
+      await tester.tap(last);
+      await tester.pumpAndSettle();
+
+      // The list closes and the post opens beside the calendar.
+      expect(panel, findsNothing);
+      expect(find.byKey(const Key('plan-inspector')), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('social-post-text')))
+            .controller!
+            .text,
+        'Busy post number 11',
+      );
+    });
+
+    testWidgets('Comments opens beside the calendar: one inbox, a badge, '
+        'filters, reply in place', (tester) async {
+      final replies = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              {
+                'id': 'c-old',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'ann',
+                'text': 'Answered already',
+                'timestamp': '2026-11-01T10:00:00+0000',
+                'hidden': false,
+                'replies': [
+                  {'id': 'r1', 'text': 'Thanks!', 'author': 'everdoors'},
+                ],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+              {
+                'id': 'c-new',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'bob',
+                'text': 'How much is it?',
+                'timestamp': '2026-11-15T10:00:00+0000',
+                'hidden': false,
+                'replies': [],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-1',
+                'network': 'instagram',
+                'account': 'Everdoors',
+                'error': null,
+              },
+            ],
+          });
+        }
+        if (path.contains('/comments/') && path.endsWith('/replies')) {
+          replies.add('$path ${jsonDecode(request.body)['message']}');
+          return _json({
+            'data': {'id': 'r2'},
+          });
+        }
+        return inner(request);
+      });
+
+      // The badge: one unreplied comment, on the Comments button.
+      final tab = find.byKey(const Key('social-comments'));
+      expect(tab, findsOneWidget);
+      expect(
+        find.descendant(of: tab, matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('social-comments-inbox')), findsOneWidget);
+      // Newest first, with the post each is on.
+      expect(
+        tester.getTopLeft(find.text('How much is it?')).dy,
+        lessThan(tester.getTopLeft(find.text('Answered already')).dy),
+      );
+      expect(find.text('On: Our new oak door'), findsNWidgets(2));
+
+      await tester.tap(find.byKey(const Key('social-comments-unreplied')));
+      await tester.pumpAndSettle();
+      expect(find.text('Answered already'), findsNothing);
+      expect(find.text('How much is it?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('social-comment-replybtn-c-new')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('social-comment-reply-c-new')),
+        'It is \$900.',
+      );
+      await tester.tap(find.byKey(const Key('social-comment-send-c-new')));
+      await tester.pumpAndSettle();
+      expect(replies, [
+        '/api/v1/social/connections/conn-1/comments/instagram/c-new/replies '
+            'It is \$900.',
+      ]);
+    });
+
+    testWidgets('Comments merges all four networks and draws only the '
+        'actions each row supports', (tester) async {
+      Map<String, dynamic> row(
+        String id,
+        String network,
+        String at,
+        List<String> actions, [
+        Map<String, String> unavailable = const {},
+      ]) => {
+        'id': id,
+        'network': network,
+        'connection_id': 'conn-1',
+        'account': 'Everdoors',
+        'post': {'id': 'p', 'text': 'A post'},
+        'author': 'someone',
+        'text': 'Comment on $network',
+        'timestamp': at,
+        'hidden': false,
+        'replies': [],
+        'actions': actions,
+        'unavailable': unavailable,
+      };
+      final hidden = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              row('fb-1', 'facebook', '2026-11-12T10:00:00Z', [], {
+                'reply':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+                'hide':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+              }),
+              row('ig-1', 'instagram', '2026-11-13T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('yt-1', 'youtube', '2026-11-14T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('x-1', 'x', '2026-11-15T10:00:00Z', ['reply'], {
+                'hide': 'X needs moderation permission to hide replies.',
+              }),
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-9',
+                'network': 'x',
+                'account': 'Second X',
+                'error': 'Too Many Requests',
+              },
+            ],
+          });
+        }
+        if (path.endsWith('/hide')) {
+          hidden.add(path);
+          return _json({
+            'data': {'hidden': true},
+          });
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.byKey(const Key('social-comments')));
+      await tester.pumpAndSettle();
+
+      for (final n in ['facebook', 'instagram', 'youtube', 'x']) {
+        expect(find.text('Comment on $n'), findsOneWidget);
+      }
+      // Newest first across networks.
+      expect(
+        tester.getTopLeft(find.text('Comment on x')).dy,
+        lessThan(tester.getTopLeft(find.text('Comment on facebook')).dy),
+      );
+      // The failing network is a note; the others still show.
+      expect(find.text('Second X (X): Too Many Requests'), findsOneWidget);
+
+      Finder action(String key) => find.byKey(Key(key));
+      expect(action('social-comment-replybtn-fb-1'), findsNothing);
+      expect(action('social-comment-hide-fb-1'), findsNothing);
+      expect(
+        find.text(
+          'Facebook needs the manage-engagement permission to reply or hide.',
+        ),
+        findsOneWidget,
+      );
+      expect(action('social-comment-replybtn-ig-1'), findsOneWidget);
+      expect(action('social-comment-hide-ig-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-yt-1'), findsOneWidget);
+      expect(action('social-comment-hide-yt-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-x-1'), findsOneWidget);
+      expect(action('social-comment-hide-x-1'), findsNothing);
+      expect(
+        find.text('X needs moderation permission to hide replies.'),
+        findsOneWidget,
+      );
+      for (final id in ['fb-1', 'ig-1', 'yt-1', 'x-1']) {
+        expect(action('social-comment-delete-$id'), findsNothing);
+      }
+
+      await tester.ensureVisible(action('social-comment-hide-yt-1'));
+      await tester.tap(action('social-comment-hide-yt-1'));
+      await tester.pumpAndSettle();
+      expect(hidden, [
+        '/api/v1/social/connections/conn-1/comments/youtube/yt-1/hide',
+      ]);
+    });
+  });
+}
+
+String formatCalendarDayForTest(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// Composer Studio (Rodrigo 2026-11-18, suggestion 01a1ef43): Setup and
+/// Review pair the form with a proof, Design makes the email the largest
+/// surface, and the edit → upload → preview → review path and the custom
+/// HTML path both run through the three screens.
+void _studioTests() {
+  group('newsletter Composer Studio', () {
+    const artwork = 'https://app.example/api/v1/newsletter/artwork/o/new.png';
+    const old = 'https://app.example/api/v1/newsletter/artwork/o/old.png';
+
+    Map<String, Object?> preflight({bool audienceOk = true}) => {
+      'data': {
+        'checks': [
+          {'key': 'subject', 'ok': true, 'label': 'Subject line', 'detail': 'Set'},
+          {
+            'key': 'audience',
+            'ok': audienceOk,
+            'label': 'Audience',
+            'detail': audienceOk ? 'Customers' : 'Choose who receives it',
+          },
+          {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
+        ],
+        'revision': 1,
+        'audience_detail': {'eligible_state': 'unknown'},
+        'sender': {'from_name': 'A-1 Chimney', 'from_address': 'hello@a1.example', 'account': 'A1'},
+      },
+    };
+
+    testWidgets('Setup at 1074: the proof fills the right pane and the inbox '
+        'follows typing; ids stay behind Details', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(
+        tester,
+        (request) async => request.url.path.endsWith('/preflight')
+            ? _json(preflight())
+            : base(request),
+        size: const Size(1074, 1400),
+      );
+
+      final pane = find.byKey(const ValueKey('newsletter-proof-pane'));
+      expect(pane, findsOneWidget);
+      final width = tester.getSize(pane).width;
+      expect(width, inInclusiveRange(440, 520));
+      // The form and the proof share the width: the form is not squeezed.
+      expect(
+        tester.getSize(find.byKey(const ValueKey('newsletter-setup-form'))).width,
+        greaterThan(400),
+      );
+      expect(find.byKey(const ValueKey('newsletter-proof-email')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('newsletter-proof-email')),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsOneWidget,
+      );
+
+      // Sender: Mailchimp's one address, From and reply-to together.
+      expect(find.text('hello@a1.example · From and reply-to'), findsOneWidget);
+      // Unknown eligibility stays unknown.
+      expect(find.textContaining('Eligible recipients: unknown'), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-audience-mapping')), findsNothing);
+
+      const long = 'A whole subject line that runs well past the sixty characters a phone shows';
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), long);
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey('newsletter-preheader')), 'Ready for winter');
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-inbox-subject'))).data,
+        long,
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-inbox-line'))).data,
+        'Ready for winter',
+      );
+      // The editor holds the whole subject.
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+        long,
+      );
+
+      // Phone narrows the inbox and the email to a phone's width.
+      await tester.tap(find.byKey(const ValueKey('newsletter-proof-phone')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byKey(const ValueKey('newsletter-inbox-message'))).width,
+        lessThanOrEqualTo(375),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an empty draft shows a labelled empty proof with Add a block', (tester) async {
+      final draft = <String, Object?>{..._draft, 'blocks': <Object>[]};
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: [draft]), size: const Size(1074, 1400));
+
+      expect(find.byKey(const ValueKey('newsletter-proof-empty')), findsOneWidget);
+      expect(find.text('This email has no content yet.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-proof-add')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-newsletter-email')), findsOneWidget);
+    });
+
+    testWidgets('Design at 1440: library, canvas and inspector; tiles insert, '
+        'layers select, the inspector moves', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draftOfThree}));
+        }
+        return inner(request);
+      }, size: const Size(1440, 1200));
+      await _toStep(tester, 'design');
+
+      expect(tester.getSize(find.byKey(const ValueKey('newsletter-library'))).width, Studio.libraryWidth);
+      // The email is the largest surface.
+      final canvas = tester.getSize(find.byKey(const ValueKey('tour-newsletter-email'))).width;
+      expect(canvas, greaterThan(1440 / 2));
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsNothing);
+
+      // Layers select on the canvas and show the inspector.
+      await tester.tap(find.byKey(const ValueKey('newsletter-layer-1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-block-chrome')), findsOneWidget);
+
+      // A tile inserts after the selection, and selects the new block.
+      await tester.tap(find.widgetWithText(StudioBlockTile, 'Divider'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      var types = [for (final b in saved.last['blocks'] as List) (b as Map)['type']];
+      expect(types, ['text', 'text', 'divider', 'text']);
+
+      // Move up from the inspector.
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-inspector-up')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-up')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      types = [for (final b in saved.last['blocks'] as List) (b as Map)['type']];
+      expect(types, ['text', 'divider', 'text', 'text']);
+
+      // Fit scales the email to the canvas; Phone draws at 375.
+      await tester.tap(find.byKey(const ValueKey('newsletter-canvas-fit')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-canvas-fitted')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-canvas-phone')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('newsletter-email'))).width, 375);
+    });
+
+    testWidgets('Design at 1074: a selected block turns the library into a '
+        'labelled rail', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draftOfThree]),
+          size: const Size(1074, 1200));
+      await _toStep(tester, 'design');
+
+      expect(find.byKey(const ValueKey('newsletter-library')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-palette-toggle')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsOneWidget);
+
+      // Opening the library on purpose rails the inspector instead.
+      await tester.tap(find.byKey(const ValueKey('newsletter-palette-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-library')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-inspector-toggle')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-inspector')), findsOneWidget);
+    });
+
+    group('edit → upload → preview → review', () {
+      const uploaded = {
+        'id': 'up-1',
+        'name': 'van.png',
+        'kind': 'image',
+        'size': 70,
+        'scope_type': 'company',
+        'created_at': '2026-11-17T12:00:00Z',
+        'url': artwork,
+        'duplicate': false,
+      };
+      final png = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      );
+
+      setUp(() => libraryPickPicture = () async => PickedBytes('van.png', png));
+      tearDown(() => libraryPickPicture = Files.pickImage);
+
+      testWidgets('the Assets upload lands in the image block, the proof '
+          'shows it and Review reads the same content', (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final draft = <String, Object?>{
+          ..._draft,
+          'blocks': [
+            {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
+            {'type': 'image', 'src': '', 'alt': ''},
+          ],
+        };
+        final inner = _handler(canEdit: true, newsletters: [draft]);
+        await _pumpComposer(tester, (request) {
+          final path = request.url.path;
+          if (request.method == 'PUT') {
+            saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return Future.value(_json({'data': draft}));
+          }
+          if (path.endsWith('/preflight')) return Future.value(_json(preflight(audienceOk: false)));
+          if (path.endsWith('/newsletter/images') && request.method == 'GET') {
+            return Future.value(_json({'data': <Object>[]}));
+          }
+          if (path.endsWith('/newsletter/images')) return Future.value(_json({'data': uploaded}, 201));
+          return inner(request);
+        }, size: const Size(1440, 1400));
+
+        // Edit in Setup.
+        await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Make room for winter');
+        await tester.pump();
+
+        // Design: select the image in Layers, upload from Assets.
+        await _toStep(tester, 'design');
+        await tester.tap(find.byKey(const ValueKey('newsletter-layer-1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('newsletter-left-tabs')),
+          matching: find.text('Assets'),
+        ));
+        await tester.pumpAndSettle();
+        expect(find.text('Replaces the picture in the selected image block.'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('newsletter-assets-upload')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-upload')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-use')));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+
+        final last = saved.last;
+        expect(last['subject'], 'Make room for winter');
+        expect(((last['blocks'] as List)[1] as Map)['src'], artwork);
+        // Alt text is offered in the inspector for the uploaded picture.
+        expect(find.byKey(const ValueKey('newsletter-field-alt')), findsOneWidget);
+        expect(find.byKey(const ValueKey('newsletter-image-upload-new')), findsOneWidget);
+
+        // Review: the proof beside the checklist, the failing item first.
+        await _toStep(tester, 'review');
+        expect(find.byKey(const ValueKey('newsletter-proof-pane')), findsOneWidget);
+        final proofImage = find.descendant(
+          of: find.byKey(const ValueKey('newsletter-proof-email')),
+          matching: find.byType(EmailBlockView),
+        );
+        expect(
+          tester.widgetList<EmailBlockView>(proofImage).map((v) => v.block['src']),
+          contains(artwork),
+        );
+        expect(find.textContaining('Eligible recipients'), findsNothing);
+        expect(find.textContaining('Unknown — Mailchimp applies'), findsOneWidget);
+        expect(find.byKey(const ValueKey('newsletter-schedule')), findsOneWidget);
+
+        // Fix returns focus to the audience field in Setup.
+        await tester.tap(find.byKey(const ValueKey('newsletter-fix-audience')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('newsletter-setup-form')), findsOneWidget);
+        final focused = FocusManager.instance.primaryFocus;
+        expect(focused?.debugLabel, 'newsletter-audience');
+      });
+
+      testWidgets('a failed upload keeps the prior picture and offers Retry in place', (tester) async {
+        final saved = <Map<String, dynamic>>[];
+        final draft = <String, Object?>{
+          ..._draft,
+          'blocks': [
+            {'type': 'image', 'src': old, 'alt': 'Old'},
+          ],
+        };
+        final inner = _handler(canEdit: true, newsletters: [draft]);
+        await _pumpComposer(tester, (request) {
+          final path = request.url.path;
+          if (request.method == 'PUT') {
+            saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return Future.value(_json({'data': draft}));
+          }
+          if (path.endsWith('/newsletter/images') && request.method == 'GET') {
+            return Future.value(_json({
+              'data': [
+                {'id': 'lib-1', 'name': 'Van', 'kind': 'image', 'size': 1000, 'scope_type': 'company', 'created_at': '2026-10-16T12:00:00Z'},
+              ],
+            }));
+          }
+          if (path.endsWith('/newsletter/images/lib-1/file')) return Future.value(http.Response('', 404));
+          if (path.endsWith('/newsletter/import/library/lib-1')) {
+            return Future.value(_json({'message': 'That picture could not be copied.'}, 422));
+          }
+          return inner(request);
+        }, size: const Size(1440, 1400));
+        await _toStep(tester, 'design');
+        await tester.tap(find.byKey(const Key('newsletter-block-0')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-replace')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-use')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('newsletter-image-failed')), findsOneWidget);
+        expect(find.byKey(const ValueKey('newsletter-image-retry')), findsOneWidget);
+        expect(find.widgetWithText(TextFormField, old), findsOneWidget);
+        for (final body in saved) {
+          expect(((body['blocks'] as List).first as Map)['src'], old);
+        }
+      });
+    });
+
+    testWidgets('a custom-HTML draft: the proof is the server rendering, '
+        'Design keeps source and preview apart, Review has the same checks', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draftWithHtml], previewHtml: '<p>Mine</p>');
+      await _pumpComposer(
+        tester,
+        (request) async => request.url.path.endsWith('/preflight')
+            ? _json(preflight())
+            : base(request),
+        size: const Size(1440, 1400),
+      );
+
+      // Setup: no block drawing; the server's HTML for the saved revision.
+      expect(find.byKey(const ValueKey('newsletter-proof-email')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-proof-empty')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('newsletter-opened-email')),
+          matching: find.byType(MessageHtmlView),
+        ),
+        findsOneWidget,
+      );
+
+      await _toStep(tester, 'design');
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '<p>Mine</p>'), findsOneWidget);
+      expect(find.byType(MessageHtmlView), findsOneWidget);
+
+      await _toStep(tester, 'review');
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('newsletter-summary')),
+          matching: find.text('Custom HTML'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('at 375 Setup is one column with explicit Edit / Preview', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]), size: const Size(375, 1400));
+
+      expect(find.byKey(const ValueKey('newsletter-narrow-view')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-proof-pane')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Kept');
+      await tester.tap(find.text('Preview'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-opened-email')), findsOneWidget);
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+        'Kept',
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+/// Branded starters (suggestion 01a1ef54, 2026-11-18): the A1 Chimney pack
+/// is offered in A1 Chimney's view only, previewed at Desktop and Phone, and
+/// Use template clones it into one new editable draft with no audience or
+/// schedule; each one can be edited, saved and reopened.
+void _templateTests() {
+  group('newsletter templates', () {
+    /// A server with a real list: POST makes a draft, PUT changes it, GET
+    /// reads them back. The view is A-1 Chimney unless [view] says otherwise.
+    MockClientHandler server(
+      List<Map<String, Object?>> drafts,
+      List<Map<String, dynamic>> posts, {
+      String view = 'A-1 Chimney',
+    }) {
+      final base = _handler(canEdit: true, newsletters: drafts);
+      return (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          final r = await base(request);
+          final body = jsonDecode(r.body) as Map<String, dynamic>;
+          final data = Map<String, dynamic>.from(body['data'] as Map);
+          data['scope'] = {...(data['scope'] as Map), 'label': view};
+          return _json({'data': data});
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletters')) {
+          final sent = jsonDecode(request.body) as Map<String, dynamic>;
+          posts.add(sent);
+          final made = <String, Object?>{
+            ...sent,
+            'id': 'n-t${posts.length}',
+            'status': 'draft',
+            'audience': null,
+            'revision': 1,
+          };
+          drafts.add(made);
+          return _json({'data': made}, 201);
+        }
+        final put = RegExp(r'/newsletters/([^/]+)$').firstMatch(path);
+        if (request.method == 'PUT' && put != null) {
+          final sent = jsonDecode(request.body) as Map<String, dynamic>;
+          final i = drafts.indexWhere((d) => d['id'] == put.group(1));
+          drafts[i] = {...drafts[i], ...sent, 'revision': ((drafts[i]['revision'] as int?) ?? 1) + 1};
+          return _json({'data': drafts[i]});
+        }
+        return base(request);
+      };
+    }
+
+    test('a starter hands out a fresh copy every time', () {
+      final s = NewsletterStarters.all.first;
+      final a = s.blocks();
+      a.first['src'] = 'https://changed.example/x.png';
+      expect(s.blocks().first['src'], NewsletterStarters.logo);
+      for (final starter in NewsletterStarters.all) {
+        final types = {for (final b in starter.blocks()) b['type']};
+        expect(types, containsAll(['image', 'heading', 'text', 'button']));
+        for (final b in starter.blocks()) {
+          if (b['type'] == 'image') expect('${b['alt']}', isNotEmpty);
+          if (b['type'] == 'button') expect('${b['url']}', startsWith('https://www.a-1chimney.com/'));
+        }
+      }
+    });
+
+    testWidgets('only A1 Chimney’s view offers the A1 starters', (tester) async {
+      await _pumpNewsletter(tester, server([], [], view: 'Everdoors'));
+      expect(find.byKey(const ValueKey('newsletter-start-template')), findsNothing);
+    });
+
+    for (final starter in NewsletterStarters.all) {
+      testWidgets('${starter.title}: thumbnail, Desktop/Phone proof, Use '
+          'template, edit, save and reopen', (tester) async {
+        final drafts = <Map<String, Object?>>[];
+        final posts = <Map<String, dynamic>>[];
+        await _pumpNewsletter(tester, server(drafts, posts), size: const Size(1440, 1400));
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+        await tester.pumpAndSettle();
+        // All three cards before any draft exists.
+        for (final s in NewsletterStarters.all) {
+          expect(find.byKey(ValueKey('newsletter-template-${s.id}')), findsOneWidget);
+        }
+        expect(posts, isEmpty);
+
+        await tester.tap(find.byKey(ValueKey('newsletter-template-${starter.id}')));
+        await tester.pumpAndSettle();
+        final email = find.descendant(
+          of: find.byKey(const ValueKey('newsletter-template-email')),
+          matching: find.byKey(const Key('newsletter-email')),
+        );
+        expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
+        await tester.tap(find.byKey(const ValueKey('newsletter-template-phone')));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(email).width, 375);
+        expect(find.text('Subject: ${starter.subject}'), findsOneWidget);
+
+        await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+        await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+        await tester.pumpAndSettle();
+
+        // One new draft: the starter's words and blocks, no audience, no time.
+        expect(posts, hasLength(1));
+        final made = posts.single;
+        expect(made['subject'], starter.subject);
+        expect(made['preheader'], starter.preheader);
+        expect(made['name'], starter.title);
+        expect(made.containsKey('audience_id'), isFalse);
+        expect(made.containsKey('scheduled_for'), isFalse);
+        expect(jsonEncode(made['blocks']), jsonEncode(starter.blocks()));
+
+        // It opened in the composer; edit the subject and the heading.
+        expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+          starter.subject,
+        );
+        await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Edited ${starter.id}');
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+        expect(drafts.single['subject'], 'Edited ${starter.id}');
+
+        // The starter itself is untouched.
+        expect(starter.subject, isNot('Edited ${starter.id}'));
+
+        // Reopen: back to the list and into the draft again.
+        await tester.tap(find.byKey(const ValueKey('newsletter-back')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Edited ${starter.id}').first);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject'))).controller!.text,
+          'Edited ${starter.id}',
+        );
+        expect(jsonEncode(drafts.single['blocks']), jsonEncode(starter.blocks()));
+      });
+    }
+
+    testWidgets('in a branch view the pictures come from the library and '
+        'the booking button goes to the branch site', (tester) async {
+      final drafts = <Map<String, Object?>>[];
+      final posts = <Map<String, dynamic>>[];
+      final copied = <String>[];
+      final inner = server(drafts, posts);
+      await _pumpNewsletter(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/booking-link')) {
+          return _json({'data': {'url': 'https://hou.a-1chimney.com/booking/', 'site': 'hou.a-1chimney.com'}});
+        }
+        if (path.endsWith('/newsletter/images/copy')) {
+          final url = (jsonDecode(request.body) as Map)['url'] as String;
+          copied.add(url);
+          return _json({'data': {'id': 'lib-${copied.length}', 'url': 'https://app.example/api/v1/newsletter/artwork/o/${copied.length}.png'}}, 201);
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+      await tester.pumpAndSettle();
+      // Each distinct picture is copied once for the whole gallery.
+      expect(copied.toSet(), copied.toSet()..addAll(copied));
+      expect(copied, contains(NewsletterStarters.logo));
+      expect(copied.length, copied.toSet().length);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-fireplace-ready')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-booking')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-template-check'))).data,
+        isNot(contains('booking link')),
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+
+      final blocks = (posts.single['blocks'] as List).cast<Map>();
+      for (final b in blocks.where((b) => b['type'] == 'image')) {
+        expect('${b['src']}', startsWith('https://app.example/api/v1/newsletter/artwork/'));
+      }
+      expect(blocks.firstWhere((b) => b['type'] == 'button')['url'], 'https://hou.a-1chimney.com/booking/');
+    });
+
+    testWidgets('without a branch site the national page stays and the note '
+        'asks to confirm the link', (tester) async {
+      final posts = <Map<String, dynamic>>[];
+      final inner = server([], posts);
+      await _pumpNewsletter(tester, (request) async {
+        if (request.url.path.endsWith('/newsletter/booking-link')) {
+          return _json({'data': {'url': null, 'site': null}});
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+      await tester.tap(find.byKey(const ValueKey('newsletter-start-template')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-fireplace-ready')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-booking')), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-template-check'))).data,
+        contains('confirm the location’s booking link'),
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+      final blocks = (posts.single['blocks'] as List).cast<Map>();
+      expect(blocks.firstWhere((b) => b['type'] == 'button')['url'], NewsletterStarters.contact);
+    });
+
+    testWidgets('Design › Templates replaces the open draft after a checkpoint', (tester) async {
+      final drafts = <Map<String, Object?>>[
+        {..._draft},
+      ];
+      final checkpoints = <String>[];
+      final inner = server(drafts, []);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/checkpoint')) {
+          checkpoints.add(request.url.path);
+          return _json({'data': {'ok': true}});
+        }
+        return inner(request);
+      }, size: const Size(1440, 1400));
+      await _toStep(tester, 'design');
+      await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('newsletter-left-tabs')),
+        matching: find.text('Templates'),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-chimney-check-in')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-template-note')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-template-use')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(checkpoints, hasLength(1));
+      expect(
+        find.descendant(of: find.byType(NewsletterEmail), matching: find.text('The Chimney Check-In')),
+        findsOneWidget,
+      );
+      // An existing subject is kept; the content's Undo is offered.
+      expect(drafts.single['subject'], 'Autumn sweeps');
+      expect(find.byKey(const ValueKey('newsletter-undo')), findsOneWidget);
+    });
+  });
 }

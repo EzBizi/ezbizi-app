@@ -750,6 +750,12 @@ class _NumbersPaneState extends State<NumbersPane> {
     final showCompany =
         _me.scope.type != 'company' && shown.map(_company).toSet().length > 1;
 
+    // One cell per column, always: the health pill and each problem were
+    // added as extra cells with no column, so every row held more cells than
+    // the table had columns and the list drew as a blank grey block (desktop
+    // review 2026-11-13, Top 3).
+    final showHealth = shown.any((line) => line.problems != null);
+
     if (shown.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
@@ -770,6 +776,7 @@ class _NumbersPaneState extends State<NumbersPane> {
         // Unnamed when stacked: the value ("Ring group · Office") says what
         // it is, and the words made the row three lines (Jose, 2026-10-05).
         const ListColumn('What answers it', flex: 4, namedWhenStacked: false),
+        if (showHealth) const ListColumn('Health', flex: 3),
         if (showCompany) const ListColumn('Company', flex: 3),
         // No Recorded or Written down columns: stacked on a narrow pane they
         // were a bare "Yes Yes" with nothing saying what (Jose, 2026-10-05:
@@ -824,6 +831,34 @@ class _NumbersPaneState extends State<NumbersPane> {
             line.answers
                 ? Text(_answeredBy(line))
                 : const StatusPill('Nobody answers', tone: Tone.bad),
+            // Pass or fail, with what to fix (Jose, 2026-11-12).
+            if (showHealth)
+              line.problems == null
+                  ? const SizedBox.shrink()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Tooltip(
+                          message: line.problems!.isEmpty
+                              ? 'Calls arrive, someone answers, texting works, and someone is signed in.'
+                              : line.problems!.join(' '),
+                          child: line.problems!.isEmpty
+                              ? const StatusPill('Working', tone: Tone.ok)
+                              : StatusPill(
+                                  line.problems!.length == 1
+                                      ? '1 problem'
+                                      : '${line.problems!.length} problems',
+                                  key: Key('number-health-${line.id}'),
+                                  // A problem is amber, never the teal of
+                                  // "done" (UI pass 2026-11-17).
+                                  tone: Tone.caution,
+                                ),
+                        ),
+                        for (final problem in line.problems!)
+                          Text(problem, style: small),
+                      ],
+                    ),
             if (showCompany) Text(_company(line), style: small),
             if (_canEdit)
               Row(
@@ -886,29 +921,33 @@ class _NumbersPaneState extends State<NumbersPane> {
       // because that is the only time this picker is drawn at all.
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          // Narrower on a phone, where 260 ran off the screen's right edge
-          // (phone audit 2026-11-04).
-          width: MediaQuery.sizeOf(context).width < 600 ? 170 : 260,
-          child: SearchPickerField<String>(
-            value: _scope?.id,
-            // The label goes INSIDE the field rather than beside it. Beside it
-            // this was a Row of two parts that together wanted more width than
-            // the header can spare, and a trailing that does not fit is how
-            // this broke in the first place. One self-sizing control cannot.
-            label: 'Phone account',
-            border: const OutlineInputBorder(),
-            isDense: true,
-            options: [
-              for (final c in _connections)
-                SearchOption(value: c.id, label: c.label),
-            ],
-            onChanged: (id) {
-              final next = _connections.where((c) => c.id == id).firstOrNull;
-              if (next == null) return;
-              setState(() => _scope = next);
-              _loadImportable();
-            },
+        // Flexible: SettingsPane hands this a bounded width now, and at 390
+        // a fixed 170 still overflowed it by 5 px.
+        Flexible(
+          child: SizedBox(
+            // Narrower on a phone, where 260 ran off the screen's right edge
+            // (phone audit 2026-11-04).
+            width: MediaQuery.sizeOf(context).width < 600 ? 170 : 260,
+            child: SearchPickerField<String>(
+              value: _scope?.id,
+              // The label goes INSIDE the field rather than beside it. Beside it
+              // this was a Row of two parts that together wanted more width than
+              // the header can spare, and a trailing that does not fit is how
+              // this broke in the first place. One self-sizing control cannot.
+              label: 'Phone account',
+              border: const OutlineInputBorder(),
+              isDense: true,
+              options: [
+                for (final c in _connections)
+                  SearchOption(value: c.id, label: c.label),
+              ],
+              onChanged: (id) {
+                final next = _connections.where((c) => c.id == id).firstOrNull;
+                if (next == null) return;
+                setState(() => _scope = next);
+                _loadImportable();
+              },
+            ),
           ),
         ),
       ],
@@ -1170,6 +1209,11 @@ class _LineFormState extends State<_LineForm> {
   late bool _leadLine;
   late bool _transcribe;
   late String _afterHours;
+  late bool _overrideOn;
+  late String _overrideAction;
+  late String? _overrideGroup;
+  late final TextEditingController _overrideNumber;
+  late final TextEditingController _overrideSay;
 
   /// Carrier fields, populated only once the panel reports a change.
   Map<String, dynamic> _carrier = const {};
@@ -1189,6 +1233,12 @@ class _LineFormState extends State<_LineForm> {
     _leadLine = widget.line.leadLine;
     _transcribe = widget.line.transcribe;
     _afterHours = widget.line.afterHours;
+    final o = widget.line.override;
+    _overrideOn = widget.line.overrideOn;
+    _overrideAction = o['action'] as String? ?? 'forward';
+    _overrideGroup = o['ring_group_id'] as String?;
+    _overrideNumber = TextEditingController(text: o['number'] as String? ?? '');
+    _overrideSay = TextEditingController(text: o['say'] as String? ?? '');
   }
 
   @override
@@ -1197,6 +1247,8 @@ class _LineFormState extends State<_LineForm> {
     _forwardTo.dispose();
     _fallback.dispose();
     _notice.dispose();
+    _overrideNumber.dispose();
+    _overrideSay.dispose();
     super.dispose();
   }
 
@@ -1239,6 +1291,68 @@ class _LineFormState extends State<_LineForm> {
             border: OutlineInputBorder(),
           ),
         ),
+
+        // Jose, 2026-11-11: "an OVERRIDE TOGGLE in the numbers edit".
+        SwitchListTile(
+          key: const Key('number-override'),
+          contentPadding: EdgeInsets.zero,
+          value: _overrideOn,
+          onChanged: (v) => setState(() => _overrideOn = v),
+          title: const Text('Override the call flow'),
+          subtitle: Text(
+            'Calls to this line skip the hours and menu and do only this.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+        if (_overrideOn) ...[
+          const SizedBox(height: 8),
+          SearchPickerField<String>(
+            value: _overrideAction,
+            label: 'Instead, calls',
+            border: const OutlineInputBorder(),
+            options: const [
+              SearchOption(value: 'forward', label: 'Forward to a number'),
+              SearchOption(value: 'ring_group', label: 'Ring a ring group'),
+              SearchOption(value: 'voicemail', label: 'Go to voicemail'),
+              SearchOption(
+                value: 'hangup',
+                label: 'Hear a message, then hang up',
+              ),
+            ],
+            onChanged: (v) => setState(() => _overrideAction = v ?? 'forward'),
+          ),
+          const SizedBox(height: 12),
+          if (_overrideAction == 'forward')
+            TextField(
+              controller: _overrideNumber,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Forward to',
+                hintText: '+13055550100',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          if (_overrideAction == 'ring_group')
+            SearchPickerField<String?>(
+              value: _overrideGroup,
+              label: 'Ring group',
+              border: const OutlineInputBorder(),
+              options: [
+                for (final g in widget.groups)
+                  SearchOption<String?>(value: g.id, label: g.name),
+              ],
+              onChanged: (v) => setState(() => _overrideGroup = v),
+            ),
+          if (_overrideAction == 'hangup')
+            TextField(
+              controller: _overrideSay,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Message',
+                border: OutlineInputBorder(),
+              ),
+            ),
+        ],
 
         const SizedBox(height: 16),
         SearchPickerField<String?>(
@@ -1409,6 +1523,17 @@ class _LineFormState extends State<_LineForm> {
                       // on again.
                       'recording_notice': _notice.text.trim(),
 
+                      'override_on': _overrideOn,
+                      'override': {
+                        'action': _overrideAction,
+                        if (_overrideAction == 'forward')
+                          'number': _overrideNumber.text.trim(),
+                        if (_overrideAction == 'ring_group')
+                          'ring_group_id': _overrideGroup,
+                        if (_overrideAction == 'hangup')
+                          'say': _overrideSay.text.trim(),
+                      },
+
                       // Only what the carrier panel actually reports having
                       // changed — sending an untouched emergency address back
                       // would be a pointless Twilio write on every save.
@@ -1439,6 +1564,9 @@ class _Line {
     required this.scopeId,
     required this.voiceCallerIdLookup,
     required this.voicemailTranscribe,
+    this.overrideOn = false,
+    this.problems,
+    this.override = const {},
     this.afterHoursNumber,
     this.ringGroupId,
     this.hoursScheduleId,
@@ -1488,6 +1616,13 @@ class _Line {
 
   final bool voiceCallerIdLookup;
   final bool voicemailTranscribe;
+
+  /// Override the call flow (Jose, 2026-11-11): what the line does instead.
+  final bool overrideOn;
+
+  /// The server's health check; null from a server that sends none.
+  final List<String>? problems;
+  final Map<String, dynamic> override;
   final String? emergencyAddressSid;
   final String? fallbackNumber;
 
@@ -1536,6 +1671,18 @@ class _Line {
                 (row['ring_group_id'] != null || row['flow_id'] != null),
             voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
             voicemailTranscribe: row['voicemail_transcribe'] == true,
+            overrideOn: row['override_on'] == true,
+            problems: row['health'] is Map
+                ? [
+                    for (final p
+                        in ((row['health'] as Map)['problems'] as List? ??
+                            const []))
+                      p.toString(),
+                  ]
+                : null,
+            override: row['override'] is Map<String, dynamic>
+                ? row['override'] as Map<String, dynamic>
+                : const {},
             emergencyAddressSid: row['emergency_address_sid'] as String?,
             fallbackNumber: row['fallback_number'] as String?,
             recordingNotice: row['recording_notice'] as String?,

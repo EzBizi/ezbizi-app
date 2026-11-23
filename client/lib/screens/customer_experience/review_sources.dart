@@ -1,10 +1,10 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
-import '../business_profile/phone_check_view.dart' show checkedAgo;
 
 /// Where reviews were written (design 154 #13): Google, eKomi, Thumbtack,
 /// each with its connection, count and average, from GET /reviews/sources.
@@ -144,7 +144,7 @@ class _ReviewSourcesState extends State<ReviewSources> {
           Expanded(
             flex: 3,
             child: Text(
-              synced == null ? '—' : 'Synced ${checkedAgo(synced)}',
+              synced == null ? '—' : 'Synced ${formatAgo(synced)}',
               key: ValueKey('cx-source-sync-${r['source']}'),
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,

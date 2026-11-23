@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/dashboard_panels.dart';
+import '../core/deep_links.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -46,10 +48,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _request = 0;
   bool _loaded = false;
   String? _error;
+
   /// Today until somebody picks (Jose, 2026-10-01: "i also want the default
   /// to be Day ( as in today ) instead of Week").
   String _period = 'day';
   List<Map<String, dynamic>> _glances = [];
+
+  /// When the figures on screen were fetched; null while they are a cached
+  /// copy from the last visit (the card then says nothing rather than lie).
+  DateTime? _asOf;
 
   /// Whether the boxes show their arranging controls.
   bool _customizing = false;
@@ -79,7 +86,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// another view's numbers; held in memory only, and hung on the ApiClient,
   /// so it lives as long as the client that was allowed to read it (and two
   /// tests, each with its own client, never share one).
-  static final Expando<Map<String, Map<String, dynamic>>> _lastSeenBy = Expando();
+  static final Expando<Map<String, Map<String, dynamic>>> _lastSeenBy =
+      Expando();
 
   Map<String, Map<String, dynamic>> get _lastSeen =>
       _lastSeenBy[widget.api] ??= <String, Map<String, dynamic>>{};
@@ -96,28 +104,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (seen != null) {
       _loaded = true;
       _period = seen['period'] as String? ?? 'day';
-      _glances = (seen['glances'] as List<dynamic>).cast<Map<String, dynamic>>();
+      _glances = (seen['glances'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
     }
     _load();
+    // The glances count what the modules hold: any of them changing re-reads
+    // the board quietly, at most once a minute (each glance is a query).
+    _live = LiveChanges.of(widget.api).subscribe(_glanceTypes, (_) {
+      final now = DateTime.now();
+      if (!_loading &&
+          now.difference(_lastLive) >= const Duration(minutes: 1)) {
+        _lastLive = now;
+        return _load(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
+  static const _glanceTypes = {
+    'jobs',
+    'leads',
+    'customers',
+    'inventory',
+    'inventory_orders',
+    'vehicles',
+    'people',
+    'invoices',
+    'phone_calls',
+    'reviews',
+    'complaints',
+  };
+
+  LiveSubscription? _live;
+  DateTime _lastLive = DateTime.fromMillisecondsSinceEpoch(0);
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the glances on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. An
-      // empty glances list is a legitimate answer (no modules in reach), so
-      // emptiness is not "still loading"; only a successful fetch is loaded.
-      // A failed first fetch must not count: Try again then has nothing to
-      // keep, and a spinner is the honest thing to draw.
-      _loading = !_loaded;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. An
+        // empty glances list is a legitimate answer (no modules in reach), so
+        // emptiness is not "still loading"; only a successful fetch is loaded.
+        // A failed first fetch must not count: Try again then has nothing to
+        // keep, and a spinner is the honest thing to draw.
+        _loading = !_loaded;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/dashboard');
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -127,6 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       _loaded = true;
       _error = null;
+      _asOf = DateTime.now();
       _period = response.body['period'] as String? ?? 'day';
       _glances = (response.body['glances'] as List<dynamic>)
           .cast<Map<String, dynamic>>();
@@ -240,7 +287,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: 'Add a box',
       options: [
         for (final glance in hidden)
-          SearchOption(value: glance['key'] as String, label: '${glance['label']}'),
+          SearchOption(
+            value: glance['key'] as String,
+            label: '${glance['label']}',
+          ),
       ],
     );
     if (key == null || !mounted) return;
@@ -407,14 +457,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final byKey = {for (final glance in _glances) glance['key'] as String: glance};
-    final sections = dashboardSections(
-      [
-        for (final glance in _glances)
-          if (glance['hidden'] != true) glance['key'] as String,
-      ],
-      widget.session.me?.navigationOrder ?? const [],
-    );
+    final byKey = {
+      for (final glance in _glances) glance['key'] as String: glance,
+    };
+    final sections = dashboardSections([
+      for (final glance in _glances)
+        // Muse audit 10.5: a "Coming soon" box points at a tab that does not
+        // exist yet, so it is not drawn until the module ships.
+        if (glance['hidden'] != true && glance['coming_soon'] != true)
+          glance['key'] as String,
+    ], widget.session.me?.navigationOrder ?? const []);
 
     return AsyncBody(
       loading: _loading,
@@ -472,9 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       key: glance['key'] as String,
       title: glance['label'] as String,
       icon: dashboardPanelIcon(glance['key'] as String),
-      badge: glance['coming_soon'] == true
-          ? const Tag('Coming soon')
-          : null,
+      badge: glance['coming_soon'] == true ? const Tag('Coming soon') : null,
       // A Small box with figures draws its headline and no chart, so a menu
       // of charts would switch something that is not on screen.
       controls: compact
@@ -485,9 +535,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _setPresentation(glance['key'] as String, value),
             ),
       size: size,
-      body: _GlanceBody(glance: glance, size: size),
+      // The whole card opens its module (Muse audit 2A); the chart menu
+      // stays on its own icon. Coming-soon boxes have nowhere to go.
+      onOpen: glance['coming_soon'] == true
+          ? null
+          : () => DeepLinks.openModule(_moduleOf(glance['key'] as String)),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GlanceBody(glance: glance, size: size),
+          if (_asOf case final at?)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'As of ${TimeOfDay.fromDateTime(at).format(context)}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
+
+  /// The sidebar module a box belongs to. Most box keys ARE module keys;
+  /// the few that live inside another module say so here.
+  static String _moduleOf(String key) =>
+      const {'newsletter': 'marketing'}[key] ?? key;
 
   /// What Customize looks like: what to do, and the way out.
   Widget _arrangeBar(BuildContext context) {
@@ -535,7 +610,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [Expanded(child: words), done]),
+                Row(
+                  children: [
+                    Expanded(child: words),
+                    done,
+                  ],
+                ),
                 Wrap(spacing: 4, children: tools),
               ],
             )
@@ -790,9 +870,7 @@ class _GlanceBody extends StatelessWidget {
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               title: Text('${notes.length - 3} more'),
-              children: [
-                for (final note in notes.skip(3)) DashboardNote(note),
-              ],
+              children: [for (final note in notes.skip(3)) DashboardNote(note)],
             ),
         ],
       ];
@@ -819,10 +897,7 @@ class _GlanceBody extends StatelessWidget {
         if (charted) ...[const SizedBox(height: 12), chart],
         if (!small)
           for (final note in _notesOf(data))
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(note),
-            ),
+            Padding(padding: const EdgeInsets.only(top: 6), child: Text(note)),
       ] else ...[
         if (charted) chart,
         ..._sentences(data, charted: charted),
@@ -839,7 +914,9 @@ class _GlanceBody extends StatelessWidget {
     final rows = [
       if (raw is List)
         for (final row in raw)
-          if (row is Map && row['text'] is String && '${row['text']}'.isNotEmpty)
+          if (row is Map &&
+              row['text'] is String &&
+              '${row['text']}'.isNotEmpty)
             (bad: row['tone'] == 'bad', text: row['text'] as String),
     ];
     if (rows.isEmpty) return const [];
@@ -872,7 +949,9 @@ class _GlanceBody extends StatelessWidget {
     return [
       line(
         rows.any((row) => row.bad),
-        rows.length == 1 ? '1 needs attention' : '${rows.length} need attention',
+        rows.length == 1
+            ? '1 needs attention'
+            : '${rows.length} need attention',
       ),
     ];
   }

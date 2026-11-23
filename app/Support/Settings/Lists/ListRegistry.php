@@ -83,14 +83,25 @@ final class ListRegistry
                     .'Ticoit). Everyone else is matched to Workiz\'s team list by first and last name.',
                 editPermission: 'reports.handles',
             ),
+            // The source a job gets from the line its client dialed (Jose, 2026-11-16).
+            new ListDefinition(
+                key: 'jobs.sources_by_line', label: 'Job source by line dialed', module: 'jobs',
+                columns: [['key' => 'line', 'label' => 'Line: a number, or the end of its name (- PPC)'], ['key' => 'source', 'label' => 'Workiz job source']],
+                help: 'Used by the automation step "Set job sources from the line dialed". A number matches that line; '
+                    .'anything else matches a line whose name ends with it. The source must be on the branch\'s own Workiz list.',
+                editPermission: 'jobs.edit',
+            ),
             // Which Workiz job sources Google Ads pays for (Reports' Marketing).
             new ListDefinition(
                 key: 'reports.paid_sources', label: 'Paid job sources', module: 'reports',
-                columns: [['key' => 'source', 'label' => 'Workiz job source'], ['key' => 'channel', 'label' => 'Ad channel (lsa, ppc or meta)']],
+                columns: [['key' => 'source', 'label' => 'Workiz job source'], ['key' => 'channel', 'label' => 'Ad channel (lsa, ppc or meta)'],
+                    ['key' => 'company', 'label' => 'Sub company whose own ad accounts pay for it (optional)']],
                 defaults: array_map(fn (string $source) => ['key' => $source, 'value' => ['source' => $source, 'channel' => MarketingReport::PAID[$source]]],
                     array_keys(MarketingReport::PAID)),
                 help: 'The job sources your ads pay for: lsa for Google Local Services, ppc for Google Search, meta for '
-                    .'Facebook. Marketing puts that channel\'s cost against them, and Local Services leads count toward the lsa one.',
+                    .'Facebook. Marketing puts that channel\'s cost against them, and Local Services leads count toward the lsa one. '
+                    .'A source a sub company sells (Angi Sweep) names that company: its own accounts pay for it, each on the branch '
+                    .'whose code ends its name (Report locations: "AngiSweep - CT" is Connecticut); channel blank is every channel.',
                 editPermission: 'reports.settings',
             ),
             // The daily and weekly WhatsApp texts (Jose, 2026-11-06: "order of report by states").
@@ -111,6 +122,55 @@ final class ListRegistry
                     'Jobs with one of these tags are not counted in the In Progress jobs texts.'],
                 ['reports.tags_not_created', 'Tags left out of jobs created', ['PAID - ESTIMATED', 'PAID - ESTIMATED (BY SUB)'],
                     'Jobs with one of these tags are not counted in the jobs created texts.'],
+            ]),
+            // Which job statuses Reports › Cancelled jobs and Pending jobs list (Shoval, 2026-11-18).
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: $list[0], label: $list[1], module: 'reports', columns: [['key' => 'status', 'label' => 'Job status']],
+                defaults: array_map(fn (string $status) => ['key' => $status, 'value' => ['status' => $status]], $list[2]),
+                help: $list[3], editPermission: 'reports.settings',
+            ), [
+                ['reports.cancelled_statuses', 'Cancelled job statuses', ['Canceled', 'Cancelled'],
+                    'Reports › Cancelled jobs lists the jobs in these statuses. Upper or lower case does not matter.'],
+                ['reports.pending_statuses', 'Pending job statuses', ['Pending'],
+                    'Reports › Pending jobs lists the jobs in these statuses, oldest first. Upper or lower case does not matter.'],
+            ]),
+            // Reports › Complaints' targets (Shoval, 2026-11-18: "up to 48 resulting, up to 24 hours to call").
+            new ListDefinition(
+                key: 'reports.complaint_targets', label: 'Complaint targets, in hours', module: 'reports',
+                columns: [['key' => 'target', 'label' => 'Target (contact or solve)'], ['key' => 'hours', 'label' => 'Hours']],
+                defaults: [['key' => 'contact', 'value' => ['target' => 'contact', 'hours' => 24]], ['key' => 'solve', 'value' => ['target' => 'solve', 'hours' => 48]]],
+                help: 'Reports › Complaints counts a complaint as on time when the customer was first contacted within the contact '
+                    .'hours of it being raised, and when it was closed within the solve hours.',
+                editPermission: 'reports.settings',
+            ),
+            // Reports › Accounting's rules (Shoval, 2026-11-18: "Accounting issues weekly report").
+            new ListDefinition(
+                key: 'reports.accounting_rules', label: 'Accounting report rules', module: 'reports',
+                columns: [['key' => 'rule', 'label' => 'Rule'], ['key' => 'value', 'label' => 'Value']],
+                defaults: [['key' => 'invoice_days', 'value' => ['rule' => 'invoice_days', 'value' => 30]]],
+                help: 'invoice_days: Reports › Accounting lists an invoice as overdue when it still owes money this many days after it was made.',
+                editPermission: 'reports.settings',
+            ),
+            // Reports › AI checks and Tech report (Shoval, 2026-11-18).
+            new ListDefinition(
+                key: 'reports.tech_check_rules', label: 'Technician check rules', module: 'reports',
+                columns: [['key' => 'rule', 'label' => 'Rule'], ['key' => 'value', 'label' => 'Value']],
+                defaults: [['key' => 'eta_hours', 'value' => ['rule' => 'eta_hours', 'value' => 3]],
+                    ['key' => 'close_hours', 'value' => ['rule' => 'close_hours', 'value' => 12]],
+                    ['key' => 'min_photos', 'value' => ['rule' => 'min_photos', 'value' => 3]]],
+                help: 'eta_hours: a call or text to the client this many hours before the start counts as the ETA call. close_hours: a job '
+                    .'closed later than this many hours after its start is closed late. min_photos: fewer photos than this is too few.',
+                editPermission: 'reports.settings',
+            ),
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: $list[0], label: $list[1], module: 'reports', columns: [['key' => 'type', 'label' => 'Job type']],
+                defaults: array_map(fn (string $type) => ['key' => $type, 'value' => ['type' => $type]], $list[2]),
+                help: $list[3], editPermission: 'reports.settings',
+            ), [
+                ['reports.inspection_job_types', 'Job types that need an inspection report', [],
+                    'Reports › AI checks counts a done job of one of these types with no inspection report submitted. None listed: not checked.'],
+                ['reports.redo_job_types', 'Redo job types', ['Redo'],
+                    "Reports › Tech report counts each technician's done jobs of these types as redos."],
             ]),
             new ListDefinition(
                 key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',

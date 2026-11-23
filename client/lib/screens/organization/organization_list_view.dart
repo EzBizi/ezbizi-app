@@ -834,6 +834,7 @@ class _NodePageState extends State<_NodePage> {
         ),
         TabBarLike(
           key: const ValueKey('org-page-tabs'),
+          level: TabLevel.secondary,
           labels: const [
             ('Details', Icons.edit_note_outlined),
             ('Settings', Icons.tune_outlined),
@@ -1032,12 +1033,18 @@ class _FranchiseFormState extends State<_FranchiseForm> {
     text: widget.franchise['name'] as String? ?? '',
   )..addListener(() => setState(() {}));
   late String _baseline = _name.text.trim();
+  // Printed on this branch's hires' contracts (Merav, 2026-11-19).
+  late final _address = TextEditingController(
+    text: widget.franchise['address'] as String? ?? '',
+  )..addListener(() => setState(() {}));
+  late String _baselineAddress = _address.text.trim();
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
     _name.dispose();
+    _address.dispose();
     super.dispose();
   }
 
@@ -1045,13 +1052,16 @@ class _FranchiseFormState extends State<_FranchiseForm> {
     setState(() => _saving = true);
     final response = await widget.api.patch(
       '/franchises/${widget.franchise['id']}',
-      {'name': _name.text.trim()},
+      {'name': _name.text.trim(), 'address': _address.text.trim()},
     );
     if (!mounted) return;
     setState(() {
       _saving = false;
       _error = response.ok ? null : response.message;
-      if (response.ok) _baseline = _name.text.trim();
+      if (response.ok) {
+        _baseline = _name.text.trim();
+        _baselineAddress = _address.text.trim();
+      }
     });
     if (response.ok) widget.onSaved();
   }
@@ -1059,6 +1069,8 @@ class _FranchiseFormState extends State<_FranchiseForm> {
   @override
   Widget build(BuildContext context) {
     final name = _name.text.trim();
+    final changed =
+        name != _baseline || _address.text.trim() != _baselineAddress;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1074,9 +1086,21 @@ class _FranchiseFormState extends State<_FranchiseForm> {
           ),
         ),
         const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: TextField(
+            key: const ValueKey('org-franchise-address'),
+            controller: _address,
+            decoration: const InputDecoration(
+              labelText: 'Address',
+              helperText: 'Printed on contracts for people hired here',
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
         FilledButton(
           key: const ValueKey('org-franchise-save'),
-          onPressed: name != _baseline && name.isNotEmpty && !_saving
+          onPressed: changed && name.isNotEmpty && !_saving
               ? _save
               : null,
           child: Text(_saving ? 'Saving…' : 'Save'),

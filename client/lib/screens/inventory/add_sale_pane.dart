@@ -171,84 +171,68 @@ class _AddSalePaneState extends State<AddSalePane> {
         _readyLines.isNotEmpty &&
         (_customerId != null || _note.text.trim().isNotEmpty);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New sale',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
+      saveLabel: 'Save draft',
+      loading: _loading,
       children: [
-        paneHeader(
-          context,
-          'New sale',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+          }),
+          onFranchiseChanged: (v) =>
+              setState(() => _franchiseId = v),
         ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InventoryPlaceFields(
-                        me: _me,
-                        companyId: _companyId,
-                        franchiseId: _franchiseId,
-                        enabled: !_busy,
-                        onCompanyChanged: (v) => setState(() {
-                          _companyId = v;
-                          _franchiseId = null;
-                        }),
-                        onFranchiseChanged: (v) =>
-                            setState(() => _franchiseId = v),
-                      ),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String>(
-                        value: _customerChoice,
-                        label: 'Customer',
-                        helperText: 'A named customer, or a counter sale with a note.',
-                        helperMaxLines: 2,
-                        options: [
-                          const SearchOption(value: _counter, label: 'Counter sale'),
-                          for (final customer in _customers)
-                            SearchOption(value: customer['id'] as String?, label: customer['name'] as String? ?? ''),
-                        ],
-                        onChanged: _busy || _customersHidden
-                            ? null
-                            : (v) => setState(() => _customerChoice = v),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _note,
-                        enabled: !_busy,
-                        decoration: InputDecoration(
-                          labelText: 'Note',
-                          helperText: _isCounter
-                              ? 'Required for a counter sale.'
-                              : 'Optional.',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      ...orderLineFields(
-                        lines: _lines,
-                        items: _items,
-                        busy: _busy,
-                        financials: _financials,
-                        keyPrefix: 'sale',
-                        amountLabel: 'Unit price',
-                        changed: () => setState(() {}),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 8),
-                        ErrorNote(_error!),
-                      ],
-                    ],
-                  ),
-                ),
+        const SizedBox(height: 12),
+        SearchPickerField<String>(
+          value: _customerChoice,
+          label: 'Customer',
+          helperText: 'A named customer, or a counter sale with a note.',
+          helperMaxLines: 2,
+          options: [
+            const SearchOption(value: _counter, label: 'Counter sale'),
+            for (final customer in _customers)
+              SearchOption(value: customer['id'] as String?, label: customer['name'] as String? ?? ''),
+          ],
+          onChanged: _busy || _customersHidden
+              ? null
+              : (v) => setState(() => _customerChoice = v),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
-          saveLabel: 'Save draft',
+        const SizedBox(height: 12),
+        TextField(
+          controller: _note,
+          enabled: !_busy,
+          decoration: InputDecoration(
+            labelText: 'Note',
+            helperText: _isCounter
+                ? 'Required for a counter sale.'
+                : 'Optional.',
+          ),
+          onChanged: (_) => setState(() {}),
         ),
+        ...orderLineFields(
+          lines: _lines,
+          items: _items,
+          busy: _busy,
+          financials: _financials,
+          keyPrefix: 'sale',
+          amountLabel: 'Unit price',
+          changed: () => setState(() {}),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          ErrorNote(_error!),
+        ],
       ],
     );
   }

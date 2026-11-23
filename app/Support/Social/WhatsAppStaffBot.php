@@ -680,14 +680,6 @@ final class WhatsAppStaffBot
         $this->text($number, $to, $reply);
     }
 
-    /**
-     * Sounds like the business's figures. ponytail: a word list; a miss falls back to the Library's AI answer.
-     */
-    public static function asksFigures(string $query): bool
-    {
-        return preg_match('/\b(sales?|sell|sold|revenue|gross|profit|jobs?|leads?|deposits?|cancel\w*|how (much|many)|numbers|report|last (week|month)|this (week|month)|yesterday|today)\b/i', $query) === 1;
-    }
-
     /** @param  array<string, string>  $site */
     private static function describe(array $site, string $fallbackName): string
     {

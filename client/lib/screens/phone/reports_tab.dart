@@ -83,6 +83,12 @@ class _ReportsTabState extends State<ReportsTab> {
   List<_Row> _rows = const [];
   Map<String, String> _labels = const {};
 
+  /// Whether a run has answered. Until one has, the totals are empty, and
+  /// empty totals read as "No calls in this period": a claim about the
+  /// calls made before any count came back (UI/UX audit 2026-11-13, §10.1:
+  /// Jose's screen said "No calls" while the server was sending 15).
+  bool _answered = false;
+
   bool _running = false;
   bool _savingReport = false;
   final _reportName = TextEditingController();
@@ -177,6 +183,7 @@ class _ReportsTabState extends State<ReportsTab> {
 
     setState(() {
       _running = false;
+      _answered = true;
       _totals = totals;
       _wholeTotals = whole is Map<String, dynamic>
           ? whole
@@ -371,12 +378,15 @@ class _ReportsTabState extends State<ReportsTab> {
               hint: 'Every line',
               values: _lineIds,
               options: [
-                for (final l in _lines) SearchOption(value: l.id, label: l.name),
+                for (final l in _lines)
+                  SearchOption(value: l.id, label: l.name),
               ],
               onChanged: (v) {
-                setState(() => _lineIds
-                  ..clear()
-                  ..addAll(v));
+                setState(
+                  () => _lineIds
+                    ..clear()
+                    ..addAll(v),
+                );
                 _run();
               },
             ),
@@ -428,6 +438,20 @@ class _ReportsTabState extends State<ReportsTab> {
   /// that narrowed nothing would be a lie about what is under it. Missed is
   /// already drawn inside every bar and counted in the table.
   Widget _totalsCard(ThemeData theme) {
+    // No answer yet: still counting, or the count failed and the error note
+    // above says why. Neither is "no calls".
+    if (!_answered) {
+      return _running
+          ? const Card(
+              key: ValueKey('phone-report-counting'),
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Counting the calls…'),
+              ),
+            )
+          : const SizedBox.shrink();
+    }
+
     if (_int(_totals, 'calls') == 0 && _int(_wholeTotals, 'calls') == 0) {
       return Card(
         key: const ValueKey('tour-phone-report-empty'),
@@ -830,7 +854,13 @@ class _ReportTiles extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
-        final across = (box.maxWidth / 170).floor().clamp(2, tiles.length);
+        // Rows as even as the count allows: at 1440 six fitted at 170 and
+        // "Not tagged" sat alone on a second row (Jose's equal-tile rule,
+        // UI pass 2026-11-17). 150 fits all seven; when they cannot share a
+        // row, they split evenly rather than leave one behind.
+        final fit = (box.maxWidth / 150).floor().clamp(2, tiles.length);
+        final rows = (tiles.length / fit).ceil();
+        final across = (tiles.length / rows).ceil();
         final width = (box.maxWidth - gap * (across - 1)) / across;
 
         return Wrap(

@@ -35,8 +35,15 @@ final class ChatPeople
         return [
             'name' => $first !== '' ? $first : 'Support',
             'initials' => $initials !== '' ? $initials : '?',
+            /*
+             * Signed but not expiring, and versioned by the photo itself: the
+             * link changes only when the photo does. An expiring link was
+             * re-signed on every plugin refresh, which the plugin read as a
+             * change and purged the whole page cache every 5 minutes (Bar,
+             * 2026-11-18: 6,697 purges on call.a-1chimney.com).
+             */
             'avatar' => $user->avatar_path === null ? null
-                : URL::temporarySignedRoute('web.chat.avatar', now()->addDays(7), ['user' => $user->getKey()]),
+                : URL::signedRoute('web.chat.avatar', ['user' => $user->getKey(), 'v' => substr(sha1($user->avatar_path), 0, 10)]),
         ];
     }
 

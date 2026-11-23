@@ -110,7 +110,10 @@ class _ComposeListingsPickerState extends State<ComposeListingsPicker> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final total = widget.places.length;
+    // Counted against the listings that can take a post; the rest are
+    // named apart, so "36 of 39" never reads as three forgotten.
+    final total = _postable.length;
+    final blocked = widget.places.length - total;
     final ticked = widget.places
         .where((p) => widget.picked.contains(_id(p)))
         .length;
@@ -147,6 +150,14 @@ class _ComposeListingsPickerState extends State<ComposeListingsPicker> {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        if (blocked > 0)
+          Text(
+            '$blocked cannot post (suspended or unverified)',
+            key: const ValueKey('social-places-blocked'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         TextButton.icon(
           key: const ValueKey('social-places-expand'),
           onPressed: () => widget.onExpandedChanged(!widget.expanded),
@@ -241,6 +252,8 @@ class _ComposeListingsPickerState extends State<ComposeListingsPicker> {
     final text = note == null
         ? listingRowLabel(place)
         : '${listingRowLabel(place)} · $note';
+    // A listing Google will not take a post for is shown, never ticked.
+    final able = widget.enabled && note == null;
     void flip() {
       widget.picked.contains(id)
           ? widget.picked.remove(id)
@@ -251,14 +264,14 @@ class _ComposeListingsPickerState extends State<ComposeListingsPicker> {
     final address = '${place['address'] ?? ''}'.trim();
     final row = InkWell(
       key: ValueKey('social-place-$id'),
-      onTap: widget.enabled ? flip : null,
+      onTap: able ? flip : null,
       child: Padding(
         padding: const EdgeInsets.only(left: 24),
         child: Row(
           children: [
             Checkbox(
               value: widget.picked.contains(id),
-              onChanged: widget.enabled ? (_) => flip() : null,
+              onChanged: able ? (_) => flip() : null,
             ),
             const SocialNetworkMark(
               network: 'google_business_profile',

@@ -254,6 +254,29 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertFalse($byId['c-open']['booked']);
     }
 
+    /** Jose, 2026-11-11: a caller's missed calls showed under Booked; only an answered call can have booked the job. */
+    public function test_a_missed_call_from_a_number_that_booked_is_not_booked(): void
+    {
+        $this->fakeCallLog([
+            array_merge($this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+                ['id' => 'c-took', 'from' => ['phoneNumber' => '+12125551212', 'name' => 'X']]),
+            array_merge($this->inbound(rang: [['Trey Brannan', 'No Answer']], queue: 'A1 - New Client', result: 'Missed'),
+                ['id' => 'c-missed', 'from' => ['phoneNumber' => '+12125551212', 'name' => 'X']]),
+        ]);
+
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $day = $this->inTenant($this->provisionTenant('Missed booked')['org'], fn () => app(CallReconciliation::class)->forRange(
+            $calls,
+            [['created_at' => '2026-09-14 10:00:00', 'phone' => '(212) 555-1212', 'created_by' => 'Trey Brannan']],
+            '2026-09-14',
+            '2026-09-14',
+        ));
+
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertTrue($byId['c-took']['booked']);
+        $this->assertFalse($byId['c-missed']['booked']);
+    }
+
     /**
      * A call from the client's other number is booked too (Trey, 2026-11-03:
      * 10 of 43 "AI heard a booking, no job" calls in a week were).
@@ -338,6 +361,27 @@ class ExperimentalCallReportTest extends TestCase
         // 2026-10-13), never counted: the totals above did not move.
         $connected = array_column($day['calls'], null, 'id')['out-2'];
         $this->assertSame(['Outbound', 'connected', '+12125550000'], [$connected['direction'], $connected['outcome'], $connected['from']]);
+    }
+
+    /**
+     * Ana, 2026-11-16: the people who only call out (Gino, Tiara, Ara) had no
+     * row, because a row came only from a call that rang someone. Their calls
+     * are counted as placed, and they are not inbound calls. The rows are A-1's
+     * stored day 2026-11-13, numbers masked.
+     */
+    public function test_a_person_who_only_calls_out_has_a_row_with_their_calls_placed(): void
+    {
+        $calls = [
+            ['id' => 'ZE6alqhIALPyDUA', 'direction' => 'Outbound', 'started_at' => '2026-11-13T22:02:36.780Z', 'from' => '+15550001111', 'to_number' => '+15550002222', 'caller_label' => 'Gino Russo', 'queue' => 'JOSHUA ELLIS', 'result' => 'Call connected', 'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 215, 'recording_id' => '3686736266017'],
+            ['id' => 'ZD1V-1ksKvseDUA', 'direction' => 'Outbound', 'started_at' => '2026-11-13T17:58:19.898Z', 'from' => '+15550001111', 'to_number' => '+15550003333', 'caller_label' => 'Gino Russo', 'queue' => null, 'result' => 'Wrong Number', 'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 1, 'recording_id' => null],
+        ];
+
+        $day = app(CallReconciliation::class)->forRange($calls, [], '2026-11-13', '2026-11-13');
+
+        $gino = array_column($day['people'], null, 'person')['Gino Russo'] ?? null;
+        $this->assertNotNull($gino);
+        $this->assertSame([2, 0, 0], [$gino['outbound'], $gino['rang'], $gino['answered']]);
+        $this->assertSame([0, 2], [$day['totals']['calls'], $day['totals']['outbound']]);
     }
 
     // ── new versus existing ──────────────────────────────────────

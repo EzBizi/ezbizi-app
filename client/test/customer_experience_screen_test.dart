@@ -252,7 +252,8 @@ void reviewLinkTests() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('review-links-table')), findsNothing);
+      // Stacked cards on a phone, never a sideways DataTable (P1).
+      expect(find.byType(DataTable), findsNothing);
       // Seven tiles push the list below the fold on a phone (2026-11-09).
       await tester.scrollUntilVisible(
         find.text('North Branch'),

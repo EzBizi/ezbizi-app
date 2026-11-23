@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Work Hours Payroll</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;
+--ok:#1d7a3e;--okf:#dcf2e3;--cau:#8a5a00;--cauf:#fdf0d3;--bad:#a12a2a;--badf:#f9dede;--info:#1e5aa8;--infof:#dde9f9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--cau:#f0c46a;--cauf:#3a2e12;--bad:#f09a9a;--badf:#3a1a1a;--info:#9cc2f2;--infof:#18263a}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.pr-lead{margin:0 0 20px;color:var(--mut);max-width:980px}
+.pr-opt{margin-bottom:28px}.pr-opt>h2{font-size:15px;margin:0 0 2px}.pr-opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:980px}
+.pr-rec{color:var(--pri)}
+.pr-win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pr-tabs{display:flex;gap:18px;padding:10px 16px 0;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.pr-tabs span{padding-bottom:8px}.pr-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.pr-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 16px}
+.pr-step{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600}.pr-step b{font-weight:400;color:var(--mut);font-size:18px}
+.pr-place{color:var(--mut);font-size:12px}
+.pr-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pr-chip{border-radius:10px;padding:5px 11px;display:flex;gap:8px;align-items:baseline;font-size:12px}
+.pr-chip b{font-size:15px}
+.n{background:var(--bg)}.c{background:var(--cauf);color:var(--cau)}.k{background:var(--okf);color:var(--ok)}.x{background:var(--badf);color:var(--bad)}.i{background:var(--infof);color:var(--info)}
+.pr-search{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--mut);width:220px}
+.pr-btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px;white-space:nowrap;display:inline-block}
+.pr-fill{background:var(--pri);color:#fff}.pr-out{border:1px solid var(--line);color:var(--pri)}
+.pr-sp{flex:1}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.r{text-align:right}.mut{color:var(--mut);font-size:11.5px}
+.pr-field{display:inline-block;min-width:64px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;text-align:right}
+.pr-pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;margin:1px 2px 1px 0}
+.pr-exp td{background:var(--bg);padding:6px 10px 6px 34px;font-size:12px}
+.pr-tot td{font-weight:700;border-bottom:0}
+.pr-pay{font-weight:700;font-size:13.5px}
+.pr-split{display:flex}.pr-split>div:first-child{flex:1;min-width:0}
+.pr-pane{width:320px;border-left:1px solid var(--line);padding:14px;background:var(--card)}
+.pr-pane h3{margin:0 0 2px;font-size:15px}
+.pr-kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line)}
+.pr-lab{font-size:11px;color:var(--mut);margin:10px 0 3px}
+.pr-in{border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:0 16px 16px}
+.pr-card{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--card)}
+.pr-row{display:flex;gap:8px;align-items:center}
+.pr-big{font-size:20px;font-weight:700}
+.pr-phones{display:flex;flex-wrap:wrap;gap:24px}
+.pr-ph{width:375px}.pr-ph>h2{font-size:15px;margin:0 0 2px}.pr-ph>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.pr-scr{width:375px;height:740px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.pr-bar{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.pr-body{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.pr-foot{padding:10px 12px;background:var(--card);border-top:1px solid var(--line)}
+.pr-foot .pr-btn{display:block;text-align:center}
+.pr-av{width:30px;height:30px;border-radius:50%;background:var(--prif);color:var(--pri);display:grid;place-items:center;font-weight:700;font-size:11px;flex:none}
+</style></head><body>
+<h1>198 · Work Hours › Payroll</h1>
+<p class="pr-lead">Clock In asked (Merav via Jose, 2026-11-19; server 47460410d). It's one week (by default the week yesterday fell in) for the people in the top-bar view: hours, rate, bonus, deductions and tech expenses add up to weekly pay. A manager approves each person, or approves everyone at once, and downloads the .xlsx. Hours over 40 are shown but not paid. Editing bonus, deductions or the note un-approves the person. The layout matches Daily approval (136).</p>
+
+<div class="pr-opt"><h2>1 · Table, edit in the row <span class="pr-rec">(recommended)</span></h2>
+<p>This is Daily approval's frame. The top has the week stepper, the view name, chips (People, Hours, Pay, Waiting, With warnings), a search bar, Approve all and Download .xlsx. Bonus and deductions are fields right in the row and save when you leave the field. The note is a pencil that opens a single line under the row. Tech expenses has a ▸ that opens the lines (job, item, qty, amount, paid). Warnings show as chips, and the total sits at the foot.</p>
+<div class="pr-win">
+<div class="pr-tabs"><span>General</span><span>Paid Time Off</span><span>Reports</span><span>Daily approval</span><span class="on">Payroll</span><span>Settings</span></div>
+<div class="pr-top"><div class="pr-step"><b>‹</b>Nov 9 – Nov 15, 2026<b>›</b><b style="font-size:14px">📅</b></div><span class="pr-place">📍 A-1 Chimney · Ohio</span></div>
+<div class="pr-top" style="padding-top:0"><div class="pr-chips"><span class="pr-chip n">People <b>6</b></span><span class="pr-chip n">Hours <b>231.5</b></span><span class="pr-chip i">Pay <b>$7,842.10</b></span><span class="pr-chip c">Waiting <b>4</b></span><span class="pr-chip x">With warnings <b>2</b></span></div>
+<span class="pr-search">🔍 Find a person</span><span class="pr-sp"></span><span class="pr-btn pr-out">⬇ Download .xlsx</span><span class="pr-btn pr-fill">✓ Approve all 4 waiting</span></div>
+<table><tr><th>Name</th><th class="r">Rate</th><th class="r">Hours</th><th class="r">Bonus</th><th class="r">Deductions</th><th class="r">Tech expenses</th><th class="r">Weekly pay</th><th>Warnings</th><th class="r">Status</th></tr>
+<tr><td><b>Dana Ruiz</b> ✎<div class="mut">Technician · Columbus</div></td><td class="r">$24.00/h</td><td class="r">44.5<div class="mut">+4.5 OT, not paid</div></td><td class="r"><span class="pr-field">$50.00</span></td><td class="r"><span class="pr-field">$0.00</span></td><td class="r">▾ $86.40</td><td class="r pr-pay">$1,096.40</td><td></td><td class="r"><span class="pr-btn pr-fill">Approve</span></td></tr>
+<tr class="pr-exp"><td colspan="9">JOB-60906 · Chimney cap 13×13 · 1 · $62.40 · paid Nov 11 &nbsp;&nbsp;|&nbsp;&nbsp; JOB-60877 · Mortar mix · 2 · $24.00 · paid Nov 12</td></tr>
+<tr><td><b>Sam Okafor</b> ✎<div class="mut">Technician · Cleveland</div></td><td class="r">$22.00/h</td><td class="r">38.0</td><td class="r"><span class="pr-field">$0.00</span></td><td class="r"><span class="pr-field">$40.00</span></td><td class="r">—</td><td class="r pr-pay">$796.00</td><td><span class="pr-pill c">Days not approved</span></td><td class="r"><span class="pr-btn pr-fill">Approve</span></td></tr>
+<tr><td><b>Lena Park</b> ✎<div class="mut">Office · Columbus</div></td><td class="r">$52,000/yr</td><td class="r">40.0</td><td class="r"><span class="pr-field">$0.00</span></td><td class="r"><span class="pr-field">$0.00</span></td><td class="r">—</td><td class="r pr-pay">$1,000.00</td><td></td><td class="r"><span class="pr-pill k">Approved by Merav</span></td></tr>
+<tr><td><b>Omar Diaz</b> ✎<div class="mut">Technician · Akron</div></td><td class="r mut">No rate</td><td class="r">36.2</td><td class="r"><span class="pr-field">$0.00</span></td><td class="r"><span class="pr-field">$0.00</span></td><td class="r">—</td><td class="r mut">—</td><td><span class="pr-pill x">No pay rate</span><span class="pr-pill c">Still clocked in</span></td><td class="r"><span class="pr-btn pr-fill">Approve</span></td></tr>
+<tr class="pr-tot"><td>Total · 6 people</td><td></td><td class="r">231.5</td><td></td><td></td><td class="r">$148.40</td><td class="r">$7,842.10</td><td></td><td></td></tr></table>
+</div></div>
+
+<div class="pr-opt"><h2>2 · Table to read, side pane to edit</h2>
+<p>The table is read-only: name, hours, pay, warnings, status. Clicking a row opens a pane with rate, hours and OT, bonus, deductions and note fields, tech expense lines, warnings, and Save and Approve. It's tidier, but every edit costs a click and the table hides bonus and deductions.</p>
+<div class="pr-win"><div class="pr-tabs"><span>General</span><span>Daily approval</span><span class="on">Payroll</span></div>
+<div class="pr-top"><div class="pr-step"><b>‹</b>Nov 9 – Nov 15, 2026<b>›</b></div><div class="pr-chips"><span class="pr-chip n">People <b>6</b></span><span class="pr-chip i">Pay <b>$7,842.10</b></span><span class="pr-chip c">Waiting <b>4</b></span></div><span class="pr-search">🔍 Find a person</span><span class="pr-sp"></span><span class="pr-btn pr-out">⬇ .xlsx</span><span class="pr-btn pr-fill">Approve all 4</span></div>
+<div class="pr-split"><div><table><tr><th>Name</th><th class="r">Hours</th><th class="r">Weekly pay</th><th>Warnings</th><th class="r">Status</th></tr>
+<tr style="background:var(--prif)"><td><b>Dana Ruiz</b><div class="mut">Technician · Columbus</div></td><td class="r">44.5</td><td class="r pr-pay">$1,096.40</td><td></td><td class="r"><span class="pr-pill c">Waiting</span></td></tr>
+<tr><td><b>Sam Okafor</b><div class="mut">Technician · Cleveland</div></td><td class="r">38.0</td><td class="r pr-pay">$796.00</td><td><span class="pr-pill c">Days not approved</span></td><td class="r"><span class="pr-pill c">Waiting</span></td></tr>
+<tr><td><b>Lena Park</b><div class="mut">Office · Columbus</div></td><td class="r">40.0</td><td class="r pr-pay">$1,000.00</td><td></td><td class="r"><span class="pr-pill k">Approved</span></td></tr></table></div>
+<div class="pr-pane"><h3>Dana Ruiz</h3><div class="mut">Technician · Columbus · $24.00/h</div>
+<div class="pr-kv"><span>Hours</span><b>44.5 (4.5 OT not paid)</b></div><div class="pr-kv"><span>Base</span><b>$960.00</b></div>
+<div class="pr-lab">Bonus</div><div class="pr-in">$50.00</div><div class="pr-lab">Deductions</div><div class="pr-in">$0.00</div><div class="pr-lab">Note</div><div class="pr-in mut">Holiday shift</div>
+<div class="pr-lab">Tech expenses · $86.40</div><div class="mut">JOB-60906 Chimney cap · $62.40<br>JOB-60877 Mortar mix ×2 · $24.00</div>
+<div class="pr-kv" style="margin-top:8px"><span>Weekly pay</span><b>$1,096.40</b></div><div style="margin-top:10px;text-align:right"><span class="pr-btn pr-out">Save</span> <span class="pr-btn pr-fill">Approve</span></div></div></div>
+</div></div>
+
+<div class="pr-opt"><h2>3 · A card per person</h2>
+<p>Each card shows the weekly pay large, with the sum (base + bonus − deductions + expenses) under it and the fields inside. It's easy to scan, but comparing people across a branch is harder than in a table, and the total is only in the chips.</p>
+<div class="pr-win"><div class="pr-tabs"><span>Daily approval</span><span class="on">Payroll</span></div>
+<div class="pr-top"><div class="pr-step"><b>‹</b>Nov 9 – Nov 15, 2026<b>›</b></div><div class="pr-chips"><span class="pr-chip i">Pay <b>$7,842.10</b></span><span class="pr-chip c">Waiting <b>4</b></span><span class="pr-chip x">Warnings <b>2</b></span></div><span class="pr-search">🔍 Find a person</span><span class="pr-sp"></span><span class="pr-btn pr-out">⬇ .xlsx</span><span class="pr-btn pr-fill">Approve all 4</span></div>
+<div class="pr-grid">
+<div class="pr-card"><div class="pr-row"><span class="pr-av">DR</span><div><b>Dana Ruiz</b><div class="mut">Technician · Columbus</div></div></div><div class="pr-big" style="margin-top:8px">$1,096.40</div><div class="mut">$960 base + $50 bonus + $86.40 expenses · 44.5 h (4.5 OT)</div><div class="pr-row" style="margin-top:8px"><span class="pr-field">+ $50.00</span><span class="pr-field">− $0.00</span><span class="pr-sp"></span><span class="pr-btn pr-fill">Approve</span></div></div>
+<div class="pr-card"><div class="pr-row"><span class="pr-av">SO</span><div><b>Sam Okafor</b><div class="mut">Technician · Cleveland</div></div></div><div class="pr-big" style="margin-top:8px">$796.00</div><div class="mut">$836 base − $40 deductions · 38 h</div><div style="margin-top:6px"><span class="pr-pill c">Days not approved</span></div><div class="pr-row" style="margin-top:8px"><span class="pr-field">+ $0.00</span><span class="pr-field">− $40.00</span><span class="pr-sp"></span><span class="pr-btn pr-fill">Approve</span></div></div>
+<div class="pr-card"><div class="pr-row"><span class="pr-av">OD</span><div><b>Omar Diaz</b><div class="mut">Technician · Akron</div></div></div><div class="pr-big mut" style="margin-top:8px">No pay rate</div><div class="mut">36.2 h</div><div style="margin-top:6px"><span class="pr-pill x">No pay rate</span><span class="pr-pill c">Still clocked in</span></div></div>
+</div></div></div>
+
+<div class="pr-phones">
+<div class="pr-ph"><h2>4 · Cards, edit in place <span class="pr-rec">(recommended)</span></h2><p>Like Daily approval's phone cards. The pay is large, with hours and OT under it, then warnings, then bonus and deductions as fields, then ▸ Tech expenses and Approve. Approve all is outlined at the bottom, and Download sits in the header.</p>
+<div class="pr-scr"><div class="pr-bar">Payroll</div><div class="pr-body">
+<div class="pr-row"><div class="pr-step" style="font-size:14px"><b>‹</b>Nov 9 – 15, 2026<b>›</b></div><span class="pr-sp"></span><span class="pr-btn pr-out" style="padding:5px 10px">⬇</span></div>
+<div class="pr-row" style="flex-wrap:wrap;gap:6px"><span class="pr-chip i">Pay <b>$7,842</b></span><span class="pr-chip c">Waiting <b>4</b></span><span class="pr-chip x">Warnings <b>2</b></span></div>
+<span class="pr-search" style="width:100%">🔍 Find a person</span>
+<div class="pr-card"><div class="pr-row"><span class="pr-av">DR</span><div style="flex:1"><b>Dana Ruiz</b><div class="mut">Technician · Columbus · $24/h</div></div><div class="r"><div class="pr-pay">$1,096.40</div><div class="mut">44.5 h · 4.5 OT</div></div></div>
+<div class="pr-row" style="margin-top:8px"><span class="mut">Bonus</span><span class="pr-field">$50.00</span><span class="mut">Deductions</span><span class="pr-field">$0.00</span></div>
+<div class="mut" style="margin-top:6px">▾ Tech expenses $86.40</div><div class="mut" style="padding-left:12px">JOB-60906 · Chimney cap · $62.40<br>JOB-60877 · Mortar mix ×2 · $24.00</div>
+<div class="pr-row" style="margin-top:8px"><span class="mut">✎ Note</span><span class="pr-sp"></span><span class="pr-btn pr-fill">Approve</span></div></div>
+<div class="pr-card"><div class="pr-row"><span class="pr-av">SO</span><div style="flex:1"><b>Sam Okafor</b><div class="mut">Technician · Cleveland · $22/h</div></div><div class="r"><div class="pr-pay">$796.00</div><div class="mut">38 h</div></div></div><div style="margin-top:6px"><span class="pr-pill c">Days not approved</span></div>
+<div class="pr-row" style="margin-top:8px"><span class="mut">Bonus</span><span class="pr-field">$0.00</span><span class="mut">Deductions</span><span class="pr-field">$40.00</span></div></div>
+</div><div class="pr-foot"><span class="pr-btn pr-out">✓ Approve all 4 waiting</span></div></div></div>
+
+<div class="pr-ph"><h2>5 · Short rows, person full screen</h2><p>One line per person (name, pay, status). Tapping opens a full-screen page with every field. It makes for a quick list, but editing takes two screens.</p>
+<div class="pr-scr"><div class="pr-bar">Payroll</div><div class="pr-body">
+<div class="pr-step" style="font-size:14px"><b>‹</b>Nov 9 – 15, 2026<b>›</b></div><span class="pr-search" style="width:100%">🔍 Find a person</span>
+<div class="pr-card" style="padding:0">
+<div class="pr-row" style="padding:10px;border-bottom:1px solid var(--line)"><span class="pr-av">DR</span><div style="flex:1"><b>Dana Ruiz</b><div class="mut">44.5 h · Columbus</div></div><b>$1,096.40</b><span class="pr-pill c">Waiting</span></div>
+<div class="pr-row" style="padding:10px;border-bottom:1px solid var(--line)"><span class="pr-av">SO</span><div style="flex:1"><b>Sam Okafor</b><div class="mut">38 h · ⚠ 1</div></div><b>$796.00</b><span class="pr-pill c">Waiting</span></div>
+<div class="pr-row" style="padding:10px;border-bottom:1px solid var(--line)"><span class="pr-av">LP</span><div style="flex:1"><b>Lena Park</b><div class="mut">40 h · Columbus</div></div><b>$1,000.00</b><span class="pr-pill k">Approved</span></div>
+<div class="pr-row" style="padding:10px"><span class="pr-av">OD</span><div style="flex:1"><b>Omar Diaz</b><div class="mut">36.2 h · ⚠ 2</div></div><b class="mut">—</b><span class="pr-pill c">Waiting</span></div></div>
+</div><div class="pr-foot"><span class="pr-btn pr-out">✓ Approve all 4 waiting</span></div></div></div>
+
+<div class="pr-ph"><h2>6 · One person at a time</h2><p>A stepper walks the waiting people: one screen each, with Approve &amp; next. It's good for a Sunday run-through, but the whole week isn't visible at once.</p>
+<div class="pr-scr"><div class="pr-bar">Payroll · 1 of 4 waiting</div><div class="pr-body">
+<div class="pr-card"><div class="pr-row"><span class="pr-av">DR</span><div><b>Dana Ruiz</b><div class="mut">Technician · Columbus · $24/h</div></div></div>
+<div class="pr-big" style="margin-top:10px">$1,096.40</div><div class="mut">44.5 h · 4.5 OT not paid</div>
+<div class="pr-lab">Bonus</div><div class="pr-in">$50.00</div><div class="pr-lab">Deductions</div><div class="pr-in">$0.00</div><div class="pr-lab">Note</div><div class="pr-in mut">Add a note</div>
+<div class="pr-lab">Tech expenses · $86.40</div><div class="mut">JOB-60906 · Chimney cap · $62.40<br>JOB-60877 · Mortar mix ×2 · $24.00</div></div>
+</div><div class="pr-foot pr-row"><span class="pr-btn pr-out" style="flex:1;text-align:center">Skip</span><span class="pr-btn pr-fill" style="flex:2;text-align:center">Approve &amp; next</span></div></div></div>
+</div>
+</body></html>

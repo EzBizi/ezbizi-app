@@ -2,9 +2,14 @@ import '../../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../widgets/empty_state.dart';
+
+import '../../widgets/filters_fold.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -63,6 +68,19 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
   void initState() {
     super.initState();
     if (widget.visible) _load();
+    // A job booked, moved or cancelled elsewhere changes who needs moving:
+    // the list re-reads quietly; the open row and the search stay.
+    _live = LiveChanges.of(widget.api).subscribe({'jobs'}, (_) {
+      if (!_loading && !_moving && !_confirming) return _load(quiet: true);
+    }, active: () => widget.visible && LiveChanges.visible(this)());
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -71,15 +89,19 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     if (widget.visible && !old.visible) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final ticket = ++_request;
-    setState(() {
-      _loading = _rows.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _rows.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/scheduling/reschedules');
     if (!mounted || ticket != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -277,55 +299,60 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
             );
           }
 
-          final bar = Padding(
+          // Mobile review P10: on a phone the area picker folds behind one
+          // "Filters · n" button under the search, so the first job shows.
+          final phone = box.maxWidth < FiltersFold.foldBelow;
+          final area = SizedBox(
+            width: phone ? double.infinity : 240,
+            child: SearchPickerField<String?>(
+              key: const Key('rescheduling-area'),
+              value: _area,
+              label: 'Area',
+              options: [
+                SearchOption<String?>(
+                  value: null,
+                  label: 'All areas · ${_rows.length}',
+                ),
+                for (final MapEntry(:key, :value) in areas.entries)
+                  SearchOption<String?>(
+                    value: key,
+                    label:
+                        '$value · ${_rows.where((r) => r['area_id'] == key).length}',
+                  ),
+              ],
+              onChanged: (v) => setState(() {
+                _area = v;
+                _open = null;
+              }),
+            ),
+          );
+          final strip = Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Wrap(
               spacing: 12,
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                SizedBox(
-                  width: 240,
-                  child: SearchPickerField<String?>(
-                    key: const Key('rescheduling-area'),
-                    value: _area,
-                    label: 'Area',
-                    options: [
-                      SearchOption<String?>(
-                        value: null,
-                        label: 'All areas · ${_rows.length}',
-                      ),
-                      for (final MapEntry(:key, :value) in areas.entries)
-                        SearchOption<String?>(
-                          value: key,
-                          label:
-                              '$value · ${_rows.where((r) => r['area_id'] == key).length}',
-                        ),
-                    ],
-                    onChanged: (v) => setState(() {
-                      _area = v;
-                      _open = null;
-                    }),
-                  ),
-                ),
+                if (!phone) area,
                 // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                 SizedBox(
-                  width: 240,
+                  width: phone ? box.maxWidth - 92 : 240,
                   child: ListSearch(
                     key: const Key('rescheduling-search'),
                     hint: 'Find a job',
                     onChanged: (v) => setState(() {
-                        _query = v;
-                        _open = null;
-                      }),
+                      _query = v;
+                      _open = null;
+                    }),
                   ),
                 ),
-                Text(
-                  rows.isEmpty ? '' : 'Biggest saving first',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (!phone)
+                  Text(
+                    rows.isEmpty ? '' : 'Biggest saving first',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
                 IconButton(
                   tooltip: 'Refresh',
                   onPressed: _load,
@@ -334,6 +361,24 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
               ],
             ),
           );
+          final bar = !phone
+              ? strip
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    strip,
+                    FiltersFold(
+                      key: const Key('rescheduling-filters-fold'),
+                      count: _area == null ? 0 : 1,
+                      width: box.maxWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: area,
+                      ),
+                    ),
+                  ],
+                );
 
           final moved = _moved == null
               ? null
@@ -372,18 +417,13 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
               children: [
                 bar,
                 ?moved,
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Nothing to move: every booked job has other work '
-                        'near it on its day.',
-                        key: const Key('rescheduling-empty'),
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
+                const Expanded(
+                  child: EmptyState(
+                    key: Key('rescheduling-empty'),
+                    icon: Icons.event_available_outlined,
+                    title: 'Nothing to move',
+                    message:
+                        'Every booked job has other work near it on its day.',
                   ),
                 ),
               ],

@@ -178,6 +178,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
         content: Text('$name taken out'),
         behavior: SnackBarBehavior.floating,
         width: 420,
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => _saveMembers(group, before),
@@ -295,18 +297,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
@@ -418,7 +409,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               isDense: true,
               hint: 'Choose a report · ${unset.length}',
               options: [
-                for (final p in unset) SearchOption(value: p.key, label: p.label),
+                for (final p in unset)
+                  SearchOption(value: p.key, label: p.label),
               ],
               onChanged: (key) {
                 if (key != null) _create(key);

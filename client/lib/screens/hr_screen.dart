@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -9,6 +10,7 @@ import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/payroll_tab.dart';
+import 'hr/recruiting_tab.dart';
 import 'hr/records_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
@@ -169,6 +171,13 @@ class _HrScreenState extends State<HrScreen> {
       'Payroll',
       Icons.payments_outlined,
       () => PayrollTab(api: widget.api, session: widget.session),
+    ),
+    // Design 201 (Shoval, 2026-11-20): applicants, interviews and spend.
+    (
+      'recruiting',
+      'Recruiting',
+      Icons.person_search_outlined,
+      () => RecruitingTab(api: widget.api, session: widget.session),
     ),
   ];
 
@@ -342,9 +351,12 @@ class _HrScreenState extends State<HrScreen> {
               for (final tab in _shownTabs)
                 Offstage(
                   offstage: tab.$1 != _activeTab,
-                  child: _shown.contains(tab.$1) || tab.$1 == _activeTab
-                      ? tab.$4()
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: tab.$1 == _activeTab,
+                    child: _shown.contains(tab.$1) || tab.$1 == _activeTab
+                        ? tab.$4()
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

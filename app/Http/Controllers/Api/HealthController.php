@@ -231,10 +231,14 @@ class HealthController extends Controller
 
     private function outbox(): array
     {
+        // Overdue counts from available_at: a delayed rule (e.g. "call not
+        // booked" two hours later) waits on purpose, and read as a stalled
+        // scheduler when timed from occurred_at (11-11).
         $oldest = AutomationEvent::withoutGlobalScopes()
             ->whereNull('delivered_at')
-            ->orderBy('occurred_at')
-            ->value('occurred_at');
+            ->where('available_at', '<=', now())
+            ->orderBy('available_at')
+            ->value('available_at');
 
         return [
             'pending'        => AutomationEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),

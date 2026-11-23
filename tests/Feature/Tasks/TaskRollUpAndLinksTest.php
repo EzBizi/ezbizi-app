@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\Customer;
+use App\Models\Lead;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskLink;
@@ -57,6 +59,37 @@ class TaskRollUpAndLinksTest extends TestCase
         $this->assertNull($siblingRows->firstWhere('id', $task->id));
     }
 
+    /** Health sweep 11-18: the company board sent all 31k branch rows and ran out of memory. */
+    public function test_per_group_pages_the_rolled_up_rows_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $company = $this->board($tenant, 'company', $tenant['company']->id);
+        $branch = $this->board($tenant, 'franchise', $tenant['franchise']->id);
+        foreach (range(1, 4) as $i) {
+            $this->task($tenant, $branch, "Branch {$i}");
+        }
+
+        $rows = collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}?per_group=2")->assertOk()->json('data.tasks'))
+            ->whereNotNull('rolled_up_from');
+        $this->assertCount(2, $rows);
+        $this->assertCount(4, collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}")->json('data.tasks'))->whereNotNull('rolled_up_from'));
+    }
+
+    /** Health sweep 11-19: a PATCH answered with the whole roll-up and ran out of memory; it answers paged. */
+    public function test_a_patch_answers_with_a_paged_board(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $company = $this->board($tenant, 'company', $tenant['company']->id);
+        $branch = $this->board($tenant, 'franchise', $tenant['franchise']->id);
+        foreach (range(1, 55) as $i) {
+            $this->task($tenant, $branch, "Branch {$i}");
+        }
+
+        $rows = collect($this->signedInAs($tenant['admin'])->patchJson("/api/v1/task-boards/{$company->id}", ['position' => 3])->assertOk()->json('data.tasks'))
+            ->whereNotNull('rolled_up_from');
+        $this->assertLessThanOrEqual(50, $rows->count());
+    }
+
     public function test_a_rolled_up_row_takes_the_company_boards_status_by_name(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -73,6 +106,47 @@ class TaskRollUpAndLinksTest extends TestCase
 
         $this->signedInAs($tenant['admin'])->patchJson("/api/v1/tasks/{$task->id}", ['status_id' => $custom->id])
             ->assertStatus(422)->assertJsonPath('errors.status_id.0', 'The board this task is on has no status called Waiting parts.');
+    }
+
+    /** Jose 11-17: one box finds a task on any board; the row carries its links. */
+    public function test_task_search_spans_visible_boards_and_a_row_carries_its_links(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $a = $this->task($tenant, $this->board($tenant, 'company', $tenant['company']->id), 'Sweep the Gilbert chimney');
+        $b = $this->task($tenant, $this->board($tenant, 'franchise', $tenant['franchise']->id), 'Call Gilbert back');
+        $admin = $tenant['admin'];
+
+        $found = $this->signedInAs($admin)->getJson('/api/v1/task-search?q=gilbert')->assertOk()->json('data');
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], array_column($found, 'id'));
+        $this->assertNotEmpty(array_filter(array_column($found, 'board_name')));
+        $this->signedInAs($admin)->getJson('/api/v1/task-search?q=g')->assertStatus(422);
+        $this->assertSame([], $this->signedInAs($admin)->getJson('/api/v1/task-search?q=%25%25')->assertOk()->json('data'));
+
+        $this->signedInAs($admin)->postJson("/api/v1/tasks/{$a->id}/links", ['linked_task_id' => $b->id])->assertCreated();
+        $row = $this->signedInAs($admin)->getJson("/api/v1/tasks/{$a->id}")->assertOk()->json('data');
+        $this->assertSame([$b->id], array_column($row['links'], 'id'));
+    }
+
+    /** Jose 11-17: the same box finds the lead or customer a task is about, by name or phone. */
+    public function test_task_search_finds_leads_and_customers_by_name_or_phone(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$lead, $customer] = $this->inTenant($tenant['org'], fn () => [
+            Lead::create([
+                'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id,
+                'source' => 'website_form', 'remote_id' => 'link-1', 'status' => 'NEW', 'received_at' => now(),
+                'contact_name' => 'Ann Gilbert', 'phone' => '+17325550101', 'phone_digits' => '7325550101',
+            ]),
+            Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-77', 'name' => 'Gilbert Home', 'phone' => '7325550199']),
+        ]);
+        $admin = $tenant['admin'];
+
+        $records = collect($this->signedInAs($admin)->getJson('/api/v1/task-search?q=gilbert')->assertOk()->json('records'));
+        $this->assertSame(['lead' => $lead->id, 'customer' => $customer->id], $records->pluck('id', 'type')->all());
+        $this->assertSame(['lead'], collect($this->signedInAs($admin)->getJson('/api/v1/task-search?q=555-0101')->json('records'))->pluck('type')->all());
+
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['tasks.view']);
+        $this->assertSame([], $this->signedInAs($viewer)->getJson('/api/v1/task-search?q=gilbert')->assertOk()->json('records'));
     }
 
     public function test_linked_tasks_show_each_other_and_share_done_and_reopen(): void

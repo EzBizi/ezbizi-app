@@ -29,6 +29,9 @@ class LoadingSkeleton extends StatelessWidget {
       label: 'Loading',
       child: ListView(
         key: const Key('loading-skeleton'),
+        // Shrink-wrapped: AsyncBody draws it by default now, and some
+        // bodies sit where the height is unbounded (in a Column or a list).
+        shrinkWrap: true,
         padding: const EdgeInsets.all(16),
         physics: const NeverScrollableScrollPhysics(),
         children: [

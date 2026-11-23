@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 
 /// A phone connection as a picker shows it: its id and a label to read.
-/// Read from `/phone/connections` by the Porting and Trust panes.
+/// Read from `/phone/connections` by the Porting, Trust, Voicemail and IVR
+/// menus panes.
 class PhoneConnectionRef {
-  const PhoneConnectionRef(this.id, this.label);
+  const PhoneConnectionRef(this.id, this.label, [this.defaultVoicemailBoxId]);
 
   final String id;
   final String label;
+
+  /// The box a line on this account falls back to (Voicemail pane).
+  final String? defaultVoicemailBoxId;
 
   static List<PhoneConnectionRef> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
@@ -17,6 +21,7 @@ class PhoneConnectionRef {
         PhoneConnectionRef(
           row['id'].toString(),
           (row['label'] ?? row['account_sid'] ?? 'Phone account').toString(),
+          row['default_voicemail_box_id'] as String?,
         ),
     ];
   }

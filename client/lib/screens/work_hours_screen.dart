@@ -20,6 +20,7 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/pto_tab.dart';
 import 'hr/work_hours_approval_tab.dart';
+import 'hr/work_hours_payroll_tab.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'hr/work_hours_tab.dart';
 import 'settings_screen.dart';
@@ -122,6 +123,15 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
         'Daily approval',
         Icons.fact_check_outlined,
         () => WorkHoursApprovalTab(api: widget.api, session: widget.session),
+      ),
+    // Payroll (design 198, 2026-11-19): one week's pay, bonus, deductions
+    // and tech expenses, approved per person; behind `work_hours.payroll`.
+    if (_may('work_hours.payroll'))
+      (
+        'payroll',
+        'Payroll',
+        Icons.payments_outlined,
+        () => WorkHoursPayrollTab(api: widget.api, session: widget.session),
       ),
     if (_may('work_hours.settings.view'))
       (

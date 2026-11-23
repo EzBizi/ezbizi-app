@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
+import '../../core/live_changes.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/record_facts.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -137,7 +139,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _areaId ?? '',
   ].join('\u0000');
 
-  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+  void _markDirty() {
+    widget.dirty?.value = !_loading && _typed != _loaded;
+    // Save lights as soon as something changed (design 196).
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -148,6 +154,34 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _files.addListener(_filesChanged);
     _files.load();
     _load();
+    // Live: a sync, webhook or automation changing this job shows here.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (batch) {
+        if (batch.reload || batch.touched('jobs').contains(widget.id)) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  /// The job read again in place, with no spinner. Skipped while somebody is
+  /// typing or saving: their edit is never overwritten from under them.
+  Future<void> _refresh() async {
+    if (_loading || _busy || _typed != _loaded) return;
+    final response = await widget.api.get('/jobs/${widget.id}');
+    if (!mounted || !response.ok || _busy || _typed != _loaded) return;
+    final row = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _fill(row);
+      _row = row;
+      _notes = jobNotes(row['notes']);
+    });
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   /// Where the panel goes when it is finished: its route, or the list it is
@@ -169,6 +203,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _files.removeListener(_filesChanged);
     _files.dispose();
     _title.dispose();
@@ -387,20 +422,25 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
   /// Status, Sub-status, Type. Sub-status only once one is set, or when the
   /// job is cancelled or on hold, which is what it explains.
+  /// The job's status, said once: on the top line of the Job tab (design
+  /// 196), where the pill that repeated it used to be.
+  Widget _statusPicker(bool editable) => SearchPickerField<String>(
+    key: const Key('job-status'),
+    value: _statuses.contains(_status) ? _status : null,
+    label: 'Status',
+    isDense: true,
+    options: _statusChoices
+        .map((s) => SearchOption(value: s.value, label: s.label))
+        .toList(),
+    onChanged: editable
+        ? (v) {
+            setState(() => _status = v ?? _status);
+            _markDirty();
+          }
+        : null,
+  );
+
   Widget _statusLine(bool editable) {
-    final status = SearchPickerField<String>(
-      value: _statuses.contains(_status) ? _status : null,
-      label: 'Status',
-      options: _statusChoices
-          .map((s) => SearchOption(value: s.value, label: s.label))
-          .toList(),
-      onChanged: editable
-          ? (v) {
-              setState(() => _status = v ?? _status);
-              _markDirty();
-            }
-          : null,
-    );
     final showSub = _subStatus != null || statusTakesSubStatus(_status);
     final sub = SearchPickerField<String>(
       key: const Key('job-sub-status'),
@@ -433,9 +473,9 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final pickers = [status, if (showSub) sub, type];
-        // About 140 each to sit abreast; on a phone the status keeps its own
-        // line and the other two share the next.
+        final pickers = [if (showSub) sub, type];
+        // About 140 each to sit abreast. The status is on the top line
+        // (design 196).
         if (constraints.maxWidth >= 140.0 * pickers.length + 16) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,8 +491,6 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            status,
-            const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -521,6 +559,24 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         _error = response.reason;
       });
       return;
+    }
+
+    // Jose's PM rule (11-17): a reminder, not a block, when a job is marked
+    // done with money still owed.
+    final was = '${_row?['status'] ?? ''}';
+    final finished =
+        toneForJobStatus(_status) == Tone.ok ||
+        toneForJobStatus(_status) == Tone.review;
+    if (finished &&
+        _status != was &&
+        (JobMoney.of(_row?['money'])?.due ?? 0) > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('job-payment-rule'),
+          duration: Duration(seconds: 12),
+          content: Text(paymentRule),
+        ),
+      );
     }
 
     _done(true);
@@ -627,21 +683,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   @override
   Widget build(BuildContext context) {
     final row = _row;
-    final customer = row?['customer'] as Map<String, dynamic>?;
-    final franchise = row?['franchise'] as Map<String, dynamic>?;
     final editable = _editRefusal == null && !_busy && !_loading;
 
     return SidePanel(
       title: row == null ? 'Job' : row['title'] as String,
-      subtitle: row == null
-          ? null
-          : [
-              row['number'],
-              if (row['workiz_job_number'] != null)
-                'Workiz #${row['workiz_job_number']}',
-              customer?['name'],
-              franchise?['name'],
-            ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      // Design 196: the rest of what this line held is the facts grid.
+      subtitle: row?['number'] as String?,
       width: 520,
       headerActions: [if (row != null) JobRecordPill(jobId: '${row['id']}')],
       docked: widget.onDone != null,
@@ -657,7 +704,8 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
           Refused(
             reason: _editRefusal,
             child: FilledButton(
-              onPressed: editable ? _save : null,
+              // Lit once something changed (design 196).
+              onPressed: editable && _typed != _loaded ? _save : null,
               child: const Text('Save'),
             ),
           ),
@@ -743,6 +791,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
             formats: _me.display,
             addRefusal: _editRefusal,
             onAdded: (note) => setState(() => _notes = [note, ..._notes]),
+            onChanged: (notes) => setState(() => _notes = notes),
             workizNotes: _row?['workiz_notes'] as String?,
           )
         else
@@ -819,17 +868,15 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       children: [
         if (row != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(bottom: 10),
+            // Design 196: the lead's header on the job. The status once,
+            // with the marks beside it, then the facts grid.
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // The pill the list shows, so a job reads the same
-                // colour open as it did in its row.
-                StatusPill(
-                  row['status_label'] as String? ?? row['status'] as String,
-                  tone: toneForJobStatus(row['status'] as String),
-                ),
+                SizedBox(width: 200, child: _statusPicker(editable)),
                 if (customer?['owned_by_this_franchise'] == false)
                   const Tag('Shared customer', warn: true),
                 // The same amber mark as its row in the list, so an
@@ -838,6 +885,29 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   const NotPlacedMark(),
               ],
             ),
+          ),
+        if (row != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: RecordFacts([
+              RecordFact('Customer', '${customer?['name'] ?? ''}'),
+              RecordFact(
+                'Customer #',
+                '${customer?['number'] ?? ''}',
+                copy: true,
+              ),
+              RecordFact('Branch', '${franchise?['name'] ?? ''}'),
+              // Trey Brannan, 2026-11-12: "so we know who booked the appt".
+              RecordFact('Booked by', '${row['booked_by'] ?? ''}'),
+              RecordFact('Job #', '${row['number'] ?? ''}', copy: true),
+              RecordFact(
+                'Workiz',
+                row['workiz_job_number'] == null
+                    ? ''
+                    : '#${row['workiz_job_number']}',
+                copy: true,
+              ),
+            ]),
           ),
         if (_notes.isNotEmpty) _latestNote(context, _notes.first),
         // What Workiz says the job IS, before anything to edit

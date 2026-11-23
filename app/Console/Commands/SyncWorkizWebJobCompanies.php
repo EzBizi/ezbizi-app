@@ -2,10 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
-use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizWebSession;
 use Illuminate\Console\Command;
@@ -27,15 +25,10 @@ class SyncWorkizWebJobCompanies extends Command
 
     public function handle(TenantContext $tenant): int
     {
-        $read = 0;
-
-        foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get() as $connection) {
-            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
-
-            if ($organization !== null) {
-                $read += $tenant->run($organization, fn () => $this->connection($connection, (int) $this->option('limit') - $read));
-            }
-        }
+        $read = WorkizWebSession::eachConnection(
+            $tenant,
+            fn (SocialConnection $connection, int $sofar) => $this->connection($connection, (int) $this->option('limit') - $sofar),
+        );
 
         $this->info($read.' Workiz job(s) read for their external company.');
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -24,7 +25,7 @@ import 'customer_experience/review_stats_band.dart';
 /// ── UI queue 145 (Jose, 2026-10-26: "Looks good", 1 and 4) ─────
 ///
 /// An inbox: a summary strip (average this month against last, new this
-/// month, unanswered, 1–2 stars still to answer; each tile sets its filter),
+/// month, unanswered, 1–3 stars still to answer; each tile sets its filter),
 /// search with quick chips and a More filters panel, the reviews as a list on
 /// the left and the open one on the right with its reply box. Table and Board
 /// (UI queue 101) stay behind the view toggle. On a phone the list is the
@@ -89,7 +90,7 @@ class _Summary {
   final int counted;
   final int total;
 
-  /// Unanswered 1- and 2-star reviews, from the server's own totals.
+  /// Unanswered 1- to 3-star reviews, from the server's own totals.
   final int? low;
 
   /// The server caps a page at 200, so more than that is a sample.
@@ -124,8 +125,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// Opens on unanswered — see the class note.
   bool _onlyUnanswered = true;
 
-  /// The "1–2 stars" chip. The server's rating filter has no "2 or fewer", so
-  /// this asks for 1–3 and keeps the 1s and 2s.
+  /// The "1–3 stars" chip: the server's `rating=negative`, 3 stars or fewer
+  /// (Adeline, approved by Jose 2026-11-19: "1 to 3 stars not 1 to 2").
   bool _low = false;
   String _rating = 'any';
   int? _days;
@@ -172,7 +173,21 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
+    // A review or reply synced from Google, or a note added elsewhere: the
+    // list re-reads quietly and the open review in place (the reply being
+    // typed is its own box and is never touched).
+    _live = LiveChanges.of(widget.api).subscribe({'reviews'}, (batch) async {
+      if (!_loading) await _load(quiet: true);
+      final open = _open?['id'];
+      if (open != null &&
+          !_busy &&
+          (batch.reload || batch.touched('reviews').contains('$open'))) {
+        await _refresh();
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// A tapped notification about a review opens that review.
   void _takeLink() {
@@ -183,6 +198,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _draft.dispose();
     _note.dispose();
@@ -202,13 +218,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return now.subtract(Duration(days: days));
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      _loading = _loaded.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _loaded.isEmpty;
+        _error = null;
+      });
+    }
 
     final from = _from;
     final response = await widget.api.get('/reviews', {
@@ -217,7 +236,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'rating': 'negative'
       else if (_rating != 'any')
         'rating': _rating,
-      if (_low) 'per_page': '200',
       if (from != null) 'from': formatCalendarDay(from),
       if (_sort != 'newest') 'sort': _sort,
       'location': ?_location,
@@ -227,6 +245,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -275,12 +294,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'from': formatCalendarDay(lastMonth),
         'per_page': '200',
       }),
-      for (final stars in const ['1', '2'])
-        widget.api.get('/reviews', {
-          'answered': 'no',
-          'rating': stars,
-          'per_page': '1',
-        }),
+      // 1–3 stars (Adeline, approved by Jose 2026-11-19).
+      widget.api.get('/reviews', {
+        'answered': 'no',
+        'rating': 'negative',
+        'per_page': '1',
+      }),
     ]);
     if (!mounted) return;
 
@@ -309,8 +328,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         ? ((r.body['meta'] as Map?)?['total'] as num?)?.toInt() ??
               (r.data as List? ?? const []).length
         : null;
-    final one = totalOf(responses[1]);
-    final two = totalOf(responses[2]);
+    final low = totalOf(responses[1]);
     final meta = window.body['meta'] as Map<String, dynamic>? ?? const {};
     final counted = rows.length;
 
@@ -321,19 +339,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         newThis: newThis,
         counted: counted,
         total: (meta['total'] as num?)?.toInt() ?? counted,
-        low: one == null || two == null ? null : one + two,
+        low: low,
       ),
     );
   }
 
-  /// The loaded rows the search box and the 1–2 stars chip allow.
+  /// The loaded rows the search box allows.
   ///
   /// The server reads `q` (c3cf49fdc); narrowing the loaded page as well keeps
   /// the list right while a debounced request is still out.
   List<Map<String, dynamic>> get _reviews {
     final q = _q.toLowerCase();
     return _loaded.where((r) {
-      if (_low && ((r['rating'] as num?)?.toInt() ?? 9) > 2) return false;
       if (q.isEmpty) return true;
       final text = [
         r['reviewer_name'],
@@ -742,6 +759,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 drafting: _drafting,
                 onDraftAll: _can('reviews.manage') ? _draftAll : null,
                 onSendWindow: _openSendWindow,
+                compact: box.maxWidth < 600,
               ),
             _toolbar(theme, box.maxWidth),
             if (_profile != null && box.maxWidth < 1200)
@@ -817,7 +835,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'average',
-              label: 'Average rating',
+              // Named with its period: the all-time average elsewhere on Customer
+              // Experience read as a second, different rating (desktop review
+              // 2026-11-13, Top 7).
+              label: 'Average rating this month',
               value: average == null ? '—' : '${avg(average)} / 5',
               sub: averageSub,
               info:
@@ -868,11 +889,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'low',
-              label: '1–2 stars to answer',
+              label: '1–3 stars to answer',
               value: s?.low == null ? '—' : '${s!.low}',
-              sub: 'unanswered, 1 or 2 stars',
+              sub: 'unanswered, 1 to 3 stars',
               info:
-                  'Unanswered 1-star and 2-star reviews, of any age, at the '
+                  'Unanswered 1- to 3-star reviews, of any age, at the '
                   'places you can see. Counted by the server.',
               tone: (s?.low ?? 0) > 0 ? Tone.bad : null,
               onTap: () => _refilter(() {
@@ -1006,7 +1027,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       ),
       FilterChip(
         key: const ValueKey('tour-customer_experience-rating'),
-        label: const Text('1–2 stars'),
+        label: const Text('1–3 stars'),
         selected: _low,
         onSelected: (v) => _refilter(() {
           _low = v;
@@ -1091,6 +1112,72 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         onSelectionChanged: (v) => setState(() => _view = v.single),
       ),
     ];
+
+    // Design 195 (phone 4): search, Filters and ⋯ on one line, the quick
+    // chips on one more that scrolls sideways. Fetch new and the view are in
+    // the ⋯.
+    if (width < 600) {
+      final chips = left.whereType<FilterChip>().toList();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: (left.first as SizedBox).child!),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('reviews-more-filters'),
+                  onPressed: () => setState(() => _moreOpen = !_moreOpen),
+                  child: Text(more > 0 ? 'Filters · $more' : 'Filters'),
+                ),
+                MenuAnchor(
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const ValueKey('tour-customer_experience-fetch'),
+                      leadingIcon: const Icon(Icons.sync, size: 18),
+                      onPressed: _syncing ? null : _sync,
+                      child: Text(_syncing ? 'Fetching…' : 'Fetch new'),
+                    ),
+                    const Divider(height: 1),
+                    for (final (v, label, icon) in const [
+                      ('inbox', 'Inbox', Icons.inbox_outlined),
+                      ('table', 'Table', Icons.table_rows_outlined),
+                      ('board', 'Board', Icons.view_agenda_outlined),
+                    ])
+                      MenuItemButton(
+                        key: ValueKey('reviews-view-$v'),
+                        leadingIcon: Icon(icon, size: 18),
+                        trailingIcon: _view == v
+                            ? const Icon(Icons.check, size: 18)
+                            : null,
+                        onPressed: () => setState(() => _view = v),
+                        child: Text(label),
+                      ),
+                  ],
+                  builder: (context, menu, _) => IconButton(
+                    key: const ValueKey('reviews-more'),
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final c in chips) ...[c, const SizedBox(width: 6)],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     Widget wrap(List<Widget> children) => Wrap(
       spacing: 10,
@@ -1718,8 +1805,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Text(
-        _low
-            ? '$shown ${shown == 1 ? 'review' : 'reviews'} with 1 or 2 stars'
+        _q.isNotEmpty
+            ? '$shown ${shown == 1 ? 'review' : 'reviews'} on this page match'
             : '$_total ${_total == 1 ? 'review' : 'reviews'}',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,

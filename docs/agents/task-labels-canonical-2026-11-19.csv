@@ -1,0 +1,127 @@
+column,canonical,absorbs,tasks,per board,in top 40
+Reason,Other,,5112,NW - Nationwide 3772; IL - Illinois 371; NJ - New Jersey 279; OH - Ohio 196; CT - Connecticut 161; TX- Texas 111; GA - Georgia 103; DMV 78; MA - Massachusetts 40; Outgoing Calls 1,yes
+Reason,ETA,,4328,NW - Nationwide 3640; IL - Illinois 225; NJ - New Jersey 152; OH - Ohio 92; CT - Connecticut 90; TX- Texas 52; GA - Georgia 47; DMV 21; MA - Massachusetts 8; Outgoing Calls 1,yes
+Reason,Cancel,Requesting Cancellation | cx cancelled,3993,NW - Nationwide 3156; IL - Illinois 178; NJ - New Jersey 172; OH - Ohio 131; CT - Connecticut 116; TX- Texas 67; GA - Georgia 63; DMV 62; MA - Massachusetts 43; Outgoing Calls 5,yes
+Reason,Complaint,,3300,NW - Nationwide 2503; NJ - New Jersey 163; A1 - Operatrion 162; IL - Illinois 145; CT - Connecticut 100; GA - Georgia 57; TX- Texas 51; DMV 45; OH - Ohio 36; MA - Massachusetts 27; New York 11,yes
+Reason,Reschedule,,3062,NW - Nationwide 2512; IL - Illinois 146; OH - Ohio 92; CT - Connecticut 79; NJ - New Jersey 75; TX- Texas 45; GA - Georgia 40; DMV 38; MA - Massachusetts 21; Outgoing Calls 14,yes
+Reason,Missed Call,,2548,NW - Nationwide 2156; Outgoing Calls 374; IL - Illinois 7; CT - Connecticut 3; OH - Ohio 3; NJ - New Jersey 2; TX- Texas 2; GA - Georgia 1,yes
+Reason,Estimate Inquiry,,1765,NW - Nationwide 1420; IL - Illinois 97; NJ - New Jersey 71; OH - Ohio 61; CT - Connecticut 32; TX- Texas 32; GA - Georgia 23; DMV 20; MA - Massachusetts 8; Outgoing Calls 1,yes
+Reason,Call To Book,Need to Schedule,1112,NW - Nationwide 961; Outgoing Calls 109; IL - Illinois 13; NJ - New Jersey 9; TX- Texas 9; OH - Ohio 5; CT - Connecticut 2; DMV 2; GA - Georgia 2,yes
+Reason,Deposit Job,DEPOSIT,998,NW - Nationwide 919; IL - Illinois 30; OH - Ohio 14; CT - Connecticut 9; NJ - New Jersey 9; GA - Georgia 8; DMV 5; TX- Texas 3; MA - Massachusetts 1,yes
+Reason,No Answer,,678,NW - Nationwide 672; Outgoing Calls 3; OH - Ohio 2; CT - Connecticut 1,yes
+Reason,Inspection Report,,659,NW - Nationwide 548; NJ - New Jersey 32; IL - Illinois 25; DMV 15; OH - Ohio 13; TX- Texas 10; CT - Connecticut 9; GA - Georgia 7,yes
+Reason,Issue Refund,,645,NW - Nationwide 481; IL - Illinois 45; NJ - New Jersey 36; OH - Ohio 27; CT - Connecticut 18; GA - Georgia 14; DMV 13; MA - Massachusetts 6; TX- Texas 5,yes
+Reason,Waiting Payment,,400,NW - Nationwide 303; OH - Ohio 39; IL - Illinois 21; NJ - New Jersey 13; DMV 9; CT - Connecticut 7; GA - Georgia 4; Outgoing Calls 2; MA - Massachusetts 1; TX- Texas 1,yes
+Reason,Invoice Request,,299,NW - Nationwide 256; NJ - New Jersey 10; CT - Connecticut 9; IL - Illinois 8; OH - Ohio 6; DMV 5; TX- Texas 4; GA - Georgia 1,yes
+Reason,Same Day Job,,280,NW - Nationwide 201; NJ - New Jersey 27; IL - Illinois 16; GA - Georgia 11; CT - Connecticut 9; OH - Ohio 8; DMV 5; MA - Massachusetts 2; TX- Texas 1,yes
+Reason,Not Booked,,234,NW - Nationwide 228; Outgoing Calls 6,yes
+Reason,Remote Issue,,196,IL - Illinois 196,yes
+Reason,Parts,,119,NW - Nationwide 119,yes
+Reason,Requesting Credential,,90,NW - Nationwide 90,yes
+Reason,Bad Review,Bad Google Review | Negative Review,80,A1 - Operatrion 62; MA - Massachusetts 7; OH - Ohio 4; NW - Nationwide 2; CT - Connecticut 1; DMV 1; NJ - New Jersey 1; TX- Texas 1; IL - Illinois 1,yes
+Reason,Dissatisfaction,Dissatisfaction W/ Finished Work,60,IL - Illinois 60,yes
+Reason,COI / W9 Request,,52,NW - Nationwide 29; CT - Connecticut 7; IL - Illinois 6; OH - Ohio 4; MA - Massachusetts 2; GA - Georgia 2; TX- Texas 2,yes
+Reason,Vendor Collaborations,Vendor Collabrations,34,NW - Nationwide 28; IL - Illinois 3; TX- Texas 2; CT - Connecticut 1,yes
+Reason,Dispute,DISPUTE | Payment Discrepancy | Disputed Charges,33,IL - Illinois 14; NW - Nationwide 13; OH - Ohio 6,yes
+Reason,Redo Needed,requesting redo | redo requested | REDO Needed,31,OH - Ohio 21; GA - Georgia 5; NW - Nationwide 3; MA - Massachusetts 2,yes
+Reason,Refund Requested,Refund Request | requesting refund | Requesting refund,31,IL - Illinois 12; OH - Ohio 11; NW - Nationwide 4; CT - Connecticut 2; TX- Texas 2,yes
+Reason,PRIORITY,,30,NW - Nationwide 30,yes
+Reason,Cap Issue,,18,IL - Illinois 16; OH - Ohio 2,yes
+Reason,Bid Request,,17,NW - Nationwide 11; IL - Illinois 2; TX- Texas 2; DMV 1; GA - Georgia 1,yes
+Reason,Corrective Work Needed,,17,IL - Illinois 17,yes
+Reason,Phone / Email Estimate,Phone/Email  Estimate,15,NW - Nationwide 11; IL - Illinois 3; CT - Connecticut 1,yes
+Reason,Email Updated,,14,NW - Nationwide 14,yes
+Reason,Missed Voicemail,,12,NW - Nationwide 12,yes
+Reason,Awaiting for Start Date,Awaiting For Start Date,12,IL - Illinois 10; OH - Ohio 2,yes
+Reason,Document Request,Need Requested Documents | Documents Request,11,IL - Illinois 6; OH - Ohio 5,yes
+Reason,Missed Appointment,,11,IL - Illinois 11,yes
+Reason,Waiting Tech,,11,OH - Ohio 11,yes
+Reason,Property Damage,Soot Damage / No Protective Covering | Damage to Property | Soot Residue Left | Report Property Damage,9,IL - Illinois 6; OH - Ohio 3,yes
+Reason,Corrective Work Needed,Incomplete Work,8,IL - Illinois 8,yes
+Reason,Tech No Show,,7,NW - Nationwide 5; OH - Ohio 2,yes
+Reason,Pricing Discrepancy,,6,IL - Illinois 4; OH - Ohio 2,no
+Reason,BBB Complaint,BBB Claim | BBB COMPLAINT,4,OH - Ohio 1; NW - Nationwide 1; CT - Connecticut 1; IL - Illinois 1,no
+Reason,Booked,,3,NW - Nationwide 3,no
+Reason,Finish Unacceptable,,3,OH - Ohio 3,no
+Reason,OOA,,2,NW - Nationwide 2,no
+Reason,Challange,,2,OH - Ohio 2,no
+Reason,Request Discount,,2,OH - Ohio 2,no
+Reason,Net 30 Request,,1,IL - Illinois 1,no
+Reason,Wrong Cap Installed,,1,NW - Nationwide 1,no
+Reason,Tech Conflict,,1,IL - Illinois 1,no
+Reason,Pilot Issue,,1,IL - Illinois 1,no
+Reason,Wrong Size of Liner,,1,OH - Ohio 1,no
+Reason,Payment Verification,,1,OH - Ohio 1,no
+Reason,Invoice paid,,1,TX- Texas 1,no
+Reason,"(dropped, 0 tasks)",Struck,0,,
+Reason,"(dropped, 0 tasks)",Vendor Collaboration,0,,
+Resolution,Redo schedule needed,Redo scheduled need | Redo Schedule Needed | redo schedule needed,174,MA - Massachusetts 146; IL - Illinois 11; OH - Ohio 9; CT - Connecticut 4; DMV 2; GA - Georgia 2,yes
+Resolution,Working on it,,52,NW - Nationwide 44; IL - Illinois 5; DMV 2; TX- Texas 1,yes
+Resolution,No Resolution,no resolution,33,NW - Nationwide 14; CT - Connecticut 5; IL - Illinois 5; GA - Georgia 5; DMV 2; NJ - New Jersey 2,yes
+Resolution,Schedule Repair Team,Schdule repair team | Schedule repair team | schedule repair team,28,IL - Illinois 19; OH - Ohio 8; GA - Georgia 1,yes
+Resolution,Done,Job Completed,27,NJ - New Jersey 7; DMV 5; CT - Connecticut 4; GA - Georgia 4; TX- Texas 3; NW - Nationwide 2; MA - Massachusetts 1; IL - Illinois 1,yes
+Resolution,Reschedule Needed,Rescheduling Needed | Reschedule | rescheduling needed,23,IL - Illinois 14; NW - Nationwide 6; OH - Ohio 3,yes
+Resolution,Still In Review,still in review | Waiting Review | Still in review | Still in Review,18,IL - Illinois 6; OH - Ohio 6; NW - Nationwide 5; DMV 1,yes
+Resolution,Refund,request refund | Refund Request In Review | Refund Inquiry | Refunded | Request Refund,17,IL - Illinois 11; NJ - New Jersey 3; OH - Ohio 2; DMV 1,yes
+Resolution,Redo Request,Redo request | REDO Request,15,IL - Illinois 8; NW - Nationwide 4; OH - Ohio 1; DMV 1; TX- Texas 1,yes
+Resolution,DUPLICATE,duplicate | Duplicate,15,NJ - New Jersey 5; TX- Texas 4; DMV 3; CT - Connecticut 2; IL - Illinois 1,yes
+Resolution,FM Review Needed,,15,OH - Ohio 15,yes
+Resolution,Pending,pending,14,IL - Illinois 8; OH - Ohio 5; DMV 1,yes
+Resolution,OM Review & Approval Needed,,14,IL - Illinois 14,yes
+Resolution,Stuck,,11,NW - Nationwide 5; IL - Illinois 3; TX- Texas 3,yes
+Resolution,Job Canceled,Cancel Job | Job Canceled by cx | Cx Cancelled | cancelled,11,DMV 3; NJ - New Jersey 3; GA - Georgia 3; MA - Massachusetts 1; TX- Texas 1,yes
+Resolution,Apologetic Outreach,Apologetic outreach | Apologetic message | Apologetic reachout,10,IL - Illinois 4; NW - Nationwide 2; CT - Connecticut 1; TX- Texas 1; GA - Georgia 1; DMV 1,yes
+Resolution,Client Satisfied,client satisfied,7,DMV 3; IL - Illinois 2; CT - Connecticut 1; NW - Nationwide 1,yes
+Resolution,Goodwill Gesture,discount | Discount Goodwill Gesture | Discounted Goodwill | goodwill gesture,7,IL - Illinois 5; TX- Texas 2,yes
+Resolution,Installation Date Needed,installation date needed | Installtion date needed,7,IL - Illinois 5; OH - Ohio 2,yes
+Resolution,Redo Completed,redo completed,6,IL - Illinois 4; OH - Ohio 2,yes
+Resolution,Job Canceled - Full Refund,job canceled- FULL REFUND | Job Canceled - full refund | Job Canceled- full refund | Job canceled- Full refund,6,NW - Nationwide 2; OH - Ohio 1; MA - Massachusetts 1; CT - Connecticut 1; DMV 1,yes
+Resolution,Sent,sent,6,NW - Nationwide 4; OH - Ohio 2,yes
+Resolution,Job Done- Full Refund,job done - full refund | Job Done full refund,6,GA - Georgia 3; NJ - New Jersey 2; CT - Connecticut 1,yes
+Resolution,Job Done No Refund,Job done no refund needed | Job done NO refund | Job Done NO Refund,6,CT - Connecticut 3; NJ - New Jersey 2; TX- Texas 1,yes
+Resolution,job done- partial refund,Job Done Partiall refund | job done partial refund | Job Done- Partial Refund | job done - partial refund,6,NJ - New Jersey 2; DMV 2; CT - Connecticut 1; TX- Texas 1,yes
+Resolution,Job Canceled - Partiel Refund Made,,5,OH - Ohio 4; IL - Illinois 1,yes
+Resolution,Requested GM Callback,,5,IL - Illinois 5,yes
+Resolution,Deposit Received,,5,NJ - New Jersey 3; IL - Illinois 2,yes
+Resolution,Estimate Declined,Estimate declined,5,NJ - New Jersey 2; IL - Illinois 1; TX- Texas 1; CT - Connecticut 1,yes
+Resolution,Redo Scheduled,REDO SCH | redo sched | redo Sched,4,NJ - New Jersey 2; CT - Connecticut 1; TX- Texas 1,yes
+Resolution,GM Oversight  Needed,,4,OH - Ohio 4,yes
+Resolution,Rescheduled,Job Rescheduled | cx Rescheduled,3,NJ - New Jersey 2; CT - Connecticut 1,yes
+Resolution,Other,,3,NW - Nationwide 3,yes
+Resolution,Need to Send Documents,,3,IL - Illinois 3,yes
+Resolution,Pending Customer Response,,3,OH - Ohio 3,yes
+Resolution,Resolved In Customer Favor,,3,OH - Ohio 3,yes
+Resolution,Disputed - Agreed,Disputed - agreed,2,IL - Illinois 1; NW - Nationwide 1,yes
+Resolution,Non Payment - Agreed,non payment -  Agreed | Non-Payment Agreed | Non payment- agreement | Non payment- agreed,2,NW - Nationwide 1; NJ - New Jersey 1,yes
+Resolution,Requested Date For Completion,,2,IL - Illinois 2,yes
+Resolution,Disputed - Challenged,disputed- challenging | Disputed Challenge | Disputed - challange | disputed- challenge,1,NW - Nationwide 1,yes
+Resolution,Stopped Payment,Stoped Payment | stopped payment | Stopped payment,1,CT - Connecticut 1,no
+Resolution,Job canceled- partial refund,Job Canceled- Partial Refund | Job Canceled- partial refund,1,MA - Massachusetts 1,no
+Resolution,Cx Requested Outreach To Stop,,1,NW - Nationwide 1,no
+Resolution,invoice sent,,1,NJ - New Jersey 1,no
+Resolution,estimate sent,,1,NJ - New Jersey 1,no
+Resolution,waiting payment,,1,NJ - New Jersey 1,no
+Resolution,Paid,Job Paid,1,CT - Connecticut 1,no
+Resolution,Partial Deposit,,1,DMV 1,no
+Resolution,Scheduled,,1,TX- Texas 1,no
+Resolution,"(dropped, 0 tasks)",Job Done - Partiel Refund Made,0,,
+Resolution,"(dropped, 0 tasks)",sch repair team,0,,
+Resolution,"(dropped, 0 tasks)",sent documents,0,,
+Resolution,"(dropped, 0 tasks)",Sent Documents,0,,
+Resolution,"(dropped, 0 tasks)",Sent documents,0,,
+Resolution,"(dropped, 0 tasks)",requested GM Calibrated,0,,
+Resolution,"(dropped, 0 tasks)",Requested GM Calibrated,0,,
+Resolution,"(dropped, 0 tasks)",OM Review & agreement,0,,
+Resolution,"(dropped, 0 tasks)",Awaiting Deposit,0,,
+Resolution,"(dropped, 0 tasks)",OM Repair & approval,0,,
+Resolution,"(dropped, 0 tasks)",OM review,0,,
+Resolution,"(dropped, 0 tasks)",Requesting redo,0,,
+Resolution,"(dropped, 0 tasks)",Accounting,0,,
+Resolution,"(dropped, 0 tasks)",Marketing,0,,
+Resolution,"(dropped, 0 tasks)",HR Manager,0,,
+Resolution,"(dropped, 0 tasks)",Customer Follow-Up Specialist,0,,
+Resolution,"(dropped, 0 tasks)",Customer Relations Manager,0,,
+Resolution,"(dropped, 0 tasks)",Call Center,0,,
+Resolution,"(dropped, 0 tasks)",Service Flow Manager,0,,
+Resolution,"(dropped, 0 tasks)",Sales Executive Manager,0,,
+Resolution,"(dropped, 0 tasks)",Dispatch Supervisor,0,,

@@ -60,6 +60,7 @@ void main() {
       'can_manage': manage,
       'can_rename': (owner ?? manage) && kind == 'custom',
       'members_count': 2,
+      'automations_count': 1,
       'statuses': [
         {
           'id': 's-stuck',
@@ -254,7 +255,7 @@ void main() {
       'the board', (tester) async {
     await pump(tester);
 
-    expect(find.text('People · 2'), findsOneWidget);
+    expect(find.text('Invite · 2'), findsOneWidget);
     expect(find.text('Private'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('tasks-people')));
@@ -323,12 +324,14 @@ void main() {
 
   /// Jose could not find People (UI queue 95, 7): on a phone it is a chip
   /// under the picker, not inside the menu.
-  testWidgets('on a phone People is a chip in the board header', (
+  testWidgets('on a phone People is in the toolbar ⋯, off the one line', (
     tester,
   ) async {
     await pump(tester, width: 400);
 
-    await tester.tap(find.byKey(const Key('tasks-people')));
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-more-people')));
     await tester.pumpAndSettle();
     expect(find.text('Tobin Marsh'), findsOneWidget);
   });
@@ -377,18 +380,20 @@ void main() {
       ],
     );
 
-    for (final header in ['MY BOARDS', 'SHARED WITH ME', "EVERYONE'S BOARDS"]) {
+    for (final header in ['MY BOARDS', 'TEAM BOARDS', "EVERYONE'S BOARDS"]) {
       expect(find.text(header), findsOneWidget);
     }
-    expect(find.text('Office move · from Dana Ruiz'), findsOneWidget);
+    expect(find.text('Office move'), findsOneWidget);
     expect(find.text('Ben Okafor · 1 board'), findsOneWidget);
-    expect(find.text("Ben Okafor's board"), findsOneWidget);
+    expect(find.text('Ben'), findsOneWidget);
   });
 
   testWidgets("Automate lists this board's rules as sentences and saves a "
       'recipe as a rule limited to the board, switched on', (tester) async {
     await pump(tester, automations: true, kind: 'franchise');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     expect(
@@ -436,6 +441,8 @@ void main() {
   testWidgets('a status recipe stores the status by name', (tester) async {
     await pump(tester, automations: true, kind: 'franchise');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('board-rule-add')));
@@ -470,6 +477,8 @@ void main() {
       "permissions, scoped to the board's own place", (tester) async {
     await pump(tester, franchiseId: 'f-1');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     expect(find.text('No automations on this board yet.'), findsOneWidget);
@@ -496,7 +505,11 @@ void main() {
     // tasks.manage_members: can_manage, but not the owner, so no can_rename.
     await pump(tester, manage: true, owner: false);
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('tasks-automate')), findsNothing);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-people')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('board-people-add')), findsOneWidget);
@@ -511,5 +524,34 @@ void main() {
     await pump(tester, kind: 'franchise', manage: false);
 
     expect(find.byKey(const Key('tasks-automate')), findsNothing);
+  });
+
+  testWidgets('the top bar counts rules and people, offers Integrate, and '
+      'Import adds one task per pasted line', (tester) async {
+    await pump(tester, automations: true, kind: 'franchise');
+
+    expect(find.text('Invite · 2'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('Automate · 1'), findsOneWidget);
+    expect(find.byKey(const Key('tasks-integrate')), findsOneWidget);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('tasks-new-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-import')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('tasks-import-text')),
+      'Sweep the flue\tMonday\n\nOrder a cap,12\n',
+    );
+    await tester.tap(find.byKey(const Key('tasks-import-go')));
+    await tester.pumpAndSettle();
+    final posts = [
+      for (final (m, p, b) in log)
+        if (m == 'POST' && p == '/tasks') (b as Map)['title'],
+    ];
+    expect(posts, ['Sweep the flue', 'Order a cap']);
   });
 }

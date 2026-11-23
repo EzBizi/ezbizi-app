@@ -1,3 +1,4 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 
@@ -1043,9 +1044,5 @@ class _SourcePanelState extends State<_SourcePanel> {
 String sourcesAgo(String iso, {DateTime? now}) {
   final at = DateTime.tryParse(iso)?.toLocal();
   if (at == null) return 'at an unknown time';
-  final minutes = (now ?? DateTime.now()).difference(at).inMinutes;
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return '$minutes min ago';
-  if (minutes < 60 * 24) return '${minutes ~/ 60} h ago';
-  return '${minutes ~/ (60 * 24)} d ago';
+  return formatAgo(at, now: now);
 }

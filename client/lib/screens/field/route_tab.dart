@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/empty_state.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import 'map_overlays.dart' show fieldLongDay;
@@ -35,6 +39,19 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
     _userId = widget.meId;
     _loadPeople();
     _load();
+    // A job on this route booked, moved or finished, or the technician
+    // arriving: the day's route re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'field', 'jobs'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadPeople() async {
@@ -46,16 +63,18 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
     );
   }
 
-  String get _date =>
-      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+  String get _date => formatCalendarDay(_day);
 
-  Future<void> _load() async {
-    setState(() => _error = null);
+  /// [quiet]: a live re-read; a failure keeps the route on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) setState(() => _error = null);
+    final userId = _userId, date = _date;
     final response = await widget.api.get('/field/route', {
-      'user_id': ?_userId,
-      'date': _date,
+      'user_id': ?userId,
+      'date': date,
     });
     if (!mounted) return;
+    if (quiet && (!response.ok || userId != _userId || date != _date)) return;
     setState(() {
       _loading = false;
       if (response.ok) {
@@ -156,14 +175,11 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
               style: muted,
             ),
           if (stops.isEmpty && unroutable.isEmpty)
-            Padding(
-              key: const ValueKey('tour-field-route-empty'),
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'No jobs on this day.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium,
-              ),
+            const EmptyState(
+              key: ValueKey('tour-field-route-empty'),
+              icon: Icons.route_outlined,
+              title: 'No jobs on this day',
+              message: 'Pick another day or person to see their route.',
             ),
           for (final (i, s) in stops.indexed)
             Card(

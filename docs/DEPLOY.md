@@ -28,7 +28,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 `www.ezbizi.com` is served by `/etc/nginx/conf.d/wildcard_subdomains.conf` (root `/var/www/www`). `sites-available/ezbizi.conf` is not enabled. HSTS `includeSubDomains` only covers children of the host that sent the header, so the apex/www response is the one that protects every name.
 
-Production `.env` should have `EZBIZI_SIGNUP_ENABLED=false` until mail can verify addresses. The app box also needs that value, not only phpunit.
+Production `.env` should have `EZBIZI_SIGNUP_ENABLED=false` until mail can verify addresses. The app box also needs that value, not only phpunit. *(Measured 2026-11-13: the box `.env` has `EZBIZI_SIGNUP_ENABLED=true`. The condition above was met on 2026-09-14: self-signed-up accounts must verify their mailbox before writing (`c69ccc9d0`, `RequireVerifiedEmail`), and SES left the sandbox that day. Who flipped the value is not recorded here.)*
 
 ## What actually happens
 
@@ -45,7 +45,8 @@ The deploy script pushes its pinned SHA to production `main` through the receive
 7. `php artisan ezbizi:sync-permissions`
 8. Build config/route/view caches
 9. **Boot the app as a health check, as `www-data`** — the user that serves
-10. Only then repoint `/var/www/ezbizi-current` at the new release
+10. Only then repoint `/var/www/ezbizi-current` at the new release, reload
+    `php8.4-fpm` and `artisan queue:restart` so the workers pick it up
 11. Prune all but the last 5 releases
 
 ### What "aborted" actually means
@@ -64,8 +65,9 @@ So on any failure from step 6 onward the hook **keeps the release directory**,
 because step 5's dump is inside it, and prints the restore command:
 
 ```bash
-gunzip -c /var/www/ezbizi-releases/<stamp>/pre-migration-<stamp>.sql.gz | sudo mysql ezbizi
-rm -rf /var/www/ezbizi-releases/<stamp>    # once you have restored
+# release dirs are <stamp>-<sha12>-<random>; the hook prints the exact paths
+gunzip -c /var/www/ezbizi-releases/<release-dir>/pre-migration-<stamp>.sql.gz | sudo mysql ezbizi
+rm -rf /var/www/ezbizi-releases/<release-dir>    # once you have restored
 ```
 
 **`migrate:rollback` is not a way back.** Several `down()` methods are
@@ -85,7 +87,7 @@ Rollback is repointing the symlink:
 
 ```bash
 ls -1dt /var/www/ezbizi-releases/*/     # newest first
-ln -sfn /var/www/ezbizi-releases/<stamp> /var/www/ezbizi-current
+ln -sfn /var/www/ezbizi-releases/<release-dir> /var/www/ezbizi-current
 sudo systemctl reload php8.4-fpm
 ```
 
@@ -103,7 +105,8 @@ working this afternoon and waiting weeks for a Google security assessment.
 
 `scripts/deploy.sh` ships the web client, the API, and a content-guarded refresh
 of the **app-box** peer watchdog (script + units, only if they are already
-installed and md5 differs). The refresh runs **after** the release is live and
+installed and md5 differs) — and, by the same rule, `ezbizi-backup.sh`,
+`ezbizi-restore-check.sh` and the transcribe, label and staff-worker units. The refresh runs **after** the release is live and
 cannot abort the deploy: a failed copy warns and leaves the box on the older
 script. It does not first-install those units, does not touch the
 `peer-url.conf` drop-in, and does not update `watch-peer-app.sh` on the
@@ -116,7 +119,7 @@ Read it before submissions; preserve registered application identifiers and sign
 | | |
 |---|---|
 | Bare repo | `/var/repos/ezbizi.git` |
-| Releases | `/var/www/ezbizi-releases/<timestamp>/` |
+| Releases | `/var/www/ezbizi-releases/<stamp>-<sha12>-<random>/` |
 | Live symlink | `/var/www/ezbizi-current` → current release |
 | Shared storage | `/var/www/ezbizi/storage` |
 | Test sandbox | `/opt/ezbizi-test` — deliberately outside `/var/www`, with no `.env` |
@@ -139,8 +142,10 @@ scp deploy/nginx-dev.ezbizi.com.conf app:/tmp/ && ssh app 'sudo cp /tmp/nginx-de
 
 `/opt/ezbizi-test` — outside the webroot, and outside `/var/www` entirely.
 
-`scripts/deploy.sh` extracts `git archive main` there and runs the suite against
-`ezbizi_testing`. It has its own `storage/`, its own `.env.testing`, and **no `.env` at
+`scripts/deploy.sh --gates` extracts `git archive <pinned-sha>` there and runs the suite against
+`ezbizi_testing`; without `--gates` it does not touch the sandbox.
+`scripts/preflight-backend.sh [sha] [filter]` runs the same suite under the same lock
+and publishes nothing. The sandbox has its own `storage/`, its own `.env.testing`, and **no `.env` at
 all**. The extract takes `flock` on `/opt/ezbizi-test/.deploy-gate.lock` first:
 two overlapping deploys used to `rm -rf bootstrap` while the other was still in
 phpunit, and the first then failed 200+ tests with `Failed opening required
@@ -185,6 +190,9 @@ than no deploy.
 ### Ownership
 
 `storage/` and `bootstrap/cache/` are `ubuntu:www-data`, mode **2775**.
+
+*(Measured 2026-11-13: shared `/var/www/ezbizi/storage` is `ubuntu:www-data 0777`, no
+setgid, and each release's `bootstrap/cache` is `ubuntu:ubuntu 0775` — see trap 2 below.)*
 
 The setgid bit matters. `ubuntu` deploys, `www-data` serves. Without setgid, a
 log file created by one is unwritable by the other, and the failure surfaces as
@@ -295,6 +303,10 @@ around **4 October** and both hostnames would have hard-failed together on the
 3rd — thirty days after the renewal that was supposed to prevent it, with a green
 certbot log sitting beside the outage.
 
+*(Measured 2026-11-13: the served certificate is the `ezbizi.com-0002` lineage,
+`*.ezbizi.com` + `ezbizi.com`, notAfter 2 Jan 2027 — it renewed and was reloaded;
+`nginx-reload.sh` is installed and executable.)*
+
 `deploy/letsencrypt-deploy-hook.sh` is that missing reload. Install it:
 
 ```bash
@@ -365,7 +377,8 @@ returns null — that is the file permission, not a broken watchdog. Check it wi
 The scripts and units are in the release. **First install** is still this paste —
 they are not in `/etc/systemd/system` until someone runs it. Do not run it without
 Mia granting a window on **both** boxes. After that, `scripts/deploy.sh` recopies
-`watch-peer-websites.sh` and the three app-box units from the live release onto
+`watch-peer-websites.sh` and the three app-box units (plus the other files listed
+under [Shipping the installed apps](#shipping-the-installed-apps)) from the live release onto
 `/usr/local/bin` and `/etc/systemd/system` **only when md5 differs**, after both
 halves of the release, and a failed copy does not abort the deploy. A missing
 dest is skipped, so a box that never had the watchdog does not get it from a
@@ -434,12 +447,17 @@ sudo systemctl enable --now ezbizi-watch-peer-app.timer
 
 ## What runs the clock
 
-Two systemd units, both versioned in `deploy/` and installed on the app box:
+systemd units, all versioned in `deploy/` and installed on the app box (installed set measured 2026-11-13):
 
 | Unit | Does |
 |---|---|
 | `ezbizi-scheduler-0/1/2.timer` → `ezbizi-scheduler@N.service` | `artisan schedule:run` every minute, from three timers on staggered minutes so a slow run never skips the next one (since 2026-10-06) |
+| `ezbizi-scheduler-slow.timer` → `ezbizi-scheduler-slow.service` | `artisan schedule:run`, the slow lane |
 | `ezbizi-worker.service` | `artisan queue:work`, restarted on deploy |
+| `ezbizi-worker-long.service` | `queue:work database-long --queue=long` (jobs over 90 s) |
+| `ezbizi-worker-staff.service` | `queue:work --queue=staff` (staff questions) |
+| `ezbizi-transcribe.timer`, `ezbizi-label.timer` | call transcription; call labels and speaker split |
+| `ezbizi-backup.timer` | nightly `ezbizi-backup.sh` then `ezbizi-restore-check.sh` |
 
 **Neither existed until 2026-08-06**, which meant audit retention, impersonation
 expiry and the automation outbox had never run once — and nothing anywhere reported
@@ -447,7 +465,7 @@ an error, because nothing was broken. They simply never executed. If automation
 ever looks inert again, check these first:
 
 ```bash
-ssh app 'systemctl is-active ezbizi-scheduler-0.timer ezbizi-scheduler-1.timer ezbizi-scheduler-2.timer ezbizi-worker'
+ssh app 'systemctl is-active ezbizi-scheduler-0.timer ezbizi-scheduler-1.timer ezbizi-scheduler-2.timer ezbizi-scheduler-slow.timer ezbizi-worker ezbizi-worker-long ezbizi-worker-staff'
 ```
 
 ## Rules

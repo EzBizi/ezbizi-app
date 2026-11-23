@@ -542,6 +542,25 @@ const Map<String, Tour> operationsTours = {
   'hr/Onboarding/Contract': _onboardingContract,
 
   // ── Human Resources › Payroll ────────────────────────────────────────
+  'hr/Recruiting': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-recruiting-tabs',
+        title: 'Applicants and spend',
+        body:
+            'Applicants: everyone who applied, by stage. Spend: what each '
+            'position cost each month.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-recruiting-search',
+        title: 'Find someone',
+        body:
+            'Search by name, phone or email; narrow by position, stage, '
+            'source, branch and dates. Click a person to see and change them.',
+      ),
+    ],
+  ),
   'hr/Payroll': Tour(
     version: 1,
     steps: [
@@ -881,7 +900,36 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management (project_board, Jose 2026-11-06) ──────────────
+  // The Dashboard is the first tab since 2026-11-17.
   'project_board': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Dashboard first: what waits for parts, what is late, and your reminders. Then a tab per job stage.',
+      ),
+      TourStep(
+        anchor: 'project-board-dashboard',
+        title: 'Parts at a glance',
+        body:
+            'Items and jobs waiting for parts, parts 3 days late in red, and reminders you can move or clear.',
+      ),
+    ],
+  ),
+  'project_board/Inbox': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-inbox-search',
+        title: 'Clients',
+        body:
+            'One thread per job on the board: the texts to the client and their answers, scheduling replies included.',
+      ),
+    ],
+  ),
+  'project_board/Unscheduled': Tour(
     version: 1,
     steps: [
       TourStep(

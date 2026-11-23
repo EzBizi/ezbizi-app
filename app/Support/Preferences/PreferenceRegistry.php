@@ -132,11 +132,68 @@ class PreferenceRegistry
              * record that sits in no company (an organization-wide alert)
              * reaches everyone regardless. NotificationDispatcher reads it.
              */
+            /*
+             * Task Board's starred boards, in the order this person dragged
+             * them (design 200; Jose 2026-11-20, Monday's Favorites). Theirs
+             * alone; an id that names no board is simply not drawn.
+             */
+            'task_board.favorites' => [
+                'label' => 'Favorite boards',
+                'type' => 'ids',
+                'default' => [],
+            ],
+
+            /*
+             * Reports › Jobs: the sub-tab last opened (design 199).
+             */
+            'reports.jobs_tab' => [
+                'label' => 'Reports › Jobs tab',
+                'type' => 'enum',
+                'default' => 'overview',
+                'options' => ['overview', 'cancelled', 'pending', 'estimates'],
+            ],
+            'reports.office_tab' => [
+                'label' => 'Reports › Office tab',
+                'type' => 'enum',
+                'default' => 'tasks',
+                'options' => ['tasks', 'complaints', 'dispatch', 'accounting', 'recruiting'],
+            ],
+            'reports.techs_tab' => [
+                'label' => 'Reports › Technicians tab',
+                'type' => 'enum',
+                'default' => 'techs',
+                'options' => ['techs', 'tech_checks'],
+            ],
+
             'notifications.companies' => [
                 'label' => 'Notify me about',
                 'type' => 'ids',
                 'default' => [],
                 'help' => 'Only these companies, their sub companies and branches. Empty means all.',
+            ],
+
+            /*
+             * Modules this person does not want to be interrupted by (Jose,
+             * 2026-11-13). Their notifications still collect in the bell; they
+             * just do not pop up, push or email. Empty = every module alerts.
+             */
+            'notifications.muted_modules' => [
+                'label' => 'Muted modules',
+                'type' => 'order',
+                'default' => [],
+                'help' => 'These modules collect in the bell without alerting you.',
+            ],
+
+            /*
+             * Kinds of notification this person does not want at all (Jose,
+             * 2026-11-17: per-type toggles for Task Board). Unlike a muted
+             * module, a muted kind writes no bell row. Empty = all on.
+             */
+            'notifications.muted_kinds' => [
+                'label' => 'Muted notification types',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types you have switched off.',
             ],
 
             /*
@@ -279,6 +336,15 @@ class PreferenceRegistry
                 'help' => 'Click the pin on the customer panel to change it.',
             ],
 
+            // Reports: every tab's table headings stay on screen while the
+            // rows scroll, or scroll away (Jose, 2026-11-16).
+            'reports.pin_headings' => [
+                'label' => 'Keep report table headings on screen',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Click the pin beside the headings of any report table to change it.',
+            ],
+
             'web.widgets.list_width' => [
                 'label' => 'Website list width',
                 'type' => 'int',
@@ -343,6 +409,26 @@ class PreferenceRegistry
                 'type' => 'string',
                 'default' => '',
                 'help' => 'Click a column heading in Project Management to change it.',
+            ],
+
+            // Project Management > Inbox: which threads it opens on (Shoval,
+            // 2026-11-18: "should default to all").
+            'project_board.inbox_filter' => [
+                'label' => 'Project Management inbox filter',
+                'type' => 'enum',
+                'default' => 'all',
+                'options' => ['all', 'waiting', 'replied'],
+                'help' => 'Pick All, Waiting or Replied above the inbox.',
+            ],
+
+            // Project Management > Settings: the sub-tab open (Shoval,
+            // 2026-11-18: sub tabs "instead of all the settings in one place").
+            'project_board.settings_tab' => [
+                'label' => 'Project Management settings tab',
+                'type' => 'enum',
+                'default' => 'columns',
+                'options' => ['columns', 'stages', 'team', 'parts', 'texts'],
+                'help' => 'Pick a tab at the top of Project Management settings.',
             ],
 
             // One-time "New: …" tips this person dismissed with "Got it"
@@ -452,6 +538,9 @@ class PreferenceRegistry
                 )),
             'order' => $this->cleanOrder($value),
             // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
+            'kinds' => is_array($value)
+                ? array_values(array_unique(array_intersect($value, array_keys(\App\Support\Notifications\NotificationDispatcher::KINDS))))
+                : [],
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
                 : [],

@@ -7,7 +7,9 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -102,6 +104,11 @@ void main() {
   );
 
   late List<String> opened;
+  List<Map<String, Object?>> folders = [];
+  Map<String, Object?> groupColours = {};
+  var arrange = false;
+  final patches = <Object?>[];
+  final prefPatches = <Object?>[];
 
   setUp(() {
     store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tbtree');
@@ -126,7 +133,11 @@ void main() {
               'id': 'me',
               'name': 'Maya Lopez',
               'email': 'maya@example.test',
-              'permissions': ['tasks.view', 'tasks.edit'],
+              'permissions': [
+                'tasks.view',
+                'tasks.edit',
+                if (arrange) 'tasks.create_boards',
+              ],
               'modules': <dynamic>[],
               'preferences': <String, dynamic>{},
               'scope': {'type': 'company', 'id': 'c-1'},
@@ -141,8 +152,33 @@ void main() {
             },
           });
         }
+        if (path == '/me/preferences') {
+          prefPatches.add(jsonDecode(request.body));
+          return json({'data': <String, dynamic>{}});
+        }
         if (path == '/task-boards') {
           return json({'data': boards ?? fixture});
+        }
+        if (path == '/task-board-folders') {
+          return json({'data': folders});
+        }
+        if (path == '/task-board-group-colours') {
+          if (request.method == 'PATCH') {
+            final b = jsonDecode(request.body) as Map;
+            patches.add(b);
+            groupColours = {...groupColours, '${b['group']}': b['colour']};
+          }
+          return json({'data': groupColours});
+        }
+        if (path.startsWith('/task-boards/') && request.method == 'PATCH') {
+          final id = path.split('/').last;
+          final body = jsonDecode(request.body) as Map;
+          patches.add([id, body]);
+          // Saved, as the server keeps it: the next list carries it.
+          for (final b in boards ?? fixture) {
+            if (b['id'] == id) b.addAll(Map<String, Object?>.from(body));
+          }
+          return json({'data': <String, dynamic>{}});
         }
         if (path.startsWith('/task-boards/')) {
           final id = path.split('/').last;
@@ -184,12 +220,13 @@ void main() {
       'branches, in that order; no Other boards picker', (tester) async {
     await pumpBoard(tester);
     expect(find.text('Other boards'), findsNothing);
-    expect(inTree('My board'), findsOneWidget);
-    expect(inTree('Spring push · from Dana Reyes'), findsOneWidget);
+    expect(inTree('Personal Task Board'), findsOneWidget);
+    expect(inTree('Spring push'), findsOneWidget);
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
     expect(inTree('Boston'), findsOneWidget);
-    expect(inTree('2 open'), findsOneWidget);
+    // No "N open" (Jose 11-20, design 200: Monday shows none).
+    expect(inTree('2 open'), findsNothing);
 
     double y(Finder f) => tester.getTopLeft(f).dy;
     expect(y(row('b-me')), lessThan(y(row('b-sh'))));
@@ -238,7 +275,7 @@ void main() {
     await pumpBoard(tester, boards: [...fixture, everyone]);
     expect(inTree("EVERYONE'S BOARDS"), findsOneWidget);
     expect(inTree('Ben Okafor · 1 board'), findsOneWidget);
-    expect(inTree("Ben Okafor's board"), findsOneWidget);
+    expect(inTree('Ben Okafor'), findsOneWidget);
   });
 
   testWidgets('search filters the tree, and a branch found says its company', (
@@ -369,5 +406,244 @@ void main() {
       expect(formatCellNumber(-1200, r'$'), r'-$1,200');
       expect(formatCellNumber(-5000.75, 'ft'), '-5,000.75 ft');
     });
+  });
+
+  testWidgets('Jose 11-18: the company board comes first in Team boards, and '
+      'Move up reorders, saved as a shared position', (tester) async {
+    arrange = true;
+    addTearDown(() => arrange = false);
+    patches.clear();
+    await pumpBoard(
+      tester,
+      boards: [
+        board(
+          'b-me',
+          'user',
+          'Maya Lopez',
+          section: 'mine',
+          owner: 'Maya Lopez',
+        ),
+        board(
+          'b-ct',
+          'franchise',
+          'CT - Connecticut',
+          section: 'shared',
+          franchiseId: 'f-1',
+        ),
+        board(
+          'b-dmv',
+          'franchise',
+          'DMV',
+          section: 'shared',
+          franchiseId: 'f-2',
+        ),
+        board(
+          'b-a1',
+          'company',
+          'A-1 Chimney',
+          section: 'shared',
+          companyId: 'c-1',
+        ),
+      ],
+    );
+    double y(String id) => tester.getTopLeft(row(id)).dy;
+    expect(y('b-a1'), lessThan(y('b-ct')), reason: 'the company board first');
+    expect(y('b-ct'), lessThan(y('b-dmv')));
+
+    await tester.tap(row('b-dmv'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('board-up-b-dmv')));
+    await tester.pumpAndSettle();
+    final positions = {
+      for (final p in patches.whereType<List>())
+        p[0]: (p[1] as Map)['position'],
+    };
+    expect(positions['b-dmv'], lessThan(positions['b-ct'] as int));
+    // The first board cannot go up: its Move up is off, not a silent no-op.
+    await tester.tap(row('b-a1'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<MenuItemButton>(find.byKey(const ValueKey('board-up-b-a1')))
+          .onPressed,
+      isNull,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    // And the list shows it, after the reload (Jose 11-19: "seems to do nothing").
+    expect(y('b-dmv'), lessThan(y('b-ct')));
+  });
+
+  testWidgets('My Board is the first entry, above Shared with me, Folders, '
+      'Companies and Everyone, even when filed in a folder (Jose 11-16)', (
+    tester,
+  ) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        board('b-mine2', 'custom', 'Aaa plan', section: 'mine', owner: 'Maya'),
+        ...fixture.map(
+          (b) => b['id'] == 'b-me' ? {...b, 'folder_id': 'fo-1'} : b,
+        ),
+        board('b-ev', 'user', 'Zed Ray', section: 'everyone', owner: 'Zed Ray'),
+      ],
+    );
+    expect(inTree('Personal Task Board'), findsOneWidget);
+    expect(row('b-me'), findsOneWidget, reason: 'not again in its folder');
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Headers are drawn in capitals.
+    Finder heading(String text) => find.descendant(
+      of: tree,
+      matching: find.byWidgetPredicate(
+        (w) => w is Text && w.data?.toLowerCase() == text.toLowerCase(),
+      ),
+    );
+    final first = y(row('b-me'));
+    for (final below in [
+      heading('My boards'),
+      row('b-mine2'),
+      heading('Team boards'),
+      heading('Folders'),
+      heading('All markets'),
+      heading("Everyone's boards"),
+    ]) {
+      expect(below, findsOneWidget);
+      expect(first, lessThan(y(below)));
+    }
+  });
+
+  testWidgets('a board in a folder shows under Folders, in its colour, and '
+      'nowhere else (Jose 11-13, Monday parity)', (tester) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        {
+          ...board(
+            'b-a1',
+            'company',
+            'A-1 Chimney',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+        },
+        {
+          ...board(
+            'b-cu',
+            'custom',
+            'Estimates follow-up',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+          'folder_id': 'fo-1',
+          'colour': '#00c875',
+        },
+      ],
+    );
+    expect(inTree('FOLDERS'), findsOneWidget);
+    expect(inTree('Partners'), findsOneWidget);
+    expect(inTree('Estimates follow-up'), findsOneWidget);
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Under its folder, above the companies.
+    expect(y(inTree('Partners')), lessThan(y(row('b-cu'))));
+    expect(y(row('b-cu')), lessThan(y(row('b-a1'))));
+    final icon = tester.widget<Icon>(
+      find.descendant(of: row('b-cu'), matching: find.byType(Icon)).first,
+    );
+    expect(icon.color, EzBiziTheme.boardPalette[4]);
+  });
+
+  testWidgets("a company group wears the organization's colour, and one who "
+      'arranges boards changes it from its right-click menu', (tester) async {
+    groupColours = {'company:Northside Chimney': '#00c875'};
+    arrange = true;
+    patches.clear();
+    addTearDown(() {
+      groupColours = {};
+      arrange = false;
+    });
+    await pumpBoard(tester);
+    final tint = tester.widget<Icon>(
+      find.byKey(const ValueKey('group-tint-company:Northside Chimney')),
+    );
+    expect(tint.color, EzBiziTheme.boardPalette[4]);
+    expect(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('group-colour-company:A-1 Chimney')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('group-colour-company:A-1 Chimney-#e2445c')),
+    );
+    await tester.pumpAndSettle();
+    expect(patches.single, {
+      'group': 'company:A-1 Chimney',
+      'colour': '#e2445c',
+    });
+    expect(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('design 200: a star puts a board in Favorites, on top, saved '
+      'as this person’s preference; no "N open"', (tester) async {
+    prefPatches.clear();
+    await pumpBoard(tester);
+    expect(find.byKey(const ValueKey('tasks-fold-favorites')), findsNothing);
+    expect(inTree('2 open'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('board-star-b-bos')).first);
+    await tester.pumpAndSettle();
+    expect(prefPatches.last, {
+      'preferences': {
+        'task_board.favorites': ['b-bos'],
+      },
+    });
+    final favourites = find.byKey(const ValueKey('tasks-fold-favorites'));
+    expect(favourites, findsOneWidget);
+    // Boston twice: under Favorites, at the top, and in its place.
+    expect(row('b-bos'), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(row('b-bos').first).dy,
+      lessThan(tester.getTopLeft(row('b-me')).dy),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('board-star-b-bos')).first);
+    await tester.pumpAndSettle();
+    expect(prefPatches.last, {
+      'preferences': {'task_board.favorites': <Object?>[]},
+    });
+    expect(favourites, findsNothing);
   });
 }

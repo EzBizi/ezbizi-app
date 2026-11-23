@@ -136,7 +136,9 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
       // ask clears them rather than taking the chart down: the graph never
       // came from Twilio and must still draw.
       _live = response.ok
-          ? CallFlowLive.fromJson(response.body['data'] as Map<String, dynamic>?)
+          ? CallFlowLive.fromJson(
+              response.body['data'] as Map<String, dynamic>?,
+            )
           : null;
     });
   }
@@ -253,7 +255,12 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(widget.leading == null ? 24 : 8, 24, 24, 0),
+          padding: EdgeInsets.fromLTRB(
+            widget.leading == null ? 24 : 8,
+            24,
+            24,
+            0,
+          ),
           child: Row(
             children: [
               ?widget.leading,
@@ -404,9 +411,13 @@ String? _faultWords(_Line line) {
   if (g == null) return null;
 
   final parts = <String>[
-    if (g.deadCount == 1) '1 dead end' else if (g.deadCount > 1)
+    if (g.deadCount == 1)
+      '1 dead end'
+    else if (g.deadCount > 1)
       '${g.deadCount} dead ends',
-    if (g.skippedCount == 1) '1 does nothing' else if (g.skippedCount > 1)
+    if (g.skippedCount == 1)
+      '1 does nothing'
+    else if (g.skippedCount > 1)
       '${g.skippedCount} do nothing',
   ];
 
@@ -580,7 +591,9 @@ class _Counts extends StatelessWidget {
         if (onLine > 0)
           _CountChip(
             colour: scheme.primary,
-            label: onLine == 1 ? '1 call on this line now' : '$onLine calls on this line now',
+            label: onLine == 1
+                ? '1 call on this line now'
+                : '$onLine calls on this line now',
             detail: 'ringing or connected right now',
           ),
         if (dead > 0)
@@ -716,6 +729,8 @@ IconData _iconFor(String kind) {
       return Icons.call_outlined;
     case 'arrival':
       return Icons.call_received;
+    case 'override':
+      return Icons.alt_route;
     case 'menu':
       return Icons.dialpad;
     case 'ring_group':
@@ -743,6 +758,7 @@ IconData _iconFor(String kind) {
       return Icons.circle_outlined;
   }
 }
+
 /// Phone's answer for one box: what it is, and who is holding in it.
 ///
 /// The whole of Phone's side of the seam. Everything the canvas draws that is
@@ -778,6 +794,8 @@ String _kindWord(String kind) {
       return 'Voicemail';
     case 'arrival':
       return 'Arrives';
+    case 'override':
+      return 'Override';
     case 'answered':
       return 'Picked up';
     case 'recorded':

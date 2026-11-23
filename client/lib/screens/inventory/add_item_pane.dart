@@ -98,82 +98,60 @@ class _AddItemPaneState extends State<AddItemPane> {
         _name.text.trim().isNotEmpty &&
         (_companyId != null || _atOrganization);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New item',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
       children: [
-        paneHeader(
-          context,
-          'New item',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+          }),
+          onFranchiseChanged: (v) => setState(() => _franchiseId = v),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                InventoryPlaceFields(
-                  me: _me,
-                  companyId: _companyId,
-                  franchiseId: _franchiseId,
-                  enabled: !_busy,
-                  onCompanyChanged: (v) => setState(() {
-                    _companyId = v;
-                    _franchiseId = null;
-                  }),
-                  onFranchiseChanged: (v) => setState(() => _franchiseId = v),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _name,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _sku,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(labelText: 'SKU'),
-                ),
-                const SizedBox(height: 12),
-                SearchPickerField<String>(
-                  value: _unit,
-                  label: 'Unit',
-                  options: [
-                    for (final u in inventoryUnits)
-                      SearchOption(value: u.$1, label: u.$2),
-                  ],
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(() => _unit = v ?? _unit),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _reorder,
-                  enabled: !_busy,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Reorder at',
-                    helperText: 'On-hand at or below this is Low.',
-                    helperMaxLines: 2,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
-                ],
-              ],
-            ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _name,
+          enabled: !_busy,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _sku,
+          enabled: !_busy,
+          decoration: const InputDecoration(labelText: 'SKU'),
+        ),
+        const SizedBox(height: 12),
+        SearchPickerField<String>(
+          value: _unit,
+          label: 'Unit',
+          options: [
+            for (final u in inventoryUnits)
+              SearchOption(value: u.$1, label: u.$2),
+          ],
+          onChanged: _busy ? null : (v) => setState(() => _unit = v ?? _unit),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _reorder,
+          enabled: !_busy,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Reorder at',
+            helperText: 'On-hand at or below this is Low.',
+            helperMaxLines: 2,
           ),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
-        ),
+        if (_error != null) ...[const SizedBox(height: 14), ErrorNote(_error!)],
       ],
     );
   }

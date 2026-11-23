@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -21,11 +22,16 @@ import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_dates.dart';
+import 'reports/report_range.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
+import 'reports/job_status_report.dart';
+import 'reports/jobs_report.dart';
+import 'reports/ops_reports.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
+import '../widgets/heading_pin.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
 ///
@@ -78,8 +84,15 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   /// ONE date range for every tab that reads one (review 2026-10-30, item
   /// 14, Jose approved): Last 7 days on first open, then the person's last
-  /// choice for the session, carried between tabs.
-  late DateSpan _span = ReportDates.quick(_today)['1 week']!;
+  /// choice for the session, carried between tabs - and back into Reports
+  /// after leaving it (Jose, 2026-11-16), so it lives beyond this State.
+  /// Kept against the Session object, not this State.
+  static final _lastSpan = Expando<DateSpan>('reports span');
+  late DateSpan _span =
+      _lastSpan[widget.session] ?? ReportDates.quick(_today)['1 week']!;
+
+  void _setSpan(DateSpan span) =>
+      setState(() => _span = _lastSpan[widget.session] = span);
 
   DateTime get _today => DateSpan.single(widget.now()).from;
 
@@ -87,9 +100,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   static const _ranged = {
     'Performance',
     'Scoring',
-    'Marketing',
+    'Marketing Reports',
     'Meta',
     'Thumbtack',
+    'Jobs',
+    'Office',
+    'Technicians',
   };
 
   /// Reports · Builder · Experimental. The builder is a DESTINATION now
@@ -97,6 +113,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// is also the honest shape: building and running are different jobs, and
   /// the chips say so before anybody clicks.
   int _chip = 0;
+
+  /// The pin on every tab's table headings, held here so the tabs answer to
+  /// one choice; saved as `reports.pin_headings` (Jose, 2026-11-16).
+  bool? _headingsPinned;
 
   SavedReportSummary? _open;
   String? _confirming;
@@ -347,18 +367,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     today: _today,
                     formats:
                         widget.session.me?.display ?? DisplayFormats.fallback,
-                    onChanged: (span) => setState(() => _span = span),
+                    onChanged: _setSpan,
                   ),
                 ),
               ),
             if (!ownPadding) const SizedBox(height: 12),
             Expanded(
-              child: ownPadding
-                  ? _body(context, constraints)
-                  : Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: _body(context, constraints),
-                    ),
+              child: ReportRange(
+                span: _span,
+                onChanged: _setSpan,
+                child: HeadingPin(
+                  pinned:
+                      _headingsPinned ??
+                      widget.session.me?.reportHeadingsPinned ??
+                      true,
+                  onChanged: (pinned) {
+                    setState(() => _headingsPinned = pinned);
+                    // Not awaited: the screen is already right, and a write the
+                    // server refuses comes back through Session's refresh.
+                    widget.session.setPreference(
+                      'reports.pin_headings',
+                      pinned,
+                    );
+                  },
+                  child: ownPadding
+                      ? _body(context, constraints)
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: _body(context, constraints),
+                        ),
+                ),
+              ),
             ),
           ],
         );
@@ -398,6 +437,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required bool canExperiment,
   }) {
     final me = widget.session.me;
+    // Download a table as Excel or CSV (Merav, 2026-11-19).
+    final canExport = me?.can('reports.export') ?? false;
 
     return [
       /*
@@ -445,11 +486,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (_mayOpen('marketing') &&
           (me?.reachableModules.any((m) => m.key == 'profit_loss') ?? false))
         (
-          'Marketing',
+          // "Marketing Reports" (Jose, 2026-11-16): not the Marketing module.
+          'Marketing Reports',
           Icons.campaign_outlined,
           () => MarketingReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
@@ -462,6 +505,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => MetaAdsReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             canEdit: canBuildHere,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
@@ -474,7 +518,126 @@ class _ReportsScreenState extends State<ReportsScreen> {
           () => ThumbtackReport(
             api: widget.api,
             span: _span,
+            canExport: canExport,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Jobs as a family (design 199, Shoval 2026-11-18): Overview (every
+      // job created, Jose 2026-11-11) · Cancelled · Pending, each its own
+      // grant, drawn when any of them is.
+      if (_mayOpen('jobs') ||
+          _mayOpen('cancelled') ||
+          _mayOpen('pending') ||
+          _mayOpen('estimates'))
+        (
+          'Jobs',
+          Icons.work_outline,
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-jobs'),
+            session: widget.session,
+            name: 'jobs',
+            tabs: [
+              if (_mayOpen('jobs'))
+                (
+                  'overview',
+                  'Overview',
+                  Icons.work_outline,
+                  () => JobsReport(
+                    api: widget.api,
+                    span: _span,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+              if (_mayOpen('cancelled'))
+                (
+                  'cancelled',
+                  'Cancelled',
+                  Icons.event_busy_outlined,
+                  () => JobStatusReport(
+                    key: const ValueKey('report-cancelled'),
+                    api: widget.api,
+                    span: _span,
+                    pending: false,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+              if (_mayOpen('pending'))
+                (
+                  'pending',
+                  'Pending',
+                  Icons.pending_actions_outlined,
+                  () => JobStatusReport(
+                    key: const ValueKey('report-pending'),
+                    api: widget.api,
+                    span: _span,
+                    pending: true,
+                    canExport: canExport,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                  ),
+                ),
+              if (_mayOpen('estimates'))
+                (
+                  'estimates',
+                  'Estimates',
+                  Icons.request_quote_outlined,
+                  () => _ops(estimatesSpec, canExport),
+                ),
+            ],
+          ),
+        ),
+      // Office (design 199, Shoval 2026-11-18): the office's own numbers.
+      if (const [
+        'tasks',
+        'complaints',
+        'dispatch',
+        'accounting',
+        'recruiting',
+      ].any(_mayOpen))
+        (
+          'Office',
+          Icons.apartment_outlined,
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-office'),
+            session: widget.session,
+            name: 'office',
+            tabs: [
+              for (final (key, spec) in [
+                ('tasks', tasksSpec),
+                ('complaints', complaintsSpec),
+                ('dispatch', dispatchSpec),
+                ('accounting', accountingSpec),
+                ('recruiting', recruitingSpec),
+              ])
+                if (_mayOpen(key))
+                  (key, spec.title, spec.icon, () => _ops(spec, canExport)),
+            ],
+          ),
+        ),
+      // Technicians (design 199): each tech's jobs and the AI's checks.
+      if (_mayOpen('techs') || _mayOpen('tech_checks'))
+        (
+          'Technicians',
+          Icons.engineering_outlined,
+          () => _Family(
+            // Its own state: two families in one place must not share it.
+            key: const ValueKey('family-techs'),
+            session: widget.session,
+            name: 'techs',
+            tabs: [
+              for (final (key, spec) in [
+                ('techs', techsSpec),
+                ('tech_checks', techChecksSpec),
+              ])
+                if (_mayOpen(key))
+                  (key, spec.title, spec.icon, () => _ops(spec, canExport)),
+            ],
           ),
         ),
       // Pick a report, preview it, export, approve or send it (takeover
@@ -496,6 +659,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
     ];
   }
+
+  Widget _ops(OpsSpec spec, bool canExport) => OpsReport(
+    key: ValueKey('ops-${spec.key}'),
+    api: widget.api,
+    span: _span,
+    spec: spec,
+    canExport: canExport,
+    formats: widget.session.me?.display ?? DisplayFormats.fallback,
+  );
 
   /// Whether this person may open one of Reports' own tabs.
   ///
@@ -586,8 +758,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _open = null;
     });
 
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
+    // Desktop review 2026-11-13, D3: header right, as every module.
+    return ModuleAction(
       // On a phone it took the strip's width and left "Reports, Repor…" (UI
       // audit, 2026-10-13): the icon alone there, beside the picker.
       child: compact
@@ -654,7 +826,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           key: ValueKey('performance-$_openCall'),
           openCall: _openCall,
           span: _span,
-          onSpan: (span) => setState(() => _span = span),
+          onSpan: _setSpan,
           // The same clock as the shared range, so "Last 7 days" names it.
           now: widget.now,
           api: widget.api,
@@ -680,6 +852,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         api: widget.api,
         reportId: open.id,
         name: open.name,
+        canExport: widget.session.me?.can('reports.export') ?? false,
       );
     }
 
@@ -1384,4 +1557,60 @@ class SavedReportSummary {
   /// The rules whose current version sends it, for a reader who may see
   /// rules; null for everybody else, which is not the same as none.
   final List<Map<String, dynamic>>? sentBy;
+}
+
+/// A family of report tabs drawn as one tab with its own strip (design 199,
+/// option 1): the sub-tab last opened is kept for the person.
+class _Family extends StatefulWidget {
+  const _Family({
+    super.key,
+    required this.session,
+    required this.name,
+    required this.tabs,
+  });
+
+  final Session session;
+
+  /// jobs, office or techs: its strip's key and its preference.
+  final String name;
+  final List<(String, String, IconData, Widget Function())> tabs;
+
+  @override
+  State<_Family> createState() => _FamilyState();
+}
+
+class _FamilyState extends State<_Family> {
+  String get _pref => 'reports.${widget.name}_tab';
+
+  late String _sub =
+      widget.session.me?.preferences[_pref] as String? ?? widget.tabs.first.$1;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = widget.tabs;
+    if (tabs.isEmpty) return const SizedBox.shrink();
+    var at = tabs.indexWhere((t) => t.$1 == _sub);
+    if (at < 0) at = 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TabBarLike(
+          key: ValueKey('reports-${widget.name}-tabs'),
+          level: TabLevel.secondary,
+          labels: [for (final t in tabs) (t.$2, t.$3)],
+          selected: at,
+          onSelected: (i) {
+            setState(() => _sub = tabs[i].$1);
+            widget.session.setPreference(_pref, tabs[i].$1);
+          },
+        ),
+        Expanded(
+          child: KeyedSubtree(
+            key: ValueKey('reports-${widget.name}-${tabs[at].$1}'),
+            child: tabs[at].$4(),
+          ),
+        ),
+      ],
+    );
+  }
 }

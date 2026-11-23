@@ -131,6 +131,59 @@ void main() {
     expect(sent!['permissions'], ['customers.edit', 'customers.view']);
   });
 
+  /// Jose, 2026-11-17: "Lead Managers should not be desktop monitored". A
+  /// tick done TO the role opens nothing, and closing the module keeps it.
+  testWidgets('a passive tick does not open the module, nor close with it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    Map<String, dynamic>? sent;
+    final monitoring = _catalogueModule(
+      'monitoring',
+      'Monitoring',
+      actions: const [
+        ('view', 'View'),
+        ('control', 'Control desktops remotely'),
+        ('unmonitored', 'Their own PC is not screen-monitored'),
+      ],
+      passive: const ['unmonitored'],
+    );
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Lead Manager', permissions: const [])],
+      catalogue: [monitoring],
+      onPatch: (body) => sent = body,
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monitoring'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('About them'), findsOneWidget);
+    bool? moduleOpen() =>
+        tester.widget<Checkbox>(_tabCheckbox('monitoring').first).value;
+
+    await tester.tap(find.byKey(const ValueKey('action:monitoring.unmonitored')));
+    await tester.pumpAndSettle();
+    expect(moduleOpen(), isFalse,
+        reason: 'Not monitoring.view: being unmonitored opens nothing.');
+
+    // The control: an ordinary action still opens the module...
+    await tester.tap(find.byKey(const ValueKey('action:monitoring.control')));
+    await tester.pumpAndSettle();
+    expect(moduleOpen(), isTrue);
+
+    // ...and closing the module clears it, but keeps the passive tick.
+    await tester.tap(_tabCheckbox('monitoring').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(sent!['permissions'], ['monitoring.unmonitored']);
+  });
+
   /// The payload is the keys, and only the keys.
   testWidgets('what is saved is exactly the permissions the role holds', (
     tester,
@@ -1889,6 +1942,7 @@ Map<String, dynamic> _catalogueModule(
   Map<String, String> descriptions = const {},
   List<String> tabs = const [],
   Map<String, String> within = const {},
+  List<String> passive = const [],
 }) => {
   'key': key,
   'label': label,
@@ -1912,6 +1966,7 @@ Map<String, dynamic> _catalogueModule(
         'description': ?descriptions[action],
         if (tabs.contains(action)) 'tab': true,
         'within': ?within[action],
+        if (passive.contains(action)) 'passive': true,
       },
   ],
   'inboxes': ?inboxes,

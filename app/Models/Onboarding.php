@@ -43,6 +43,11 @@ use Illuminate\Support\Collection;
 class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its invitation's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['hr_invitations', Invitation::class, 'invitation_id'];
+
     use HasAttachments;
     use HasFactory;
     use HasUuids;
@@ -211,8 +216,13 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public function employer(bool $typed = true): array
     {
-        // Typed on this onboarding, it wins (Jose, 2026-10-05).
+        // Typed on this onboarding, it wins (Jose, 2026-10-05); then the
+        // branch they are hired into (Merav, 2026-11-19: the address on the
+        // contract must be THEIR branch's), then the company, then the business.
         $override = $typed ? trim((string) $this->employer_address) : '';
+        if ($override === '') {
+            $override = trim((string) $this->branch()?->address);
+        }
         $company = $this->company;
         if ($company === null) {
             return ['name' => (string) $this->organization->name,
@@ -227,6 +237,22 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
                 $company->address_line1, $company->address_line2, $company->city, $region,
             ], fn ($part) => trim((string) $part) !== '')),
         ];
+    }
+
+    /**
+     * The branch this hire works at: the one their invitation placed them in,
+     * else their only branch assignment. Null when that is not one branch.
+     */
+    public function branch(): ?Franchise
+    {
+        $id = $this->invitation?->assigned_franchise_id;
+        if ($id === null && $this->user_id !== null) {
+            $ids = Assignment::query()->where('user_id', $this->user_id)
+                ->whereNotNull('assigned_franchise_id')->pluck('assigned_franchise_id');
+            $id = $ids->count() === 1 ? $ids->first() : null;
+        }
+
+        return $id === null ? null : Franchise::query()->find($id);
     }
 
     /** The employee. Null until the invitation is accepted. */

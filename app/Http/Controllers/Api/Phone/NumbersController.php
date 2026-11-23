@@ -157,6 +157,12 @@ class NumbersController extends Controller
             'after_hours' => 'voicemail',
         ]);
 
+        // A new line comes out working: everybody on its account has an extension,
+        // and 911 knows where it is.
+        \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        \App\Support\Phone\EmergencyAddress::attach($number, $this->twilio);
+        $number->refresh();
+
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
     }
 
@@ -828,6 +834,12 @@ class NumbersController extends Controller
             ]);
         }
 
+        \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        foreach ($made as $line) {
+            \App\Support\Phone\EmergencyAddress::attach($line, $this->twilio);
+            $line->refresh();
+        }
+
         return response()->json([
             'data' => array_map(fn (PhoneNumber $n) => $this->row($n), $made),
         ], Response::HTTP_CREATED);
@@ -897,7 +909,31 @@ class NumbersController extends Controller
             // which is how every production line behaves today.
             'answer_with' => ['sometimes', 'nullable', Rule::in(PhoneNumber::answerChoices())],
             'answer_user_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('users')],
+
+            // Override the call flow (Jose, 2026-11-11): forward, a team, a
+            // person, voicemail, or a message then hang up, skipping hours and menu.
+            'override_on' => ['sometimes', 'boolean'],
+            'override' => ['sometimes', 'nullable', 'array'],
+            'override.action' => ['required_with:override', Rule::in(['forward', 'ring_group', 'user', 'voicemail', 'hangup'])],
+            'override.number' => ['nullable', 'string', 'regex:/^\+[1-9]\d{6,14}$/'],
+            'override.ring_group_id' => ['nullable', 'uuid', $this->existsInTenant('phone_ring_groups')],
+            'override.user_id' => ['nullable', 'uuid', $this->existsInTenant('users')],
+            'override.say' => ['nullable', 'string', 'max:500'],
         ]);
+
+        $override = array_key_exists('override', $input) ? $input['override'] : $number->override;
+        if (($input['override_on'] ?? $number->override_on) === true) {
+            $missing = match ($override['action'] ?? null) {
+                null => ['override' => 'Choose what this line does instead of the call flow.'],
+                'forward' => filled($override['number'] ?? null) ? null : ['override.number' => 'Say which number to forward to, like +13055550100.'],
+                'ring_group' => filled($override['ring_group_id'] ?? null) ? null : ['override.ring_group_id' => 'Choose the team to ring.'],
+                'user' => filled($override['user_id'] ?? null) ? null : ['override.user_id' => 'Choose the person to ring.'],
+                default => null,
+            };
+            if ($missing !== null) {
+                throw ValidationException::withMessages($missing);
+            }
+        }
 
         // A DESTINATION THAT NAMES NOTHING IS A LINE THAT RINGS NOBODY.
         //
@@ -996,7 +1032,11 @@ class NumbersController extends Controller
             }
         }
 
-        $number->fill($input)->save();
+        $number->fill($input);
+        if ($number->isDirty(['override_on', 'override'])) {
+            app(\App\Support\Audit\AuditLogger::class)->logChange('phone.number.override', $number);
+        }
+        $number->save();
 
         return response()->json(['data' => $this->row($number->fresh())]);
     }
@@ -1188,6 +1228,8 @@ class NumbersController extends Controller
             // Null means "as before" — see the migration; a screen draws that
             // as the inherited behaviour rather than as an empty choice.
             'answer_with' => $number->answer_with,
+            'override_on' => (bool) $number->override_on,
+            'override' => $number->override,
             'answer_user_id' => $number->answer_user_id,
             'flow_id' => $number->flow_id,
             'voicemail_box_id' => $number->voicemail_box_id,
@@ -1224,6 +1266,15 @@ class NumbersController extends Controller
             // organization ever holds hundreds, eager-load the groups and
             // presences rather than reintroducing a separate rule here.
             'answers' => collect($steps)->firstWhere('step', 'answer')['usable'] ?? false,
+
+            // PASS OR FAIL on the card (Jose, 2026-11-12: a connection should
+            // come out working). Each problem is a sentence saying what to fix.
+            'health' => (function () use ($number, $steps) {
+                $health = \App\Support\Phone\LineHealth::for($number, (bool) (collect($steps)->firstWhere('step', 'answer')['usable'] ?? false));
+
+                // `problems` stays plain sentences for the card; `checks` carries the keys.
+                return ['ok' => $health['ok'], 'problems' => array_column($health['problems'], 'sentence'), 'checks' => $health['problems']];
+            })(),
 
             // Whether THIS is the line the person reading calls out from.
             //

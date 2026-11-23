@@ -14,24 +14,6 @@ return [
     |
     */
 
-    'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-    ],
-
-    /*
-    | Amazon Bedrock, for what a model can say about a lead (Leads §AI).
-    | Off until all three are set: the same AWS keys as SES, and the model id
-    | exactly as the Bedrock console shows it for Claude in this region.
-    */
-    'bedrock' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-        'model' => env('BEDROCK_MODEL', ''),
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Google, for shared Gmail inboxes
@@ -124,6 +106,35 @@ return [
     | connect. Ads scopes are not requested.
     |
     */
+    /*
+     * The "EzBizi" app on Monday's Developer Center (Jose, 2026-11-12): Connect
+     * Monday (MondayOAuth) and the signature on Monday's webhooks
+     * (MondayWebhookSignature). The redirect URL registered on the app must be
+     * APP_URL/api/v1/social/monday/callback.
+     */
+    'monday' => [
+        'client_id' => env('MONDAY_CLIENT_ID'),
+        'client_secret' => env('MONDAY_CLIENT_SECRET'),
+        'signing_secret' => env('MONDAY_SIGNING_SECRET'),
+        'redirect' => env('MONDAY_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/monday/callback',
+    ],
+
+    /*
+     * QuickBooks Online (Intuit Developer, app "EzBizi"): Connect QuickBooks
+     * (QuickBooksOAuth), read only, scope com.intuit.quickbooks.accounting. The
+     * redirect URI registered on the app must be
+     * APP_URL/api/v1/social/quickbooks/callback. environment: sandbox | production
+     * (which API host the realm lives on; the keys differ per environment).
+     */
+    'quickbooks' => [
+        'client_id' => env('QUICKBOOKS_CLIENT_ID'),
+        'client_secret' => env('QUICKBOOKS_CLIENT_SECRET'),
+        'environment' => env('QUICKBOOKS_ENVIRONMENT', 'production'),
+        'redirect' => env('QUICKBOOKS_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/quickbooks/callback',
+    ],
+
     'pinterest' => [
         'client_id' => env('PINTEREST_CLIENT_ID'),
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),
@@ -444,6 +455,12 @@ return [
         // connection's webhooks. The same restriction is why key auth cannot
         // read into a subaccount, delete a key in one, or move a number out.
         'platform_auth_token' => env('TWILIO_PLATFORM_AUTH_TOKEN'),
+
+        // The OLD platform parent, only while numbers move to the new Twilio
+        // account (2026-11-19): webhooks for numbers it still holds keep
+        // validating. Unset both when the old account closes.
+        'platform_previous_account_sid' => env('TWILIO_PLATFORM_PREVIOUS_ACCOUNT_SID'),
+        'platform_previous_auth_token' => env('TWILIO_PLATFORM_PREVIOUS_AUTH_TOKEN'),
 
         // The number EzBizi ITSELF texts from: verification codes to our own
         // users, on the platform account rather than any tenant's subaccount.

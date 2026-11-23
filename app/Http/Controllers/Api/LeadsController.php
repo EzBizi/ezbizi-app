@@ -10,12 +10,15 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\SchedulingTechnician;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
+use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -41,6 +44,8 @@ use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
 use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Jobs\BookingGate;
+use App\Support\Scheduling\JobTechnicians;
 use App\Support\Workiz\WorkizV2;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -247,6 +252,18 @@ class LeadsController extends Controller
             ->toBase()
             ->pluck('n', 'kind')
             ->map(fn ($n) => (int) $n);
+        // Recovery is a tab across sources; drawn only when it has some, as the rest.
+        if (($recovery = (clone $query)->whereRaw(self::UNREAD_SQL)->whereNotNull('leads.recovery_at')->reorder()->count()) > 0) {
+            $unreadBySource['recovery'] = $recovery;
+        }
+        // A named promotion is a tab of its own, keyed promo:<name> (Shoval, 2026-11-06).
+        $promotionTabs = self::promotionTabs();
+        if ($promotionTabs !== []) {
+            (clone $query)->whereRaw(self::UNREAD_SQL)->reorder()->where('leads.source', Lead::SOURCE_PROMOTIONS)
+                ->whereIn('leads.lead_type', $promotionTabs)->groupBy('leads.lead_type')
+                ->select(DB::raw('leads.lead_type AS name'))->selectRaw('COUNT(*) AS n')->toBase()->pluck('n', 'name')
+                ->each(fn ($n, $name) => $unreadBySource->put(self::PROMO_TAB.$name, (int) $n));
+        }
 
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
@@ -309,7 +326,8 @@ class LeadsController extends Controller
         // canReply() is the channel's, so its two column rules are restated:
         // a Google lead must be a text, and a connected source must still be.
         if ($request->boolean('overdue')) {
-            $query->where('leads.status', Lead::STATUS_NEW)
+            // Or an online booking still waiting on Approve / Decline (Jose, 2026-11-16).
+            $query->where(fn ($query) => $query->whereIn('leads.id', Lead::pendingBookings()->select('lead_id'))->orWhere(fn ($query) => $query->where('leads.status', Lead::STATUS_NEW)
                 ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                 ->where('leads.last_contact_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes')))
@@ -320,7 +338,7 @@ class LeadsController extends Controller
                 // A form: until a note says somebody called back (Lead::awaitsCallback).
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_WEBSITE_FORM)
                     ->orWhereNull('leads.note_updated_at')
-                    ->orWhereColumn('leads.note_updated_at', '<', 'leads.last_contact_at'));
+                    ->orWhereColumn('leads.note_updated_at', '<', 'leads.last_contact_at'))));
         }
 
         // Asked the price or a day on a call, nothing booked (Jose, 2026-10-12,
@@ -472,6 +490,8 @@ class LeadsController extends Controller
                 ...$this->pageMeta($leads),
                 'connections' => $this->connectionState(),
                 'unread_by_source' => (object) $unreadBySource->all(),
+                // Named promotions, newest first: one Leads tab each, where their answers land.
+                'promotion_tabs' => $promotionTabs,
                 // The dispatcher filter's choices: who answered this reader's leads.
                 'dispatchers' => self::scopeToReader(Lead::query(), $user)->whereNotNull('leads.dispatcher')
                     ->distinct()->orderBy('leads.dispatcher')->limit(200)->pluck('leads.dispatcher')->all(),
@@ -509,7 +529,12 @@ class LeadsController extends Controller
         $senders = AuditEvent::query()
             ->whereIn('action', ['lead.replied', 'lead.texted'])
             ->where('target_id', $lead->getKey())
-            ->get(['changes', 'actor_label'])
+            ->get(['changes', 'actor_label', 'actor_type', 'actor_id']);
+        // Their user id beside the name, for the photo on the bubble (Jose, 2026-11-13).
+        $senderIds = $senders->mapWithKeys(fn (AuditEvent $e) => [
+            (string) ($e->changes['conversation_id'] ?? '') => $e->actor_type === AuditEvent::ACTOR_USER ? $e->actor_id : null,
+        ]);
+        $senders = $senders
             ->mapWithKeys(fn (AuditEvent $e) => [
                 (string) ($e->changes['conversation_id'] ?? '') => trim((string) preg_replace('/\s*<[^>]*>$/', '', (string) $e->actor_label)),
             ]);
@@ -523,7 +548,7 @@ class LeadsController extends Controller
         // A website visitor typing right now, shown under the thread (Jose, 2026-10-01).
         $data['visitor_typing'] = ChatPeople::isVisitorTyping((string) $lead->getKey());
         $data['conversations'] = $conversations
-            ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null))
+            ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null) + ['sent_by_id' => $senderIds[$c->id] ?? null])
             ->values()
             ->all();
 
@@ -606,7 +631,7 @@ class LeadsController extends Controller
         )->map(fn ($t) => [
             'name' => (string) ($t['label'] ?? $t),
             'text' => strtr((string) ($t['value'] ?? $t), [
-                '{{greeting}}' => Lead::greeting($first, $lead->organization_id),
+                '{{greeting}}' => Lead::greetingFor($first, $lead->organization_id),
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
                 '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
@@ -692,8 +717,44 @@ class LeadsController extends Controller
      * splits it: LS Call is the calls, LS Text everything else Google sends
      * (texts and bookings), so ticking every chip reaches every lead.
      */
+    /**
+     * The stored reading, less any address it offers that is the lead's own
+     * spelled differently: readings saved before Lead::sameAddress still
+     * carry the offer (Jose, 2026-11-16, John Sczepanski).
+     */
+    private static function readingNow(Lead $lead): ?array
+    {
+        $reading = $lead->ai_set['reading'] ?? null;
+        if (is_array($reading) && isset($reading['suggest']['address']) && Lead::sameAddress($reading['suggest']['address'], $lead->address)) {
+            unset($reading['suggest']['address']);
+            $reading['suggest'] = $reading['suggest'] === [] ? null : $reading['suggest'];
+        }
+
+        return $reading;
+    }
+
+    /** The source key of a named promotion's Leads tab: promo:<name>. */
+    private const PROMO_TAB = 'promo:';
+
+    /**
+     * The names of this organization's named promotions of the last 90 days,
+     * newest first: each one a Leads tab holding the answers to it.
+     *
+     * @return list<string>
+     */
+    private static function promotionTabs(): array
+    {
+        return \App\Models\Promotion::query()->whereNotNull('name')->where('created_at', '>=', now()->subDays(90))
+            ->orderByDesc('created_at')->pluck('name')->unique()->take(8)->values()->all();
+    }
+
     private static function whereKind($query, string $key): void
     {
+        if (str_starts_with($key, self::PROMO_TAB)) {
+            $query->where('leads.source', Lead::SOURCE_PROMOTIONS)->where('leads.lead_type', substr($key, strlen(self::PROMO_TAB)));
+
+            return;
+        }
         match ($key) {
             Lead::KIND_LS_CALL => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'PHONE_CALL'),
@@ -702,6 +763,8 @@ class LeadsController extends Controller
             Lead::KIND_LS_BOOKING => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'BOOKING'),
             Lead::STATUS_JOB_APPLICANT => $query->where('leads.status', Lead::STATUS_JOB_APPLICANT),
+            // Every source a Recovery text went to (Jose, 2026-11-16).
+            'recovery' => $query->whereNotNull('leads.recovery_at'),
             Lead::KIND_BAD_RATING => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
                 ->where('leads.lead_type', 'BAD_RATING'),
             // Forms, without the Bad Ratings that have their own tab now.
@@ -866,7 +929,17 @@ class LeadsController extends Controller
         // approvals"): approving books the job, into Workiz too, before the
         // confirmation goes. A refusal leaves it pending, for Book by hand.
         if ($decision === 'approve' && ! $wasApproved && $booking->site_id === null) {
+            // Re-counted at the tap (desk, 2026-11-17): the window may have filled since the hold.
+            $override = BookingGate::check($booking->serviceArea, $booking->date->toDateString().' '.substr((string) $booking->start_time, 0, 5),
+                $request->user(), $request->input('override_reason'), heldHere: true);
             $this->book($this->holdAsBooking($request, $lead, $booking), $lead);
+            $job = Job::query()->find($lead->refresh()->job_id);
+            if ($job !== null) {
+                if ($override !== null) {
+                    BookingGate::record($job, $override);
+                }
+                $this->assignTech($job, $booking->serviceArea);
+            }
         }
 
         $booking->forceFill([
@@ -892,6 +965,75 @@ class LeadsController extends Controller
         }
 
         return response()->json(['data' => $this->presentBooking($booking, $lead)]);
+    }
+
+    /**
+     * An approved hold gets a technician (desk, 2026-11-17): the active field tech
+     * covering the area with the fewest jobs that day, in EzBizi and Workiz.
+     */
+    private function assignTech(Job $job, ?ServiceArea $area): void
+    {
+        if ($area === null) {
+            return;
+        }
+        $day = $job->scheduled_for?->toDateString();
+        $tech = SchedulingTechnician::query()->where('is_active', true)->where('is_field_tech', true)
+            ->whereHas('areas', fn ($q) => $q->whereKey($area->shares_with_id ?? $area->id))
+            ->select('scheduling_technicians.*')->selectSub(fn ($q) => $q->from('job_technicians')
+                ->join('jobs', 'jobs.id', '=', 'job_technicians.job_id')->whereColumn('job_technicians.technician_id', 'scheduling_technicians.id')
+                ->when($day, fn ($q) => $q->whereDate('jobs.scheduled_for', $day))->selectRaw('count(*)'), 'that_day')
+            ->orderBy('that_day')->orderBy('name')->first();
+        if ($tech === null) {
+            return;
+        }
+        JobTechnicians::assign($job, $tech);
+        $mirror = WorkizJob::query()->where('job_id', $job->id)->first();
+        $member = $tech->workiz_member_id ? WorkizTeamMember::query()->find($tech->workiz_member_id) : null;
+        if ($mirror !== null && $member !== null) {
+            app(WorkizJobWriter::class)->assign($mirror, $member);
+        }
+    }
+
+    /** GET leads/{lead}/booking/days: the open windows of the booking's area, as the website widget offers them. */
+    public function bookingDays(Lead $lead): JsonResponse
+    {
+        $this->authorize('view', $lead);
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+
+        return response()->json(['data' => $booking->serviceArea === null ? []
+            : app(WebEnquiriesController::class)->bookingOpen($booking->serviceArea, $lead->organization)]);
+    }
+
+    /**
+     * POST leads/{lead}/booking/move {date, start_time}: "Another date" (Jose,
+     * 2026-11-16: "choose another date, freeing the reserved spot"). The one
+     * row moves, so the old seat is given back as the new one is taken; then
+     * it is approved exactly as Approve does, with the new window in the text.
+     */
+    public function moveBooking(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $data = $request->validate(['date' => ['required', 'date_format:Y-m-d'], 'start_time' => ['required', 'date_format:H:i']]);
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+
+        if ($booking->status !== WebBooking::PENDING) {
+            return response()->json(['message' => 'This request was already answered.'], 409);
+        }
+        if ($lead->job_id !== null) {
+            return response()->json(['message' => 'This customer already has a job booked. Nothing was sent.'], 409);
+        }
+
+        $window = collect($booking->serviceArea === null ? []
+            : app(WebEnquiriesController::class)->bookingOpen($booking->serviceArea, $lead->organization))
+            ->firstWhere('date', $data['date'])['windows'] ?? [];
+        $window = collect($window)->firstWhere('start_time', $data['start_time']);
+        if ($window === null) {
+            throw ValidationException::withMessages(['start_time' => 'That window is no longer open. Pick another.']);
+        }
+
+        $booking->forceFill(['date' => $data['date'], 'start_time' => $window['start_time'], 'end_time' => $window['end_time']])->save();
+
+        return $this->decideBooking($request, $lead, 'approve');
     }
 
     /** What the Book panel would have sent for a chat hold, filled from the chat. */
@@ -1116,6 +1258,7 @@ class LeadsController extends Controller
                 ]);
             }
 
+            \App\Support\Jobs\JobAddress::assertCustomer($customer);
             $job = Job::create([
                 'franchise_id' => $franchise->getKey(),
                 'customer_id' => $customer->getKey(),
@@ -1177,6 +1320,7 @@ class LeadsController extends Controller
                 'serial_id' => $made['job']?->serial_id,
                 'service_area' => $placed !== null && $placed['refused'] === null ? $area : null,
                 'refused' => match (true) {
+                    $made['refused'] === WorkizJobWriter::BUSY => \App\Jobs\MirrorToWorkiz::later($result['job'], $input['workiz_job_type'] ?? null, $input['workiz_job_source'] ?? null, $area),
                     $made['refused'] !== null => 'Not in Workiz: '.$made['refused'].' Enter job '.$result['job']->number.' in Workiz by hand.',
                     $placed !== null && $placed['refused'] !== null => 'In Workiz as job '.$made['job']->serial_id.', without its service area: '.$placed['refused'],
                     default => null,
@@ -1258,6 +1402,7 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            'automation_name' => $c->automation_name,
             // Sent by staff from the WhatsApp Business app on the phone.
             'sent_from_phone' => str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP),
             // Tapped from a Click-to-Message ad's suggested questions, not typed.
@@ -1768,6 +1913,36 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /api/v1/leads/{lead}/reading/use {field: phone|email|address}
+     *
+     * The reply reader's "Use (516) 404-1690?" (Jose, 2026-11-13): what the
+     * customer wrote replaces what the lead holds, as a person's choice (no AI
+     * mark), and the offer goes.
+     */
+    public function useReading(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $field = $request->validate(['field' => ['required', Rule::in(['phone', 'email', 'address'])]])['field'];
+
+        $set = $lead->ai_set ?? [];
+        $value = $set['reading']['suggest'][$field] ?? null;
+        abort_if($value === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'Nothing to use: the offer was already taken or replaced.');
+
+        unset($set['reading']['suggest'][$field], $set[$field]);
+        if (($set['reading']['suggest'] ?? []) === []) {
+            $set['reading']['suggest'] = null;
+        }
+        // Shown "(516) 404-1690"; stored as the reader fills a blank one.
+        $digits = substr((string) Lead::digits($value), -10);
+        $lead->forceFill([
+            ...($field === 'phone' ? ['phone' => '+1'.$digits, 'phone_digits' => Lead::digits('+1'.$digits)] : [$field => $value]),
+            'ai_set' => $set,
+        ])->save();
+
+        return response()->json(['data' => [$field => $lead->{$field}, 'reading' => $set['reading'] ?? null]]);
+    }
+
+    /**
      * POST /api/v1/leads/{lead}/follow-up-handled
      *
      * Off the Follow up list: somebody called back, or it needs nothing.
@@ -2034,7 +2209,7 @@ class LeadsController extends Controller
      * every tick refused it). Thumbtack is pushed to us, not read, so its
      * stamp says nothing and it never counts.
      */
-    private static function syncFailing(SocialConnection $c): bool
+    public static function syncFailing(SocialConnection $c): bool
     {
         if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
             return false;
@@ -2151,7 +2326,7 @@ class LeadsController extends Controller
     {
         $set = $lead->ai_set ?? [];
 
-        return array_values(array_filter(['status', 'contact_name', 'postal_code'],
+        return array_values(array_filter(['status', 'contact_name', 'postal_code', 'phone', 'email', 'address'],
             fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
     }
 
@@ -2179,6 +2354,8 @@ class LeadsController extends Controller
         return [
             'id' => $lead->id,
             'source' => $lead->source,
+            // A Recovery text went to it: a "Recovery" chip in All (Jose, 2026-11-16).
+            'recovery_at' => $lead->recovery_at?->toIso8601String(),
 
             // A specimen from `ezbizi:thumbtack-test-lead`. It stays in the
             // list — seeing it is how somebody knows the pipe works — and the
@@ -2211,6 +2388,12 @@ class LeadsController extends Controller
             'ai' => self::aiHeld($lead),
             // A different name the customer gave, kept for a person to decide.
             'name_conflict' => $lead->ai_set['name_conflict'] ?? null,
+            // The reply reader (Jose, 2026-11-13): what the customer's own words
+            // gave. suggest: {phone|email|address: value} differing from what the
+            // lead holds, each a one-tap "Use ...?" (a PATCH of that field);
+            // availability and deadline for the booking panel; source is the
+            // message it was read from, for the activity.
+            'reading' => self::readingNow($lead),
             // Why AI set the status, while the status is still AI's.
             'ai_reason' => in_array('status', self::aiHeld($lead), true) ? ($lead->ai_set['reason'] ?? null) : null,
             // Google Local Services credit: AI's suggested reason, then what

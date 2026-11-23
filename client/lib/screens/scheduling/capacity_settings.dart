@@ -393,7 +393,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
 
   Future<void> _scheduleNew() async {
     final now = DateTime.now();
-    final tomorrow = _ymd(DateTime(now.year, now.month, now.day + 1));
+    final tomorrow = formatCalendarDay(
+      DateTime(now.year, now.month, now.day + 1),
+    );
     final picked = await _pickDate(initial: tomorrow);
     if (picked == null || !mounted) return;
     if (picked.compareTo(tomorrow) < 0) {
@@ -2110,11 +2112,6 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   /// A date picker, never a typed date. Jose, on A1 Tools: "i want a date
   /// picker, not the yyyy--mm-dd shit".
   Future<String?> _pickDate({String? initial}) async {
@@ -2125,7 +2122,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(now.year + 2),
     );
-    return picked == null ? null : _ymd(picked);
+    return picked == null ? null : formatCalendarDay(picked);
   }
 
   Future<void> _areaWrite(Future<ApiResponse> Function(String id) call) async {

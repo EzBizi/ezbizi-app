@@ -66,7 +66,8 @@ $GLOBALS['scheduled'] = [];
 $GLOBALS['http_calls'] = 0;
 $GLOBALS['http_next'] = null;
 
-function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['opt']) ? $GLOBALS['opt'][$k] : $d; }
+// As WordPress does, a stored option passes through its option_{name} filters.
+function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['opt']) ? apply_filters("option_$k", $GLOBALS['opt'][$k]) : $d; }
 function update_option($k, $v, $a = null) { $GLOBALS['opt'][$k] = $v; return true; }
 function delete_option($k) { unset($GLOBALS['opt'][$k]); return true; }
 
@@ -410,6 +411,20 @@ function ok_response(array $values, array $pages = []) {
 
 echo "\nThe host must be spelled the way the server spells it\n";
 $GLOBALS['home'] = 'https://WWW.A-1Chimney.com/';
+// Bar, 2026-11-18: a re-signed avatar link alone is not a change; a new photo is.
+$sig = fn ($v, $e, $s) => ['fetched_at' => 1, 'widgets' => ['chat' => ['team' => [['avatar' => "https://app.ezbizi.com/api/v1/web/chat/avatar/u1?expires=$e&signature=$s&v=$v"]]]]];
+check('a re-signed link is not a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('a', 2, 'y')), false);
+check('a new photo is a change', ezbizi_payload_differs($sig('a', 1, 'x'), $sig('b', 1, 'x')), true);
+// 2026-11-19: a site filter that patches the stored payload (a1g-town-phones.php) is not a change.
+$raw = ['fetched_at' => 1, 'pages' => ['/a' => ['phone' => '1']]];
+update_option(EZBIZI_LAST_GOOD, $raw);
+update_option(EZBIZI_LAST_GOOD . '_fp', ezbizi_payload_fingerprint($raw));
+$patch = function ($p) { $p['pages']['/b'] = ['phone' => '2']; return $p; };
+add_filter('option_' . EZBIZI_LAST_GOOD, $patch);
+check('a patched stored payload is not a change', ezbizi_payload_changed(['fetched_at' => 2] + $raw), true === false);
+check('a real value change is still a change', ezbizi_payload_changed(['fetched_at' => 2, 'pages' => ['/a' => ['phone' => '9']]]), true);
+remove_filter('option_' . EZBIZI_LAST_GOOD, $patch);
+delete_option(EZBIZI_LAST_GOOD); delete_option(EZBIZI_LAST_GOOD . '_fp');
 check('www stripped, lowercased', ezbizi_host(), 'a-1chimney.com');
 $GLOBALS['home'] = 'https://nj.a-1chimney.com';
 check('a subdomain is its own host', ezbizi_host(), 'nj.a-1chimney.com');
@@ -420,6 +435,12 @@ reset_site();
 ok_response(['phone' => '555-0100', 'booking_url' => 'https://book.example.com']);
 do_action('init');
 check('[ezbizi_phone] registered', isset($GLOBALS['sc']['ezbizi_phone']), true);
+check('[ezbizi_rating] registered', isset($GLOBALS['sc']['ezbizi_rating']), true);
+$GLOBALS['opt']['ezbizi_last_good'] = ['review_summary' => ['count' => 27377, 'average' => 4.9]];
+set_transient(EZBIZI_CACHE_KEY, ['review_summary' => ['count' => 27377, 'average' => 4.9]], 300);
+check('[ezbizi_rating] prints the real numbers', strpos($GLOBALS['sc']['ezbizi_rating']([]), '<span itemprop="reviewCount">27,377</span>') !== false, true);
+check('JSON-LD rating follows the payload', ezbizi_fix_rating_jsonld('<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.1","reviewCount":"3218"}}</script><p>"reviewCount":5</p>'), '<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.9","reviewCount":"27377"}}</script><p>"reviewCount":5</p>');
+delete_transient(EZBIZI_CACHE_KEY); unset($GLOBALS['opt']['ezbizi_last_good']);
 check('[ezbizi_booking_url] registered', isset($GLOBALS['sc']['ezbizi_booking_url']), true);
 check('generic [ezbizi] registered', isset($GLOBALS['sc']['ezbizi']), true);
 check('phone renders', $GLOBALS['sc']['ezbizi_phone']([]), '555-0100');

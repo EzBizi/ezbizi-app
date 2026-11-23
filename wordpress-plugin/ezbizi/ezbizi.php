@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.28
+ * Version:           1.26.34
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.28';
+const EZBIZI_VERSION = '1.26.34';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -311,10 +311,11 @@ function ezbizi_fetch() {
      * like a change, which would purge the page cache every few minutes on
      * 110 sites for nothing.
      */
-    $changed = ezbizi_payload_differs(get_option(EZBIZI_LAST_GOOD, null), $payload);
+    $changed = ezbizi_payload_changed($payload);
 
     set_transient(EZBIZI_CACHE_KEY, $payload, EZBIZI_CACHE_TTL);
     update_option(EZBIZI_LAST_GOOD, $payload, false);
+    update_option(EZBIZI_LAST_GOOD . '_fp', ezbizi_payload_fingerprint($payload), false);
 
     if ($changed) {
         ezbizi_purge_page_cache();
@@ -338,6 +339,33 @@ function ezbizi_fetch() {
  * `fetched_at` is removed from both: it moves on every refresh and is the one
  * key that never changes what a visitor sees.
  */
+/**
+ * Whether [$payload] differs from the last one this site stored, by a
+ * fingerprint of the RAW payload. Reading the stored payload back runs every
+ * `option_ezbizi_last_good` filter: a site mu-plugin that patches it (A1
+ * Garage's a1g-town-phones.php adds page phones) made it differ from the raw
+ * fetch on every refresh, and the page cache was purged every 5 minutes
+ * (2026-11-19). The first refresh after an upgrade has no fingerprint and
+ * falls back to the old comparison.
+ */
+function ezbizi_payload_changed($payload) {
+    $before = get_option(EZBIZI_LAST_GOOD . '_fp', '');
+    if (! is_string($before) || $before === '') {
+        return ezbizi_payload_differs(get_option(EZBIZI_LAST_GOOD, null), $payload);
+    }
+
+    return $before !== ezbizi_payload_fingerprint($payload);
+}
+
+function ezbizi_payload_fingerprint($payload) {
+    if (! is_array($payload)) {
+        return '';
+    }
+    unset($payload['fetched_at']);
+
+    return md5(serialize(ezbizi_without_signatures($payload)));
+}
+
 function ezbizi_payload_differs($before, $after) {
     if (! is_array($before)) {
         return true;
@@ -345,7 +373,25 @@ function ezbizi_payload_differs($before, $after) {
 
     unset($before['fetched_at'], $after['fetched_at']);
 
-    return $before !== $after;
+    return ezbizi_without_signatures($before) !== ezbizi_without_signatures($after);
+}
+
+/**
+ * A signed link's expires/signature change on every fetch while what it points
+ * at does not. Compared with them in, the chat avatar made every refresh look
+ * like a change and purged the page cache every 5 minutes (Bar, 2026-11-18:
+ * 6,697 purges on call.a-1chimney.com). Only the comparison drops them; the
+ * stored payload keeps the working link.
+ */
+function ezbizi_without_signatures($value) {
+    if (is_array($value)) {
+        return array_map('ezbizi_without_signatures', $value);
+    }
+    if (is_string($value) && strpos($value, 'signature=') !== false) {
+        return preg_replace('/([?&])(expires|signature)=[^&#]*/', '$1', $value);
+    }
+
+    return $value;
 }
 
 /**
@@ -573,6 +619,69 @@ function ezbizi_is_link_key($key) {
 }
 
 add_shortcode('ezbizi', 'ezbizi_shortcode');
+
+/**
+ * [ezbizi_rating] - the rating badge from EzBizi's real review count and
+ * average (every rated review of the company, all locations), never a typed
+ * number (Jose, 2026-11-20). The plugin's refresh purges the page cache when
+ * either value changes. Attributes: format="badge" (default, with microdata),
+ * "count", "average" or "schema" (a JSON-LD aggregateRating block).
+ */
+function ezbizi_rating_shortcode($atts = array()) {
+    $atts = shortcode_atts(array('format' => 'badge', 'name' => ''), $atts, 'ezbizi_rating');
+    $payload = ezbizi_payload();
+    $sum = isset($payload['review_summary']) && is_array($payload['review_summary']) ? $payload['review_summary'] : null;
+    if ($sum === null || empty($sum['count'])) {
+        return '';
+    }
+    $count = number_format((int) $sum['count']);
+    $avg = number_format((float) $sum['average'], 1);
+    switch ($atts['format']) {
+        case 'count':
+            return esc_html($count);
+        case 'average':
+            return esc_html($avg);
+        case 'schema':
+            $name = $atts['name'] !== '' ? $atts['name'] : get_bloginfo('name');
+            return '<script type="application/ld+json">' . wp_json_encode(array(
+                '@context' => 'https://schema.org',
+                '@type' => 'LocalBusiness',
+                'name' => $name,
+                'aggregateRating' => array('@type' => 'AggregateRating', 'ratingValue' => $avg, 'reviewCount' => (int) $sum['count'], 'bestRating' => '5'),
+            )) . '</script>';
+    }
+
+    return '<span class="ezbizi-reviews" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">'
+        . '<span itemprop="ratingValue">' . esc_html($avg) . '</span> Stars - Based on <span itemprop="reviewCount">'
+        . esc_html($count) . '</span> Reviews</span>';
+}
+add_shortcode('ezbizi_rating', 'ezbizi_rating_shortcode');
+
+// A theme's or page's own aggregateRating JSON-LD (A-1's are hand-typed) follows the same live numbers as
+// the badge (desk, 2026-11-21: BBB checks that they match). Only ld+json blocks are touched.
+// ponytail: regex over ld+json text, not a JSON rewrite; good enough for flat "reviewCount": N pairs.
+function ezbizi_fix_rating_jsonld($html) {
+    $payload = ezbizi_payload();
+    $sum = isset($payload['review_summary']) && is_array($payload['review_summary']) ? $payload['review_summary'] : null;
+    if ($sum === null || empty($sum['count']) || stripos($html, 'aggregateRating') === false) {
+        return $html;
+    }
+    $count = (string) (int) $sum['count'];
+    $avg = number_format((float) $sum['average'], 1);
+    return preg_replace_callback('#(<script[^>]*application/ld\+json[^>]*>)(.*?)(</script>)#is', function ($m) use ($count, $avg) {
+        if (stripos($m[2], 'aggregateRating') === false) {
+            return $m[0];
+        }
+        $j = preg_replace('/("reviewCount"\s*:\s*"?)[0-9][0-9,]*/', '${1}' . $count, $m[2]);
+        $j = preg_replace('/("ratingValue"\s*:\s*"?)[0-9](?:\.[0-9]+)?/', '${1}' . $avg, $j);
+        return $m[1] . $j . $m[3];
+    }, $html);
+}
+add_action('template_redirect', function () {
+    if (! is_admin() && ! wp_doing_ajax()) {
+        ob_start('ezbizi_fix_rating_jsonld');
+    }
+}, 0);
 
 // No scrollbar on a phone (Jose, 2026-10-08: A-1's theme draws a thick yellow
 // one); a computer keeps the theme's.

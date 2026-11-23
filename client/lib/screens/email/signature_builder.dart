@@ -150,7 +150,7 @@ String compileSignature(Map<String, dynamic> design) {
 
   final a = 'style="color:$text;text-decoration:none"';
   final contact = <String>[
-    if ('${d['company_phone']}'.trim().isNotEmpty)
+    if ('${d['company_phone'] ?? ''}'.trim().isNotEmpty)
       '<a href="tel:${_esc('${d['company_phone']}'.replaceAll(RegExp(r'[^0-9+]'), ''))}" $a>${_esc(d['company_phone'])}</a>'
           '${lines['extension'] == true ? '{{#extension}} ext. {{extension}}{{/extension}}' : ''}',
     if (lines['email'] == true) '<a href="mailto:{{email}}" $a>{{email}}</a>',
@@ -205,7 +205,7 @@ String compileSignature(Map<String, dynamic> design) {
       '<div style="font-size:${size - 1}px;line-height:${lh - 2}px">${socials.join(sep)}</div>',
     );
   }
-  if ('${d['logo_url']}'.trim().isNotEmpty) {
+  if ('${d['logo_url'] ?? ''}'.trim().isNotEmpty) {
     body.write(
       '<div style="padding-top:8px"><img src="${_esc(d['logo_url'])}" alt="${_esc(d['website'])}" style="display:block;max-height:40px"></div>',
     );

@@ -98,7 +98,7 @@ void main() {
     // token has already named one.
     expect(find.text('At least 16 characters.'), findsOneWidget);
     expect(
-      find.text('At least 12 characters.'),
+      find.text('At least 8 characters.'),
       findsNothing,
       reason: 'The platform floor was stated over the organization’s own rule.',
     );

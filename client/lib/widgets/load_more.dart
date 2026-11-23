@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/numbers.dart';
 import 'error_note.dart';
 
 /// The foot of a paginated list: how much is not on screen, and the way to ask
@@ -26,6 +27,7 @@ class LoadMore extends StatelessWidget {
     required this.busy,
     required this.onMore,
     this.error,
+    this.groupDigits = false,
   });
 
   final int shown;
@@ -39,6 +41,9 @@ class LoadMore extends StatelessWidget {
   final String? error;
 
   final VoidCallback onMore;
+
+  /// "1,234 left" rather than "1234 left" (Jobs, Customers, Estimates).
+  final bool groupDigits;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +61,7 @@ class LoadMore extends StatelessWidget {
                   ? 'Loading…'
                   : error != null
                   ? 'Try again'
-                  : 'Load more ($left left)',
+                  : 'Load more (${groupDigits ? formatCount(left) : '$left'} left)',
             ),
           ),
         ],

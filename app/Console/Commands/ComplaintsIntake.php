@@ -37,7 +37,7 @@ class ComplaintsIntake extends Command
         $opened = 0;
 
         AutomationEvent::withoutGlobalScopes()
-            ->whereIn('event_key', ['review.received', 'lead.received', 'lead.call_complaint'])
+            ->whereIn('event_key', ['review.received', 'lead.received', 'lead.call_complaint', 'email.received'])
             ->where('occurred_at', '>=', $since)->where('occurred_at', '<', $until)
             ->orderBy('occurred_at')
             ->each(function (AutomationEvent $event) use ($tenant, $events, &$opened) {
@@ -50,7 +50,8 @@ class ComplaintsIntake extends Command
                     if ($complaint?->wasRecentlyCreated) {
                         $opened++;
                         // A backfill is history, not news: no rule fires on it.
-                        ! $this->option('since') && $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at'])]);
+                        ! $this->option('since') && $events->emit('complaint.opened', $complaint, ['after' => $complaint->only(['kind', 'rating', 'raised_at', 'client_status', 'priority', 'due_at'])
+            + ['title' => \App\Support\CustomerExperience\ComplaintBoardMirror::title($complaint)]]);
                     }
                 });
             });
@@ -82,6 +83,10 @@ class ComplaintsIntake extends Command
 
     private function open(AutomationEvent $event): ?Complaint
     {
+        if ($event->event_key === 'email.received') {
+            return $this->fromEmail($event);
+        }
+
         [$kind, $type, $subject] = match ($event->event_key) {
             'review.received' => ['bad_review', 'review', Review::query()->find($event->subject_id)],
             'lead.call_complaint' => ['call_complaint', 'lead', Lead::query()->find($event->subject_id)],
@@ -94,11 +99,49 @@ class ComplaintsIntake extends Command
             return null;
         }
 
-        return Complaint::query()->firstOrCreate(
+        $complaint = Complaint::query()->firstOrNew(
             ['source_type' => $type, 'source_id' => $subject->getKey(), 'kind' => $kind],
             ['organization_id' => $event->organization_id, 'company_id' => $subject->company_id,
                 'franchise_id' => $subject->franchise_id, 'status' => 'new',
                 'rating' => $kind === 'bad_review' ? $subject->rating : null, 'raised_at' => $event->occurred_at],
         );
+        if (! $complaint->exists) {
+            \App\Support\CustomerExperience\ComplaintTriage::apply($complaint)->save();
+        }
+
+        return $complaint;
+    }
+
+    /**
+     * BBB and Attorney General complaints arrive by mail (Shoval, 2026-11-20): neither has an API.
+     * Mail from bbb.org, or from a .gov sender whose subject names the Attorney General or consumer
+     * protection, opens a Priority complaint with the subject as its title.
+     */
+    private function fromEmail(AutomationEvent $event): ?Complaint
+    {
+        $after = (array) ($event->payload['after'] ?? []);
+        $domain = strtolower((string) ($after['from_domain'] ?? substr(strrchr((string) ($after['from'] ?? ''), '@') ?: '', 1)));
+        $subject = trim((string) ($after['subject'] ?? ''));
+        $kind = match (true) {
+            $domain === 'bbb.org' || str_ends_with($domain, '.bbb.org') => 'bbb',
+            str_ends_with($domain, '.gov') && preg_match('/attorney general|consumer protection|consumer complaint/i', $subject) => 'attorney_general',
+            default => null,
+        };
+        if ($kind === null) {
+            return null;
+        }
+        $mailbox = \App\Models\Mailbox::query()->find($event->subject_id);
+        $complaint = Complaint::query()->firstOrNew(
+            ['source_type' => 'email', 'source_id' => $event->getKey(), 'kind' => $kind],
+            ['organization_id' => $event->organization_id, 'company_id' => $mailbox?->company_id ?? null,
+                'franchise_id' => $mailbox?->franchise_id ?? null, 'status' => 'new', 'raised_at' => $event->occurred_at,
+                'title' => mb_substr($subject !== '' ? $subject : strtoupper($kind).' complaint', 0, 255),
+                'summary' => 'From '.($after['from'] ?? $domain).' to '.($mailbox?->address ?? $mailbox?->email ?? 'a shared inbox').'.'],
+        );
+        if (! $complaint->exists) {
+            \App\Support\CustomerExperience\ComplaintTriage::apply($complaint)->save();
+        }
+
+        return $complaint;
     }
 }

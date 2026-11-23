@@ -4,7 +4,6 @@ namespace App\Support\Leads;
 
 use App\Models\Lead;
 use App\Models\LeadConversation;
-use App\Services\Leads\LeadInsights;
 use App\Support\Automations\EventEmitter;
 
 /**
@@ -20,7 +19,6 @@ final class LeadThread
 {
     public function __construct(
         private readonly EventEmitter $events,
-        private readonly LeadInsights $insights,
     ) {}
 
     /**
@@ -172,50 +170,22 @@ final class LeadThread
             ->orderByDesc('occurred_at')
             ->first();
 
+        // A call is not a message waiting on an answer: once we text after it,
+        // the thread is ours (Jose, 2026-11-17: an answered call then our "Not
+        // booked" text read "Awaiting reply"). A written message still waits
+        // for a person, so an auto-ack there keeps the overdue alert alive.
+        $from = $lastHuman?->participant;
+        if ($from === LeadConversation::FROM_CONSUMER && $lastHuman->channel === 'PHONE_CALL'
+            && $last?->participant === LeadConversation::FROM_ADVERTISER) {
+            $from = LeadConversation::FROM_ADVERTISER;
+        }
+
         $lead->forceFill([
             'last_contact_at' => $last?->occurred_at,
             'last_contact_channel' => $last?->channel,
-            'last_contact_from' => $lastHuman?->participant,
+            'last_contact_from' => $from,
             'last_contact_preview' => $last !== null ? self::preview($last) : null,
         ])->save();
-
-        $this->classifyOnce($lead);
-    }
-
-    /**
-     * BOOK / SUPPORT / ARCHIVE, once, the first time the enquirer has said
-     * something in words. Every source goes through refresh(), so a website
-     * chat is sorted the same way a Google text is. Never re-run: the pile
-     * a lead landed on is a fact people act on, and `status` is theirs.
-     * `lead.classified` was declared the day the module was drawn, marked
-     * not yet raised; this raises it.
-     */
-    private function classifyOnce(Lead $lead): void
-    {
-        if ($lead->classification !== null || ! $this->insights->inline()) {
-            return;
-        }
-
-        $read = $this->insights->classify($lead);
-
-        if ($read === null) {
-            return;
-        }
-
-        $lead->forceFill([
-            'classification' => $read['classification'],
-            'summary' => $read['summary'] !== '' ? $read['summary'] : $lead->summary,
-            'classified_at' => now(),
-        ])->save();
-
-        $this->events->emitAfterCommit('lead.classified', $lead, [
-            'after' => [
-                'classification' => $lead->classification,
-                'summary' => $lead->summary,
-                'contact_name' => $lead->contact_name,
-                'phone' => $lead->phone,
-            ],
-        ]);
     }
 
     /**

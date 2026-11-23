@@ -303,6 +303,91 @@ class StaffSuggestionsTest extends TestCase
             ->assertJsonPath('data.0.decision_note', 'The board already does this — see the filter menu.');
     }
 
+    /** Jose, 2026-11-17: the author sees an approved suggestion move toward release. */
+    public function test_an_approved_suggestion_carries_its_progress_to_the_author(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+        $staff = $this->withToken($this->staffToken());
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'building'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('progress');
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/decide", ['status' => Suggestion::STATUS_APPROVED])
+            ->assertOk()
+            ->assertJsonPath('data.progress', 'approved');
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", [
+            'progress' => 'releasing',
+            'release_version' => 'v0.0.0584',
+        ])->assertOk()
+            ->assertJsonPath('data.progress', 'releasing')
+            ->assertJsonPath('data.release_version', '0.0.0584');
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'shipped'])
+            ->assertStatus(422);
+
+        $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/suggestions')
+            ->assertOk()
+            ->assertJsonPath('data.0.progress', 'releasing')
+            ->assertJsonPath('data.0.release_version', '0.0.0584');
+    }
+
+    /** Jose, 2026-11-17: the author gets the Alerts pop-up when it is approved and when it goes live, once each. */
+    public function test_the_author_gets_a_pop_up_on_approval_and_on_going_live_once(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+        $staff = $this->withToken($this->staffToken());
+        $alerts = fn () => Notification::query()->withoutGlobalScopes()
+            ->where('user_id', $t['admin']->id)->where('source', 'alert')->orderBy('created_at')->get();
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+            'status' => Suggestion::STATUS_APPROVED,
+            'note' => 'Going in soon.',
+        ])->assertOk();
+        $this->assertCount(1, $alerts());
+        $this->assertSame('Your suggestion was approved: Decide about me. Going in soon.', $alerts()->first()->title);
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'building'])->assertOk();
+        $this->assertCount(1, $alerts(), 'Building tells nobody.');
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'live', 'release_version' => '0.0.0584'])->assertOk();
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'live'])->assertOk();
+        $this->assertCount(2, $alerts(), 'Live once, not on every save.');
+        $this->assertSame('Your suggestion is live in v0.0.0584: Decide about me. Please update to see it.', $alerts()->last()->title);
+
+        // A save from anywhere (the desk's tinker) tells them too: the model's own event.
+        $this->inTenant($t['org'], function () use ($id) {
+            Suggestion::query()->find($id)->update(['progress' => 'testing']);
+            Suggestion::query()->find($id)->update(['progress' => 'live']);
+        });
+        $this->assertCount(3, $alerts());
+
+        $popups = $this->signedInAs($t['admin'])->getJson('/api/v1/notifications')->assertOk()->json('meta.alerts');
+        $this->assertCount(3, $popups);
+        $this->assertSame($id, $popups[0]['suggestion_id']);
+        $this->assertFalse($popups[0]['update']);
+        $this->assertTrue($popups[1]['update']);
+        $this->assertSame('EzBizi', $popups[1]['sender']);
+    }
+
+    public function test_denying_clears_the_progress(): void
+    {
+        [$id] = $this->oneSuggestion();
+        $staff = $this->withToken($this->staffToken());
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/decide", ['status' => Suggestion::STATUS_APPROVED])->assertOk();
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/progress", ['progress' => 'testing'])->assertOk();
+
+        $staff->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+            'status' => Suggestion::STATUS_DENIED,
+            'note' => 'It broke the board; taking it back.',
+        ])->assertOk()
+            ->assertJsonPath('data.progress', null)
+            ->assertJsonPath('data.release_version', null);
+    }
+
     /** The search bar: `q` narrows by words or organization, across tenants; a blank `q` is no filter. */
     public function test_q_narrows_the_queue_and_a_blank_q_changes_nothing(): void
     {

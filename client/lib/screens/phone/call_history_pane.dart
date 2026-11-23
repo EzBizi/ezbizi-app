@@ -5,6 +5,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
@@ -89,10 +90,17 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   void initState() {
     super.initState();
     _load();
+    // A call ringing, answered or ended anywhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'phone_calls'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     super.dispose();
   }
@@ -122,13 +130,14 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     if (old.reloadToken != widget.reloadToken) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final query = _query.trim();
     final response = await widget.api.get('/phone/calls', {
       'per_page': '40',
       if (query.isNotEmpty) 'q': query,
     });
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -276,13 +285,22 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       items.add(_Run(row));
     }
 
-    return ListView.builder(
-      padding: EdgeInsets.only(bottom: widget.bottomPadding),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        if (item is String) return _heading(theme, item);
-        return _tile((item as _Run), theme);
+    // The COLUMN's width decides whether the tag sits under the time, not
+    // the screen's: beside the dial pad on a computer the column is ~290 px,
+    // and a tag column plus the clock left the name ~70 px ("Rach…",
+    // "+1 (77…"), UI pass 2026-11-17.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stack = box.maxWidth < 480;
+        return ListView.builder(
+          padding: EdgeInsets.only(bottom: widget.bottomPadding),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            if (item is String) return _heading(theme, item);
+            return _tile((item as _Run), theme, stack: stack);
+          },
+        );
       },
     );
   }
@@ -323,7 +341,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     return null;
   }
 
-  Widget _tile(_Run run, ThemeData theme) {
+  Widget _tile(_Run run, ThemeData theme, {required bool stack}) {
     final row = run.first;
     final peer = row.peer;
     final muted = theme.colorScheme.onSurfaceVariant;
@@ -396,12 +414,18 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       // WHEN, right-aligned. Under a day heading the clock is enough. The tag
       // sits in a fixed column just left of it so tags line up down the list
       // (design 187); on a phone it goes under the time instead.
-      trailing: _whenAndTag(row, at, muted, theme),
+      trailing: _whenAndTag(row, at, muted, theme, stack: stack),
       onTap: peer.startsWith('+') ? () => widget.onPick(peer) : null,
     );
   }
 
-  Widget _whenAndTag(CallRow row, DateTime? at, Color muted, ThemeData theme) {
+  Widget _whenAndTag(
+    CallRow row,
+    DateTime? at,
+    Color muted,
+    ThemeData theme, {
+    required bool stack,
+  }) {
     final when = Text(
       at == null ? '' : _clock(at),
       style: theme.textTheme.bodySmall?.copyWith(color: muted),
@@ -413,7 +437,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         : row.callerKind == 'lead'
         ? const StatusPill('Lead', tone: Tone.review)
         : null;
-    if (MediaQuery.sizeOf(context).width < 480) {
+    if (stack) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,

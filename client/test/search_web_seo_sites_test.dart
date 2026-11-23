@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 /// Web Management › SEO: the search bar over the site list keeps the
 /// websites whose host or state matches. Every name invented.
 void main() {
+  setUp(SeoTab.forgetSearch);
   Future<void> pump(WidgetTester tester) async {
     // A phone: the list is the screen, with no detail fetched beside it.
     tester.view.physicalSize = const Size(390, 844);
@@ -73,6 +74,14 @@ void main() {
                 'company': {'id': 'co-1'},
                 'missing': 0,
               },
+              {
+                'id': 'site-3',
+                'host': 'acefireplaceservicesandchimneysweeps.example',
+                'is_primary': false,
+                'connected_at': null,
+                'company': {'id': 'co-1'},
+                'missing': 0,
+              },
             ],
             'sections': const [
               {'key': 'general', 'label': 'General'},
@@ -112,6 +121,19 @@ void main() {
 
     expect(find.byKey(one), findsNothing);
     expect(find.byKey(two), findsOneWidget);
+  });
+
+  // UI pass 2026-11-17: a long host broke mid-word in the list column
+  // ("acefireplaceservices.co / m"). It stays on one line.
+  testWidgets('a long website name stays on one line', (tester) async {
+    await pump(tester);
+    final host = find.text('acefireplaceservicesandchimneysweeps.example');
+    final short = find.text('everdoors.example');
+    expect(host, findsOneWidget);
+    expect(
+      tester.getSize(host).height,
+      lessThanOrEqualTo(tester.getSize(short).height),
+    );
   });
 
   testWidgets('a term matching nothing says so in one sentence', (

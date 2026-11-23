@@ -19,9 +19,11 @@ void main() {
     tester,
   ) async {
     final requests = <http.Request>[];
+    var over = 500;
     final api = ApiClient(
       client: MockClient((request) async {
-        requests.add(request);
+        // The live feed's own reads (every 10 s) are not the board's.
+        if (!request.url.path.endsWith('/changes')) requests.add(request);
         final path = request.url.path;
         if (path.endsWith('/me')) {
           return _json({
@@ -65,6 +67,24 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/jobs/j-1/performers')) {
+          return _json({
+            'data': [
+              {'id': 'u-7', 'name': 'Guy Shimonov'},
+              {'id': 'u-9', 'name': 'Old Dispatcher', 'outside_roles': true},
+            ],
+          });
+        }
+        if (path.endsWith('/project-board/repair-teams')) {
+          return _json({
+            'data': {
+              'outcomes': {'Ohio': 'created'},
+              'list': [
+                {'name': 'KENNI REPAIR TEAM', 'phone': '555', 'user_id': null},
+              ],
+            },
+          });
+        }
         if (path.endsWith('/project-board/options')) {
           return _json({
             'data': {
@@ -108,6 +128,7 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {'key': 'technician', 'label': 'Technician', 'visible': true},
               {'key': 'status_days', 'label': 'Status Time', 'visible': true},
               {
                 'key': 'tags',
@@ -120,6 +141,13 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'totals': {
+              'paid': 1500,
+              'due': 1000,
+              'total': 2000,
+              'over': over,
+              'currency': 'USD',
+            },
             'can_edit': true,
             'sortable': ['status_days', 'customer'],
           },
@@ -145,14 +173,42 @@ void main() {
     // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
     // minute while on screen (Jose, 2026-11-10).
     expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    // Totals as tiles (design 193); Overpaid only when there is any.
+    expect(find.text('Total Paid'), findsOneWidget);
+    expect(find.text('Total Remaining Balance'), findsOneWidget);
+    expect(find.text('Total Amount of Jobs'), findsOneWidget);
+    expect(find.byKey(const Key('project-board-total-over')), findsOneWidget);
+    expect(find.byTooltip('Paid beyond the job totals'), findsOneWidget);
+    over = 0;
     final before = requests.length;
     await tester.tap(find.byKey(const Key('project-board-refresh')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-board-total-over')), findsNothing);
+    expect(find.text('Total Paid'), findsOneWidget);
     expect(requests.length, before + 1);
     expect(requests.last.url.queryParameters['per_page'], '50');
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpAndSettle();
     expect(requests.length, before + 2);
+
+    // A technician is settable from the row (Jose, 2026-11-12).
+    await tester.tap(
+      find.byKey(const ValueKey('project-board-technician:j-1')),
+    );
+    await tester.pumpAndSettle();
+    // Only the server's role-filtered list; an assignee outside the roles
+    // is named as such (Jose, 2026-11-16).
+    expect(find.text('Old Dispatcher (not a technician role)'), findsOneWidget);
+    await tester.tap(find.text('Guy Shimonov'));
+    await tester.pumpAndSettle();
+    final tech = requests.lastWhere(
+      (r) => r.method == 'PATCH' && r.url.path.endsWith('/jobs/j-1'),
+    );
+    expect(jsonDecode(tech.body), {'performed_by_user_id': 'u-7'});
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ProjectBoardScreen)),
+    ).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
 
     // Status Time: 7 days and up is red (Jose, 2026-11-10), and Ready to
     // schedule posts once nothing is missing.
@@ -226,6 +282,9 @@ void main() {
       'item': 'Stainless cap',
       'quantity': 1,
       'price_minor': null,
+      'supplier_id': null,
+      'destination': null,
+      'received': false,
     });
 
     // The company's names and order; a hidden column is not drawn.
@@ -262,31 +321,29 @@ void main() {
     expect(requests.last.url.queryParameters['q'], 'lena');
     expect(requests.last.url.queryParameters['franchise_id'], 'f-1');
 
+    // The ninth tab since Dashboard and Inbox (2026-11-17): scrolled to first.
+    await tester.ensureVisible(find.text('Settings'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    // Tag lists are compact pickers, not a wall of chips; the new columns
-    // have their settings (Jose, 2026-11-10).
-    expect(
-      find.byKey(const Key('project-board-tab-tags:unscheduled-add')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('project-board-repair-tags-add')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('project-board-ready-needs:note')),
-      findsOneWidget,
-    );
+    Future<void> sub(String label) async {
+      final tab = find.descendant(
+        of: find.byKey(const Key('project-board-settings-tabs')),
+        matching: find.text(label),
+      );
+      await tester.ensureVisible(tab);
+      await tester.pumpAndSettle();
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+    }
+
+    // Five sub-tabs, opening on Columns (Shoval, 2026-11-18): the board's
+    // look here, and nothing of the stages until Stages is picked.
     expect(find.byKey(const Key('project-board-warn-days')), findsOneWidget);
-    // Statuses are the company's real ones, picked as chips.
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('project-board-statuses:unscheduled')),
-        matching: find.text('On Hold'),
-      ),
+    expect(
+      find.byKey(const ValueKey('project-board-tab-card:unscheduled')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
     // A colour is a swatch, previewed on the label itself.
     await tester.ensureVisible(
       find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
@@ -305,11 +362,55 @@ void main() {
           .tone,
       Tone.bad,
     );
-    await tester.ensureVisible(
-      find.byKey(const Key('project-board-save:tabs')),
+
+    await sub('Stages');
+    expect(session.me!.preferences['project_board.settings_tab'], 'stages');
+    expect(find.byKey(const Key('project-board-warn-days')), findsNothing);
+    // Each sub-tab's rules in its own card (Jose, 2026-11-16).
+    for (final key in const [
+      'unscheduled',
+      'ready_to_schedule',
+      'scheduled',
+      'in_progress',
+    ]) {
+      final card = find.byKey(ValueKey('project-board-tab-card:$key'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.byType(Card)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byKey(ValueKey('project-board-statuses:$key')),
+        ),
+        findsOneWidget,
+      );
+    }
+    // Tag lists are compact pickers, not a wall of chips (Jose, 2026-11-10).
+    expect(
+      find.byKey(const Key('project-board-tab-tags:unscheduled-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('project-board-ready-needs:note')),
+      findsOneWidget,
+    );
+    // Statuses are the company's real ones, picked as chips.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('project-board-statuses:unscheduled')),
+        matching: find.text('On Hold'),
+      ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('project-board-save:tabs')));
+    await tester.ensureVisible(
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
+    );
     await tester.pumpAndSettle();
 
     final tabs = requests.firstWhere(
@@ -321,6 +422,52 @@ void main() {
       'On Hold',
     ]);
     expect(find.text('Project Management settings saved.'), findsOneWidget);
+    // Team: the technician roles, Technician + Local Manager by default, and
+    // the repair teams.
+    await sub('Team');
+    expect(
+      tester
+          .widget<FilterChip>(
+            find.byKey(const ValueKey('project-board-tech-role:Technician')),
+          )
+          .selected,
+      isTrue,
+    );
+    // A repair team is added here and on every Workiz account (Jose, 2026-11-10).
+    await tester.ensureVisible(
+      find.byKey(const Key('project-board-repair-tags-add')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-repair-tags-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-name')),
+      'KENNI REPAIR TEAM',
+    );
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-phone')),
+      '555',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('project-board-repair-team-save')));
+    await tester.pumpAndSettle();
+    final team = requests.lastWhere(
+      (r) => r.url.path.endsWith('/project-board/repair-teams'),
+    );
+    expect(jsonDecode(team.body), {
+      'op': 'create',
+      'name': 'KENNI REPAIR TEAM',
+      'color': null,
+      'phone': '555',
+      'user_id': null,
+    });
+    expect(find.text('Ohio: created'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-board-repair-team:KENNI REPAIR TEAM')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
   });
 }
 

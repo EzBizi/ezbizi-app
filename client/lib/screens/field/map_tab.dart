@@ -5,7 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/logo_badge.dart';
 import 'field_status.dart';
@@ -94,10 +96,22 @@ class _FieldMapTabState extends State<FieldMapTab> {
       _load();
       if (_personId != null && _isToday) _loadTrail(fit: false);
     });
+    // Between the 30 s reads: a technician's position or a job booked or
+    // moved today shows at the next tick of the feed.
+    _live = LiveChanges.of(widget.api).subscribe({'field', 'jobs'}, (_) async {
+      if (_loading) return;
+      await Future.wait([
+        _load(),
+        if (_personId != null && _isToday) _loadTrail(fit: false),
+      ]);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     _attributionDebounce?.cancel();
     super.dispose();
@@ -111,8 +125,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   }
 
   /// The map's day, as the server wants it.
-  String get _ymd =>
-      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+  String get _ymd => formatCalendarDay(_day);
 
   /// One day for the whole map (Jose, 2026-10-01): that day's jobs, and the
   /// route a person drove on it. Today is the default; the arrows step back

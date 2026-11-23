@@ -36,7 +36,7 @@ final class LeadTexts
     /**
      * @throws RuntimeException with a sentence for the run log or the screen
      */
-    public function send(Lead $lead, string $body, ?User $actor = null, bool $automatic = false): LeadConversation
+    public function send(Lead $lead, string $body, ?User $actor = null, bool $automatic = false, bool $capped = false): LeadConversation
     {
         $to = Lead::e164($lead->phone);
         $body = trim($body);
@@ -47,11 +47,14 @@ final class LeadTexts
         $number = $this->line($lead) ?? throw new RuntimeException('No texting line is cleared to send for this lead\'s company.');
         $connection = $number->connection ?? throw new RuntimeException('That texting line has no phone account behind it.');
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, $automatic) ?? throw new RuntimeException(\App\Support\Phone\SmsConsent::REFUSAL);
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, $automatic, $capped) ?? throw new \App\Support\Phone\SmsOptedOut;
 
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
+            if (\App\Support\Phone\SmsConsent::absorbCarrierRefusal((string) $connection->organization_id, $to, $e)) {
+                throw new \App\Support\Phone\SmsOptedOut;
+            }
             throw new RuntimeException('Twilio refused the text'.($e->getMessage() !== '' ? ': '.$e->getMessage() : '.'));
         }
 

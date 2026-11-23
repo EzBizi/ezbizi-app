@@ -161,6 +161,18 @@ void main() {
     expect(lead['contact_name'], 'Jane Doe', reason: 'the lead is evidence');
   });
 
+  // The reply reader (Jose, 2026-11-13): when they said, over the date.
+  testWidgets("the customer's availability and deadline show over the date", (tester) async {
+    await _pump(
+      tester,
+      prefill: _fromLead(lead: {
+        ..._lead,
+        'reading': {'availability': 'Mon 2-5', 'deadline': 'before Fri 11/20', 'scope': 'blower'},
+      }),
+    );
+    expect(find.text('Customer: Mon 2-5 · before Fri 11/20'), findsOneWidget);
+  });
+
   testWidgets('a scheduled booking sends start, end and the repeat', (
     tester,
   ) async {
@@ -231,7 +243,8 @@ void main() {
     await _pump(tester, prefill: _fromLead(), workiz: true);
     expect(
       find.byKey(const ValueKey('ezbizi-only-description')),
-      findsOneWidget,
+      findsNothing,
+      reason: 'Workiz v2 takes the description (Jobs, 2026-11-18)',
     );
     expect(find.byKey(const ValueKey('ezbizi-only-company')), findsOneWidget);
 
@@ -289,6 +302,127 @@ void main() {
     expect(_optionsAsked.first['franchise_id'], 'fr-1');
   });
 
+  // Design 197: the grid on the right, the form on the left.
+  testWidgets('a window picked on the grid fills start and end and is booked', (
+    tester,
+  ) async {
+    await _pump(tester, prefill: _fromLead());
+    expect(find.byKey(const ValueKey('book-two-columns')), findsOneWidget);
+
+    await _tapKey(tester, 'grid-2030-01-02-08:00'); // Full: nothing happens
+    expect(_controllerText(tester, 'book-start'), isNot('2030-01-02 08:00'));
+
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    expect(find.text('Picked'), findsOneWidget);
+    await _tapKey(tester, 'book-submit');
+    expect(_bookings.single['start'], '2030-01-02 11:00');
+    expect(_bookings.single['end'], '2030-01-02 14:00');
+  });
+
+  testWidgets('a refused window shows the rule and the next ones; no reason '
+      'field without scheduling.overbook', (tester) async {
+    await _pump(tester, prefill: _fromLead(), gate: 'refuse');
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    await _tapKey(tester, 'book-submit');
+
+    expect(find.byKey(const ValueKey('book-refusal')), findsOneWidget);
+    expect(find.text(_fridayRule), findsOneWidget);
+    expect(find.byKey(const ValueKey('book-override-reason')), findsNothing);
+
+    await _tapKey(tester, 'book-next-0');
+    expect(find.byKey(const ValueKey('book-refusal')), findsNothing);
+    expect(_controllerText(tester, 'book-start'), '2030-01-03 08:00');
+  });
+
+  testWidgets('with the override: a reason, then Book anyway sends it', (
+    tester,
+  ) async {
+    await _pump(tester, prefill: _fromLead(), gate: 'override');
+    await _tapKey(tester, 'grid-2030-01-02-11:00');
+    await _tapKey(tester, 'book-submit');
+
+    expect(_enabled(tester, 'book-override'), isFalse, reason: 'no reason yet');
+    await tester.enterText(
+      find.byKey(const ValueKey('book-override-reason')),
+      'Customer leaves the country on Saturday',
+    );
+    await tester.pumpAndSettle();
+    await _tapKey(tester, 'book-override');
+    expect(
+      _bookings.last['override_reason'],
+      'Customer leaves the country on Saturday',
+    );
+    expect(find.byKey(const ValueKey('book-result')), findsOneWidget);
+  });
+
+  // Jobs, 2026-11-18: priced services, tags, and Workiz's answer on tags.
+  testWidgets('services and tags are sent, and the total adds them up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      prefill: _fromLead(),
+      workiz: true,
+      answer: 'tags_refused',
+    );
+    await _pick(tester, 'book-job-type', 'Chimney sweep');
+    await _tapKey(tester, 'book-add-service');
+    await _tapKey(tester, 'book-add-service');
+    await _enter(tester, 'book-line-0-name', 'Chimney sweep');
+    await _enter(tester, 'book-line-0-price', '250');
+    await _enter(tester, 'book-line-1-name', 'Cap');
+    await _enter(tester, 'book-line-1-price', '85.50');
+    await _enter(tester, 'book-line-1-qty', '2');
+    expect(find.text('Total USD 421.00'), findsOneWidget);
+
+    await _enter(tester, 'book-tag-input', 'Urgent');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('book-tag-Urgent')), findsOneWidget);
+
+    await _tapKey(tester, 'book-unscheduled');
+    final sent = _bookings.single;
+    expect(sent['line_items'], [
+      {'name': 'Chimney sweep', 'price_minor': 25000, 'qty': 1},
+      {'name': 'Cap', 'price_minor': 8550, 'qty': 2},
+    ]);
+    expect(sent['tags'], ['Urgent']);
+    expect(find.byKey(const ValueKey('book-tags-refused')), findsOneWidget);
+  });
+
+  testWidgets('a price that is not dollars holds Book', (tester) async {
+    await _pump(tester, prefill: _fromLead());
+    await _tapKey(tester, 'book-add-service');
+    await _enter(tester, 'book-line-0-name', 'Sweep');
+    await _enter(tester, 'book-line-0-price', 'abc');
+    expect(_enabled(tester, 'book-unscheduled'), isFalse);
+    await _enter(tester, 'book-line-0-price', '99');
+    expect(_enabled(tester, 'book-unscheduled'), isTrue);
+  });
+
+  testWidgets('a 409 shows who already holds the phone; New client again '
+      'confirms it, picking one books for them', (tester) async {
+    await _pump(tester, prefill: _fromLead(), dupes: true);
+    await _tapKey(tester, 'book-unscheduled');
+    expect(_bookings.single.containsKey('new_customer_confirmed'), isFalse);
+    expect(find.byKey(const ValueKey('book-matches')), findsOneWidget);
+    expect(find.textContaining('9 Oak St'), findsOneWidget);
+    expect(find.byKey(const ValueKey('book-result')), findsNothing);
+    expect(_enabled(tester, 'book-unscheduled'), isFalse, reason: 'decide');
+
+    await _tapKey(tester, 'book-create-anyway');
+    expect(_bookings.length, 2, reason: 'Create anyway books at once');
+    expect(_bookings.last['new_customer_confirmed'], isTrue);
+    expect(find.byKey(const ValueKey('book-result')), findsOneWidget);
+
+    await _pump(tester, prefill: _fromLead(), dupes: true);
+    await _tapKey(tester, 'book-unscheduled');
+    await _tapKey(tester, 'book-use-c-12');
+    await _tapKey(tester, 'book-unscheduled');
+    expect(_bookings.last['customer_id'], 'c-12');
+    expect(_bookings.last.containsKey('customer'), isFalse);
+  });
+
   testWidgets('on a 390x844 phone: stacked section cards, nothing overflows', (
     tester,
   ) async {
@@ -304,7 +438,7 @@ void main() {
     await tester.tap(find.text('Job details'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('book-title')), findsOneWidget);
-    await tester.tap(find.text('Scheduled').first);
+    await tester.tap(find.text('When'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('book-unscheduled')), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -337,6 +471,20 @@ const _lead = {
 };
 
 final _bookings = <Map<String, dynamic>>[];
+
+const _fridayRule =
+    'Friday jobs must be in the 12–3 window or earlier; confirm with the '
+    'field manager or move it.';
+
+String _controllerText(WidgetTester tester, String key) => tester
+    .widget<TextField>(
+      find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byType(TextField),
+      ),
+    )
+    .controller!
+    .text;
 final _retries = <Map<String, dynamic>>[];
 final _optionsAsked = <Map<String, String>>[];
 
@@ -347,6 +495,13 @@ Future<void> _tapKey(WidgetTester tester, String key) async {
   await tester.ensureVisible(find.byKey(ValueKey(key)));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(ValueKey(key)));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enter(WidgetTester tester, String key, String text) async {
+  await tester.ensureVisible(find.byKey(ValueKey(key)));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(ValueKey(key)), text);
   await tester.pumpAndSettle();
 }
 
@@ -374,6 +529,10 @@ Map<String, dynamic> _workiz(String status) => switch (status) {
     'serial_id': 'W-77',
     'assigned': <String>[],
   },
+  'tags_refused' => {
+    ..._workiz('created'),
+    'tags_refused': ['Urgent'],
+  },
   _ => {'status': 'no_workiz'},
 };
 
@@ -383,6 +542,8 @@ Future<void> _pump(
   bool workiz = false,
   String answer = 'no_workiz',
   Size size = const Size(1200, 1600),
+  String? gate,
+  bool dupes = false,
 }) async {
   _bookings.clear();
   _retries.clear();
@@ -465,10 +626,71 @@ Future<void> _pump(
           },
         });
       }
+      if (path.endsWith('/scheduling/availability/days')) {
+        Map<String, dynamic> w(String s, String e, int cap, int taken) => {
+          'start_time': s,
+          'end_time': e,
+          'capacity': cap,
+          'taken': taken,
+          'remaining': cap - taken,
+          'late': false,
+        };
+        return _json({
+          'data': {
+            'area_id': q['area_id'] ?? 'a-north',
+            'area_name': 'North',
+            'configured': true,
+            'days': [
+              {
+                'date': '2030-01-02',
+                'closed': null,
+                'windows': [w('08:00', '11:00', 4, 4), w('11:00', '14:00', 4, 2)],
+              },
+            ],
+          },
+        });
+      }
       if (request.method == 'POST' && path.endsWith('/jobs/book')) {
-        _bookings.add(
-          (jsonDecode(request.body) as Map).cast<String, dynamic>(),
-        );
+        final body = (jsonDecode(request.body) as Map).cast<String, dynamic>();
+        _bookings.add(body);
+        // Jobs: a new client whose phone a customer already holds.
+        if (dupes &&
+            body['customer'] != null &&
+            body['new_customer_confirmed'] != true) {
+          return _json({
+            'message': 'A customer already has this phone or email.',
+            'matches': [
+              {
+                'id': 'c-12',
+                'number': 'C-12',
+                'name': 'Jane Doe',
+                'phone': '+15132267716',
+                'email': null,
+                'address_line1': '9 Oak St',
+                'city': 'Hartford',
+                'owning_franchise_id': 'fr-1',
+              },
+            ],
+          }, 409);
+        }
+        // Jobs' BookingGate: the window filled, or it is after the Friday cut.
+        if (gate != null && body['override_reason'] == null) {
+          return _json({
+            'message': 'That window cannot take this job.',
+            'errors': {
+              'scheduled_for': [_fridayRule],
+            },
+            'next_windows': [
+              {
+                'date': '2030-01-03',
+                'start_time': '08:00:00',
+                'end_time': '11:00:00',
+                'remaining': 2,
+              },
+            ],
+            'can_override': gate == 'override',
+          }, 422);
+        }
         return _json({
           'data': {
             'job': {'id': 'job-1', 'number': 'J-0142'},

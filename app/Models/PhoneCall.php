@@ -22,6 +22,11 @@ use Twilio\Exceptions\RestException;
 class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES); read per line (ChangeFeed::NARROW). */
+    protected static string $changeType = 'phone_calls';
+
     use HasFactory;
     use HasUuids;
 

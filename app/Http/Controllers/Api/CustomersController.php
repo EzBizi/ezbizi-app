@@ -453,10 +453,19 @@ class CustomersController extends Controller
         // owning_franchise_id is absent on purpose. Reassignment is a separate,
         // separately authorised act (§5.2) — allowing it here would let a
         // routine edit move accountability as a side effect.
-        $input = $request->validate($this->rules(forUpdate: true));
+        $input = $request->validate($this->rules(forUpdate: true) + [
+            // "No marketing email": newsletters skip a customer who has it
+            // (SendNewsletter::people). Stamped when, never a bare flag.
+            'email_opt_out' => ['sometimes', 'boolean'],
+        ]);
 
         DB::transaction(function () use ($customer, $input) {
+            $optOut = $input['email_opt_out'] ?? null;
+            unset($input['email_opt_out']);
             $customer->fill($input);
+            if ($optOut !== null && $optOut !== ($customer->email_opt_out_at !== null)) {
+                $customer->forceFill(['email_opt_out_at' => $optOut ? now() : null]);
+            }
 
             $changed = $customer->getDirty();
             $before  = array_intersect_key($customer->getOriginal(), $changed);
@@ -633,6 +642,7 @@ class CustomersController extends Controller
                 'postal_code' => $customer->postal_code,
             ],
             'notes' => $customer->notes,
+            'email_opt_out' => $customer->email_opt_out_at !== null,
             // Derived from jobs, never stored (§5.2).
             'served_by_franchise_ids' => $customer->servedByFranchiseIds(),
             'shared_in_practice'      => $customer->isSharedInPractice(),
@@ -684,15 +694,18 @@ class CustomersController extends Controller
                 Franchise::select('name')->whereColumn('franchises.id', 'customers.owning_franchise_id'),
                 $direction,
             );
+        } elseif (($sort === 'name' || ! isset(self::SORTS[$sort])) && $query->getConnection()->getDriverName() === 'mysql') {
+            // By the name's first letter or digit (desktop review 2026-11-13):
+            // "'Bob" and "-- Ann" sorted ahead of every A, and the list opened
+            // on junk. The stored name is untouched; only the order skips them.
+            $query->orderByRaw("REGEXP_REPLACE(customers.name, '^[^[:alnum:]]+', '') {$direction}");
         } else {
             $query->orderBy(self::SORTS[$sort] ?? 'name', $direction);
         }
 
         // Name second, so equal cities or job counts still read alphabetically,
         // then id, so the order is total and a page cannot repeat or drop a row.
-        if ($sort !== 'name') {
-            $query->orderBy('name');
-        }
+        $query->orderBy('name');
 
         $query->orderBy('customers.id');
     }

@@ -4,9 +4,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/mention_field.dart';
 import '../widgets/connect_account.dart';
@@ -84,6 +86,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Timer? _searchDebounce;
 
   bool _loading = true;
+
+  /// A reload with leads already up (the source or a filter changed).
+  bool _refreshing = false;
   bool _syncing = false;
   String? _error;
   String? _notice;
@@ -145,6 +150,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Unread leads per source key, when the list says (`unread_by_source`).
   /// Empty draws no counts rather than zeros.
   Map<String, int> _unreadBySource = const {};
+
+  /// Named promotions (`promotion_tabs`), newest first: each a tab after
+  /// Promotions holding the answers to it, keyed `promo:<name>` (Shoval,
+  /// 2026-11-06: "Create under leads new tab 'Returning Client Promo'").
+  List<String> _promotionTabs = const [];
 
   /// A phone's sources page is open in place of the list (design 30, 5).
   bool _choosingSource = false;
@@ -211,6 +221,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('workiz', 'Workiz'),
     // Answers to Memberships › Promotions texts (Jose, 2026-11-06).
     ('promotions', 'Promotions'),
+    // Every lead a Recovery text went to, whatever its source, so replies are
+    // answered (Jose, 2026-11-16). Not a source: never one of All's keys.
+    ('recovery', 'Recovery'),
   ];
 
   /// The rail tabs that hold several sources, each its own permission tick
@@ -250,7 +263,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// The same, for All, which never holds job applicants.
   Iterable<String> _allKeysOf(String source) =>
-      _keysOf(source).where((k) => k != 'job_applicant');
+      _keysOf(source).where(
+        (k) =>
+            k != 'job_applicant' && k != 'recovery' && !k.startsWith('promo:'),
+      );
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -275,6 +291,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
     Icons.campaign_outlined, // Promotions: answers to a promotion text
+    Icons.replay_outlined, // Recovery: leads a win-back text went to
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -294,8 +311,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// one endpoint cannot be gated by hiding a chip.
   List<(String, String, IconData)> get _visibleSources => [
     for (var i = 0; i < _sourceChips.length; i++)
-      if (_maySee(_sourceChips[i].$1))
+      if (_maySee(_sourceChips[i].$1)) ...[
         (_sourceChips[i].$1, _labelOf(_sourceChips[i]), _sourceIcons[i]),
+        if (_sourceChips[i].$1 == 'promotions')
+          for (final name in _promotionTabs)
+            ('promo:$name', name, Icons.campaign_outlined),
+      ],
   ];
 
   /// A role without Forms sees "Job applicants", not a Forms tab holding
@@ -307,6 +328,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
+      (source.startsWith('promo:') && _maySee('promotions')) ||
       (_groups[source]?.any((m) => _maySee(m.$1)) ?? false) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
@@ -425,24 +447,37 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _movedFor = null;
 
     _load();
-    _poll = Timer.periodic(_pollEvery, (_) => _load());
+    // The slow poll still carries counts no record write moves (who read
+    // what); the change feed brings a synced or webhooked lead within ~10 s.
+    _poll = Timer.periodic(_pollEvery, (_) => _load(quiet: true));
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'leads'},
+      (_) => _load(quiet: true),
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a background re-read. No dimming (it rebuilds the list and
+  /// loses its scroll) and a failure keeps the rows.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
     setState(() {
       // "Nothing on screen yet", not "a request is in flight" — a refresh after
       // a status change keeps the list rendered rather than tearing it down.
       _loading = _leads.isEmpty;
+      _refreshing = !quiet && _leads.isNotEmpty;
       _error = null;
     });
 
@@ -455,9 +490,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
 
       if (!response.ok) {
-        _error = response.message;
+        if (!quiet || _leads.isEmpty) _error = response.message;
         return;
       }
 
@@ -483,6 +519,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
       };
       _dispatchers = [
         for (final d in meta['dispatchers'] as List? ?? const []) '$d',
+      ];
+      _promotionTabs = [
+        for (final n in meta['promotion_tabs'] as List? ?? const []) '$n',
       ];
     });
 
@@ -512,8 +551,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Map<String, String> get _dateRange {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    String day(DateTime d) =>
-        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final (DateTime, DateTime)? range = switch (_dates) {
       'today' => (today, today),
@@ -531,7 +568,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       '30' => (today.subtract(const Duration(days: 29)), today),
       _ => null,
     };
-    return range == null ? const {} : {'from': day(range.$1), 'to': day(range.$2)};
+    return range == null ? const {} : {'from': formatCalendarDay(range.$1), 'to': formatCalendarDay(range.$2)};
   }
 
   /// Charge, IVR source, dispatcher and dates, under the three filters.
@@ -903,6 +940,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required void Function(Map<String, dynamic> lead) onTap,
   }) => AsyncBody(
     loading: _loading,
+    refreshing: _refreshing,
     error: _error,
     onRetry: _load,
     child: _leads.isEmpty
@@ -1081,7 +1119,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Search, status and Filters share one height (Jose, 2026-11-02: "these 3
   /// fields have different sizes"): the theme's 16 px padding, less 4.
   static const _barPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 12);
-  static const _barHeight = 44.0;
+  static const _barHeight = EzBiziTheme.controlHeight;
 
   Widget _searchField() => TextField(
     key: const ValueKey('tour-leads-search'),
@@ -1096,12 +1134,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
     },
     decoration: InputDecoration(
       isDense: true,
-      contentPadding: _barPadding,
+      // Its 24-high hint line: 10 + 24 + 10 fills the 44 slot exactly.
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       prefixIcon: const Icon(Icons.search, size: 20),
+      // Material's 48 floor on an icon outgrew the 44 slot (search_picker).
+      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
+      suffixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
       hintText: 'Search name, phone or message',
-      border: const OutlineInputBorder(),
       suffixIcon: _search.text.isEmpty
           ? null
           : IconButton(
@@ -1141,7 +1182,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: LayoutBuilder(
+        // Standard density: the desktop's compact one drew the field and the
+        // picker 36 high in their 44 slots, beside a 44 Filters button.
+        child: Theme(
+          data: theme.copyWith(visualDensity: VisualDensity.standard),
+          child: LayoutBuilder(
           builder: (context, box) => Row(
             children: [
               Expanded(
@@ -1163,6 +1208,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
       _filterRow(theme, withStatus: false),
@@ -1353,7 +1399,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ),
           ),
         ),
-        for (final s in _visibleSources.where((s) => s.$1 != 'job_applicant'))
+        for (final s in _visibleSources.where(
+          (s) => s.$1 != 'job_applicant' && !s.$1.startsWith('promo:'),
+        ))
           FilterChip(
             key: ValueKey('all-source-${s.$1}'),
             tooltip: _allLeftOut.contains(s.$1)
@@ -2019,10 +2067,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
     final canConnect = _canConnect;
+    // UI pass 11-16: with Unreplied on, eight leads read "No enquiries yet".
+    final filtered =
+        _search.text.trim().isNotEmpty ||
+        _unreplied ||
+        _overdue ||
+        _followUp ||
+        _starred ||
+        _status.isNotEmpty ||
+        _foldedSet > 0;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        // The text ran to the screen's edges on a phone.
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        constraints: const BoxConstraints(maxWidth: 420 + 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2034,7 +2093,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 12),
             Text(
               connected
-                  ? (_sourceLabel == null
+                  ? (filtered
+                        ? 'No leads match these filters'
+                        : _sourceLabel == null
                         ? 'No enquiries yet'
                         : 'No $_sourceLabel enquiries yet')
                   : 'No advertising account connected',
@@ -2305,6 +2366,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
         LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id'))
       else
         _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
+        if (lead['recovery_at'] != null)
+          _SourceBadge('Recovery', key: ValueKey('recovery-badge-$id')),
       // The channel badge is drawn only when it says something the source
       // badge does not. "Call · Google" is two facts; a chat row read "Chat ·
       // Chat", one fact twice (UI/UX, 2026-09-08). The rule needs no list of
@@ -2530,7 +2593,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   // instead, maybe make them a bit smaller too").
                   if (tags.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.only(top: 5),
                       child: Theme(
                         data: theme.copyWith(
                           textTheme: theme.textTheme.copyWith(

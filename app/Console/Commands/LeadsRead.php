@@ -26,15 +26,23 @@ class LeadsRead extends Command
 
     public function handle(LeadInsights $insights, TenantContext $tenant, EventEmitter $events): int
     {
-        if ($insights->inline() || ! $insights->enabled()) {
-            return self::SUCCESS;   // Bedrock sorts inline; nothing configured, nothing to do
+        if (! $insights->enabled()) {
+            return self::SUCCESS;   // nothing configured, nothing to do
         }
 
         $leads = Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')   // AI never reads a hidden lead
             ->when($this->option('lead') !== [],
                 fn ($q) => $q->whereIn('id', $this->option('lead')),
-                fn ($q) => $q->whereNull('classification')
-                    ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since())))
+                // Unread, or the customer wrote again since the last read (the
+                // reply reader, Jose 2026-11-13: Rose Wyka's reply was never read).
+                fn ($q) => $q->where(fn ($w) => $w
+                    ->where(fn ($n) => $n->whereNull('classification')
+                        ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since())))
+                    ->orWhereExists(fn ($e) => $e->from('lead_conversations')
+                        ->whereColumn('lead_conversations.lead_id', 'leads.id')
+                        ->where('participant', LeadConversation::FROM_CONSUMER)
+                        ->where('occurred_at', '>=', now()->subDays(3))
+                        ->whereColumn('occurred_at', '>', 'leads.classified_at'))))
             ->where('is_test', false)
             // Something said in words: a message, or a call already transcribed.
             ->whereExists(fn ($q) => $q->from('lead_conversations')
@@ -82,6 +90,8 @@ class LeadsRead extends Command
                     $booked = ! $applicant && ! $junk && ! $lost && $answer['booked'] && $before === Lead::STATUS_NEW;
                     $decided = $applicant || $junk || $lost || $booked;
 
+                    $answer = self::withForm($lead, $answer);
+
                     // Rodrigo's §3 merge table (NameDecision): fill a blank,
                     // enrich a first name, correct AI's own weak spelling; a
                     // name a person set, or a shared phone, is only flagged.
@@ -109,8 +119,33 @@ class LeadsRead extends Command
                         'postal_code' => $lead->postal_code ? null : $answer['zip'],
                     ], fn ($v) => $v !== null && $v !== '');
 
+                    // The reply reader: a blank is filled, a different value is
+                    // only offered ("Use (516) 404-1690?"), never overwritten.
+                    $contacts = self::contacts($lead, $answer);
+                    $aiSet += $contacts['fill'];
+                    $reading = array_filter([
+                        'suggest' => $contacts['suggest'] ?: null,
+                        'scope' => $answer['scope'] ?? null,
+                        'deadline' => $answer['deadline'] ?? null,
+                        'availability' => $answer['availability'] ?? null,
+                    ]);
+                    if ($reading !== [] || $contacts['fill'] !== []) {
+                        // What was read and from which message, for the lead's activity.
+                        $reading['source'] = mb_substr((string) LeadConversation::query()->where('lead_id', $lead->getKey())
+                            ->where('participant', LeadConversation::FROM_CONSUMER)->latest('occurred_at')->value('text'), 0, 500);
+                        $aiSet['reading'] = $reading + ['filled' => array_keys($contacts['fill'])];
+                    }
+                    $summary = $answer['summary'] !== '' ? $answer['summary'] : $lead->summary;
+                    $when = implode('; ', array_filter([$answer['availability'] ?? null, $answer['deadline'] ?? null]));
+                    if ($answer['summary'] !== '' && $when !== '') {
+                        $summary = mb_substr($summary.' · '.$when, 0, 255);
+                    }
+
                     $lead->forceFill([
-                        'ai_set' => $aiSet !== [] ? ['at' => now()->toIso8601String()] + $aiSet : null,
+                        // Kept across reads: a later reply adds to what the first one set.
+                        'ai_set' => $aiSet !== [] ? ['at' => now()->toIso8601String()] + $aiSet + ($lead->ai_set ?? []) : $lead->ai_set,
+                        ...$contacts['fill'],
+                        'phone_digits' => isset($contacts['fill']['phone']) ? Lead::digits($contacts['fill']['phone']) : $lead->phone_digits,
                         'status' => match (true) {
                             $applicant => Lead::STATUS_JOB_APPLICANT,
                             $junk => Lead::STATUS_NOT_A_LEAD,
@@ -121,7 +156,7 @@ class LeadsRead extends Command
                         // Google Local Services only: Google refunds its own leads.
                         'credit_reason' => $lead->source === Lead::SOURCE_LOCAL_SERVICES ? $answer['google_credit'] : null,
                         'classification' => $answer['classification'],
-                        'summary' => $answer['summary'] !== '' ? $answer['summary'] : $lead->summary,
+                        'summary' => $summary,
                         'classified_at' => now(),
                         'contact_name' => in_array($nameAction, ['fill', 'enrich', 'correct'], true) ? $name : $lead->contact_name,
                         'postal_code' => $lead->postal_code ?: $answer['zip'],
@@ -148,6 +183,70 @@ class LeadsRead extends Command
         $this->info("Read {$read} lead(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Our own booking widget's message ("Name: / Phone: / Address: / ZIP:",
+     * WebsiteEnquiries) is read by its labels, not by a model, and wins over
+     * the model (Jose, 2026-11-13: Charlotte Owens' booking left the lead
+     * unnamed, and her free-text "available tomorrow" landed in the address).
+     */
+    public static function withForm(Lead $lead, array $answer): array
+    {
+        $texts = LeadConversation::query()->where('lead_id', $lead->getKey())
+            ->where('participant', LeadConversation::FROM_CONSUMER)->latest('occurred_at')->pluck('text');
+        $form = [];
+        foreach ($texts as $text) {
+            if (preg_match_all('/^(Name|Phone|Address|ZIP):[ \t]*(\S.*?)\s*$/mi', (string) $text, $m, PREG_SET_ORDER) >= 3) {
+                foreach ($m as [, $label, $value]) {
+                    $form[strtolower($label)] = $value;
+                }
+                break;
+            }
+        }
+        if (isset($form['name'])) {
+            [$answer['name'], $answer['name_basis']] = [$form['name'], 'spelled_or_corrected'];
+        }
+        if (isset($form['phone'])) {
+            $answer['phones'] = [substr((string) preg_replace('/^1(?=\d{10}$)/', '', (string) Lead::digits($form['phone'])), 0, 10), ...($answer['phones'] ?? [])];
+        }
+        if (isset($form['address'])) {
+            $answer['address'] = $form['address'];
+        }
+        if (isset($form['zip']) && preg_match('/^\d{5}$/', $form['zip'])) {
+            $answer['zip'] = $form['zip'];
+        }
+
+        return $answer;
+    }
+
+    /**
+     * Phone, email and address the customer gave: blanks to fill, and what
+     * differs from what the lead holds, to offer.
+     *
+     * @return array{fill: array<string, string>, suggest: array<string, string>}
+     */
+    public static function contacts(Lead $lead, array $answer): array
+    {
+        $fill = [];
+        $suggest = [];
+
+        $phone = collect($answer['phones'] ?? [])->first(fn ($d) => $d !== substr((string) Lead::digits($lead->phone), -10));
+        if ($phone !== null) {
+            $shown = sprintf('(%s) %s-%s', substr($phone, 0, 3), substr($phone, 3, 3), substr($phone, 6));
+            blank($lead->phone) ? $fill['phone'] = '+1'.$phone : $suggest['phone'] = $shown;
+        }
+        $email = collect($answer['emails'] ?? [])->first(fn ($e) => $e !== mb_strtolower((string) $lead->email));
+        if ($email !== null) {
+            blank($lead->email) ? $fill['email'] = $email : $suggest['email'] = $email;
+        }
+        $address = $answer['address'] ?? null;
+        // The same place spelled differently is not offered (Lead::sameAddress).
+        if ($address !== null && (blank($lead->address) || ! Lead::sameAddress($address, $lead->address))) {
+            blank($lead->address) ? $fill['address'] = $address : $suggest['address'] = $address;
+        }
+
+        return ['fill' => $fill, 'suggest' => $suggest];
     }
 
     /** Another lead on this phone goes by a different name: one number, maybe two people. */

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/timestamps.dart';
 import '../widgets/calendar_day_field.dart';
+import 'task_board_sensitive.dart';
 
 /// Design 178 (Jose, 2026-11-03): the board's Calendar and Timeline views.
 /// Both draw the tasks they are given; every write goes back through the
@@ -14,21 +15,13 @@ DateTime? planDay(Object? v) => v is String && v.length >= 10
     ? DateTime.tryParse(v.substring(0, 10))
     : null;
 
-String planIso(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
 DateTime _today() {
   final n = DateTime.now();
   return DateTime(n.year, n.month, n.day);
 }
 
-const _months = [
-  'January', 'February', 'March', 'April', 'May', 'June', 'July', //
-  'August', 'September', 'October', 'November', 'December',
-];
-const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-String _short(DateTime d) => '${_months[d.month - 1].substring(0, 3)} ${d.day}';
+String _short(DateTime d) =>
+    '${longMonths[d.month - 1].substring(0, 3)} ${d.day}';
 
 /// A task as a small coloured chip; it carries its status's colour.
 class _Chip extends StatelessWidget {
@@ -54,7 +47,7 @@ class _Chip extends StatelessWidget {
             border: Border(left: BorderSide(color: colour, width: 3)),
           ),
           child: Text(
-            '${task['title']}',
+            taskTitle(task),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall,
@@ -159,8 +152,8 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
       child: Text(s, style: theme.textTheme.titleSmall),
     );
     String name(DateTime d) => d == _today()
-        ? 'Today · ${_weekdays[d.weekday - 1]} ${_short(d)}'
-        : '${_weekdays[d.weekday - 1]} ${_short(d)}';
+        ? 'Today · ${shortWeekdays[d.weekday - 1]} ${_short(d)}'
+        : '${shortWeekdays[d.weekday - 1]} ${_short(d)}';
     return ListView(
       key: const Key('plan-agenda'),
       children: [
@@ -189,7 +182,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
     key: ValueKey('plan-row-${t['id']}'),
     dense: true,
     leading: Container(width: 4, height: 28, color: widget.colourOf(t)),
-    title: Text('${t['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+    title: Text(taskTitle(t), maxLines: 1, overflow: TextOverflow.ellipsis),
     onTap: () => widget.onOpen(t),
     trailing: widget.canEdit
         ? TextButton(
@@ -231,11 +224,11 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
       final outside = !_week && d.month != _anchor.month;
       final today = d == _today();
       return DragTarget<PlanTask>(
-        key: ValueKey('plan-day-${planIso(d)}'),
+        key: ValueKey('plan-day-${formatCalendarDay(d)}'),
         onWillAcceptWithDetails: (_) => widget.canEdit,
         onAcceptWithDetails: (det) {
           if (planDay(det.data['due_on']) != d) {
-            widget.onMoveDate(det.data, planIso(d));
+            widget.onMoveDate(det.data, formatCalendarDay(d));
           }
         },
         builder: (context, hover, _) => Container(
@@ -272,7 +265,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
                       ),
                     if (shown.length < tasks.length)
                       InkWell(
-                        key: ValueKey('plan-more-${planIso(d)}'),
+                        key: ValueKey('plan-more-${formatCalendarDay(d)}'),
                         onTap: () => setState(() => _opened.add(d)),
                         child: Text(
                           '+${tasks.length - shown.length} more',
@@ -312,7 +305,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
                   for (final t in undated)
                     MenuItemButton(
                       onPressed: () => widget.onOpen(t),
-                      child: Text('${t['title']}'),
+                      child: Text(taskTitle(t)),
                     ),
                 ],
                 builder: (context, c, _) => OutlinedButton(
@@ -333,7 +326,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
               Text(
                 _week
                     ? 'Week of ${_short(start)}'
-                    : '${_months[_anchor.month - 1]} ${_anchor.year}',
+                    : '${longMonths[_anchor.month - 1]} ${_anchor.year}',
                 key: const Key('plan-period'),
                 style: theme.textTheme.titleSmall,
               ),
@@ -348,7 +341,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
           const SizedBox(height: 6),
           Row(
             children: [
-              for (final w in _weekdays)
+              for (final w in shortWeekdays)
                 Expanded(
                   child: Text(
                     w,
@@ -422,10 +415,15 @@ class TaskBoardTimeline extends StatefulWidget {
     required this.onSetRange,
     this.onAddColumn,
     this.compact = false,
+    this.isDone,
   });
 
   final List<Map<String, dynamic>> groups;
   final List<PlanTask> Function(Object? groupId) tasksIn;
+
+  /// Whether a task's status is a done one; an open task whose end date has
+  /// passed draws in the error colour, as Monday's does.
+  final bool Function(PlanTask)? isDone;
 
   /// The board's first Timeline column; null shows how to add one.
   final String? columnId;
@@ -503,7 +501,8 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       final from = r.$1.add(Duration(days: d?.move ?? 0));
       var to = r.$2.add(Duration(days: (d?.move ?? 0) + (d?.grow ?? 0)));
       if (to.isBefore(from)) to = from;
-      final colour = widget.colourOf(t);
+      final late = r.$2.isBefore(today) && !(widget.isDone?.call(t) ?? false);
+      final colour = late ? theme.colorScheme.error : widget.colourOf(t);
       // A board picks its own status colours: dark ink on a light bar.
       final ink =
           ThemeData.estimateBrightnessForColor(colour) == Brightness.dark
@@ -514,15 +513,35 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
         final cur = _drag;
         setState(() => _drag = null);
         if (cur != null && (cur.move != 0 || cur.grow != 0)) {
-          widget.onSetRange(t, planIso(from), planIso(to));
+          widget.onSetRange(t, formatCalendarDay(from), formatCalendarDay(to));
         }
       }
 
       final barW = (to.difference(from).inDays + 1) * dayW;
+      final range = from == to ? _short(from) : '${_short(from)}–${_short(to)}';
+      // A short bar wore a clipped "Nov" (hands-on QA 11-16): its dates go
+      // beside it instead, as Monday does.
+      final outside = barW < 96;
       return SizedBox(
         height: rowH,
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
+            if (outside)
+              Positioned(
+                left: x(from) + barW + 6,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    range,
+                    key: ValueKey('plan-bar-label-${t['id']}'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               left: x(from),
               top: 6,
@@ -556,9 +575,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                     children: [
                       Expanded(
                         child: Text(
-                          from == to
-                              ? _short(from)
-                              : '${_short(from)}–${_short(to)}',
+                          outside ? '' : range,
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           style: theme.textTheme.labelSmall?.copyWith(
@@ -626,7 +643,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
-                    '${t['title']}',
+                    taskTitle(t),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -658,7 +675,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
           left: x(at) + 4,
           top: 4,
           child: Text(
-            '${_months[d.month - 1]} ${d.year}',
+            '${longMonths[d.month - 1]} ${d.year}',
             style: theme.textTheme.labelSmall,
           ),
         ),

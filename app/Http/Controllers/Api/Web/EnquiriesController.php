@@ -21,6 +21,7 @@ use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingConfirmations;
 use App\Support\Web\BookingLink;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
@@ -248,6 +249,9 @@ class EnquiriesController extends Controller
             // A review link's customer token: the faces' sad form sends it
             // instead of asking for a name, phone and email (Jose, 2026-10-08).
             'c' => ['nullable', 'string', 'max:200'],
+            // The booking widget's SMS box, when its ZIP has no area and it files a form.
+            'sms_consent' => ['nullable', 'boolean'],
+            'sms_consent_text' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -298,6 +302,9 @@ class EnquiriesController extends Controller
                 'page_url' => $input['page_url'] ?? null,
                 'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
                 'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
+                'sms_consent' => (bool) ($input['sms_consent'] ?? false),
+                'sms_consent_text' => $input['sms_consent_text'] ?? null,
+                'ip' => $request->ip(),
             ], $attachments);
 
             $this->notify($site, (string) ($form['notify'] ?? ''), $input['fields'], $attachments);
@@ -327,12 +334,54 @@ class EnquiriesController extends Controller
     }
 
     /** GET /api/v1/web/chat/avatar/{user} — a dispatcher's photo, by the signed link a chat was given. */
-    public function avatar(string $user): StreamedResponse
+    public function avatar(string $user): \Symfony\Component\HttpFoundation\Response
     {
         $subject = $this->tenant->runWithoutTenant(fn () => User::query()->find($user));
         abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
 
-        return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+        // A chat header draws it at ~40 px: send ~96 px, not the 500 KB original (Bar, 2026-11-18).
+        // Base64 in the cache: the production store is the database `cache`
+        // table, whose text column refused raw JPEG bytes (SQLSTATE 1366, 500 on
+        // every avatar, 2026-11-19). A cache failure still serves the original.
+        try {
+            $small = (string) base64_decode((string) \Illuminate\Support\Facades\Cache::remember(
+                'web-chat-avatar-b64:'.sha1($subject->avatar_path),
+                now()->addDays(30),
+                fn () => base64_encode(self::thumbnail((string) app(FileStore::class)->contents($subject->avatar_path)) ?? ''),
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+            $small = '';
+        }
+
+        if ($small === '') {
+            return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+        }
+
+        return response($small, 200, [
+            'Content-Type' => 'image/jpeg',
+            // The URL changes with the photo, so it can be cached for good.
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ]);
+    }
+
+    /** A 96 px square JPEG of [$bytes], or null when GD cannot read it. */
+    public static function thumbnail(string $bytes, int $size = 96): ?string
+    {
+        $src = $bytes === '' ? false : @imagecreatefromstring($bytes);
+        if ($src === false) {
+            return null;
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $side = min($w, $h);
+        $dst = imagecreatetruecolor($size, $size);
+        imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $src, 0, 0, intdiv($w - $side, 2), intdiv($h - $side, 2), $size, $size, $side, $side);
+        ob_start();
+        imagejpeg($dst, null, 82);
+
+        return (string) ob_get_clean();
     }
 
     /**
@@ -449,10 +498,16 @@ class EnquiriesController extends Controller
             'name' => [$linked ? 'nullable' : 'required', 'string', 'max:191'],
             'phone' => [$linked ? 'nullable' : 'required', 'string', 'max:40'],
             'address' => ['required', 'string', 'max:300'],
+            // Optional; where the confirmation email goes (Jose, 2026-11-11).
+            'email' => ['nullable', 'email', 'max:191'],
             'page_url' => ['nullable', 'string', 'max:500'],
             'captcha' => ['nullable', 'string', 'max:2000'],
             'turnstile' => ['nullable', 'string', 'max:4000'],
+            // The SMS box on the last step and the words beside it (Jose, 2026-11-11).
+            'sms_consent' => ['nullable', 'boolean'],
+            'sms_consent_text' => ['nullable', 'string', 'max:1000'],
         ]);
+        $input['ip'] = $request->ip();
 
         // Spam bookings would hold real seats, so the robot check is never off here.
         if (! FormChallenge::passes($input['captcha'] ?? null)
@@ -498,12 +553,22 @@ class EnquiriesController extends Controller
                         Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
                 }
 
-                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], [
+                $visitor = [
                     'name' => $input['name'] ?? null,
                     'phone' => $input['phone'] ?? null,
+                    'email' => $input['email'] ?? null,
                     'zip' => $input['zip'],
                     'page_url' => $input['page_url'] ?? null,
-                ], $lead));
+                    'sms_consent' => (bool) ($input['sms_consent'] ?? false),
+                    'sms_consent_text' => $input['sms_consent_text'] ?? null,
+                    'ip' => $input['ip'],
+                ];
+                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], $visitor, $lead));
+
+                if (($input['email'] ?? '') !== '') {
+                    $confirm = app(BookingConfirmations::class);
+                    $confirm->send($site, $input['email'], $confirm->details($site, $input['date'], $window, $input['address'], $visitor));
+                }
 
                 return response()->json(['received' => true, 'date' => $input['date']] + $window, Response::HTTP_CREATED)
                     ->withHeaders($this->browserHeaders());
@@ -533,7 +598,7 @@ class EnquiriesController extends Controller
      *
      * @return list<array{date: string, windows: list<array{start_time: string, end_time: string}>}>
      */
-    private function bookingOpen(ServiceArea $area, mixed $organization): array
+    public function bookingOpen(ServiceArea $area, mixed $organization): array
     {
         $settings = app(SettingsResolver::class);
         $zone = (string) $settings->get('timezone', $organization);

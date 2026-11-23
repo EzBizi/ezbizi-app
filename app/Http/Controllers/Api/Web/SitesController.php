@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Mail\BookingConfirmationMail;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingConfirmations;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
@@ -69,11 +71,19 @@ class SitesController extends Controller
                 ->get();
 
         $missing = $this->missingCounts($sites);
+        // When this site's details last changed here, so the screen can say
+        // whether the website has read them since (last_seen_at).
+        $savedAt = $sites->isEmpty() ? collect() : WebValue::query()
+            ->whereIn('site_id', $sites->modelKeys())
+            ->groupBy('site_id')
+            ->selectRaw('site_id, max(updated_at) as saved_at')
+            ->pluck('saved_at', 'site_id');
 
         return response()->json([
             'data' => $sites->map(fn (WebSite $site) => [
                 ...$this->present($site),
                 'missing' => $missing[$site->id] ?? 0,
+                'values_saved_at' => isset($savedAt[$site->id]) ? \Illuminate\Support\Carbon::parse($savedAt[$site->id], 'UTC')->toIso8601String() : null,
             ])->values(),
             // The editor's sections, so adding one stays a line in SeoFields
             // rather than a line there and a matching line in Dart.
@@ -215,6 +225,21 @@ class SitesController extends Controller
         $site->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * GET /api/v1/web/sites/{site}/booking-confirmation-preview: the booking
+     * confirmation email this site sends, with sample booking data (Jose, 2026-11-11).
+     */
+    public function bookingConfirmationPreview(WebSite $site, BookingConfirmations $confirmations): Response
+    {
+        $this->authorize('view', $site);
+
+        $details = $confirmations->details($site, now()->addDays(2)->toDateString(),
+            ['start_time' => '08:00', 'end_time' => '11:00'], '123 Main St, Springfield, CT 06810',
+            ['name' => 'Sample Customer', 'service' => 'Inspection']);
+
+        return response(BookingConfirmationMail::page($details), 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 
     /** POST /api/v1/web/sites/{site}/token */

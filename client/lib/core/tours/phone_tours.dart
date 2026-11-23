@@ -394,29 +394,25 @@ const Map<String, Tour> phoneTours = {
     ],
   ),
   'scheduling/Re-Scheduling/Overbooking': Tour(
-    version: 2,
+    version: 3,
     steps: [
       TourStep(
-        anchor: 'tour-scheduling-overbooking-counts',
-        title: 'Overbooked and full',
+        anchor: 'tour-booked-day',
+        title: 'The day',
         body:
-            'Days booked past what an area or a franchise takes, and areas '
-            'with no spot left. Click an overbooked row below for its jobs.',
+            'Tomorrow by default. ‹ and › move a day; Today and Tomorrow jump.',
       ),
       TourStep(
-        anchor: 'tour-scheduling-overbooking-span',
-        title: 'How far ahead',
-        body: 'Overbooked days in the next 7, 14, 30 or 60 days.',
+        anchor: 'booked-over-days',
+        title: 'Days over',
+        body:
+            'The next 14 days that are over capacity, and in how many areas. '
+            'Tap one to open it.',
       ),
       TourStep(
-        anchor: 'overbooking-pick-date',
-        title: 'One day',
-        body: 'Pick a date to see that day alone; the × clears it.',
-      ),
-      TourStep(
-        anchor: 'tour-scheduling-fully-booked',
-        title: 'Fully booked',
-        body: 'Areas with no spot left, each with its next opening.',
+        anchor: 'tour-booked-summary',
+        title: 'The whole day',
+        body: 'Areas over capacity, open spots and full areas that day.',
       ),
     ],
   ),

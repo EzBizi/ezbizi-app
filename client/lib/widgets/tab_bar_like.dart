@@ -1,8 +1,11 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../core/theme.dart';
 import 'not_filled_in.dart';
+import 'side_panel.dart';
 
 /// A simple segmented row of destinations.
 ///
@@ -22,8 +25,15 @@ class TabBarLike extends StatefulWidget {
     required this.onSelected,
     this.missing,
     this.tones,
-    this.level = TabLevel.primary,
+    this.level,
+    this.wrap = false,
   });
+
+  /// On a desk (600 px and wider), wrap onto more lines instead of scrolling
+  /// sideways: for a row whose every chip must be on show at once, as the
+  /// hours review's websites (Jose, 2026-09-29: "on desktop you should just
+  /// be able to see all the websites"). Every other row scrolls.
+  final bool wrap;
 
   final List<(String, IconData)> labels;
   final int selected;
@@ -37,11 +47,23 @@ class TabBarLike extends StatefulWidget {
   /// (the hours review, 2026-09-29: a website that changes, green).
   final List<Tone?>? tones;
 
-  /// Which row of tabs this is (UI queue 69). A module's own tabs are pills,
-  /// the tabs inside one of them are underlined words, and a third row is a
-  /// small switch. When every level was a pill, Marketing stacked three rows
-  /// nobody could tell apart.
-  final TabLevel level;
+  /// Which row of tabs this is. Jose, 2026-11-13 (tab-style.html, option A):
+  /// a module's own tabs are underlined words, and every row inside one is
+  /// small pills, the way Google, Microsoft and Stripe draw pages vs filters.
+  ///
+  /// Null works the level out from where the row sits: inside a [SidePanel]
+  /// (a record's own tabs) it is [TabLevel.secondary], so a customer record
+  /// and a job record draw the same pills; anywhere else it is a module's own
+  /// row (mobile review 2026-11-13, P4: the customer record was underlined
+  /// while the job record was pills).
+  final TabLevel? level;
+
+  /// The level this row draws at, explicit or inferred.
+  static TabLevel levelOf(BuildContext context, TabLevel? level) =>
+      level ??
+      (context.findAncestorWidgetOfExactType<SidePanel>() != null
+          ? TabLevel.secondary
+          : TabLevel.primary);
 
   @override
   State<TabBarLike> createState() => _TabBarLikeState();
@@ -52,6 +74,9 @@ class _TabBarLikeState extends State<TabBarLike> {
   final _scroll = ScrollController();
   final _keys = <int, GlobalKey>{};
   bool _more = false;
+
+  /// Tabs lie before the left edge (the strip has been scrolled along).
+  bool _less = false;
 
   @override
   void initState() {
@@ -80,7 +105,13 @@ class _TabBarLikeState extends State<TabBarLike> {
         _scroll.hasClients &&
         _scroll.position.hasContentDimensions &&
         _scroll.offset < _scroll.position.maxScrollExtent - 1;
-    if (more != _more && mounted) setState(() => _more = more);
+    final less = _scroll.hasClients && _scroll.offset > 1;
+    if ((more != _more || less != _less) && mounted) {
+      setState(() {
+        _more = more;
+        _less = less;
+      });
+    }
   }
 
   /// UI audit, 2026-10-08: on a phone the selected tab could sit past the
@@ -115,8 +146,8 @@ class _TabBarLikeState extends State<TabBarLike> {
     final labels = widget.labels;
     final selected = widget.selected;
     final missing = widget.missing;
-    final tones = widget.tones;
     final onSelected = widget.onSelected;
+    final level = TabBarLike.levelOf(context, widget.level);
     // SIX CALLERS INVENTED SIX ANSWERS TO THE SAME QUESTION.
     //
     // This widget speaks positions, and most of its callers build `labels`
@@ -172,98 +203,24 @@ class _TabBarLikeState extends State<TabBarLike> {
           },
           onTap: () => onSelected(i),
           excludeSemantics: true,
-          child: widget.level != TabLevel.primary
-              ? _plain(context, i)
-              : ChoiceChip(
-                  avatar: Icon(
-                    labels[i].$2,
-                    size: 16,
-                    color: switch (tones?[i]) {
-                      final tone? => ToneColours.of(context, tone).ink,
-                      null => null,
-                    },
-                  ),
-                  label: switch (missing?[i] ?? 0) {
-                    0 => Text(labels[i].$1),
-                    final count => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(labels[i].$1),
-                        const SizedBox(width: 6),
-                        MissingCount(
-                          count,
-                          tooltip:
-                              '$count ${count == 1 ? 'field' : 'fields'} '
-                              'not filled in',
-                        ),
-                      ],
-                    ),
-                  },
-                  selected: i == selected,
-                  // No checkmark, because it is not drawn BESIDE the icon — it
-                  // is drawn ON it.
-                  //
-                  // A Material chip that has both an avatar and a checkmark
-                  // paints the tick over the avatar, and darkens the avatar
-                  // first so the tick can be read against it — Flutter's own
-                  // `_kSelectScrimColor`, a 37% black filled through
-                  // `avatarBorder`, which is a circle. So the selected tab's own
-                  // icon disappeared under a grey disc, and because it follows
-                  // the SELECTION rather than
-                  // the pointer it appeared on a tab nobody was hovering — which
-                  // is exactly how it was reported: "regardless if I'm hovering
-                  // over that tab or any tab".
-                  //
-                  // Nothing is lost by removing it. A selected chip already
-                  // carries a filled background, and the icon is the thing that
-                  // tells the tabs apart — covering it to say "this one" is
-                  // spending the identifier to state what the fill has said.
-                  showCheckmark: false,
-                  onSelected: (_) => onSelected(i),
-                ),
+          child: _plain(context, i, level),
         ),
     ];
 
-    // Sideways only on a phone, where a thumb swipes the strip. Anywhere wider
-    // the chips wrap: a mouse cannot drag a sideways strip, so on a desktop a
-    // chip past the edge was out of reach (Jose, 2026-09-29, on the hours
-    // review: "on desktop you should just be able to see all the websites").
+    // One strip at every width (desktop review 2026-11-13: Reports' 11 tabs
+    // wrapped onto two lines). It scrolls sideways and fades at whichever edge
+    // has tabs past it; on a desk the mouse drags it (shift+wheel turns it) and
+    // the chevron pages it, so no tab is out of reach (Jose 09-29).
     //
     // Underlined words sit apart on one line; a switch's segments share one
     // box, split by a line.
-    final gap = widget.level == TabLevel.secondary ? 14.0 : 8.0;
+    final gap = level == TabLevel.primary ? 14.0 : 6.0;
     final edge = EzBiziTheme.edge(context);
-    const round = BorderRadius.all(Radius.circular(EzBiziTheme.controlRadius));
-    List<Widget> laid(List<Widget> items) => widget.level != TabLevel.tertiary
-        ? items
-        : [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border.all(color: edge),
-                borderRadius: round,
-              ),
-              child: ClipRRect(
-                borderRadius: round,
-                child: IntrinsicHeight(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < items.length; i++) ...[
-                        if (i > 0)
-                          VerticalDivider(width: 1, thickness: 1, color: edge),
-                        items[i],
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ];
-    final padding = widget.level == TabLevel.secondary
+    List<Widget> laid(List<Widget> items) => items;
+    final padding = level == TabLevel.primary
         ? const EdgeInsets.symmetric(horizontal: 16)
         : const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
-    Widget rule(Widget row) => widget.level != TabLevel.secondary
+    Widget rule(Widget row) => level != TabLevel.primary
         ? row
         : DecoratedBox(
             decoration: BoxDecoration(
@@ -272,7 +229,7 @@ class _TabBarLikeState extends State<TabBarLike> {
             child: row,
           );
 
-    if (MediaQuery.sizeOf(context).width >= 600) {
+    if (widget.wrap && MediaQuery.sizeOf(context).width >= 600) {
       return rule(
         Padding(
           padding: padding,
@@ -291,26 +248,42 @@ class _TabBarLikeState extends State<TabBarLike> {
     // HR's Payroll sat off the edge unannounced. So the fade is wider, and a
     // chevron says the strip goes on and pages it along when tapped.
     final strip = rule(
-      ShaderMask(
-        blendMode: BlendMode.dstIn,
-        // Only the alpha counts under dstIn: opaque, then none past the edge.
-        shaderCallback: (bounds) => LinearGradient(
-          colors: [opaque, opaque, _more ? Colors.transparent : opaque],
-          stops: const [0, 0.72, 1],
-        ).createShader(bounds),
-        child: SingleChildScrollView(
-          controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          padding: padding,
-          child: Row(
-            children: [
-              for (final chip in laid(chips))
-                Padding(
-                  padding: EdgeInsets.only(right: gap),
-                  child: chip,
-                ),
-              if (_more) const SizedBox.shrink(key: Key('tab-bar-more')),
-            ],
+      ScrollConfiguration(
+        behavior: ScrollConfiguration.of(
+          context,
+        ).copyWith(dragDevices: {...PointerDeviceKind.values}),
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          // Only the alpha counts under dstIn: opaque, then none past the edge.
+          shaderCallback: (bounds) {
+            // A fixed 48 px fade at each edge that has tabs past it.
+            final w = bounds.width <= 0 ? 1.0 : bounds.width;
+            final f = (48 / w).clamp(0.0, 0.3);
+            return LinearGradient(
+              colors: [
+                _less ? Colors.transparent : opaque,
+                opaque,
+                opaque,
+                _more ? Colors.transparent : opaque,
+              ],
+              stops: [0, f, 1 - f, 1],
+            ).createShader(bounds);
+          },
+          child: SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            padding: padding,
+            child: Row(
+              children: [
+                if (_less) const SizedBox.shrink(key: Key('tab-bar-less')),
+                for (final chip in laid(chips))
+                  Padding(
+                    padding: EdgeInsets.only(right: gap),
+                    child: chip,
+                  ),
+                if (_more) const SizedBox.shrink(key: Key('tab-bar-more')),
+              ],
+            ),
           ),
         ),
       ),
@@ -318,7 +291,12 @@ class _TabBarLikeState extends State<TabBarLike> {
     // Always the Stack, chevron or not: the same shape keeps the scroll.
     return Stack(
       children: [
-        strip,
+        // The chevron sits beside the strip, never over a tab: a tab under it
+        // could not be tapped (underlined tabs are narrower than the old pills).
+        Padding(
+          padding: EdgeInsetsDirectional.only(end: _more ? 48 : 0),
+          child: strip,
+        ),
         if (_more)
           PositionedDirectional(
             end: 0,
@@ -342,71 +320,97 @@ class _TabBarLikeState extends State<TabBarLike> {
     );
   }
 
-  /// A second-row tab (a word, underlined when chosen) or a third-row one (a
-  /// segment of a small switch). No icon: the icon is what makes the row
-  /// above read as the module's own tabs. Still a ChoiceChip, so it hovers,
-  /// focuses and is found the way every other tab is.
-  Widget _plain(BuildContext context, int i) {
+  /// A module's own tab (a word, underlined when chosen; its icon only when it
+  /// carries a status tone) or an inner one (a small pill, filled when chosen).
+  /// Still a ChoiceChip, so it hovers, focuses and is found the way every other tab is.
+  Widget _plain(BuildContext context, int i, TabLevel level) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final on = i == widget.selected;
     final count = widget.missing?[i] ?? 0;
-    final third = widget.level == TabLevel.tertiary;
-    final text = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          widget.labels[i].$1,
-          style: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: third
-                ? (on ? scheme.onPrimaryContainer : scheme.onSurface)
-                : (on ? scheme.primary : scheme.onSurfaceVariant),
-          ),
-        ),
-        if (count > 0) ...[
-          const SizedBox(width: 6),
-          MissingCount(
-            count,
-            tooltip: '$count ${count == 1 ? 'field' : 'fields'} not filled in',
-          ),
-        ],
-      ],
+    final pill = level != TabLevel.primary;
+    final tone = widget.tones?[i];
+    final word = Text(
+      widget.labels[i].$1,
+      style: theme.textTheme.labelLarge?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: pill
+            ? (on ? scheme.onPrimaryContainer : scheme.onSurface)
+            : (on ? scheme.primary : scheme.onSurfaceVariant),
+      ),
     );
+    final icon = !pill && tone != null;
+    // A bare word stays a Text label, so finders read a tab by its words.
+    final text = count == 0 && !icon
+        ? word
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon) ...[
+                Icon(
+                  widget.labels[i].$2,
+                  size: 16,
+                  color: ToneColours.of(context, tone).ink,
+                ),
+                const SizedBox(width: 6),
+              ],
+              word,
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                MissingCount(
+                  count,
+                  tooltip:
+                      '$count ${count == 1 ? 'field' : 'fields'} not filled in',
+                ),
+              ],
+            ],
+          );
     // A chip lays itself on the theme's canvas colour, which drew a white box
     // round every word on a tinted strip.
-    return Theme(
+    final chip = Theme(
       data: theme.copyWith(canvasColor: Colors.transparent),
       child: ChoiceChip(
-        label: third
-            ? text
-            : Container(
-                padding: const EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: on ? scheme.primary : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                child: text,
-              ),
+        label: text,
         selected: on,
         showCheckmark: false,
         color: WidgetStatePropertyAll(
-          third && on ? scheme.primaryContainer : Colors.transparent,
+          pill && on ? scheme.primaryContainer : Colors.transparent,
         ),
         side: BorderSide.none,
-        shape: const RoundedRectangleBorder(),
-        padding: third
-            ? const EdgeInsets.symmetric(horizontal: 6)
-            : const EdgeInsets.only(top: 6),
+        shape: pill ? const StadiumBorder() : const RoundedRectangleBorder(),
+        padding: pill
+            ? const EdgeInsets.symmetric(horizontal: 8)
+            : const EdgeInsets.symmetric(vertical: 4),
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         visualDensity: VisualDensity.compact,
-        materialTapTargetSize: third ? MaterialTapTargetSize.shrinkWrap : null,
+        materialTapTargetSize: pill ? MaterialTapTargetSize.shrinkWrap : null,
         onSelected: (_) => widget.onSelected(i),
       ),
+    );
+    // Mobile review 2026-11-13, P4: a pill shrink-wrapped to 32 px was too
+    // small for a thumb (Scheduling's Availability / Overbooking pills). The
+    // pill keeps its look; the area that takes the tap is 40 px tall.
+    if (pill) {
+      return GestureDetector(
+        key: ValueKey('tab-pill-hit-$i'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.onSelected(i),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: pillHitHeight),
+          child: Center(widthFactor: 1, child: chip),
+        ),
+      );
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: on ? scheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+      ),
+      child: chip,
     );
   }
 }
@@ -414,3 +418,6 @@ class _TabBarLikeState extends State<TabBarLike> {
 /// Which row of tabs a [TabBarLike] is: a module's own, the tabs inside one
 /// of those, or a third row inside that.
 enum TabLevel { primary, secondary, tertiary }
+
+/// The smallest height a pill takes taps over (mobile review P4).
+const double pillHitHeight = 40;

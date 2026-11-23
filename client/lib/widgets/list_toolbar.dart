@@ -7,6 +7,16 @@ import 'side_panel.dart';
 /// A saved view: a name over a [ListQuery].
 typedef SavedView = ({String id, String name, ListQuery query});
 
+/// One of the toolbar's buttons, for a caller that draws them elsewhere
+/// (the Task Board's phone menu).
+typedef ListToolbarAction = ({
+  String key,
+  IconData icon,
+  String label,
+  int count,
+  VoidCallback onTap,
+});
+
 /// The one toolbar over every list (monday port, desk 2026-11-09):
 /// Search · Person · Filter · Sort · Hide · Group by · Views, drawn over Jobs'
 /// [ListQuery]. A button shows only when its input is given; every one opens
@@ -18,13 +28,14 @@ class ListToolbar extends StatelessWidget {
     required this.query,
     required this.onChanged,
     this.onSearch,
-    this.searchHint = 'Search',
     this.views,
     this.onSaveView,
     this.onDeleteView,
     this.groupBy,
     this.onGroupBy,
-    this.hideable = true,
+    this.onHide,
+    this.hiddenCount = 0,
+    this.hide = true,
   });
 
   final List<FilterField> fields;
@@ -33,7 +44,6 @@ class ListToolbar extends StatelessWidget {
 
   /// Null hides the search field.
   final ValueChanged<String>? onSearch;
-  final String searchHint;
 
   /// Null hides Views; empty shows it with only "Save as new view".
   final List<SavedView>? views;
@@ -43,13 +53,21 @@ class ListToolbar extends StatelessWidget {
   /// The field key grouped by, or null. [onGroupBy] null hides Group by.
   final String? groupBy;
   final ValueChanged<String?>? onGroupBy;
-  final bool hideable;
+
+  /// A list whose columns are hidden somewhere else (the Task Board hides
+  /// them on the board) opens its own Hide, with [hiddenCount] on the
+  /// button: one Hide, not two (hands-on QA 11-16).
+  final VoidCallback? onHide;
+  final int hiddenCount;
+
+  /// False leaves Hide out.
+  final bool hide;
 
   FilterField? get _people =>
       fields.where((f) => f.kind == 'people').firstOrNull;
 
-  @override
-  Widget build(BuildContext context) {
+  /// The buttons after Search, in order.
+  List<ListToolbarAction> actions(BuildContext context) {
     final people = _people;
     final groupable = [
       for (final f in fields)
@@ -57,35 +75,150 @@ class ListToolbar extends StatelessWidget {
           f,
     ];
 
-    Widget button(
-      String key,
-      IconData icon,
-      String label,
-      int count,
-      VoidCallback onTap,
-    ) {
-      final active = count > 0;
-      return active
-          ? FilledButton.tonalIcon(
-              key: Key('list-toolbar-$key'),
-              onPressed: onTap,
-              icon: Icon(icon, size: 18),
-              label: Text('$label · $count'),
-            )
-          : TextButton.icon(
-              key: Key('list-toolbar-$key'),
-              onPressed: onTap,
-              icon: Icon(icon, size: 18),
-              label: Text(label),
-            );
-    }
-
     Future<void> filterPanel() async {
       final next = await showSidePanel<ListQuery>(
         context,
         builder: (_) => FilterPanel(fields: fields, view: query),
       );
       if (next != null) onChanged(next);
+    }
+
+    Future<void> hidePanel() async {
+      final shown = await showSidePanel<List<String>>(
+        context,
+        builder: (_) => _Ticks(
+          title: 'Columns shown',
+          options: [for (final f in fields) (f.key, f.label)],
+          picked: [
+            for (final f in fields)
+              if (!query.hidden.contains(f.key)) f.key,
+          ],
+        ),
+      );
+      if (shown != null) {
+        onChanged(
+          query.copyWith(
+            hidden: [
+              for (final f in fields)
+                if (!shown.contains(f.key)) f.key,
+            ],
+          ),
+        );
+      }
+    }
+
+    Future<void> groupPanel() async {
+      final next = await showSidePanel<String>(
+        context,
+        builder: (context) => SidePanel(
+          title: 'Group by',
+          child: RadioGroup<String>(
+            groupValue: groupBy ?? '',
+            onChanged: (v) => Navigator.of(context).pop(v),
+            child: Column(
+              children: [
+                const RadioListTile(value: '', title: Text('No grouping')),
+                for (final f in groupable)
+                  RadioListTile(
+                    key: Key('list-toolbar-group-${f.key}'),
+                    value: f.key,
+                    title: Text(f.label),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (next != null) onGroupBy!(next.isEmpty ? null : next);
+    }
+
+    return [
+      if (people != null)
+        (
+          key: 'person',
+          icon: Icons.person_outline,
+          label: 'Person',
+          count: query.people.length,
+          onTap: () async {
+            final next = await showSidePanel<List<String>>(
+              context,
+              builder: (_) => _Ticks(
+                title: 'Person',
+                options: people.options,
+                picked: query.people,
+              ),
+            );
+            if (next != null) onChanged(query.copyWith(people: next));
+          },
+        ),
+      (
+        key: 'filter',
+        icon: Icons.filter_list,
+        label: 'Filter',
+        count: query.filters.length,
+        onTap: filterPanel,
+      ),
+      (
+        key: 'sort',
+        icon: Icons.swap_vert,
+        label: 'Sort',
+        count: query.sort.length,
+        onTap: filterPanel,
+      ),
+      if (hide)
+        (
+          key: 'hide',
+          icon: Icons.visibility_off_outlined,
+          label: 'Hide',
+          count: onHide != null ? hiddenCount : query.hidden.length,
+          onTap: onHide ?? hidePanel,
+        ),
+      if (onGroupBy != null && groupable.isNotEmpty)
+        (
+          key: 'group',
+          icon: Icons.view_agenda_outlined,
+          label: 'Group by',
+          count: groupBy == null ? 0 : 1,
+          onTap: groupPanel,
+        ),
+      if (views != null)
+        (
+          key: 'views',
+          icon: Icons.bookmark_outline,
+          label: 'Views',
+          count: 0,
+          onTap: () {
+            showSidePanel<void>(
+              context,
+              builder: (_) => _Views(
+                views: views!,
+                onPick: onChanged,
+                onSave: onSaveView,
+                onDelete: onDeleteView,
+              ),
+            );
+          },
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(ListToolbarAction a) {
+      final label = a.count > 0 ? '${a.label} · ${a.count}' : a.label;
+      return a.count > 0
+          ? FilledButton.tonalIcon(
+              key: Key('list-toolbar-${a.key}'),
+              onPressed: a.onTap,
+              icon: Icon(a.icon, size: 18),
+              label: Text(label),
+            )
+          : TextButton.icon(
+              key: Key('list-toolbar-${a.key}'),
+              onPressed: a.onTap,
+              icon: Icon(a.icon, size: 18),
+              label: Text(label),
+            );
     }
 
     return Wrap(
@@ -102,116 +235,18 @@ class ListToolbar extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
-                hintText: searchHint,
+                hintText: 'Search',
               ),
             ),
           ),
-        if (people != null)
-          button(
-            'person',
-            Icons.person_outline,
-            'Person',
-            query.people.length,
-            () async {
-              final next = await showSidePanel<List<String>>(
-                context,
-                builder: (_) => _Ticks(
-                  title: 'Person',
-                  options: people.options,
-                  picked: query.people,
-                ),
-              );
-              if (next != null) onChanged(query.copyWith(people: next));
-            },
-          ),
-        Callout(
-          id: 'list_toolbar',
-          text: 'New: filter, sort, hide and group any list from here.',
-          child: button(
-            'filter',
-            Icons.filter_list,
-            'Filter',
-            query.filters.length,
-            filterPanel,
-          ),
-        ),
-        button('sort', Icons.swap_vert, 'Sort', query.sort.length, filterPanel),
-        if (hideable)
-          button(
-            'hide',
-            Icons.visibility_off_outlined,
-            'Hide',
-            query.hidden.length,
-            () async {
-              final shown = await showSidePanel<List<String>>(
-                context,
-                builder: (_) => _Ticks(
-                  title: 'Columns shown',
-                  options: [for (final f in fields) (f.key, f.label)],
-                  picked: [
-                    for (final f in fields)
-                      if (!query.hidden.contains(f.key)) f.key,
-                  ],
-                ),
-              );
-              if (shown != null) {
-                onChanged(
-                  query.copyWith(
-                    hidden: [
-                      for (final f in fields)
-                        if (!shown.contains(f.key)) f.key,
-                    ],
-                  ),
-                );
-              }
-            },
-          ),
-        if (onGroupBy != null && groupable.isNotEmpty)
-          button(
-            'group',
-            Icons.view_agenda_outlined,
-            'Group by',
-            groupBy == null ? 0 : 1,
-            () async {
-              final next = await showSidePanel<String>(
-                context,
-                builder: (context) => SidePanel(
-                  title: 'Group by',
-                  child: RadioGroup<String>(
-                    groupValue: groupBy ?? '',
-                    onChanged: (v) => Navigator.of(context).pop(v),
-                    child: Column(
-                      children: [
-                        const RadioListTile(
-                          value: '',
-                          title: Text('No grouping'),
-                        ),
-                        for (final f in groupable)
-                          RadioListTile(
-                            key: Key('list-toolbar-group-${f.key}'),
-                            value: f.key,
-                            title: Text(f.label),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-              if (next != null) onGroupBy!(next.isEmpty ? null : next);
-            },
-          ),
-        if (views != null)
-          button('views', Icons.bookmark_outline, 'Views', 0, () {
-            showSidePanel<void>(
-              context,
-              builder: (_) => _Views(
-                views: views!,
-                onPick: onChanged,
-                onSave: onSaveView,
-                onDelete: onDeleteView,
-              ),
-            );
-          }),
+        for (final a in actions(context))
+          a.key == 'filter'
+              ? Callout(
+                  id: 'list_toolbar',
+                  text: 'New: filter, sort, hide and group any list from here.',
+                  child: button(a),
+                )
+              : button(a),
       ],
     );
   }

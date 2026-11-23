@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Live\RecordsChanges;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -22,6 +23,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Task extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'tasks';
+
     use HasUuids;
     use SoftDeletes;
 
@@ -52,7 +58,7 @@ class Task extends Model implements HoldsPersonalData
     protected $fillable = [
         'organization_id', 'board_id', 'parent_task_id', 'group_id', 'position', 'company_id', 'franchise_id', 'title',
         'status', 'status_id', 'assignee_user_id', 'due_on', 'completed_at', 'about_type', 'about_id',
-        'created_by_user_id', 'created_by_automation_id', 'priority', 'estimate_minutes',
+        'created_by_user_id', 'created_by_automation_id', 'created_by_system', 'priority', 'estimate_minutes', 'sensitive',
     ];
 
     protected function casts(): array
@@ -61,7 +67,12 @@ class Task extends Model implements HoldsPersonalData
             'due_on' => 'date',
             'completed_at' => 'datetime',
             'overdue_announced_at' => 'datetime',
+            // Kept in step with Monday (TasksImportMonday / MondaySync).
+            'external_updated_at' => 'datetime',
+            'external_synced_at' => 'datetime',
             'estimate_minutes' => 'integer',
+            // Its content is sealed and shown only after an authenticator code (SensitiveTasks).
+            'sensitive' => 'boolean',
         ];
     }
 
