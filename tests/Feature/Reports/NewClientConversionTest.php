@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Company;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Support\Reports\Texts\NewClientConversion;
@@ -50,6 +51,7 @@ class NewClientConversionTest extends TestCase
             'experimental_reports.ringcentral.jwt' => 'jwt',
         ]);
         $t = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        config(['experimental_reports.ringcentral.company_id' => $t['company']->id]);
 
         $this->inTenant($t['org'], function () use ($t) {
             $c = new SocialConnection;
@@ -58,6 +60,9 @@ class NewClientConversionTest extends TestCase
                 'remote_id' => $t['franchise']->id, 'display_name' => 'Texas']);
             $c->connect(['refresh_token' => 'x', 'api_token' => 'x']);
             $c->save();
+            // Another company's line: its calls await review (Analorena, 2026-11-23).
+            $ace = Company::create(['organization_id' => $t['org']->id, 'name' => 'Ace Fireplace Services']);
+            app(SettingsResolver::class)->set('leads.line_numbers', $t['org'], ['+15550008888' => 'company:'.$ace->id]);
             foreach ([['JOB-1', '2145550001', '2026-10-06 10:00:00'], ['JOB-2', '2145550003', '2026-09-29 10:00:00']] as [$id, $phone, $at]) {
                 WorkizJob::query()->create(['franchise_id' => $t['franchise']->id, 'connection_id' => $c->id,
                     'remote_id' => $id, 'booked_at' => $at, 'synced_at' => now(),
@@ -73,6 +78,7 @@ class NewClientConversionTest extends TestCase
                 $this->rc('lost', '+12145550002', '15:00', 'Trey Brannan'),
                 $this->rc('had-job', '+12145550003', '16:00', 'Trey Brannan'),
                 $this->rc('missed', '+12145550004', '17:00', null),
+                ['to' => ['phoneNumber' => '+15550008888']] + $this->rc('ace', '+12145550005', '18:00', 'Trey Brannan'),
             ], 'paging' => ['page' => 1]]),
         ]);
 
@@ -81,11 +87,12 @@ class NewClientConversionTest extends TestCase
         $this->assertSame(implode("\n", [
             '📞 *New-client conversion · Tue, Oct 6*',
             '',
-            '📲 4 new-client calls',
-            '🙋 3 answered',
+            '📲 5 new-client calls',
+            '🙋 4 answered',
             '✅ *1* booked',
             '📈 Conversion: *50%*',
             '🔁 1 already had a job (not counted)',
+            "⏳ 1 awaiting review: another company's calls (not counted)",
             '',
             '👥 *By dispatcher*',
             '• Trey Brannan: 1/2 booked · *50%*',

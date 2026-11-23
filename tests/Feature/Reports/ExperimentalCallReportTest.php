@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\CallReportOverride;
 use App\Models\CallTypeCorrection;
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Reports\Experimental\CallReconciliation;
@@ -252,6 +254,75 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertTrue($byId['c-marked']['booked']);
         $this->assertTrue($byId['c-marked']['converted']);
         $this->assertFalse($byId['c-open']['booked']);
+    }
+
+    /**
+     * Analorena, 2026-11-23 (approved by Jose): Ace's, AngiSweep's and the
+     * other companies' calls "need to be reviewed manually". A new client on
+     * another company's line with no job for the number is Awaiting review:
+     * out of Not booked and the booking rate until somebody sets the booking.
+     */
+    public function test_another_companys_unbooked_call_awaits_review_until_its_booking_is_set(): void
+    {
+        $t = $this->provisionTenant('Reconcile');
+        config(['experimental_reports.ringcentral.company_id' => $t['company']->id]);
+        $ace = '+19545550100';
+        $call = fn (string $id, string $phone, string $line) => array_merge(
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+            ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X'], 'to' => ['phoneNumber' => $line, 'name' => 'Main - IVR']],
+        );
+        $this->fakeCallLog([
+            $call('a1-open', '+12125550001', '+18888602433'),
+            $call('ace-open', '+12125550002', $ace),
+            $call('ace-booked', '+12125551212', $ace),
+            $call('ace-set', '+12125550003', $ace),
+        ]);
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+
+        $day = $this->inTenant($t['org'], function () use ($t, $ace, $calls) {
+            $other = Company::create(['organization_id' => $t['org']->id, 'name' => 'Ace Fireplace Services']);
+            app(SettingsResolver::class)->set('leads.line_numbers', $t['org'], [$ace => 'company:'.$other->id]);
+            CallReportOverride::query()->create(['organization_id' => $t['org']->id, 'call_id' => 'ace-set', 'field' => 'booking', 'value' => 'not_booked']);
+
+            return app(CallReconciliation::class)->forRange($calls,
+                [['created_at' => '2026-09-14 10:00:00', 'phone' => '(212) 555-1212', 'created_by' => 'Trey Brannan']], '2026-09-14', '2026-09-14');
+        });
+
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertSame([false, true, false, false], array_map(fn ($id) => $byId[$id]['awaiting_review'], ['a1-open', 'ace-open', 'ace-booked', 'ace-set']));
+        $this->assertTrue($byId['ace-booked']['booked']);
+        // A-1's own unbooked call and the one reviewed as not booked.
+        $this->assertSame([2, 1], [$day['totals']['not_booked'], $day['totals']['awaiting_review']]);
+        $this->assertSame([4, 1, 1], [$this->person($day, 'Trey Brannan')['new_client'], $this->person($day, 'Trey Brannan')['booked_new'], $this->person($day, 'Trey Brannan')['awaiting_review']]);
+    }
+
+    /**
+     * Analorena, 2026-11-23 (approved by Jose): "not count the calls that are
+     * outside business hours for missed calls". Judged by the office hours of
+     * the line's branch, in that branch's time zone, and counted apart.
+     */
+    public function test_a_call_missed_outside_the_branchs_office_hours_is_counted_apart(): void
+    {
+        $t = $this->provisionTenant('Hours');
+        $missed = fn (string $id, string $at) => array_merge($this->inbound(rang: [], queue: 'A1 - New Client', result: 'Missed'), ['id' => $id, 'startTime' => $at]);
+        // Monday: 9:21 and 11:00 in New York; both after 10:00 in UTC.
+        $this->fakeCallLog([$missed('early', '2026-09-14T13:21:11Z'), $missed('open', '2026-09-14T15:00:00Z')]);
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+
+        $day = $this->inTenant($t['org'], function () use ($t, $calls) {
+            $settings = app(SettingsResolver::class);
+            $settings->set('timezone', $t['org'], 'UTC');
+            $settings->set('timezone', $t['franchise'], 'America/New_York');
+            $settings->set('leads.office_hours', $t['org'], ['monday' => ['open' => '10:00', 'close' => '17:00']]
+                + array_fill_keys(['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'], null));
+            $settings->set('leads.line_numbers', $t['org'], ['+18888602433' => 'franchise:'.$t['franchise']->id]);
+
+            return app(CallReconciliation::class)->forRange($calls, [], '2026-09-14', '2026-09-14');
+        });
+
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertSame([true, false], [$byId['early']['after_hours'], $byId['open']['after_hours']]);
+        $this->assertSame([2, 1, 1], [$day['totals']['calls'], $day['totals']['reached_nobody'], $day['totals']['missed_after_hours']]);
     }
 
     /** Jose, 2026-11-11: a caller's missed calls showed under Booked; only an answered call can have booked the job. */

@@ -411,6 +411,76 @@ void main() {
     expect(find.text('Needs Attention 1'), findsOneWidget);
   });
 
+  // Analorena, 2026-11-23 (approved by Jose): another company's calls "need
+  // to be reviewed manually". Awaiting review is its own list, out of Not
+  // booked and out of the booking rate, until somebody sets the booking.
+  testWidgets("another company's call is Awaiting review, out of the rate", (
+    tester,
+  ) async {
+    final ace = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (ace['calls'] as List).first['awaiting_review'] = true;
+    (ace['totals'] as Map)['awaiting_review'] = 1;
+    await _pump(tester, width: 1400, report: () => ace);
+    // Booked 1 of the 1 answered new-client call left: Ada's awaits review.
+    expect(find.text('100%'), findsOneWidget);
+
+    await _pump(tester, width: 1400, view: 'Calls', report: () => ace);
+    expect(find.widgetWithText(StatusPill, 'Awaiting review'), findsOneWidget);
+    expect(find.text('Not booked 0'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-awaiting_review')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Awaiting review 1'), findsOneWidget);
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+    expect(find.textContaining('Blocked drain'), findsNothing);
+
+    await _pump(tester, width: 1400, view: 'People', report: () => ace);
+    await tester.tap(find.text('Ada'));
+    await tester.pumpAndSettle();
+    expect(find.text('Awaiting review 1'), findsOneWidget);
+    expect(find.text('Not booked 0'), findsOneWidget);
+  });
+
+  testWidgets('no Awaiting review list while no call is one', (tester) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+    expect(
+      find.byKey(const ValueKey('calls-filter-awaiting_review')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('calls-filter-after_hours')),
+      findsNothing,
+    );
+  });
+
+  // Analorena, 2026-11-23 (approved by Jose): "not count the calls that are
+  // outside business hours for missed calls". Counted apart, never hidden.
+  testWidgets('a call missed after hours is out of Missed and listed apart', (
+    tester,
+  ) async {
+    final late = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (late['calls'] as List).last['after_hours'] = true;
+    await _pump(tester, width: 1400, report: () => late);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('stat-reached-nobody')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('1 after hours, not counted'), findsOneWidget);
+
+    await _pump(tester, width: 1400, view: 'Calls', report: () => late);
+    await tester.tap(find.byKey(const ValueKey('calls-filter-after_hours')));
+    await tester.pumpAndSettle();
+    expect(find.text('After hours 1'), findsOneWidget);
+    expect(find.textContaining('Silent line'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsNothing);
+    expect(find.widgetWithText(StatusPill, 'After hours'), findsOneWidget);
+  });
+
   testWidgets('Calls has headings, and the search narrows the calls', (
     tester,
   ) async {

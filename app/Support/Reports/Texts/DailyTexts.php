@@ -704,8 +704,8 @@ final class DailyTexts
             $lines = [...$title, '*Jobs created: '.$rows->sum('jobs').'*', ''];
             foreach ($rows as $p) {
                 // Booked out of the new-client calls they answered, as Performance (Trey, 2026-11-04),
-                // less those still Needing Attention (Jose, 2026-11-12).
-                $new = (int) ($p['new_client'] ?? 0) - (int) ($p['needs_attention'] ?? 0);
+                // less those still Needing Attention (Jose, 2026-11-12) or Awaiting review (2026-11-23).
+                $new = (int) ($p['new_client'] ?? 0) - (int) ($p['needs_attention'] ?? 0) - (int) ($p['awaiting_review'] ?? 0);
                 $lines[] = '• *'.$p['person'].'*: '.(int) ($p['jobs'] ?? 0).' jobs created · '.(int) ($p['answered'] ?? 0).' answered'
                     .($new > 0 ? ' · '.number_format(($p['booked_new'] ?? 0) / $new * 100, 1).'% of new-client calls booked' : '');
             }
