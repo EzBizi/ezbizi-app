@@ -2188,6 +2188,7 @@ Route::prefix('v1')
         // somebody adds one it must already be above it.
         Route::get('roles/catalogue', [RolesController::class, 'catalogue']);
         Route::get('roles', [RolesController::class, 'index']);
+        Route::get('roles/{role}/mobile-bar/options', [RolesController::class, 'mobileBarOptions']);
         Route::post('roles', [RolesController::class, 'store']);
         Route::patch('roles/{role}', [RolesController::class, 'update']);
         Route::delete('roles/{role}', [RolesController::class, 'destroy']);
