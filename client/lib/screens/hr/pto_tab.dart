@@ -374,8 +374,8 @@ class _PtoTabState extends State<PtoTab> {
             (_role == null || _roleKey(person) == _role) &&
             switch (_filter) {
               _Filter.everyone => true,
-              _Filter.canUse => person['eligible'] == true,
-              _Filter.notYet => person['eligible'] != true,
+              _Filter.canUse => _canUse(person),
+              _Filter.notYet => !_canUse(person),
             })
           person,
     ];
@@ -522,8 +522,8 @@ class _PtoTabState extends State<PtoTab> {
   Widget? _rowEnd(BuildContext context, Map<String, dynamic> person) {
     final theme = Theme.of(context);
 
-    if (person['eligible'] != true) {
-      final from = person['eligible_from'];
+    if (!_canUse(person)) {
+      final from = _usableFrom(person);
 
       // Bounded, because a ListTile throws when its trailing widget is as
       // wide as the tile, and a long date format in a narrow list can be.
@@ -797,7 +797,7 @@ class _PtoTabState extends State<PtoTab> {
   Widget _standing(BuildContext context, Map<String, dynamic> person) {
     final theme = Theme.of(context);
     final started = person['started_on'];
-    final from = person['eligible_from'];
+    final from = _usableFrom(person);
     final role = _roleName(person);
     final quiet = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.outline,
@@ -808,7 +808,7 @@ class _PtoTabState extends State<PtoTab> {
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (person['eligible'] == true)
+        if (_canUse(person))
           const StatusPill('Can use now', tone: Tone.ok)
         else if (from == null)
           const StatusPill('Start date unknown')
@@ -1756,7 +1756,9 @@ class _PtoTabState extends State<PtoTab> {
     final waiting = _waitingPhrase();
     final noWait = (_policy['waiting'] as int? ?? 0) == 0;
     final unknown = person['started_on'] == null;
-    final eligible = person['eligible'] == true;
+    final eligible = _canUse(person);
+    final first = person['first_days'] as Map?;
+    final later = first != null && person['usable_from'] != person['eligible_from'];
 
     // Eligible is asked FIRST, because a policy with no waiting period makes
     // the unknown start date stop mattering: there is nothing to count from
@@ -1785,8 +1787,16 @@ class _PtoTabState extends State<PtoTab> {
             'be a guess. Start dates have only been kept since this was added, '
             'so people who were already here do not have one.',
       ),
+      // The first days arrive after the waiting period ends (Jose,
+      // 2026-11-23): the date that matters is when they have one to take.
+      (false, false) when later => (
+        _date(person['usable_from']),
+        'First days arrive ${_date(first['on'])} (+${first['days']}). Usable '
+            'from then; the $waiting waiting period ends '
+            '${_date(person['eligible_from'])}.',
+      ),
       (false, false) => (
-        _date(person['eligible_from']),
+        _date(_usableFrom(person)),
         // The SETTING's own words — "90 days" or "3 months", whichever was
         // chosen — never a phrase describing it. A hardcoded "three months"
         // would go stale the moment somebody changed the number, and would
@@ -3713,3 +3723,12 @@ abstract final class PtoRequestMaths {
     return parts.join(' · ');
   }
 }
+
+/// Has a day they may take now: the server's `usable`, or `eligible` from a
+/// server that predates it (Jose, 2026-11-23).
+bool _canUse(Map<String, dynamic> person) =>
+    (person['usable'] ?? person['eligible']) == true;
+
+/// The first day they have one to take, else the waiting period's end.
+Object? _usableFrom(Map<String, dynamic> person) =>
+    person['usable_from'] ?? person['eligible_from'];

@@ -222,4 +222,38 @@ class HrPtoTest extends TestCase
         $this->assertArrayHasKey('taken', $row);
         $this->assertNull($row['taken']);
     }
+
+    /**
+     * Lucas's case (Jose, 2026-11-23): the 90-day wait ends 1/3/2027 but the
+     * first days arrive 4/5/2027, so "from" is the day he actually has one.
+     */
+    public function test_from_is_the_first_day_somebody_has_a_day_to_take(): void
+    {
+        Carbon::setTestNow('2026-11-23 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->policy($t, [
+            'pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'quarter',
+            'pto.waiting' => 90, 'pto.waiting_unit' => 'day',
+            'pto.accrue_after' => 3, 'pto.accrue_after_unit' => 'month',
+        ]);
+        $this->started($t, $t['admin']->id, '2026-10-05');
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json('data'))
+            ->firstWhere('id', $t['admin']->id);
+        $this->assertSame('2027-01-03', $row['eligible_from']);
+        $this->assertSame('2027-04-05', $row['usable_from']);
+        $this->assertSame(['on' => '2027-04-05', 'days' => 2], $row['first_days']);
+        $this->assertFalse($row['usable']);
+
+        // Past the waiting period, still nothing to take: not usable yet.
+        Carbon::setTestNow('2027-02-01 12:00:00');
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->json('data'))->firstWhere('id', $t['admin']->id);
+        $this->assertTrue($row['eligible']);
+        $this->assertFalse($row['usable']);
+
+        // The first days land: usable.
+        Carbon::setTestNow('2027-04-06 12:00:00');
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->json('data'))->firstWhere('id', $t['admin']->id);
+        $this->assertTrue($row['usable']);
+    }
 }
