@@ -1,14 +1,19 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/api_client.dart';
+import '../../core/deep_links.dart';
+import '../../core/files.dart';
 import '../../core/hr.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
-import '../../widgets/tag.dart';
+import '../../widgets/status_pill.dart';
 
 /// Shareable invite links (Jose, 2026-11-23: "an invite link in which they can
 /// create their accounts on their own, I would choose which role and where to
@@ -16,10 +21,16 @@ import '../../widgets/tag.dart';
 /// account there. Make one, copy it or show its QR, extend it, switch it off,
 /// and see who joined through it.
 class InviteLinksPanel extends StatefulWidget {
-  const InviteLinksPanel({super.key, required this.api, required this.options});
+  const InviteLinksPanel({
+    super.key,
+    required this.api,
+    required this.options,
+    this.formats = DisplayFormats.fallback,
+  });
 
   final ApiClient api;
   final AssignmentOptions options;
+  final DisplayFormats formats;
 
   @override
   State<InviteLinksPanel> createState() => _InviteLinksPanelState();
@@ -107,6 +118,78 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
     return '';
   }
 
+  String? _date(String? iso) {
+    final at = DateTime.tryParse(iso ?? '');
+    return at == null ? null : widget.formats.formatDate(at.toLocal());
+  }
+
+  /// Who joined, each opening their HR record (the panel closes first).
+  Widget _joinedRow(BuildContext context, Map j) {
+    final theme = Theme.of(context);
+    final id = j['user_id']?.toString();
+    final name = '${j['name'] ?? 'Unnamed'}';
+    final day = _date(j['joined_at'] as String?);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Flexible(
+            child: id == null
+                ? Text(name, style: theme.textTheme.bodyMedium)
+                : InkWell(
+                    key: ValueKey('invite-link-joined-$id'),
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      DeepLinks.open(
+                        DeepLink(module: 'hr', type: 'person', id: id),
+                      );
+                    },
+                    child: Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+          ),
+          if (day != null) ...[
+            const SizedBox(width: 8),
+            Text('joined $day', style: theme.textTheme.bodySmall),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _download(String url, Map<String, dynamic> link) async {
+    final image = await QrPainter(
+      data: url,
+      version: QrVersions.auto,
+      gapless: true,
+      // Printed dark on white, whatever the theme.
+      eyeStyle: const QrEyeStyle(
+        eyeShape: QrEyeShape.square,
+        color: EzBiziTheme.paperInk,
+      ),
+      dataModuleStyle: const QrDataModuleStyle(
+        dataModuleShape: QrDataModuleShape.square,
+        color: EzBiziTheme.paperInk,
+      ),
+    ).toImageData(1024, format: ui.ImageByteFormat.png);
+    if (!mounted || image == null) return;
+    final slug = '${(link['role'] as Map?)?['name'] ?? ''} ${_placeName(link)}'
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    Files.download(
+      'invite-link${slug.isEmpty ? '' : '-$slug'}.png',
+      image.buffer.asUint8List(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -166,6 +249,7 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
               Expanded(
                 child: TextField(
                   key: const ValueKey('invite-link-days'),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   controller: _days,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
@@ -179,6 +263,7 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
               Expanded(
                 child: TextField(
                   key: const ValueKey('invite-link-max'),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   controller: _maxUses,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
@@ -241,21 +326,25 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
-                open
-                    ? const Tag('Open', good: true)
-                    : Tag(
-                        link['revoked_at'] != null ? 'Switched off' : 'Closed',
-                        warn: true,
-                      ),
+                StatusPill(
+                  open
+                      ? 'Open'
+                      : link['revoked_at'] != null
+                      ? 'Switched off'
+                      : 'Closed',
+                  tone: open ? Tone.ok : Tone.neutral,
+                  dense: true,
+                ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
               [
                 'Used ${link['uses']}${max == null ? '' : ' of $max'}',
-                expires == null
-                    ? 'no expiry'
-                    : 'expires ${expires.substring(0, 10)}',
+                if (_date(expires) case final day?)
+                  '${open ? 'expires' : 'ended'} $day'
+                else
+                  'no expiry',
                 if (link['created_by'] != null) 'made by ${link['created_by']}',
               ].join(' · '),
               style: theme.textTheme.bodySmall,
@@ -268,6 +357,7 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -288,6 +378,13 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
                   icon: const Icon(Icons.qr_code, size: 16),
                   label: const Text('QR'),
                 ),
+                if (_qrFor == link['id'])
+                  OutlinedButton.icon(
+                    key: ValueKey('invite-link-download-${link['id']}'),
+                    onPressed: () => _download(url, link),
+                    icon: const Icon(Icons.download_outlined, size: 16),
+                    label: const Text('Download PNG'),
+                  ),
                 if (link['revoked_at'] == null)
                   OutlinedButton(
                     onPressed: _busy
@@ -339,10 +436,8 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
               ),
             if (joined.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
-                'Joined: ${joined.map((j) => j['name'] ?? '').join(', ')}',
-                style: theme.textTheme.bodySmall,
-              ),
+              Text('Joined', style: theme.textTheme.labelMedium),
+              for (final j in joined) _joinedRow(context, j),
             ],
           ],
         ),
