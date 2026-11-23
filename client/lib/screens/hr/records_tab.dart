@@ -1328,7 +1328,10 @@ class _PersonRecordState extends State<_PersonRecord> {
       return v == 1 ? '1 day' : '$text days';
     }
 
-    final from = DateTime.tryParse(pto['eligible_from']?.toString() ?? '');
+    // The first day they have one to take (Jose, 2026-11-23).
+    final from = DateTime.tryParse(
+      (pto['usable_from'] ?? pto['eligible_from'])?.toString() ?? '',
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1339,7 +1342,7 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
         const SizedBox(height: 8),
         Text(
-          pto['eligible'] == true
+          (pto['usable'] ?? pto['eligible']) == true
               ? 'They can use it now.'
               : from == null
               ? 'When they can use it depends on their start date, which is '

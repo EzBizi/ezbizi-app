@@ -138,6 +138,7 @@ class PtoPolicy
             'carry_over' => (bool) $this->settings->get('pto.carry_over', $organization),
             'started_on' => $startedOn?->toDateString(),
             'eligible_from' => $eligibleFrom?->toDateString(),
+            ...$this->usable($eligibleFrom, $balance),
 
             // False when the date is unknown, not true. The safe direction for
             // a sentence somebody acts on: being told to wait when you could
@@ -153,6 +154,31 @@ class PtoPolicy
             // told to wait for a date that is already behind them.
             'eligible' => $waiting === 0
                 || ($eligibleFrom !== null && ! $eligibleFrom->isFuture()),
+        ];
+    }
+
+    /**
+     * The first day somebody actually has a day to take (Jose, 2026-11-23:
+     * "they don't have any until later on, so it should reflect the date of the
+     * first pto's instead"): the later of the waiting period's end and the
+     * first days earned. With a balance already (carried over, or granted), the
+     * waiting period's end stands.
+     *
+     * @return array{usable_from: ?string, first_days: ?array{on: string, days: int}, usable: bool}
+     */
+    private function usable(?Carbon $eligibleFrom, array $balance): array
+    {
+        $first = $balance['first_grant'] ?? null;
+        $eligible = $eligibleFrom?->toDateString();
+
+        $from = ($eligible === null || ($balance['left'] ?? 0) > 0 || $first === null)
+            ? $eligible : max($eligible, $first['on']);
+
+        return [
+            'usable_from' => $from,
+            'first_days' => $first ?: null,
+            // Today or past: they have a day they may take.
+            'usable' => $from !== null && $from <= now()->toDateString() && ($balance['left'] ?? 0) > 0,
         ];
     }
 
@@ -272,6 +298,10 @@ class PtoPolicy
             // The grants still to land in this period, up to the reset, oldest
             // first (UI/UX, 2026-10-26: "when the next days are earned").
             'upcoming_earned' => $this->upcoming($origin, $today, $next, $allowance, $step, $reset),
+            // The very first grant, wherever it falls — past this period's
+            // reset too (Jose, 2026-11-23: "the date of the first pto's").
+            'first_grant' => $allowance > 0
+                ? ['on' => $step($origin, $reset === 'period' ? 0 : 1)->toDateString(), 'days' => $allowance] : null,
             // Lost at the next reset if nothing more is used (carryover off).
             'would_expire' => $carryOver ? 0.0 : round(max(0.0, $total - $usedNow), 2),
             'resets_on' => $next->toDateString(),
