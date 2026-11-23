@@ -59,7 +59,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 33 | **Clicking the Updates column opens a panel with only the updates** (the item's thread + write box), not the whole item form; clicking elsewhere on the row keeps the full panel, as Monday does (11-23, screenshot A1 - Operatrion) | Task Board | MERGED | 466d62d7b merged; ships in 0625 |
 | 34 | **Updates column sits right after Status** on every board (most used; must always be visible, today it is last) (11-23) | Task Board | ROUTED | Sent 11-23 |
 | 35 | **A-1 Chimney still shows as two boards** (11-23): team board "A-1 Chimney" (01a135ac-1253) still exists and shows Open Tasks (50 flag tasks on screen) beside "A1 - Operatrion" (680 tasks) in folder A1 Chimney. Row 14 said they were merged; they must be ONE board | Task Board | ROUTED | Sent 11-23 |
-| 36 | **Ohio Project Management missing from Field Management > Project Management** (11-23): on prod it sits in the Everdoors folder; Monday has it in Field Management > Project Management (folder 21468509). Folder mirror must follow Monday | Task Board | ROUTED | Sent 11-23 |
+| 36 | **Ohio Project Management missing from Field Management > Project Management** (11-23): on prod it sits in the Everdoors folder; Monday has it in Field Management > Project Management (folder 21468509). Folder mirror must follow Monday | Task Board | DONE (prod) | 11-23 14:15: Ohio PM in Field Management > Project Management beside Illinois; audit of 39 boards found 2 more off (moving to Monday folders); importer to follow Monday folders |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
