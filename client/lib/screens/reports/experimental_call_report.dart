@@ -194,6 +194,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String _personQuery = '';
   String _notBookedQuery = '';
   String _missedQuery = '';
+  String _lateQuery = '';
 
   // The two label lists as the business has them (Settings › Lists), sent
   // with the report: label => the name shown.
@@ -281,6 +282,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // Missed and unanswered-out are what became of the call, not its result.
     final call = switch (filter) {
       'missed' => 'missed',
+      'after_hours' => 'after_hours',
       'outbound_no_answer' => 'not_answered',
       _ => 'all',
     };
@@ -289,7 +291,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _clientFilter = client ? filter : null;
     _labelFilter = null;
     _nobodyFilter = null;
-    _directionFilter = null;
+    // Inbound calls counts theirs in; All in Calls holds ours out too.
+    _directionFilter = filter == 'all' ? 'inbound' : null;
   });
 
   DateTime get _today => DateSpan.single(widget.now()).from;
@@ -750,9 +753,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   // ── Overview ───────────────────────────────────────────────────
 
-  /// How the dates went: the seven figures, then the two lists that need
+  /// How the dates went: the seven figures, then the lists that need
   /// somebody — side by side when there is room, Not booked first because it
-  /// is the one somebody acts on.
+  /// is the one somebody acts on, then Missed in and after business hours.
   Widget _overview(
     BuildContext context,
     Map<String, dynamic> totals,
@@ -762,8 +765,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return LayoutBuilder(
       builder: (context, box) {
         final across = box.maxWidth >= 1100 ? 7 : (box.maxWidth >= 720 ? 4 : 2);
-        final notBooked = _notBookedCard(context, calls);
-        final missed = _missedCard(context, calls);
+        final lists = [
+          _notBookedCard(context, calls),
+          _missedCard(context, calls),
+          _missedCard(context, calls, afterHours: true),
+        ];
+        final perRow = box.maxWidth >= 1100
+            ? 3
+            : (box.maxWidth >= ExperimentalCallReport.tableAbove ? 2 : 1);
 
         return ListView(
           padding: const EdgeInsets.only(top: 4, bottom: 24),
@@ -775,21 +784,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               'reached_nobody': _nobody(calls).length,
             }, across),
             const SizedBox(height: 16),
-            if (box.maxWidth >= ExperimentalCallReport.tableAbove)
+            // Three across when wide, two below that, one on a phone; each
+            // row one height.
+            for (var i = 0; i < lists.length; i += perRow) ...[
+              if (i > 0) const SizedBox(height: 12),
               IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: notBooked),
-                    const SizedBox(width: 12),
-                    Expanded(child: missed),
+                    for (var j = i; j < i + perRow; j++) ...[
+                      if (j > i) const SizedBox(width: 12),
+                      Expanded(
+                        child: j < lists.length ? lists[j] : const SizedBox(),
+                      ),
+                    ],
                   ],
                 ),
-              )
-            else ...[
-              notBooked,
-              const SizedBox(height: 12),
-              missed,
+              ),
             ],
             if (phone) ...[
               const SizedBox(height: 12),
@@ -951,6 +962,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// New-client calls somebody answered that did not become a job: no Workiz
   /// job for the caller's number in the period, and not marked by hand.
+  /// The results a call can have; the rest are No result.
+  static const _judged = [
+    'booked',
+    'not_booked',
+    'ai_booked_no_job',
+    'awaiting_review',
+  ];
+
   List<Map<String, dynamic>> _unbooked(List<Map<String, dynamic>> calls) =>
       calls
           .where(
@@ -996,12 +1015,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       calls
           .where((c) => _isOutbound(c) && c['outcome'] != 'connected')
           .toList();
-
-  /// A phone number typed in the search (seven digits or more): every call
-  /// with it, outbound ones that connected included (Jose, 2026-10-13: "be
-  /// able to search all calls by number as well").
-  bool get _numberSearch =>
-      _query.replaceAll(RegExp(r'[^0-9]'), '').length >= 7;
 
   static bool _isOutbound(Map<String, dynamic> c) =>
       c['direction'] == 'Outbound';
@@ -1081,44 +1094,59 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _missedCard(BuildContext context, List<Map<String, dynamic>> calls) {
-    final nobody = _nobody(calls);
+  /// Missed calls, one section in business hours and one after them
+  /// (Analorena, 2026-11-23): after hours are listed, never counted as missed.
+  Widget _missedCard(
+    BuildContext context,
+    List<Map<String, dynamic>> calls, {
+    bool afterHours = false,
+  }) {
+    final nobody = afterHours ? _afterHours(calls) : _nobody(calls);
     int count(String queue) => nobody.where((c) => c['queue'] == queue).length;
-    final late = _afterHours(calls).length;
-    final detail = [
-      if (nobody.isNotEmpty)
-        'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
-      if (late > 0) '$late after hours, not counted',
-    ];
     // One row per caller: the same number twice is "Name · 2 calls" (item 13).
     final byCaller = <String, List<Map<String, dynamic>>>{};
-    for (final call in nobody.where(_matches(_missedQuery))) {
+    for (final call in nobody.where(
+      _matches(afterHours ? _lateQuery : _missedQuery),
+    )) {
       byCaller.putIfAbsent('${call['from'] ?? call['id']}', () => []).add(call);
     }
+    final name = afterHours ? 'overview-missed-after-hours' : 'overview-missed';
+    final detail = [
+      afterHours ? 'Missed while closed, not counted' : 'In business hours',
+      if (nobody.isNotEmpty)
+        'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
+    ];
 
     return _listCard(
       context,
-      key: const ValueKey('overview-missed'),
-      title: 'Missed calls',
+      key: ValueKey(name),
+      title: afterHours ? 'After hours' : 'Missed calls',
       count: nobody.length,
-      detail: detail.isEmpty ? null : detail.join(' · '),
-      empty: nobody.isEmpty
-          ? 'Every call reached somebody.'
-          : 'No caller matches.',
-      search: _listSearch('overview-missed-search', (v) => _missedQuery = v),
+      detail: detail.join(' · '),
+      empty: nobody.isNotEmpty
+          ? 'No caller matches.'
+          : afterHours
+          ? 'No call missed while closed.'
+          : 'Every call reached somebody.',
+      search: _listSearch(
+        '$name-search',
+        (v) => afterHours ? (_lateQuery = v) : (_missedQuery = v),
+      ),
       rows: [
         for (final repeat in byCaller.values.take(3))
           _briefCall(
             context,
             repeat.first,
             StatusPill(
-              _outcomes[repeat.first['outcome']] ?? 'Nobody answered',
+              afterHours
+                  ? 'After hours'
+                  : _outcomes[repeat.first['outcome']] ?? 'Nobody answered',
               tone: Tone.caution,
             ),
             times: repeat.length,
           ),
       ],
-      filter: 'missed',
+      filter: afterHours ? 'after_hours' : 'missed',
     );
   }
 
@@ -1358,17 +1386,21 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   }) {
     final theme = Theme.of(context);
 
-    // Other: lines that are neither queue, so the three add up to All.
-    List<Map<String, dynamic>> byClient(String? client) => switch (client) {
-      null => calls,
+    // Other: lines that are neither queue (and ours out), so the three add
+    // up to All.
+    List<Map<String, dynamic>> byClient(
+      String? client,
+      List<Map<String, dynamic>> from,
+    ) => switch (client) {
+      null || 'all' => from,
       'other' =>
-        calls
+        from
             .where(
               (c) => c['queue'] != _newQueue && c['queue'] != _existingQueue,
             )
             .toList(),
       _ =>
-        calls
+        from
             .where(
               (c) =>
                   c['queue'] == (client == 'new' ? _newQueue : _existingQueue),
@@ -1389,6 +1421,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       // Another company's call, booked or not by hand (Analorena, 2026-11-23).
       'awaiting_review' =>
         from.where((c) => c['awaiting_review'] == true).toList(),
+      // The rest, so the row adds up to All (Analorena, 2026-11-23: "it
+      // doesnt make sense"): existing clients, missed calls, other lines,
+      // ours out - no sale to judge.
+      'no_result' =>
+        from
+            .where(
+              (c) => !_judged.any((result) => byResult(result, [c]).isNotEmpty),
+            )
+            .toList(),
       _ => from,
     };
     // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
@@ -1408,14 +1449,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       'not_answered' => _outbound(from),
       'missed' => _nobody(from),
       'after_hours' => _afterHours(from),
-      // All: theirs in, unless a number is searched or Answered is chosen.
-      _ => _numberSearch ? from : from.where((c) => !_isOutbound(c)).toList(),
+      // All: every call, so Answered, Not answered, Missed and After hours
+      // add up to it (Analorena, 2026-11-23: "Answered 504 but All 361").
+      _ => from,
     };
-    List<Map<String, dynamic>> pick(
-      String result,
-      String call,
+    List<Map<String, dynamic>> byDirection(
+      String? direction,
       List<Map<String, dynamic>> from,
-    ) => byResult(result, byCall(call, from));
+    ) => switch (direction) {
+      'inbound' => from.where((c) => !_isOutbound(c)).toList(),
+      'outbound' => from.where(_isOutbound).toList(),
+      _ => from,
+    };
 
     // The search narrows everything under it, counts included, so a chip
     // never promises calls the list will not show.
@@ -1434,23 +1479,46 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 .replaceAll(RegExp(r'[^0-9]'), '')
                 .contains(digits));
 
-    final mine = byClient(_clientFilter).where(found).toList();
-    final shown = pick(_result, _callFilter, mine);
+    // Every row narrows the others, and a chip counts the list it opens:
+    // the bar as it stands with that one chip chosen instead.
+    final searched = calls.where(found).toList();
+    List<Map<String, dynamic>> pick({
+      String? result,
+      String? call,
+      String? client,
+      String? direction,
+    }) => byResult(
+      result ?? _result,
+      byCall(
+        call ?? _callFilter,
+        byDirection(
+          direction ?? _directionFilter,
+          byClient(client ?? _clientFilter, searched),
+        ),
+      ),
+    );
+    final shown = pick();
 
     final reasons = <String, int>{};
-    for (final call in _nobody(mine)) {
+    for (final call in _nobody(shown)) {
       final outcome = '${call['outcome']}';
       reasons[outcome] = (reasons[outcome] ?? 0) + 1;
     }
 
-    Widget chip(String key, String label, bool on, VoidCallback pick) =>
-        ChoiceChip(
-          key: ValueKey('calls-filter-$key'),
-          label: Text(label),
-          selected: on,
-          showCheckmark: false,
-          onSelected: (_) => setState(pick),
-        );
+    Widget chip(
+      String key,
+      String label,
+      bool on,
+      VoidCallback pick, {
+      String? tooltip,
+    }) => ChoiceChip(
+      key: ValueKey('calls-filter-$key'),
+      label: Text(label),
+      tooltip: tooltip,
+      selected: on,
+      showCheckmark: false,
+      onSelected: (_) => setState(pick),
+    );
 
     // Wraps: Result has seven chips now (review item 4).
     Widget group(String label, List<Widget> chips) => Wrap(
@@ -1479,20 +1547,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('not_booked', 'Not booked'),
           ('ai_booked_no_job', 'Needs Attention'),
           ('awaiting_review', 'Awaiting review'),
+          ('no_result', 'No result'),
         ])
           // The follow-up lists only while they have calls, or are chosen.
           if (!{'ai_booked_no_job', 'awaiting_review'}.contains(key) ||
               _result == key ||
-              pick(key, _callFilter, mine).isNotEmpty)
+              pick(result: key).isNotEmpty)
             chip(
               key,
-              '$label ${pick(key, _callFilter, mine).length}',
+              '$label ${pick(result: key).length}',
               _result == key,
               () {
                 _result = key;
                 _labelFilter = null;
-                _directionFilter = null;
               },
+              tooltip: key == 'no_result'
+                  ? 'No sale to judge: existing clients, missed calls, '
+                        'other lines and our calls out'
+                  : null,
             ),
       ]),
       group('Call', [
@@ -1504,25 +1576,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('missed', 'missed', 'Missed call'),
           ('after_hours', 'after_hours', 'After hours'),
         ])
-          if (state != 'after_hours' ||
-              _callFilter == state ||
-              pick(_result, state, mine).isNotEmpty)
+          // Not answered is ours out, Missed and After hours theirs in: each
+          // only where its direction is showing.
+          if (_callFilter == state ||
+              switch (state) {
+                'not_answered' => _directionFilter != 'inbound',
+                'missed' => _directionFilter != 'outbound',
+                'after_hours' => pick(call: state).isNotEmpty,
+                _ => true,
+              })
             chip(
               key,
-              '$label ${pick(_result, state, mine).length}',
+              '$label ${pick(call: state).length}',
               _callFilter == state,
               () {
                 _callFilter = state;
                 _labelFilter = null;
                 _nobodyFilter = null;
-                _directionFilter = null;
               },
             ),
       ]),
       group('Client', [
         chip(
           'every-client',
-          'All ${pick(_result, _callFilter, byClient(null)).length}',
+          'All ${pick(client: 'all').length}',
           _clientFilter == null,
           () => _clientFilter = null,
         ),
@@ -1533,7 +1610,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ])
           chip(
             key,
-            '$label ${pick(_result, _callFilter, byClient(key)).length}',
+            '$label ${pick(client: key).length}',
             _clientFilter == key,
             () {
               _clientFilter = key;
@@ -1545,19 +1622,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       group('Direction', [
         chip(
           'every-direction',
-          'All',
+          'All ${pick(direction: 'all').length}',
           _directionFilter == null,
           () => _directionFilter = null,
         ),
         chip(
           'inbound',
-          'Inbound ${mine.where((c) => !_isOutbound(c)).length}',
+          'Inbound ${pick(direction: 'inbound').length}',
           _directionFilter == 'inbound',
           () => _directionFilter = 'inbound',
         ),
         chip(
           'outbound',
-          'Outbound ${mine.where(_isOutbound).length}',
+          'Outbound ${pick(direction: 'outbound').length}',
           _directionFilter == 'outbound',
           () {
             _directionFilter = 'outbound';
@@ -1616,7 +1693,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
     );
     // Which AI put each call where, above the table it narrows.
-    final heard = byCall(_callFilter, mine);
+    final heard = pick(result: 'all');
     final counts = switch (_result) {
       'not_booked' => _labelCounts(context, _unbooked(heard), _notBookedLabels),
       _
@@ -1627,26 +1704,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       _ => null,
     };
 
-    // Direction narrows whatever Result shows; Outbound lists every call out.
-    final directed = switch (_directionFilter) {
-      'outbound' => mine.where(_isOutbound).toList(),
-      'inbound' => shown.where((c) => !_isOutbound(c)).toList(),
-      _ => shown,
-    };
     final rows = [
       ...switch (_result) {
-        _ when _directionFilter == 'outbound' => _everyCall(context, directed),
+        _ when _directionFilter == 'outbound' => _everyCall(context, shown),
         'not_booked' => _notBooked(context, heard, conversions),
         _ when _callFilter == 'missed' => _everyCall(
           context,
-          directed
+          shown
               .where(
                 (c) => _nobodyFilter == null || c['outcome'] == _nobodyFilter,
               )
               .toList(),
         ),
-        _ when _clientFilter == 'existing' => _existingCalls(context, directed),
-        _ => _everyCall(context, directed),
+        _ when _clientFilter == 'existing' => _existingCalls(context, shown),
+        _ => _everyCall(context, shown),
       },
     ];
 
@@ -1681,7 +1752,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                         'new' => 'New',
                         'existing' => 'Existing',
                         _ => 'Other',
-                      }} (${byClient(_clientFilter).where((c) => !_isOutbound(c)).length})',
+                      }} (${byClient(_clientFilter, calls).where((c) => !_isOutbound(c)).length})',
                       key: const ValueKey('calls-results-within'),
                       style: theme.textTheme.bodySmall,
                     ),

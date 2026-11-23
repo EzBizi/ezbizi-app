@@ -347,7 +347,14 @@ void main() {
     });
     await _pump(tester, width: 1400, view: 'Calls', report: () => withOut);
 
+    // Theirs in leaves it out; a number searched finds every call.
+    await tester.tap(find.byKey(const ValueKey('calls-filter-inbound')));
+    await tester.pumpAndSettle();
     expect(find.text('Called by Ada'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-every-direction')),
+    );
+    await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const ValueKey('calls-search')),
@@ -470,16 +477,139 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('1 after hours, not counted'), findsOneWidget);
+    // Two sections (Analorena, follow-up): in business hours, and after.
+    final open = find.byKey(const ValueKey('overview-missed'));
+    final closed = find.byKey(const ValueKey('overview-missed-after-hours'));
+    Finder inside(Finder card, String text) =>
+        find.descendant(of: card, matching: find.textContaining(text));
+    expect(inside(open, 'In business hours'), findsOneWidget);
+    expect(inside(open, 'Burst pipe'), findsOneWidget);
+    expect(inside(open, 'Silent line'), findsNothing);
+    expect(inside(closed, 'Missed while closed, not counted'), findsOneWidget);
+    expect(inside(closed, 'Silent line'), findsOneWidget);
+    expect(inside(closed, 'Burst pipe'), findsNothing);
+    expect(tester.getRect(open).top, tester.getRect(closed).top);
+    expect(tester.getSize(open).height, tester.getSize(closed).height);
 
-    await _pump(tester, width: 1400, view: 'Calls', report: () => late);
-    await tester.tap(find.byKey(const ValueKey('calls-filter-after_hours')));
+    // Its See all opens the After hours list in Calls.
+    await tester.tap(find.byKey(const ValueKey('see-all-after_hours')));
     await tester.pumpAndSettle();
+    expect(_chip(tester, 'after_hours').selected, isTrue);
     expect(find.text('After hours 1'), findsOneWidget);
     expect(find.textContaining('Silent line'), findsOneWidget);
     expect(find.textContaining('Burst pipe'), findsNothing);
     expect(find.widgetWithText(StatusPill, 'After hours'), findsOneWidget);
   });
+
+  // Analorena, 2026-11-23: "it doesnt make sense if we answered 504 calls but
+  // all shows 361". Each row of chips adds up to its All, and a chip opens
+  // as many calls as it says.
+  testWidgets(
+    'every row of chips adds up to its All and opens what it counts',
+    (tester) async {
+      final mixed = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+      final calls = mixed['calls'] as List;
+      Map<String, dynamic> call(String id, Map<String, dynamic> more) => {
+        'id': id,
+        'started_at': '2026-09-16T17:00:00Z',
+        'from': '+1555000${id.hashCode % 10000}'.padRight(12, '0'),
+        'caller_label': 'Caller $id',
+        'queue': 'A1 - New Client',
+        'answered_by': null,
+        'rang': [],
+        'booked': false,
+        ...more,
+      };
+      calls.addAll([
+        call('c5', {
+          'answered_by': 'Ada',
+          'outcome': 'answered',
+          'needs_attention': true,
+        }),
+        call('c6', {
+          'answered_by': 'Bo',
+          'outcome': 'answered',
+          'awaiting_review': true,
+        }),
+        call('c7', {
+          'queue': 'A1 - Existing Client',
+          'outcome': 'missed',
+          'after_hours': true,
+        }),
+        call('o1', {
+          'direction': 'Outbound',
+          'queue': null,
+          'outcome': 'connected',
+          'placed_by': 'Ada',
+        }),
+        call('o2', {
+          'direction': 'Outbound',
+          'queue': null,
+          'outcome': 'no_answer',
+          'placed_by': 'Bo',
+        }),
+      ]);
+      await _pump(tester, width: 1400, view: 'Calls', report: () => mixed);
+
+      int count(String key) {
+        final chip = tester.widget<ChoiceChip>(
+          find.byKey(ValueKey('calls-filter-$key')),
+        );
+        return int.parse((chip.label as Text).data!.split(' ').last);
+      }
+
+      bool shows(String key) =>
+          find.byKey(ValueKey('calls-filter-$key')).evaluate().isNotEmpty;
+      int listed() => find
+          .byWidgetPredicate(
+            (w) =>
+                w.key is ValueKey<String> &&
+                (w.key! as ValueKey<String>).value.startsWith('call-details-'),
+          )
+          .evaluate()
+          .length;
+
+      const rows = [
+        (
+          'all',
+          [
+            'booked',
+            'not_booked',
+            'ai_booked_no_job',
+            'awaiting_review',
+            'no_result',
+          ],
+        ),
+        (
+          'every-call',
+          ['answered', 'outbound_no_answer', 'missed', 'after_hours'],
+        ),
+        ('every-client', ['new', 'existing', 'other']),
+        ('every-direction', ['inbound', 'outbound']),
+      ];
+      expect(count('every-call'), calls.length);
+      for (final (all, parts) in rows) {
+        expect(parts.every(shows), isTrue, reason: all);
+        expect(
+          parts.map(count).fold(0, (a, b) => a + b),
+          count(all),
+          reason: '$all adds up',
+        );
+        for (final part in parts) {
+          expect(count(part), lessThanOrEqualTo(count(all)), reason: part);
+        }
+      }
+
+      // Each chip of Call, Client and Direction lists as many as it says.
+      for (final (all, parts) in rows.skip(1)) {
+        for (final part in [all, ...parts]) {
+          await tester.tap(find.byKey(ValueKey('calls-filter-$part')));
+          await tester.pumpAndSettle();
+          expect(listed(), count(part), reason: part);
+        }
+      }
+    },
+  );
 
   testWidgets('Calls has headings, and the search narrows the calls', (
     tester,
@@ -754,7 +884,13 @@ void main() {
     expect(find.text('Called by Ada'), findsOneWidget);
     expect(find.textContaining('Burst pipe'), findsNothing);
     expect(find.byKey(const ValueKey('nobody-missed')), findsNothing);
+    // Missed is theirs in: offered again once inbound calls show.
+    expect(find.byKey(const ValueKey('calls-filter-missed')), findsNothing);
 
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-every-direction')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('calls-filter-missed')));
     await tester.pumpAndSettle();
 
@@ -1469,6 +1605,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Burst pipe'), findsOneWidget);
     expect(find.textContaining('Silent line'), findsOneWidget);
+  });
+
+  testWidgets('the three Overview lists fit at the narrowest side-by-side', (
+    tester,
+  ) async {
+    for (final width in [
+      ExperimentalCallReport.tableAbove,
+      1100.0,
+      1150.0,
+      1200.0,
+    ]) {
+      await _pump(tester, width: width);
+      expect(tester.takeException(), isNull, reason: 'at $width');
+    }
   });
 
   testWidgets('on a phone the Overview stacks them, Not booked first', (

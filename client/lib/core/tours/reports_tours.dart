@@ -69,7 +69,10 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'overview-missed',
         title: 'Missed calls',
-        body: 'Calls nobody answered, split into new and existing customers.',
+        body:
+            'Calls nobody answered while open, split into new and existing '
+            'customers. Calls missed while closed are listed beside it, '
+            'not counted.',
       ),
       TourStep(
         anchor: 'overview-not-booked',
