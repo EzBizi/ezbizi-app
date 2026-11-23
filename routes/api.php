@@ -57,6 +57,7 @@ use App\Http\Controllers\Api\HelpVideosController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
+use App\Http\Controllers\Api\HrInviteLinksController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\HrPersonDetailsController;
@@ -82,6 +83,7 @@ use App\Http\Controllers\Api\InventorySummaryController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
+use App\Http\Controllers\Api\InviteLinkJoinController;
 use App\Http\Controllers\Api\InvoicePaymentsController;
 use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\JobBookingController;
@@ -431,6 +433,13 @@ Route::prefix('v1/auth')->group(function () {
 Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(function () {
     Route::post('lookup', [InvitationAcceptanceController::class, 'show']);
     Route::post('accept', [InvitationAcceptanceController::class, 'accept']);
+});
+
+// An invite link's public side: what it is for, and making an account through it
+// (Jose, 2026-11-23). Same limiter, same body-not-URL token rule as above.
+Route::prefix('v1/invite-links')->middleware('throttle:invitation')->group(function () {
+    Route::post('lookup', [InviteLinkJoinController::class, 'show']);
+    Route::post('join', [InviteLinkJoinController::class, 'join']);
 });
 
 /*
@@ -2456,6 +2465,11 @@ Route::prefix('v1')
             // one without somebody adding it deliberately.
             Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
             Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
+            // Shareable invite links (Jose, 2026-11-23).
+            Route::get('hr/invite-links', [HrInviteLinksController::class, 'index']);
+            Route::post('hr/invite-links', [HrInviteLinksController::class, 'store']);
+            Route::patch('hr/invite-links/{link}', [HrInviteLinksController::class, 'update']);
+            Route::delete('hr/invite-links/{link}', [HrInviteLinksController::class, 'destroy']);
         });
 
         // The Contracts tab — the template designer, and the schema every other

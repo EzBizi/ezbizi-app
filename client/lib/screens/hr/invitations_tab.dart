@@ -20,6 +20,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'invite_links_panel.dart';
 
 /// Every invitation and where it got to (HR plan, "Invitations").
 ///
@@ -268,11 +269,29 @@ class _InvitationsTabState extends State<InvitationsTab> {
           note:
               'One person at a time. A link works once and expires after a '
               'week; “received” means they opened it.',
-          action: FilledButton.icon(
-            key: const ValueKey('tour-hr-invitations-invite'),
-            onPressed: _cannotInvite == null ? _invite : null,
-            icon: const Icon(Icons.person_add_alt_outlined, size: 18),
-            label: const Text('Invite somebody'),
+          action: Wrap(
+            spacing: 8,
+            children: [
+              // Many people at once (Jose, 2026-11-23).
+              OutlinedButton.icon(
+                key: const ValueKey('hr-invite-links'),
+                onPressed: _cannotInvite == null
+                    ? () => showSidePanel<void>(
+                        context,
+                        builder: (_) =>
+                            InviteLinksPanel(api: widget.api, options: _options),
+                      )
+                    : null,
+                icon: const Icon(Icons.link, size: 18),
+                label: const Text('Invite link'),
+              ),
+              FilledButton.icon(
+                key: const ValueKey('tour-hr-invitations-invite'),
+                onPressed: _cannotInvite == null ? _invite : null,
+                icon: const Icon(Icons.person_add_alt_outlined, size: 18),
+                label: const Text('Invite somebody'),
+              ),
+            ],
           ),
         ),
         if (_cannotInvite != null)
