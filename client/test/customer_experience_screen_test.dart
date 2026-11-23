@@ -247,7 +247,9 @@ void reviewLinkTests() {
       tester.view.physicalSize = const Size(390, 844);
       await tester.pumpAndSettle();
       // The chip row scrolls on a phone; Auto-replies pushed this one past the edge.
-      await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Review links'));
+      await tester.ensureVisible(
+        find.widgetWithText(ChoiceChip, 'Review links'),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
       await tester.pumpAndSettle();
@@ -314,8 +316,38 @@ void reviewLinkTests() {
     expect(find.text('Total'), findsOneWidget);
     await tester.tap(find.text('Person'));
     await tester.pumpAndSettle();
-    expect(find.text('Rita Tech'), findsOneWidget);
+    final table = find.byKey(const Key('review-links-table'));
+    expect(
+      find.descendant(of: table, matching: find.text('Rita Tech')),
+      findsOneWidget,
+    );
     expect(find.text('North Branch'), findsNothing);
+  });
+
+  // Jose 2026-11-23 (design 204): "which technician got the most reviews".
+  testWidgets('the leaderboard ranks people by reviews written', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('review-links-leaderboard')), findsOneWidget);
+    // Omar wrote 3 reviews to Rita's 2: first, though Rita sent more texts.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('review-links-rank-0')))
+          .data,
+      'Omar Lead',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('review-links-rank-1')))
+          .data,
+      'Rita Tech',
+    );
+    // Nothing earned, not ranked.
+    expect(find.byKey(const ValueKey('review-links-rank-2')), findsNothing);
   });
 }
 
@@ -454,6 +486,32 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
               'sad': 2,
               'submitted': 1,
               'google': 6,
+              'reviewed': 2,
+              'qr': 3,
+            },
+            {
+              'id': 'u-10',
+              'name': 'Omar Lead',
+              'sent': 5,
+              'opened': 4,
+              'happy': 9,
+              'sad': 0,
+              'submitted': 0,
+              'google': 4,
+              'reviewed': 3,
+              'qr': 0,
+            },
+            {
+              'id': 'u-11',
+              'name': 'Quiet Person',
+              'sent': 3,
+              'opened': 0,
+              'happy': 0,
+              'sad': 0,
+              'submitted': 0,
+              'google': 0,
+              'reviewed': 0,
+              'qr': 0,
             },
           ],
           'tracked_since': '2026-10-15T14:00:00Z',

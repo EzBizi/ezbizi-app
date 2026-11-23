@@ -10,6 +10,7 @@ import 'customer_experience/auto_replies_tab.dart';
 import 'business_profile_screen.dart';
 import 'customer_experience/complaints_tab.dart';
 import 'customer_experience/review_links_tab.dart';
+import 'customer_experience/review_qr_panel.dart';
 
 /// Customer Experience — Reviews and Business Profile, moved out of Marketing
 /// on 2026-09-25 (Jose).
@@ -29,7 +30,7 @@ import 'customer_experience/review_links_tab.dart';
 /// this one.
 const customerExperienceChildChips = {
   'business_profile': ['GBP Listings', 'GBP Performance', 'Posts to approve'],
-  'reviews': ['Reviews', 'Auto-replies', 'Review links'],
+  'reviews': ['Reviews', 'Auto-replies', 'Review links', 'Review QR'],
 };
 
 class CustomerExperienceScreen extends StatefulWidget {
@@ -128,6 +129,10 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
         Icons.ads_click_outlined,
         () => ReviewLinksTab(api: widget.api, session: widget.session),
       ),
+    // A QR a technician shows on site; scans count for them (design 204,
+    // Jose 2026-11-23). Reviews' grant, as the server asks.
+    if (me.reaches('reviews'))
+      ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     // Every bad review, bad rating and complaint call (Jose, 2026-10-20). The
     // registry's TabDefinition('complaints'), so its own grant.
     if (me.can('customer_experience.complaints.view'))
