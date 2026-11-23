@@ -115,6 +115,14 @@ class ViewAsUser extends User
         return parent::isAdministrator() && $this->viewAsActor->isAdministrator();
     }
 
+    public const NO_OWN_ROWS = '00000000-0000-0000-0000-000000000000';
+
+    /** A role clone owns no per-user rows: the actor's grants are not the role's. */
+    public function ownRowsKey(): string
+    {
+        return $this->viewAsRoleClone ? self::NO_OWN_ROWS : parent::ownRowsKey();
+    }
+
     /** A role has no inbox given by name; the actor's own grants are not the role's. */
     public function personalGrantKeys(): array
     {

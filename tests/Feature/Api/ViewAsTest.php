@@ -317,4 +317,50 @@ class ViewAsTest extends TestCase
             $this->assertContains('jobs.view', $held);
         });
     }
+
+    // Gap 1 ── a role does not inherit the actor's own rows ───────
+
+    public function test_role_view_does_not_see_the_actors_personal_inbox_grant(): void
+    {
+        [, , $other] = $this->sibling();
+        $nick = $this->localManager();
+        $role = $this->inTenant($this->t['org'], fn () => $nick->fresh()->role);
+        $grant = fn (array $who) => $this->inTenant($this->t['org'], fn () => \App\Models\MailboxGrant::create([
+            'organization_id' => $this->t['org']->id, 'mailbox_id' => $other->id, ...$who,
+        ]));
+        $start = fn () => $this->as()->postJson('/api/v1/view-as', [
+            'role_id' => $role->id, 'scope_type' => 'franchise', 'scope_id' => $this->t['franchise']->id,
+        ])->assertCreated();
+        $open = fn () => $this->as()->getJson("/api/v1/email/mailboxes/{$other->id}/messages")->status();
+
+        // The sibling inbox is given to the ACTOR by name.
+        $grant(['user_id' => $this->admin->id]);
+        $this->assertNotSame(404, $open(), 'control: the actor opens it');
+
+        $start();
+        $this->assertSame(404, $open(), 'the role must not inherit the actor\'s grant');
+        $this->as()->deleteJson('/api/v1/view-as')->assertOk();
+
+        // Control: the same inbox given by name to Nick is seen viewing as him.
+        $grant(['user_id' => $nick->id]);
+        $this->as()->postJson('/api/v1/view-as', ['user_id' => $nick->id])->assertCreated();
+        $this->assertNotSame(404, $open(), 'control: a person grant opens it as that person');
+    }
+
+    // Gap 2 ── person view never writes the target's row ──────────
+
+    public function test_person_view_reads_leave_the_targets_row_untouched(): void
+    {
+        $nick = $this->localManager();
+        $before = User::withoutGlobalScopes()->whereKey($nick->id)->first()->getAttributes();
+
+        $this->as()->postJson('/api/v1/view-as', ['user_id' => $nick->id])->assertCreated();
+        $this->travel(5)->minutes();
+        $this->as()->getJson('/api/v1/me')->assertOk();
+        $this->as()->getJson('/api/v1/email/mailboxes')->assertOk();
+
+        $after = User::withoutGlobalScopes()->whereKey($nick->id)->first()->getAttributes();
+        $this->assertSame($before['updated_at'], $after['updated_at']);
+        $this->assertSame($before, $after);
+    }
 }

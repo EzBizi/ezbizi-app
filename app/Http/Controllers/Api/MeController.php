@@ -289,7 +289,7 @@ class MeController extends Controller
             $data['companies'],
             $data['franchises'],
             MailboxGrant::query()
-                ->where('user_id', $user->id)
+                ->where('user_id', $user->ownRowsKey())
                 ->when($user->role_id, fn ($q) => $q->orWhere('role_id', $user->role_id))
                 ->orderBy('mailbox_id')
                 ->pluck('mailbox_id')
