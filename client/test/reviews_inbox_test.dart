@@ -268,7 +268,9 @@ void main() {
   testWidgets('Draft with AI fills the box; Post reply saves and publishes', (
     tester,
   ) async {
-    final server = _Server();
+    final server = _Server(
+      permissions: const ['reviews.view', 'reviews.edit', 'reviews.publish'],
+    );
     await server.pump(tester);
 
     await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));

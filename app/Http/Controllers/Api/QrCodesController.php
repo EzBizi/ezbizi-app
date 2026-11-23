@@ -48,7 +48,7 @@ class QrCodesController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $rows = NewsletterAccess::visible(QrCode::query(), $user)
+        $rows = $this->visible($user)
             ->orderBy('name')
             ->get();
 
@@ -340,8 +340,23 @@ class QrCodesController extends Controller
     private function findInView(User $user, string $id): QrCode
     {
         // Out of view is a 404: a sibling learning a code exists is the leak.
-        return NewsletterAccess::visible(QrCode::query(), $user)->find($id)
+        return $this->visible($user)->find($id)
             ?? abort(Status::HTTP_NOT_FOUND);
+    }
+
+    /**
+     * Organization levels (Jose, 2026-11-23: "a-1 chimney stuff showing on
+     * everdoors"): a company or branch view shows its own codes only. An
+     * organization-level code carries the organization's logo, so it belongs
+     * to the organization view alone, never to every company below it.
+     */
+    private function visible(User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = NewsletterAccess::visible(QrCode::query(), $user);
+
+        return ViewScope::forUser($user)->isOrganization()
+            ? $query
+            : $query->where('scope_type', '!=', SocialConnection::SCOPE_ORGANIZATION);
     }
 
     private function findWritable(User $user, string $id): QrCode

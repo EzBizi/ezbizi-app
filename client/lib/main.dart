@@ -41,6 +41,7 @@ import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
+import 'screens/join_link_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
@@ -342,6 +343,20 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Above the signed-in branch, though: somebody who follows an invitation
     // while already signed in elsewhere means to join the place that invited
     // them, and one account belongs to one organization (§4).
+    final joinLink = _inviteHandled ? null : Deployment.joinLink();
+
+    if (joinLink != null) {
+      return JoinLinkScreen(
+        api: _api,
+        session: _session,
+        link: joinLink,
+        onDone: () {
+          Files.clearQuery();
+          setState(() => _inviteHandled = true);
+        },
+      );
+    }
+
     final invite = _inviteHandled ? null : Deployment.inviteToken();
 
     if (invite != null) {

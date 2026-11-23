@@ -483,7 +483,7 @@ class RolesController extends Controller
             $unique->ignore($ignoring->getKey());
         }
 
-        return $request->validate([
+        $validated = $request->validate([
             'name' => [$required ? 'required' : 'sometimes', 'string', 'max:60', $unique],
 
             // Present-but-empty is a real instruction — "this role should hold
@@ -514,6 +514,30 @@ class RolesController extends Controller
             // Whether its holders are left off "X is viewing this lead".
             'hidden_on_leads' => ['sometimes', 'boolean'],
         ]);
+
+        /*
+         * A key the software does not declare is refused by name, not dropped
+         * (desk, 2026-11-23: `reviews.reply` came back 200 and was silently
+         * ignored, which reads as success to a script or an MCP client). A key
+         * this role already stores is tolerated, so an editor echoing back a
+         * retired key it was shown cannot lock the role.
+         */
+        if (isset($validated['permissions'])) {
+            $unknown = array_values(array_diff(
+                $validated['permissions'],
+                $this->catalogue->keys(),
+                $ignoring?->permissionKeys() ?? [],
+            ));
+
+            if ($unknown !== []) {
+                throw ValidationException::withMessages(['permissions' => sprintf(
+                    'These are not permissions EzBizi has, so nothing was saved: %s.',
+                    implode(', ', $unknown),
+                )]);
+            }
+        }
+
+        return $validated;
     }
 
     private function present(Role $role): array

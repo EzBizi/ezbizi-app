@@ -70,6 +70,7 @@ void main() {
       reviews: [_review(reply: null)],
       connections: _connected,
       open: true,
+      permissions: const ['reviews.view', 'reviews.edit', 'reviews.publish'],
     );
 
     FilledButton post() => tester.widget<FilledButton>(
@@ -101,6 +102,7 @@ void main() {
       reviews: [_review(reply: null)],
       connections: _connected,
       open: true,
+      permissions: const ['reviews.view', 'reviews.edit', 'reviews.publish'],
     );
     await tester.tap(find.text('Draft with AI'));
     await tester.pumpAndSettle();
@@ -155,6 +157,28 @@ void main() {
 
       expect(find.text('no rating'), findsOneWidget);
       expect(find.byIcon(Icons.star), findsNothing);
+    },
+  );
+
+  // Adeline, 2026-11-23: no Post reply for a role without the grant, and the
+  // waiting draft is shown as not posted.
+  testWidgets(
+    'a role without reply rights sees the draft as not posted and no Post reply',
+    (tester) async {
+      await _pump(
+        tester,
+        reviews: [_review(reply: null)],
+        connections: _connected,
+        open: true,
+        permissions: const ['reviews.view'],
+      );
+
+      expect(find.byKey(const ValueKey('review-post')), findsNothing);
+      expect(find.text('Draft with AI'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('review-reply-read-only')),
+        findsOneWidget,
+      );
     },
   );
 }
@@ -213,6 +237,7 @@ void _queue101() {
       reviews: [_review(reply: null)],
       connections: _connected,
       open: true,
+      permissions: const ['reviews.view', 'reviews.edit', 'reviews.publish'],
     );
 
     expect(find.byKey(const ValueKey('review-note')), findsNothing);

@@ -64,10 +64,10 @@ trait FakesMonday
                 fn ($id) => isset($this->monday['states'][$id]) ? ['id' => $id, 'state' => $this->monday['states'][$id]] : null,
                 array_map('strval', $vars['i']),
             )))],
-            str_contains($query, 'items(ids:$i, limit:25)') => ['items' => array_values(array_filter(
+            str_contains($query, 'items(ids:$i, limit:25)') => ['items' => array_values(array_map(fn ($i) => $i + ['board' => ['id' => $i['_board']]], array_filter(
                 $allItems(),
                 fn ($i) => in_array((string) $i['id'], array_map('strval', $vars['i']), true),
-            ))],
+            )))],
             str_contains($query, '{ id name groups') => ['boards' => array_map(fn ($id) => [
                 'id' => $id, 'name' => $boards[$id]['name'], 'groups' => $boards[$id]['groups'], 'columns' => $boards[$id]['columns'],
                 'views' => $boards[$id]['views'] ?? [], 'board_folder_id' => $boards[$id]['folder'] ?? null,

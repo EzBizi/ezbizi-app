@@ -221,6 +221,19 @@ class MondaySyncTest extends TestCase
         $this->assertNotContains('gone', $now);
     }
 
+    /** Desk 11-23: an item moved GA -> CT on Monday was read by GA's sync, which made CT's group on GA. */
+    public function test_an_item_now_on_another_monday_board_is_left_to_that_boards_sync(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $moved = $this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done']);
+        $moved['group'] = ['id' => 'g_elissa', 'title' => 'Tech Field Manager -Elissa'];
+        $moved['_board'] = '200';
+        $this->poll([$moved]);
+
+        $this->assertSame('Working on it', $this->task('11')->statusRow->name, 'untouched by the board it left');
+        $this->assertFalse($this->inTenant($this->tenant['org'], fn () => TaskGroup::query()->where('name', 'Tech Field Manager -Elissa')->exists()), 'no group of the new board made here');
+    }
+
     public function test_a_task_moved_to_another_board_here_stays_there_and_the_sync_goes_on(): void
     {
         $elsewhere = $this->inTenant($this->tenant['org'], function () {

@@ -78,6 +78,11 @@
             "parent": null,
             "tabs": []
         },
+        "development": {
+            "label": "Development",
+            "parent": null,
+            "tabs": []
+        },
         "email": {
             "label": "Email",
             "parent": null,
@@ -476,6 +481,8 @@
         "customers.export",
         "customers.view",
         "dashboard.view",
+        "development.view",
+        "development.view_as",
         "email.create",
         "email.delete",
         "email.edit",

@@ -215,7 +215,7 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     protected $fillable = [
         'organization_id', 'email', 'first_name', 'last_name',
-        'role_id', 'invited_by_user_id',
+        'role_id', 'invited_by_user_id', 'invite_link_id',
         'assigned_organization_id', 'assigned_company_id', 'assigned_franchise_id',
         'sent_at', 'held_at', 'expires_at', 'opened_at', 'accepted_at', 'revoked_at',
         'accepted_user_id',
