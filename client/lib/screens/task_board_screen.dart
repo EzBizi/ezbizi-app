@@ -4431,7 +4431,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       context,
       InkWell(
         key: ValueKey('task-${t['id']}'),
-        onTap: () => _openTask(t),
+        // Only Open and the Updates icon open the panel, as on Monday
+        // (suggestion 01a209bc, Chaim); the name renames in place.
+        onTap: null,
         hoverColor: Colors.transparent,
         onSecondaryTapDown: sub
             ? null
