@@ -6226,6 +6226,76 @@ class _TaskPanelState extends State<_TaskPanel> {
     _armRelock(open);
   }
 
+  /// Row 43 (Sheryl): an update's author corrects it, as on Monday.
+  Future<void> _editUpdate(Map u) async {
+    final text = TextEditingController(text: '${u['body'] ?? ''}');
+    final body = await showSidePanel<String>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Edit update',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('task-update-edit-save'),
+            onPressed: () => Navigator.of(panel).pop(text.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+        child: TextField(
+          key: const Key('task-update-edit-field'),
+          controller: text,
+          minLines: 3,
+          maxLines: 12,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+      ),
+    );
+    if (body == null || body.isEmpty || body == u['body']) return;
+    final r = await widget.api.patch(
+      '/tasks/${widget.taskId}/updates/${u['id']}',
+      {'body': body},
+    );
+    if (!mounted) return;
+    r.ok ? await _load() : _say(r.reason);
+  }
+
+  Future<void> _deleteUpdate(Map u) async {
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Delete this update?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('task-update-delete-yes'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(panel).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(panel).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+        child: Text('${u['body'] ?? ''}', maxLines: 6),
+      ),
+    );
+    if (ok != true) return;
+    final r = await widget.api.delete(
+      '/tasks/${widget.taskId}/updates/${u['id']}',
+    );
+    if (!mounted) return;
+    r.ok ? await _load() : _say(r.reason);
+  }
+
+  void _say(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -6922,6 +6992,8 @@ class _TaskPanelState extends State<_TaskPanel> {
                                 ),
                                 style: muted,
                               ),
+                              if (u['edited_at'] != null)
+                                TextSpan(text: '  · Edited', style: muted),
                             ],
                           ),
                         ),
@@ -6944,6 +7016,26 @@ class _TaskPanelState extends State<_TaskPanel> {
                       ],
                     ),
                   ),
+                  if (u['can_edit'] == true || u['can_delete'] == true)
+                    PopupMenuButton<String>(
+                      key: ValueKey('task-update-menu-${u['id']}'),
+                      tooltip: 'More',
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onSelected: (v) =>
+                          v == 'edit' ? _editUpdate(u) : _deleteUpdate(u),
+                      itemBuilder: (_) => [
+                        if (u['can_edit'] == true)
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Edit'),
+                          ),
+                        if (u['can_delete'] == true)
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete'),
+                          ),
+                      ],
+                    ),
                 ],
               ),
             ),

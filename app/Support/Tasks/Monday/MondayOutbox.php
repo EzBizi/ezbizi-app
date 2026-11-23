@@ -63,12 +63,24 @@ final class MondayOutbox
             return;
         }
         if ($update !== null) {
-            if (! str_starts_with((string) $update->external_ref, 'monday:')) {
-                MondayOutboxEntry::query()->create([
-                    'organization_id' => $task->organization_id, 'task_id' => $task->id, 'task_update_id' => $update->id,
-                    'kinds' => ['update'], 'changed_at' => now(), 'available_at' => now(),
-                ]);
+            // $kinds [] = a new update; ['update_edit'] / ['update_delete'] = its author changed it (row 43).
+            $onMonday = str_starts_with((string) $update->external_ref, 'monday:');
+            if ($kinds === [] && $onMonday) {
+                return;
             }
+            if ($kinds !== [] && ! $onMonday) {
+                // Not on Monday yet: the queued create sends the latest text; a delete drops it.
+                if (in_array('update_delete', $kinds, true)) {
+                    MondayOutboxEntry::query()->where('task_update_id', $update->id)->where('state', MondayOutboxEntry::PENDING)
+                        ->update(['state' => MondayOutboxEntry::SUPERSEDED]);
+                }
+
+                return;
+            }
+            MondayOutboxEntry::query()->create([
+                'organization_id' => $task->organization_id, 'task_id' => $task->id, 'task_update_id' => $update->id,
+                'kinds' => $kinds ?: ['update'], 'changed_at' => now(), 'available_at' => now(),
+            ]);
 
             return;
         }

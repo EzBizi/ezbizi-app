@@ -616,6 +616,33 @@ class TaskWriter
         });
     }
 
+    /** Its author changed it: the old text goes to the audit log, the new one to Monday (row 43). */
+    public function editComment(TaskUpdate $update, string $body, User $actor): void
+    {
+        DB::transaction(function () use ($update, $body, $actor) {
+            $task = Task::query()->findOrFail($update->task_id);
+            $old = (string) SensitiveTasks::open($update->body);
+            if ($old === $body) {
+                return;
+            }
+            $update->forceFill(['body' => $task->sensitive ? SensitiveTasks::seal($body) : $body, 'edited_at' => now()])->save();
+            $this->audit->log('task.update_edited', $task, ['body' => ['from' => $task->sensitive ? '(sensitive)' : $old, 'to' => $task->sensitive ? '(sensitive)' : $body]],
+                ['task_update_id' => $update->id], actor: $actor);
+            app(MondayOutbox::class)->record($task, ['update_edit'], $update);
+        });
+    }
+
+    public function deleteComment(TaskUpdate $update, User $actor): void
+    {
+        DB::transaction(function () use ($update, $actor) {
+            $task = Task::query()->findOrFail($update->task_id);
+            $this->audit->log('task.update_deleted', $task, ['body' => ['from' => $task->sensitive ? '(sensitive)' : (string) SensitiveTasks::open($update->body), 'to' => null]],
+                ['task_update_id' => $update->id], actor: $actor);
+            $update->delete();
+            app(MondayOutbox::class)->record($task, ['update_delete'], $update);
+        });
+    }
+
     /**
      * A status's is_done was edited: every task on it (deleted ones too) gets
      * tasks.status and completed_at re-derived.
