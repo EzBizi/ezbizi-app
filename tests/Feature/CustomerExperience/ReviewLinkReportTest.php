@@ -63,7 +63,7 @@ class ReviewLinkReportTest extends TestCase
         $data = $this->signedInAs($this->t['admin'])->getJson('/api/v1/customer-experience/review-links')
             ->assertOk()->json('data');
 
-        $this->assertSame(['sent' => 3, 'opened' => 2, 'happy' => 1, 'sad' => 1, 'submitted' => 1, 'google' => 1, 'reviewed' => 0], $data['totals']);
+        $this->assertSame(['sent' => 3, 'opened' => 2, 'happy' => 1, 'sad' => 1, 'submitted' => 1, 'google' => 1, 'reviewed' => 0, 'qr' => 0], $data['totals']);
         $this->assertSame([2, 1], array_column($data['by_branch'], 'sent'));
         $this->assertSame([$this->t['franchise']->name, 'Second Branch'], array_column($data['by_branch'], 'name'));
         $this->assertSame(1, $data['by_branch'][0]['google']);
@@ -79,7 +79,7 @@ class ReviewLinkReportTest extends TestCase
 
         $data = $this->signedInAs($user)->getJson('/api/v1/customer-experience/review-links')->assertOk()->json('data');
 
-        $this->assertSame(['sent' => 1, 'opened' => 1, 'happy' => 0, 'sad' => 1, 'submitted' => 1, 'google' => 0, 'reviewed' => 0], $data['totals']);
+        $this->assertSame(['sent' => 1, 'opened' => 1, 'happy' => 0, 'sad' => 1, 'submitted' => 1, 'google' => 0, 'reviewed' => 0, 'qr' => 0], $data['totals']);
         $this->assertSame(['Second Branch'], array_column($data['by_branch'], 'name'));
     }
 

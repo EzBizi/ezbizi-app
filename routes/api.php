@@ -1222,6 +1222,7 @@ Route::prefix('v1')
         Route::post('ekomi/{connection}/test', [EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', ReviewLinkReportController::class);
+        Route::post('customer-experience/review-qr', \App\Http\Controllers\Api\ReviewQrController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         // Working a review as a case (UI queue 101, 2026-10-16): reviews.manage.
         Route::patch('reviews/{review}', [ReviewsController::class, 'update']);
