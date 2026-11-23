@@ -590,4 +590,20 @@ class HrPersonRecordTest extends TestCase
         $this->assertSame([$gone->id], array_column($this->signedInAs($t['admin'])
             ->getJson('/api/v1/hr/people?removed=1')->json('data'), 'id'));
     }
+
+    /** An unknown key is refused, not dropped (desk, 2026-11-23: PATCH {"name"} said 200). */
+    public function test_an_unknown_field_is_refused_rather_than_ignored(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+        $before = $person->fresh()->name;
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['name' => 'Nicholas Frias'])
+            ->assertUnprocessable()->assertJsonValidationErrors('fields');
+        $this->assertSame($before, $person->fresh()->name);
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['first_name' => 'Nicholas', 'last_name' => 'Frias'])->assertOk();
+        $this->assertSame('Nicholas Frias', $person->fresh()->name);
+    }
 }
