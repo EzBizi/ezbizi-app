@@ -228,7 +228,7 @@ class MondayImportTypesTest extends TestCase
     }
 
     /** Jose 11-13 (via desk): each board in the same folder, with Monday's folder colours. */
-    public function test_the_board_lands_in_mondays_folder_with_its_colours_and_a_move_here_stays(): void
+    public function test_the_board_lands_in_mondays_folder_with_its_colours_and_every_sync_follows_monday(): void
     {
         $this->importOld([]);
         $this->connect();
@@ -250,12 +250,18 @@ class MondayImportTypesTest extends TestCase
             $board = TaskBoard::query()->where('external_ref', 'monday:100')->sole();
             $this->assertSame($leaf->id, $board->folder_id);
 
-            // Somebody moves it here: the next sync leaves it where they put it.
+            // A stale folder here (Ohio PM in Everdoors, desk 11-23): the next sync puts it back.
             $board->forceFill(['folder_id' => $root->id])->save();
         });
         $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
         $this->inTenant($this->tenant['org'], fn () => $this->assertSame(
-            \App\Models\TaskBoardFolder::query()->where('name', 'A1 Chimney')->value('id'),
+            \App\Models\TaskBoardFolder::query()->where('name', 'Marketing')->value('id'),
+            TaskBoard::query()->where('external_ref', 'monday:100')->value('folder_id')));
+
+        // Out of every folder on Monday: out of every folder here.
+        $this->monday['boards']['100']['folder'] = null;
+        $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
+        $this->inTenant($this->tenant['org'], fn () => $this->assertNull(
             TaskBoard::query()->where('external_ref', 'monday:100')->value('folder_id')));
     }
 

@@ -466,6 +466,18 @@ void main() {
     }
   });
 
+  testWidgets('Updates sits right after Status on every board (Jose 11-23)', (
+    tester,
+  ) async {
+    await pump(tester);
+    final status = tester.getRect(find.byKey(const ValueKey('task-status-t1')));
+    final updates = tester.getRect(
+      find.byKey(const ValueKey('task-updates-cell-t1')),
+    );
+    expect(updates.left, greaterThan(status.left));
+    expect(updates.left - status.right, lessThan(40), reason: 'next cell');
+  });
+
   testWidgets('design 200: under 1100 px the panel still opens over the '
       'board', (tester) async {
     await pump(tester, width: 1000);

@@ -4674,13 +4674,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// columns... ideally by dragging them"); the map's order is the default.
   List<Widget> _inOrder(Map<String, Widget> cells) {
     final lead = _leadKeys;
-    return [
+    final keys = [
       // Right after the name: EzBizi's, then Workiz's, whatever their saved place.
       for (final k in lead)
-        if (cells.containsKey(k)) cells[k]!,
+        if (cells.containsKey(k)) k,
       for (final k in _ordered(cells.keys.toList()))
-        if (!lead.contains(k)) cells[k]!,
+        if (!lead.contains(k)) k,
     ];
+    // Updates sits right after the main Status, whatever its saved place
+    // (Jose 11-23: "one of the most used, it should be always visible").
+    if (keys.remove('updates')) {
+      final at = keys.indexOf('status');
+      keys.insert(at < 0 ? 0 : at + 1, 'updates');
+    }
+    return [for (final k in keys) cells[k]!];
   }
 
   /// The job-id columns, right after the name on every board, EzBizi's first
