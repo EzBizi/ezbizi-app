@@ -92,17 +92,18 @@ class InspectionReportBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = asked(screens, answers);
-    final findings = [
+    final roots = [
       for (final s in shown)
         for (final f in s['fields'] as List)
           if (printAs(f) == 'root') f as Map<String, dynamic>,
     ];
     final count = {'pass': 0, 'fail': 0, 'not_applicable': 0};
-    for (final f in findings) {
+    for (final f in roots) {
       final v = chosen(f)?.variant;
       if (count.containsKey(v)) count[v!] = count[v]! + 1;
     }
 
+    final graded = roots.isNotEmpty && findings.isNotEmpty;
     final sections = [
       for (final s in shown)
         if (_section(context, s) case final Widget w) w,
@@ -111,11 +112,13 @@ class InspectionReportBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (findings.isNotEmpty) _result(context, findings.length, count),
+        // No `findings` in the payload (a server before 0624): no verdict,
+        // rather than a "Pass · 0 of N" nobody worked out.
+        if (graded) _result(context, roots.length, count),
         if (sections.isEmpty)
           Text('This inspection had no questions.', style: _muted(context)),
         ...sections,
-        if (findings.isNotEmpty) _summary(context, findings),
+        if (graded) _summary(context, roots),
       ],
     );
   }
