@@ -49,6 +49,6 @@ class MondayOutboxEntry extends Model implements StatesRetention
 
     public function taskUpdate(): BelongsTo
     {
-        return $this->belongsTo(TaskUpdate::class, 'task_update_id');
+        return $this->belongsTo(TaskUpdate::class, 'task_update_id')->withTrashed();
     }
 }

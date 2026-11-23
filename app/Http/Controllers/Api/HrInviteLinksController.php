@@ -43,7 +43,8 @@ class HrInviteLinksController extends Controller
 
         $links = InviteLink::query()->with(['role:id,name', 'creator:id,name',
             'invitations' => fn ($q) => $q->whereNotNull('accepted_user_id')->with('acceptedUser:id,name')])
-            ->latest()->get();
+            ->latest()->get()
+            ->filter(fn (InviteLink $l) => $this->reaches($l, request()->user()))->values();
 
         return response()->json(['data' => $links->map(fn (InviteLink $l) => $this->present($l))->all()]);
     }
@@ -93,6 +94,7 @@ class HrInviteLinksController extends Controller
     public function update(Request $request, InviteLink $link): JsonResponse
     {
         $this->authorize('create', Invitation::class);
+        abort_unless($this->reaches($link, $request->user()), Response::HTTP_NOT_FOUND);
         abort_if($link->revoked_at !== null, Response::HTTP_UNPROCESSABLE_ENTITY, 'This link was switched off. Make a new one.');
 
         $input = $request->validate([
@@ -114,9 +116,10 @@ class HrInviteLinksController extends Controller
     }
 
     /** DELETE /api/v1/hr/invite-links/{link} — switch it off; who joined stays. */
-    public function destroy(InviteLink $link): JsonResponse
+    public function destroy(Request $request, InviteLink $link): JsonResponse
     {
         $this->authorize('create', Invitation::class);
+        abort_unless($this->reaches($link, $request->user()), Response::HTTP_NOT_FOUND);
         if ($link->revoked_at === null) {
             $link->forceFill(['revoked_at' => now()])->save();
             $this->audit->log('invite_link.revoked', $link);
@@ -133,6 +136,12 @@ class HrInviteLinksController extends Controller
                 .'anyone holding the link could take that role. Invite an administrator by name instead.']);
         }
         $this->catalogue->assertRoleAssignable($actor, $role);
+    }
+
+    /** A link for a place outside the reader's reach is not theirs to see or change. */
+    private function reaches(InviteLink $link, $actor): bool
+    {
+        return $this->reach->covers($actor, $link->scopeType(), $link->scopeId());
     }
 
     public static function hash(string $token): string

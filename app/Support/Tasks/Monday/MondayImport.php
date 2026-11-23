@@ -613,8 +613,7 @@ final class MondayImport
         // and the cleaned title goes back to Monday after the import.
         $title = trim((string) $item['name']);
         $about = [];
-        if (($job = JobTitle::split($title)) !== null) {
-            $found = JobTitle::job($job['number']);
+        if (($job = JobTitle::split($title)) !== null && (($found = JobTitle::job($job['number'])) !== null || empty($job['loose']))) {
             $column = $this->column($board, $job['ezbizi'] ? TaskWriter::EZBIZI_JOB_COLUMN : TaskWriter::WORKIZ_JOB_COLUMN, 'text');
             $values[$column->id] = $job['number'];
             $title = $job['rest'] !== '' ? $job['rest'] : ($found?->customer?->name ?? $title);
@@ -757,21 +756,31 @@ final class MondayImport
     private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null): void
     {
         $files = $u['files'] ?? [];
-        $existing = TaskUpdate::query()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
-        if ($existing !== null) {
-            $this->counts['updates already there']++;
-            $this->files($existing, $files, $as, true);
-
-            return;
-        }
-        $body = trim((string) ($u['body'] ?? ''));
-        if ($body === '' && $files === []) {
-            return;
-        }
+        $existing = TaskUpdate::query()->withTrashed()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
+        $body = trim((string) preg_replace('/\n\n— from EzBizi.*$/su', '', trim((string) ($u['body'] ?? ''))));
         $author = $this->person($u['author_email'] ?? null);
         if ($author === null && ! empty($u['author_email'])) {
             $who = ! empty($u['author_name']) && $u['author_name'] !== 'Deleted member' ? $u['author_name'] : $u['author_email'];
             $body = $who.' (on Monday): '.$body;
+        }
+        if ($existing !== null) {
+            $this->counts['updates already there']++;
+            $this->files($existing, $files, $as, true);
+            // Edited on Monday (row 43): its text comes here, marked Edited unless only a link's form changed.
+            $now = $body === '' ? '' : ($reply ? '↳ ' : '').$body;
+            $had = (string) SensitiveTasks::open($existing->body);
+            if ($this->refresh && ! $existing->trashed() && $now !== '' && $now !== $had) {
+                $plain = fn (string $s) => (string) preg_replace('/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/', '$1', $s);
+                $sensitive = (bool) Task::query()->withTrashed()->whereKey($existing->task_id)->value('sensitive');
+                $existing->forceFill(['body' => $sensitive ? SensitiveTasks::seal($now) : $now]
+                    + ($plain($now) !== $plain($had) ? ['edited_at' => now()] : []))->saveQuietly();
+                $this->counts['updates edited on Monday'] = ($this->counts['updates edited on Monday'] ?? 0) + 1;
+            }
+
+            return;
+        }
+        if ($body === '' && $files === []) {
+            return;
         }
         $update = TaskUpdate::query()->create([
             'organization_id' => $task->organization_id,

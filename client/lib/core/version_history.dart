@@ -13,6 +13,23 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0626', date: '23 Nov 2026', items: [
+      'Human Resources: invite links. Pick a role and a place, share the link or QR, and people create their own account straight into it',
+      'Sign-in no longer shows Create an account; staff join by invite link',
+      'Reports: calls on other companies lines wait in Awaiting review and stay out of booking rates until somebody reviews them',
+      'Reports: missed calls are split into business hours and after hours; after-hours calls are not counted as missed',
+      'Reports: every call and result chip adds up to its All, and each chip opens exactly the calls it counts',
+      'Task Board: an update notifies everybody on the task, not only people tagged in it',
+      'Task Board: a line under every row, links in updates open, and a row no longer stays grey after a cancelled move',
+      'Task Board: item names that start with a job number fill the job columns and keep only the name',
+      'Task Board: items moved to another board on Monday no longer make a stray group',
+      'Marketing: a company sees only its own QR codes',
+      'Reviews: people without reply rights see drafts as not posted and no Post button',
+      'Roles: saving a permission that does not exist is refused by name instead of being dropped',
+      'Task Board: click an item name to rename it in place; the Open icon and the Updates icon open the side panel, a plain row click does not',
+      'Task Board: edit or delete your own update, marked Edited and kept in step with Monday',
+      'Task Board: uses the same font as Monday',
+    ]),
     VersionRelease(version: '0.0.0625', date: '23 Nov 2026', items: [
       'View as: Administrators who are developers can see and use the app as a role or a person, with a banner and Exit, and every change logged as them',
       'Task Board: the Updates column sits right after Status on every board',

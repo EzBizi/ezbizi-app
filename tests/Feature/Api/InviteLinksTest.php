@@ -112,6 +112,20 @@ class InviteLinksTest extends TestCase
             InviteLink::query()->where('max_uses', 1)->value('id'))->value('uses')));
     }
 
+    /** The authorization sweep's case b: same permissions, another place (desk, 2026-11-23). */
+    public function test_a_link_outside_your_reach_is_not_found(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$data] = $this->makeLink($t);
+        $elsewhere = $this->userWithRole($t, 'Branch HR', ['hr.view', 'hr.create', 'hr.edit', 'hr.invitations.view'],
+            'branch-hr@alpha.test', onlyAt: $this->extraFranchise($t, 'Elsewhere'));
+
+        $this->signedInAs($elsewhere)->patchJson("/api/v1/hr/invite-links/{$data['id']}", ['max_uses' => 5])->assertNotFound();
+        $this->signedInAs($elsewhere)->deleteJson("/api/v1/hr/invite-links/{$data['id']}")->assertNotFound();
+        $this->assertSame([], $this->signedInAs($elsewhere)->getJson('/api/v1/hr/invite-links')->assertOk()->json('data'));
+        $this->assertNull($this->inTenant($t['org'], fn () => InviteLink::find($data['id'])->revoked_at));
+    }
+
     public function test_only_people_who_may_invite_can_make_links(): void
     {
         $t = $this->provisionTenant('Alpha');

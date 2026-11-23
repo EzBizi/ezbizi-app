@@ -536,7 +536,7 @@ final class MondayBoardReader
         if (! isset($this->columns[$boardId])) {
             $this->board($boardId);
         }
-        $updates = 'updates(limit:100) { id text_body created_at creator { id email name } '.self::ASSET.' replies { id text_body created_at creator { id email name } '.self::ASSET.' } }';
+        $updates = 'updates(limit:100) { id body text_body created_at creator { id email name } '.self::ASSET.' replies { id body text_body created_at creator { id email name } '.self::ASSET.' } }';
         $item = 'id name state created_at updated_at board { id } group { id title } creator { id email name } '.self::CV.' '.$updates
             .' subitems { id name created_at updated_at creator { id email name } board { id } '.self::CV.' '.$updates.' }';
 
@@ -823,13 +823,32 @@ final class MondayBoardReader
         return $out;
     }
 
+    /**
+     * An update's text with its links kept as [name](url) (row 38, Merav: the
+     * balance reports are OneDrive links; text_body drops the href). No link:
+     * Monday's text_body, as before.
+     */
+    public static function bodyOf(array $u): string
+    {
+        $html = (string) ($u['body'] ?? '');
+        if (! str_contains($html, '<a ')) {
+            return trim((string) ($u['text_body'] ?? ''));
+        }
+        $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
+            fn ($m) => '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
+        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html));
+        $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
+
+        return trim((string) preg_replace("/[ \t]*\n[ \t]*/", "\n", (string) preg_replace("/\n{3,}/", "\n\n", $text)));
+    }
+
     private function updates(array $updates): array
     {
         $file = fn (array $a) => ['monday_id' => (string) $a['id'], 'name' => (string) $a['name'], 'ext' => mb_strtolower((string) ($a['file_extension'] ?? '')),
             'size' => (int) ($a['file_size'] ?? 0), 'url' => $a['public_url'] ?? null];
         $entry = fn (array $u) => [
             'monday_id' => (string) $u['id'], 'author_email' => $u['creator']['email'] ?? null, 'author_name' => $u['creator']['name'] ?? null,
-            'created_at' => $u['created_at'] ?? null, 'body' => trim((string) ($u['text_body'] ?? '')), 'files' => array_map($file, $u['assets'] ?? []),
+            'created_at' => $u['created_at'] ?? null, 'body' => self::bodyOf($u), 'files' => array_map($file, $u['assets'] ?? []),
         ];
         usort($updates, fn ($a, $b) => strcmp((string) $a['created_at'], (string) $b['created_at']));
 
