@@ -167,32 +167,42 @@ void main() {
 
     await _pump(tester, board: _board, width: 375);
 
-    expect(find.text('Ivan Sharkov'), findsOneWidget);
+    // His chip, and his name under the slot of his job.
+    expect(find.text('Ivan Sharkov'), findsNWidgets(2));
     expect(
       errors,
       isEmpty,
       reason: errors.map((e) => e.exceptionAsString()).join(' | '),
     );
   });
-  /// Phone audit 2026-11-04: at 390 the grid showed one time column and
-  /// three technicians. A phone lists each technician, then their jobs.
-  testWidgets('a phone lists technicians, each with its jobs and slot', (
+  /// Design 207 S1: a phone shows the day's jobs in time order, each with its
+  /// slot and technician; a technician chip narrows it to them.
+  testWidgets('a phone shows the day as an agenda, narrowed by technician', (
     tester,
   ) async {
     await _pump(tester, board: _board, width: 390);
 
-    final ivan = find.byKey(const ValueKey('schedule-phone-tech-fr-ct|101'));
-    final harry = find.byKey(const ValueKey('schedule-phone-tech-fr-ct|102'));
-    expect(ivan, findsOneWidget);
-    expect(harry, findsOneWidget);
-
-    // Ivan's job sits under Ivan and above Harry, with its slot beside it.
+    expect(find.byKey(const ValueKey('schedule-phone-week')), findsOneWidget);
     final job = tester.getCenter(find.text('Honesty Haislett').first);
-    expect(job.dy, greaterThan(tester.getCenter(ivan).dy));
-    expect(job.dy, lessThan(tester.getCenter(harry).dy));
     final slot = tester.getCenter(find.text('11 AM – 2 PM').first);
     expect((slot.dy - job.dy).abs(), lessThan(40));
     expect(slot.dx, lessThan(job.dx));
+
+    // Harry has nothing booked: his chip empties the agenda.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('schedule-phone-tech-fr-ct|102')),
+    );
+    await tester.tap(find.byKey(const ValueKey('schedule-phone-tech-fr-ct|102')));
+    await tester.pumpAndSettle();
+    expect(find.text('Honesty Haislett'), findsNothing);
+    expect(find.text('Nothing booked this day.'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('schedule-phone-tech-fr-ct|101')),
+    );
+    await tester.tap(find.byKey(const ValueKey('schedule-phone-tech-fr-ct|101')));
+    await tester.pumpAndSettle();
+    expect(find.text('Honesty Haislett'), findsWidgets);
   });
 }
 
