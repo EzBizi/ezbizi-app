@@ -530,7 +530,12 @@ void main() {
                 'id': 'u-1',
                 'name': 'Dana',
                 'email': 'dana@brightside.example',
-                'permissions': ['reviews.view', 'reviews.manage'],
+                'permissions': [
+                  'reviews.view',
+                  'reviews.manage',
+                  'reviews.edit',
+                  'reviews.publish',
+                ],
                 'modules': <dynamic>[],
                 'organization': {'id': 'org-1', 'name': 'Brightside'},
                 'scope': {
