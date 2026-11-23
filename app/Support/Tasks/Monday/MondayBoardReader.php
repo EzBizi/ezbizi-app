@@ -537,7 +537,7 @@ final class MondayBoardReader
             $this->board($boardId);
         }
         $updates = 'updates(limit:100) { id text_body created_at creator { id email name } '.self::ASSET.' replies { id text_body created_at creator { id email name } '.self::ASSET.' } }';
-        $item = 'id name state created_at updated_at group { id title } creator { id email name } '.self::CV.' '.$updates
+        $item = 'id name state created_at updated_at board { id } group { id title } creator { id email name } '.self::CV.' '.$updates
             .' subitems { id name created_at updated_at creator { id email name } board { id } '.self::CV.' '.$updates.' }';
 
         $out = [];
@@ -546,6 +546,12 @@ final class MondayBoardReader
             $subBoards = array_values(array_unique(array_filter(array_map(fn ($s) => $s['board']['id'] ?? null, array_merge(...array_map(fn ($r) => $r['subitems'] ?? [], $rows ?: [[]]))))));
             $this->subitemColumns($subBoards);
             foreach ($rows as $row) {
+                // Moved to another board on Monday since it was listed here: that board's sync
+                // takes it. Read here, it filed the item under its new board's group on this
+                // board (desk 11-23: GA got CT's "Tech Field Manager -Elissa").
+                if (isset($row['board']['id']) && (string) $row['board']['id'] !== $boardId) {
+                    continue;
+                }
                 $group = (string) ($row['group']['title'] ?? 'Open Tasks');
                 $converted = $this->convert($boardId, $row, $this->columns[$boardId], $group);
                 $converted['state'] = $row['state'] ?? 'active'; // archived/deleted on Monday: archived here (desk 11-18)
