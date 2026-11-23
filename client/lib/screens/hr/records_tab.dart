@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
 import '../../core/contracts.dart';
+import '../../core/deep_links.dart';
 import '../../core/files.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
@@ -67,10 +68,18 @@ import 'training_card.dart';
 /// and its absence is a decision: payroll, the audit trail (§10) and every job
 /// somebody ever ran point at this row.
 class RecordsTab extends StatefulWidget {
-  const RecordsTab({super.key, required this.api, required this.session});
+  const RecordsTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.link,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// A person to open (`DeepLink` type `person`, id = their user id).
+  final DeepLink? link;
 
   /// The open record's own section strip, for a test to find by NAME. Found
   /// by position (`.last`) it would silently re-aim the day any other strip
@@ -149,6 +158,7 @@ class _RecordsTabState extends State<RecordsTab> {
   @override
   void initState() {
     super.initState();
+    _selected = widget.link?.id;
     _load();
     // A person hired, edited or switched off elsewhere: page one re-read
     // quietly; the open record keeps what is being typed.
@@ -158,6 +168,17 @@ class _RecordsTabState extends State<RecordsTab> {
   }
 
   LiveSubscription? _live;
+
+  @override
+  void didUpdateWidget(RecordsTab old) {
+    super.didUpdateWidget(old);
+    if (widget.link != null && !identical(widget.link, old.link)) {
+      setState(() {
+        _selected = widget.link!.id;
+        _reading = null;
+      });
+    }
+  }
 
   @override
   void dispose() {

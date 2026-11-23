@@ -7,6 +7,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/status_pill.dart';
 
 /// The other end of an invite link (Jose, 2026-11-23: "an invite link in which
 /// they can create their accounts on their own").
@@ -208,12 +209,15 @@ class _JoinLinkScreenState extends State<JoinLinkScreen> {
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        Text(
-          [
-            if (about['role'] != null) 'As ${about['role']}',
-            if (about['place'] != null) 'at ${about['place']}',
-          ].join(' '),
-          style: theme.textTheme.bodyMedium,
+        // Who they will be and where, as the link set it.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (about['role'] != null)
+              StatusPill('${about['role']}', tone: Tone.ok),
+            if (about['place'] != null) StatusPill('${about['place']}'),
+          ],
         ),
         const SizedBox(height: 20),
         Row(

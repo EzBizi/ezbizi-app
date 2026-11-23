@@ -279,7 +279,13 @@ class _InvitationsTabState extends State<InvitationsTab> {
                     ? () => showSidePanel<void>(
                         context,
                         builder: (_) =>
-                            InviteLinksPanel(api: widget.api, options: _options),
+                            InviteLinksPanel(
+                              api: widget.api,
+                              options: _options,
+                              formats:
+                                  widget.session.me?.display ??
+                                  DisplayFormats.fallback,
+                            ),
                       )
                     : null,
                 icon: const Icon(Icons.link, size: 18),
