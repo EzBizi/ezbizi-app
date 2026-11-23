@@ -323,51 +323,59 @@ class MailMessageView extends StatelessWidget {
       return _body(mailbox, message);
     }
 
+    // An HTML page inside a scrolled list traps the wheel: over the page the
+    // events go to it and never come back, so once scrolled down the thread
+    // cannot be scrolled up (Nick Frias 11-23, web). So, as in Gmail, the
+    // other messages fold to one line each and one is open at full height.
+    if (_htmlInThread && message.thread.any((p) => (p.html ?? '').isNotEmpty)) {
+      return _FoldedThread(
+        parts: message.thread,
+        header: _partHeader,
+        body: (part) => _body(mailbox, part),
+      );
+    }
+
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
       itemCount: message.thread.length,
       separatorBuilder: (_, _) => const Divider(height: 24),
       itemBuilder: (context, index) {
         final part = message.thread[index];
-        final theme = Theme.of(context);
 
+        // Blocks at full length, so the thread scrolls as one page; a box
+        // of its own trapped the scroll on Eve's iPhone (11-11).
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SenderAvatar(name: part.fromName, email: part.fromAddress),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(part.from, style: theme.textTheme.titleSmall),
-                      Text(
-                        formatStamp(
-                          part.receivedAt,
-                          'No date',
-                          formats: formats,
-                        ),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            _partHeader(context, part),
             const SizedBox(height: 8),
-            // A web page or desktop WebView needs a height. On phones the
-            // blocks lay out at full length so the thread scrolls as one page;
-            // a box of its own trapped the scroll on Eve's iPhone (11-11).
-            if (_htmlInThread && (part.html ?? '').isNotEmpty)
-              SizedBox(height: 420, child: _body(mailbox, part))
-            else
-              _blocks(mailbox, part, EdgeInsets.zero),
+            _blocks(mailbox, part, EdgeInsets.zero),
           ],
         );
       },
+    );
+  }
+
+  Widget _partHeader(BuildContext context, MessageDetail part) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SenderAvatar(name: part.fromName, email: part.fromAddress),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(part.from, style: theme.textTheme.titleSmall),
+              Text(
+                formatStamp(part.receivedAt, 'No date', formats: formats),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -520,6 +528,74 @@ class _AttachmentChipsState extends State<_AttachmentChips> {
             onPressed: () => setState(() => _all = true),
           ),
       ],
+    );
+  }
+}
+
+/// A conversation with one message open and the rest folded to their header
+/// line, newest open first. Only the open one is an HTML page, and it fills
+/// the space below the headers, so no page ever sits inside a scrolled list.
+class _FoldedThread extends StatefulWidget {
+  const _FoldedThread({
+    required this.parts,
+    required this.header,
+    required this.body,
+  });
+
+  final List<MessageDetail> parts;
+  final Widget Function(BuildContext, MessageDetail) header;
+  final Widget Function(MessageDetail) body;
+
+  @override
+  State<_FoldedThread> createState() => _FoldedThreadState();
+}
+
+class _FoldedThreadState extends State<_FoldedThread> {
+  late int _open = widget.parts.length - 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = widget.parts;
+    final open = _open.clamp(0, parts.length - 1);
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            // The folded lines scroll on their own past a third of the pane;
+            // they hold no page, so the wheel works over them.
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight / 3),
+            child: ListView(
+              key: const ValueKey('email-thread-folded'),
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              children: [
+                for (var i = 0; i < parts.length; i++)
+                  InkWell(
+                    key: ValueKey('email-thread-part-$i'),
+                    onTap: () => setState(() => _open = i),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      color: i == open
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.08)
+                          : null,
+                      child: widget.header(context, parts[i]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey('email-thread-open-$open'),
+              child: widget.body(parts[open]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
