@@ -45,6 +45,23 @@ final class JobTitle
         return null;
     }
 
+    /**
+     * The title once the number is out: the client's name, and what else the title
+     * said after it ("600025674 Artem" on Ohio PM names the tech: "Marianne Baab · Artem").
+     *
+     * @param  array{number: string, rest: string, ezbizi: bool, loose?: bool}  $split
+     */
+    public static function clean(array $split, ?Job $job, string $title): string
+    {
+        $client = trim((string) $job?->customer?->name);
+        $rest = $split['rest'];
+        if ($client === '') {
+            return $rest !== '' ? $rest : $title;
+        }
+
+        return $rest === '' || mb_strtolower($rest) === mb_strtolower($client) ? $client : $client.' · '.$rest;
+    }
+
     /** @var array<string, string>|null number => job id, for a backfill over every task (serial_id has no index) */
     private static ?array $map = null;
 

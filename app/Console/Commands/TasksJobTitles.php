@@ -68,7 +68,7 @@ class TasksJobTitles extends Command
                         }
                         $filled = TaskColumnValue::query()->where('task_id', $task->id)->where('value_text', '!=', '')->pluck('column_id')->all();
                         $values = array_diff_key($writer->jobValues($task, 'job', $job->id), array_flip($filled));
-                        $title = $split['rest'] !== '' ? $split['rest'] : ($job->customer?->name ?? (string) $task->title);
+                        $title = JobTitle::clean($split, $job, (string) $task->title);
                         $counts['fixed']++;
                         if ($this->option('dry-run')) {
                             continue;

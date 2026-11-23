@@ -616,7 +616,7 @@ final class MondayImport
         if (($job = JobTitle::split($title)) !== null && (($found = JobTitle::job($job['number'])) !== null || empty($job['loose']))) {
             $column = $this->column($board, $job['ezbizi'] ? TaskWriter::EZBIZI_JOB_COLUMN : TaskWriter::WORKIZ_JOB_COLUMN, 'text');
             $values[$column->id] = $job['number'];
-            $title = $job['rest'] !== '' ? $job['rest'] : ($found?->customer?->name ?? $title);
+            $title = JobTitle::clean($job, $found, $title);
             if ($found !== null) {
                 $about = ['about_type' => 'job', 'about_id' => $found->id];
             }

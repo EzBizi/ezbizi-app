@@ -38,9 +38,9 @@ class TasksJobTitlesTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($a, $b, $c) {
             $a = Task::query()->find($a->id);
-            $this->assertSame(['Albert', 'job'], [$a->title, $a->about_type]);
+            $this->assertSame(['Debby Bloom · Albert', 'job'], [$a->title, $a->about_type]);
             $this->assertContains('600025660', $a->values()->pluck('value_text')->all());
-            $this->assertSame('Jade', Task::query()->find($b->id)->title);
+            $this->assertSame('Debby Bloom · Jade', Task::query()->find($b->id)->title);
             $this->assertSame('999999999 Bob', Task::query()->find($c->id)->title, 'no such job: left');
         });
     }
