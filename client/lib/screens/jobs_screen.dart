@@ -174,10 +174,9 @@ class _JobsScreenState extends State<JobsScreen> {
   int _request = 0;
 
   /// From today on, before today, or every job.
-  ///
-  /// Upcoming first, because the list used to open on whatever was booked
-  /// furthest ahead: April 2027 above the ~560 jobs due that week (queue 24).
-  String _when = 'upcoming';
+  /// All by default (Jose, 2026-11-23): a search for a past client read as
+  /// "not found" behind Upcoming.
+  String _when = 'all';
 
   /// How many jobs each chip would show, from the server's first page. Empty
   /// from a server that does not count, and the chips then carry no numbers
@@ -768,7 +767,7 @@ class _JobsScreenState extends State<JobsScreen> {
     // Design 195 (phone 4): search, Filters and ⋯ on one line. Upcoming /
     // Past / All is in Filters and counts there; Export is in the ⋯.
     if (_phone(context)) {
-      final count = n + (_when == 'upcoming' ? 0 : 1);
+      final count = n + (_when == 'all' ? 0 : 1);
       return Padding(
         padding: EdgeInsets.fromLTRB(Gutter.of(context), 0, 4, 8),
         child: Column(
