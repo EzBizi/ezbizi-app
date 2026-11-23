@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0624', date: '23 Nov 2026', items: [
+      'Inspection: the emailed report no longer fails in the queue',
+      'Inspection: report templates can use {{company_name}}, and notes keep their line breaks',
+      'Inspection: approve before/after photo pairs for the website, after a privacy check (no faces or house numbers)',
+      'Inspection: reports carry a PASS, FAIL or N/A result per answer, as the PDF shows them',
+    ]),
     VersionRelease(version: '0.0.0623', date: '21 Nov 2026', items: [
       'Workiz: a re-read that meets the Workiz rate limit waits and retries instead of failing',
     ]),
