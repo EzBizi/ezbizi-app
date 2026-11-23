@@ -264,8 +264,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _canEditJobs = meta['can_edit'] == true;
       final days = (meta['status_days'] as Map?) ?? const {};
       _days = (
-        warn: (days['warn'] as num?)?.toInt() ?? 3,
-        bad: (days['bad'] as num?)?.toInt() ?? 7,
+        warn: (days['warn'] as num?)?.toInt() ?? 2,
+        bad: (days['bad'] as num?)?.toInt() ?? 3,
       );
       _sortable = {
         for (final k in (meta['sortable'] as List?) ?? const []) '$k',
@@ -713,7 +713,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         );
       case 'status_days':
         if (value is! int) return const Text('—');
-        // Under 3 days green, 3 to 7 yellow, 7 and up red.
+        // Days in the current stage (Jose, 2026-11-23): 1 green, 2 yellow,
+        // 3 and up red, by the thresholds the server sends.
         return Align(
           alignment: Alignment.centerLeft,
           child: StatusPill(
