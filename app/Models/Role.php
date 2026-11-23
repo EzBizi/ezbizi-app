@@ -59,6 +59,8 @@ class Role extends Model
             'invitable_role_ids' => 'array',
             // Its holders are never named as viewing a lead (LeadPresence).
             'hidden_on_leads' => 'boolean',
+            // Phone bottom-bar slots, [{module, tab}] or null (MobileBar).
+            'mobile_bar' => 'array',
         ];
     }
 

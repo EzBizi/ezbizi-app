@@ -77,6 +77,10 @@ class MeController extends Controller
             'permissions' => $catalogue->heldBy($user),
             'modules' => $catalogue->modulesFor($user),
 
+            // The role's phone bottom bar, minus slots this person cannot
+            // reach now; null = never set, the client draws its default.
+            'mobile_bar' => app(\App\Support\Roles\MobileBar::class)->forUser($user),
+
             // Whether there is a photo to fetch, so the top bar can ask
             // for one only when there is one. `/me/profile` already
             // carried this, but the top bar reads THIS payload — so
