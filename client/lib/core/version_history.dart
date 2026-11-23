@@ -21,6 +21,7 @@ class VersionHistory {
       'Email: a thread shows one line per message and opens one at a time, so long threads no longer get stuck when scrolling',
       'Leads: LS Texts are read every minute on their own, so they no longer wait behind other syncs',
       'Jobs: the list opens on All, so a search finds past jobs too',
+      'Task Board: personal boards of removed accounts no longer show in the board list',
     ]),
     VersionRelease(version: '0.0.0624', date: '23 Nov 2026', items: [
       'Inspection: the emailed report no longer fails in the queue',
