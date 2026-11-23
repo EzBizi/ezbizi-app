@@ -19,12 +19,26 @@ final class JobTitle
         '/^\s*(\d{6,}|JOB-\d+)\s*$/iu',
     ];
 
-    /** @return array{number: string, rest: string, ezbizi: bool}|null */
+    /** Row 41 (Jose 11-23): "600025660 Albert", "400595957 - Peter", "Jade 400595628". Loose: taken only when the number is a real job. */
+    private const LOOSE = [
+        '/^\s*(\d{6,})\s*[-:–—]?\s*(\D.*)$/u',
+        '/^\s*(\D.*?)\s*[-:–—]?\s*(\d{6,})\s*$/u',
+    ];
+
+    /** @return array{number: string, rest: string, ezbizi: bool, loose?: bool}|null */
     public static function split(string $title): ?array
     {
         foreach (self::SHAPES as $re) {
             if (preg_match($re, $title, $m)) {
                 return ['number' => strtoupper($m[1]), 'rest' => trim($m[2] ?? '', " -–—:\t"), 'ezbizi' => str_starts_with(strtoupper($m[1]), 'JOB-')];
+            }
+        }
+
+        foreach (self::LOOSE as $i => $re) {
+            if (preg_match($re, $title, $m)) {
+                [$number, $rest] = $i === 0 ? [$m[1], $m[2]] : [$m[2], $m[1]];
+
+                return ['number' => $number, 'rest' => trim($rest, " -–—:	"), 'ezbizi' => false, 'loose' => true];
             }
         }
 

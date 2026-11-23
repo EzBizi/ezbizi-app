@@ -516,6 +516,6 @@ void main() {
     await pumpBoard(tester);
     await openTask(tester);
     final body = find.byKey(const ValueKey('task-update-body-u1'));
-    expect(tester.widget<SelectableText>(body).data, 'Photos from the roof');
+    expect(tester.widget<SelectableText>(body).textSpan!.toPlainText(), 'Photos from the roof');
   });
 }

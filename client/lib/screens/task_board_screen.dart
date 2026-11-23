@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../widgets/priority_row.dart';
@@ -3543,6 +3544,24 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Widget _tableList(BuildContext context, {required bool cards}) {
     Widget box(Widget w) => SliverToBoxAdapter(child: w);
+    // Any release ends the drag: a row rebuilt mid-drag (a live refresh, a drop
+    // on its own slot) never hears onDragEnd and stayed faded (row 39).
+    return Listener(
+      onPointerUp: (_) => _endDrag(),
+      onPointerCancel: (_) => _endDrag(),
+      child: _tableScroller(context, box, cards: cards),
+    );
+  }
+
+  void _endDrag() {
+    if (_draggingId != null && mounted) setState(() => _draggingId = null);
+  }
+
+  Widget _tableScroller(
+    BuildContext context,
+    Widget Function(Widget) box, {
+    required bool cards,
+  }) {
     return CustomScrollView(
       key: _tableKey,
       controller: _tableScroll,
@@ -4090,9 +4109,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// Monday's row rule (Jose 11-23, row 37: "Missing the row line dividers"):
   /// the theme's dividerColor all but vanished on white.
   static Color rowLine(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF4B4E69)
-      : const Color(0xFFD0D4E4);
+      EzBiziTheme.boardRowLine(context);
 
   Widget _cell(BuildContext context, double width, Widget child) => Container(
     width: width,
@@ -6840,7 +6857,8 @@ class _TaskPanelState extends State<_TaskPanel> {
                         const SizedBox(height: 2),
                         // Selectable, to copy as is (Merav via Jose 11-19).
                         if ('${u['body'] ?? ''}'.isNotEmpty)
-                          SelectableText(
+                          linkedText(
+                            context,
                             '${u['body']}',
                             key: ValueKey('task-update-body-${u['id']}'),
                           ),
@@ -7237,4 +7255,38 @@ class _RowShadeState extends State<_RowShade> {
       ),
     );
   }
+}
+
+
+/// Update text with its links live: Monday's "[name](url)" shows the name,
+/// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
+@visibleForTesting
+Widget linkedText(BuildContext context, String body, {Key? key}) {
+  final link = RegExp(
+    r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)',
+  );
+  final style = TextStyle(
+    color: Theme.of(context).colorScheme.primary,
+    decoration: TextDecoration.underline,
+  );
+  final spans = <InlineSpan>[];
+  var at = 0;
+  for (final m in link.allMatches(body)) {
+    spans.add(TextSpan(text: body.substring(at, m.start)));
+    final url = m.group(2) ?? m.group(3)!;
+    spans.add(
+      TextSpan(
+        text: m.group(1) ?? url,
+        style: style,
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => launchUrl(
+            Uri.parse(url),
+            mode: LaunchMode.externalApplication,
+          ),
+      ),
+    );
+    at = m.end;
+  }
+  spans.add(TextSpan(text: body.substring(at)));
+  return SelectableText.rich(TextSpan(children: spans), key: key);
 }
