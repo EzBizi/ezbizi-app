@@ -3458,6 +3458,14 @@ class ActionRunner
         try {
             app(BusinessProfileReviews::class)->publish($reply);
         } catch (RuntimeException $e) {
+            // A listing Google says is unclaimed takes no replies until somebody re-verifies it on Google:
+            // keep the draft and say so, not a failure that switches the rule off (health sweep 2026-11-23).
+            if (str_contains($e->getMessage(), 'unclaimed location')) {
+                $reply->forceFill(['failure_reason' => $e->getMessage()])->save();
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => 'Google says this listing is unclaimed, so it takes no replies until it is verified again on Google. The draft is kept.'];
+            }
             // Google answers 404 for a review it has not finished indexing, and 503 when busy
             // (11-09, 11-12): keep the draft and try once more an hour later, not a failure.
             if (preg_match('/HTTP (404|503)/', $e->getMessage()) && ! ($action['retried'] ?? false)) {

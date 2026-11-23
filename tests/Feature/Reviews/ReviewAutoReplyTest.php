@@ -216,4 +216,24 @@ class ReviewAutoReplyTest extends TestCase
         $this->assertSame(ReviewReply::STATUS_DRAFT, ReviewReply::withoutGlobalScopes()->first()->status);
         \Illuminate\Support\Facades\Queue::assertPushed(\Illuminate\Queue\CallQueuedClosure::class, fn ($job) => $job->delay !== null);
     }
+
+    /** Health sweep 2026-11-23: Google's reason is kept, and an unclaimed listing is a skip, not a failure. */
+    public function test_an_unclaimed_listing_keeps_the_draft_with_googles_reason(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            '*/reply' => Http::response(['error' => ['code' => 400, 'status' => 'FAILED_PRECONDITION',
+                'message' => 'This operation is not supported for unclaimed locations.']], 400),
+        ]);
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+
+        $result = $this->fire();
+
+        $this->assertTrue($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false);
+        $reply = ReviewReply::withoutGlobalScopes()->first();
+        $this->assertSame(ReviewReply::STATUS_DRAFT, $reply->status);
+        $this->assertStringContainsString('unclaimed locations', $reply->failure_reason);
+    }
 }
