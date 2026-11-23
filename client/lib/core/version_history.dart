@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0628', date: '23 Nov 2026', items: [
+      'Project Management: a job tagged Project cannot be completed without parts and labor costs; the board gets a Project Costs column',
+      'Project Management: the status colour counts days in the current stage, 1 green, 2 yellow, 3 or more red',
+      'Scheduling on a phone: a week strip, technician chips and the day in time order',
+      'Jobs on a phone: Call and Go on every job card',
+      'Paid time off: shows when the first days actually arrive, not only when the waiting period ends',
+    ]),
     VersionRelease(version: '0.0.0627', date: '23 Nov 2026', items: [
       'iPhone Duo, iPad mini and foldables: the bottom bar stays under 900 wide, and Leads and HR Records show list and detail side by side from 600 wide; folding keeps your place',
       'Task Board: people tagged on Monday are notified here too',
