@@ -828,9 +828,18 @@ final class MondayBoardReader
      * balance reports are OneDrive links; text_body drops the href). No link:
      * Monday's text_body, as before.
      */
+    /** @return list<string> the Monday user ids an update @mentions */
+    public static function mentionIds(array $u): array
+    {
+        preg_match_all('/data-mention-type="User"[^>]*data-mention-id="(\d+)"|data-mention-id="(\d+)"[^>]*data-mention-type="User"/', (string) ($u['body'] ?? ''), $m, PREG_SET_ORDER);
+
+        return array_values(array_unique(array_map(fn ($x) => $x[1] !== '' ? $x[1] : $x[2], $m)));
+    }
+
     public static function bodyOf(array $u): string
     {
-        $html = (string) ($u['body'] ?? '');
+        // A @mention is a name, not a link (its href is the person's Monday profile).
+        $html = (string) preg_replace('/<a\b[^>]*data-mention-type="[^"]*"[^>]*>(.*?)<\/a>/is', '$1', (string) ($u['body'] ?? ''));
         if (! str_contains($html, '<a ')) {
             return trim((string) ($u['text_body'] ?? ''));
         }
@@ -849,6 +858,8 @@ final class MondayBoardReader
         $entry = fn (array $u) => [
             'monday_id' => (string) $u['id'], 'author_email' => $u['creator']['email'] ?? null, 'author_name' => $u['creator']['name'] ?? null,
             'created_at' => $u['created_at'] ?? null, 'body' => self::bodyOf($u), 'files' => array_map($file, $u['assets'] ?? []),
+            // Who it @mentions, by email (Dieuve 11-23: "when tagged i should receive a notification").
+            'mention_emails' => array_values(array_filter(array_map(fn ($id) => $this->users[$id]['email'] ?? null, self::mentionIds($u)))),
         ];
         usort($updates, fn ($a, $b) => strcmp((string) $a['created_at'], (string) $b['created_at']));
 
