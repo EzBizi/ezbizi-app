@@ -26,6 +26,9 @@ class VersionHistory {
       'Marketing: a company sees only its own QR codes',
       'Reviews: people without reply rights see drafts as not posted and no Post button',
       'Roles: saving a permission that does not exist is refused by name instead of being dropped',
+      'Task Board: click an item name to rename it in place; the Open icon and the Updates icon open the side panel, a plain row click does not',
+      'Task Board: edit or delete your own update, marked Edited and kept in step with Monday',
+      'Task Board: uses the same font as Monday',
     ]),
     VersionRelease(version: '0.0.0625', date: '23 Nov 2026', items: [
       'View as: Administrators who are developers can see and use the app as a role or a person, with a banner and Exit, and every change logged as them',
