@@ -440,6 +440,12 @@ $GLOBALS['opt']['ezbizi_last_good'] = ['review_summary' => ['count' => 27377, 'a
 set_transient(EZBIZI_CACHE_KEY, ['review_summary' => ['count' => 27377, 'average' => 4.9]], 300);
 check('[ezbizi_rating] prints the real numbers', strpos($GLOBALS['sc']['ezbizi_rating']([]), '<span itemprop="reviewCount">27,377</span>') !== false, true);
 check('JSON-LD rating follows the payload', ezbizi_fix_rating_jsonld('<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.1","reviewCount":"3218"}}</script><p>"reviewCount":5</p>'), '<script type="application/ld+json">{"aggregateRating":{"ratingValue":"4.9","reviewCount":"27377"}}</script><p>"reviewCount":5</p>');
+set_transient('ezbizi_ba_12', array());
+
+set_transient('ezbizi_ba_12', array(array('label' => 'Crown rebuild', 'city' => 'Hartford', 'state' => 'CT', 'before' => array('url' => 'https://x/b.jpg', 'alt' => ''), 'after' => array('url' => 'https://x/a.jpg', 'alt' => 'New crown'))));
+$ba = $GLOBALS['sc']['ezbizi_before_after']([]);
+check('[ezbizi_before_after] shows an approved inspection pair', strpos($ba, 'src="https://x/b.jpg"') !== false && strpos($ba, 'src="https://x/a.jpg"') !== false && strpos($ba, 'Crown rebuild') !== false, true);
+set_transient('ezbizi_ba_12', array());
 delete_transient(EZBIZI_CACHE_KEY); unset($GLOBALS['opt']['ezbizi_last_good']);
 check('[ezbizi_booking_url] registered', isset($GLOBALS['sc']['ezbizi_booking_url']), true);
 check('generic [ezbizi] registered', isset($GLOBALS['sc']['ezbizi']), true);
