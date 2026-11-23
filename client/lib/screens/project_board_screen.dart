@@ -713,7 +713,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         );
       case 'status_days':
         if (value is! int) return const Text('—');
-        // Under 3 days green, 3 to 7 yellow, 7 and up red.
+        // Days in the current stage (Jose, 2026-11-23): 1 green, 2 yellow,
+        // 3 and up red, by the thresholds the server sends.
         return Align(
           alignment: Alignment.centerLeft,
           child: StatusPill(
@@ -1780,8 +1781,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
             '$k',
         ]);
       final days = (byKey['project_board.status_days'] as Map?) ?? const {};
-      _warnDays.text = '${days['warn'] ?? 3}';
-      _badDays.text = '${days['bad'] ?? 7}';
+      _warnDays.text = '${days['warn'] ?? 2}';
+      _badDays.text = '${days['bad'] ?? 3}';
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
         _statuses[key] = [
@@ -2518,8 +2519,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {
             'project_board.status_days': {
-              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
-              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 2,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 3,
             },
           },
         ),

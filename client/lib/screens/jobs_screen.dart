@@ -22,6 +22,8 @@ import '../widgets/load_more.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'phone/call_tab.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
@@ -1363,13 +1365,16 @@ class _JobsScreenState extends State<JobsScreen> {
         _statusLabel(job),
         tone: toneForJobStatus('${job['status'] ?? ''}'),
       ),
-      // Phone 4: the type, then the first tag and "+N".
-      footer:
-          jobType(job) == null &&
-              jobTags(job).isEmpty &&
-              _unreadMark(job) == null
-          ? null
-          : Row(
+      // Phone 4: the type, then the first tag and "+N"; then Call and Go
+      // (design 207 J1, after Workiz).
+      footer: _withQuickActions(
+        context,
+        job,
+        jobType(job) == null &&
+                jobTags(job).isEmpty &&
+                _unreadMark(job) == null
+            ? null
+            : Row(
               children: [
                 if (_unreadMark(job) case final mark?) ...[
                   mark,
@@ -1387,6 +1392,71 @@ class _JobsScreenState extends State<JobsScreen> {
                   ),
               ],
             ),
+      ),
+    );
+  }
+
+  /// On a phone, Call (the app's own line, as the customer panel's Call) and
+  /// Go (directions) under the job. No Text: the app has no compose-by-number
+  /// yet, and the device's SMS would send from the technician's own number.
+  Widget? _withQuickActions(
+    BuildContext context,
+    Map<String, dynamic> job,
+    Widget? footer,
+  ) {
+    if (!_phone(context)) return footer;
+    final phone = _customer(job)['phone'] as String?;
+    final address = job['address'] as String?;
+    final canCall =
+        phone != null &&
+        phone.isNotEmpty &&
+        widget.session.me!.can('phone.phone.view');
+    final canGo = address != null && address.isNotEmpty;
+    if (!canCall && !canGo) return footer;
+    final actions = Row(
+      children: [
+        if (canCall)
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('job-call-${job['id']}'),
+              onPressed: () => showSidePanel<void>(
+                context,
+                builder: (_) => SidePanel(
+                  title: 'Call',
+                  subtitle: phone,
+                  scrollable: false,
+                  child: CallTab(
+                    api: widget.api,
+                    session: widget.session,
+                    initialNumber: phone,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.call_outlined, size: 18),
+              label: const Text('Call'),
+            ),
+          ),
+        if (canCall && canGo) const SizedBox(width: 8),
+        if (canGo)
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('job-go-${job['id']}'),
+              onPressed: () => launchUrl(
+                Uri.https('www.google.com', '/maps/dir/', {
+                  'api': '1',
+                  'destination': address,
+                }),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.directions_outlined, size: 18),
+              label: const Text('Go'),
+            ),
+          ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [?footer, if (footer != null) const SizedBox(height: 6), actions],
     );
   }
 
