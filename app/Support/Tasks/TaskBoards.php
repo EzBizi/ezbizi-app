@@ -358,14 +358,15 @@ class TaskBoards
     /**
      * Monday parity: tagging somebody in an update on a shared board makes
      * them a member (a subscriber there), so they can open what they were
-     * tagged on. Never on a personal board (Jose, 11-12), never somebody an
+     * tagged on. Never on a personal or private board (only its owner invites
+     * there, as on Monday; desk 11-23), never somebody an
      * admin took off this board.
      *
      * @param  list<string>  $ids
      */
     public function addMentioned(TaskBoard $board, array $ids): void
     {
-        if ($board->kind === TaskBoard::KIND_USER || $ids === []) {
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate() || $ids === []) {
             return;
         }
         $skip = [...$board->members()->pluck('user_id')->all(), ...(array) ($board->builtin_columns['_removed'] ?? [])];

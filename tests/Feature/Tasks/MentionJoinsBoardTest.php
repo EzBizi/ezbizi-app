@@ -33,4 +33,17 @@ class MentionJoinsBoardTest extends TestCase
         $api->postJson("/api/v1/tasks/$task/updates", ['body' => '@James can you take it?', 'mentions' => [$james->id]])->assertCreated();
         $this->assertTrue($this->inTenant($t['org'], fn () => $boards->canView($james->fresh(), $board)), 'tagged = on the board');
     }
+
+    public function test_a_private_board_neither_lists_nor_adds_a_non_member(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $james = $this->userWithRole($t, 'Technician', ['tasks.view', 'tasks.edit'], 'james@example.test');
+        $api = $this->signedInAs($t['admin']);
+        $board = $this->inTenant($t['org'], fn () => app(TaskBoards::class)->createCustom($t['admin']->fresh(), 'Company Files', TaskBoard::PRIVATE, $t['company'], null));
+        $task = $api->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Card'])->assertCreated()->json('data.id');
+
+        $this->assertNotContains($james->id, array_column($api->getJson("/api/v1/mentionable?type=task&id=$task")->assertOk()->json('data'), 'id'));
+        $api->postJson("/api/v1/tasks/$task/updates", ['body' => '@James', 'mentions' => [$james->id]])->assertUnprocessable();
+        $this->assertFalse($this->inTenant($t['org'], fn () => $board->members()->where('user_id', $james->id)->exists()), 'not pulled in');
+    }
 }
