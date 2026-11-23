@@ -474,16 +474,16 @@ void main() {
     }
   });
 
-  testWidgets('Updates sits right after Status on every board (Jose 11-23)', (
-    tester,
-  ) async {
+  testWidgets('Updates sits right after the name, before every other '
+      'column (Jose 11-23)', (tester) async {
     await pump(tester);
-    final status = tester.getRect(find.byKey(const ValueKey('task-status-t1')));
+    final name = tester.getRect(find.byKey(const ValueKey('task-open-t1')));
     final updates = tester.getRect(
       find.byKey(const ValueKey('task-updates-cell-t1')),
     );
-    expect(updates.left, greaterThan(status.left));
-    expect(updates.left - status.right, lessThan(40), reason: 'next cell');
+    final status = tester.getRect(find.byKey(const ValueKey('task-status-t1')));
+    expect(updates.left, greaterThan(name.right));
+    expect(updates.left, lessThan(status.left), reason: 'before Status');
   });
 
   testWidgets('every row has the Monday grey rule above it (Jose 11-23, '

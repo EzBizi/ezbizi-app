@@ -74,11 +74,9 @@ class SchedulingFlagFullWindows extends Command
                     $emails = $franchise ? preg_split('/[\s,;]+/', mb_strtolower((string) $settings->get(self::RECIPIENTS, $franchise)), -1, PREG_SPLIT_NO_EMPTY) : [];
                     $to = User::query()->where('is_active', true)->whereIn(DB::raw('LOWER(email)'), $emails ?: ['-'])->pluck('id')
                         ->push(FlagWorkizJobs::booker($w)?->getKey())->filter()->unique()->values()->all();
-                    if ($to !== []) {
-                        $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: $to, urgent: true);
-                    }
                     // The alert reaches the managers too; the task is the booker's to fix (Jose 11-20).
-                    FlagWorkizJobs::flagTask($boards, $tasks, $franchise, $title, 'Move to an open window or confirm with the field manager', $job, [FlagWorkizJobs::booker($w)?->getKey()], 'Overbooked', $w->created_by);
+                    $task = FlagWorkizJobs::flagTask($boards, $tasks, $franchise, $title, 'Move to an open window or confirm with the field manager', $job, [FlagWorkizJobs::booker($w)?->getKey()], 'Overbooked', $w->created_by);
+                    FlagWorkizJobs::tellFlag($notify, $title, $job, $task, $to, urgent: true);
                 }
             });
         }

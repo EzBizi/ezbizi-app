@@ -4737,12 +4737,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       for (final k in _ordered(cells.keys.toList()))
         if (!lead.contains(k)) k,
     ];
-    // Updates sits right after the main Status, whatever its saved place
-    // (Jose 11-23: "one of the most used, it should be always visible").
-    if (keys.remove('updates')) {
-      final at = keys.indexOf('status');
-      keys.insert(at < 0 ? 0 : at + 1, 'updates');
-    }
+    // Updates right after the name, whatever its saved place, as on Monday
+    // (Jose 11-23, Chaim 01a209ae: "one of the most used").
+    if (keys.remove('updates')) keys.insert(0, 'updates');
     return [for (final k in keys) cells[k]!];
   }
 

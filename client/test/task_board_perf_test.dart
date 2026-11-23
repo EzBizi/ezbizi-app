@@ -187,6 +187,9 @@ void main() {
       'scroll $frames, worst hover ${hovers.reduce((a, b) => a > b ? a : b)}',
     );
     expect(tester.takeException(), isNull);
+    // Off the rows, past a hovered tooltip's delay (Updates now sits by the name).
+    await gesture.moveTo(Offset.zero);
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpWidget(const SizedBox());
   });
 
