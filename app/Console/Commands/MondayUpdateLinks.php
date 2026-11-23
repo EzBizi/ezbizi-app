@@ -29,7 +29,7 @@ class MondayUpdateLinks extends Command
         $connection = SocialConnection::withoutGlobalScopes()->where('provider', 'monday')->whereNotNull('organization_id')->firstOrFail();
         $api = MondayClient::for($connection);
         $dir = storage_path('app/monday');
-        @mkdir($dir, 0750, true);
+        is_dir($dir) || mkdir($dir, 0750, true);
         $backup = $dir.'/update-links-before-'.now()->format('YmdHis').'.jsonl';
         $counts = ['read' => 0, 'with links' => 0, 'changed' => 0, 'edited here, left' => 0, 'mentions filled' => 0];
         // Who a Monday user is here (Dieuve 11-23: her Monday @mentions were never mapped): the
