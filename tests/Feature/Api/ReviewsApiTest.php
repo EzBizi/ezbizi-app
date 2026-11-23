@@ -242,6 +242,47 @@ class ReviewsApiTest extends TestCase
             );
     }
 
+    public function test_a_reply_to_a_review_google_removed_says_so_and_keeps_the_draft(): void
+    {
+        $t      = $this->provisionTenant('A1-Group');
+        $conn   = $this->connectedProfile($t, '1');
+        $review = $this->review($t, ['connection_id' => $conn->id]);
+        $this->fakeGoogle(['mybusiness.googleapis.com/v4/*' => Http::response(['error' => ['code' => 404, 'message' => 'Requested entity was not found.']], 404)]);
+
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$review->id}/reply", ['body' => 'Sorry.'])->assertOk();
+        $this->signedInAs($t['admin'])
+            ->postJson(self::ENDPOINT."/{$review->id}/reply/publish")
+            ->assertStatus(410)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'no longer on Google'));
+
+        $fresh = $this->inTenant($t['org'], fn () => Review::with('reply')->find($review->id));
+        $this->assertNotNull($fresh->removed_at);
+        $this->assertSame('Sorry.', $fresh->reply->body);
+    }
+
+    public function test_reviews_no_reply_can_reach_are_not_unanswered_and_say_why(): void
+    {
+        $t    = $this->provisionTenant('A1-Group');
+        $conn = $this->connectedProfile($t, '1');
+        $this->review($t, ['connection_id' => $conn->id, 'reviewer_name' => 'Open']);
+        $gone  = $this->review($t, ['connection_id' => $conn->id]);
+        $this->inTenant($t['org'], fn () => $gone->forceFill(['removed_at' => now()])->save());
+        $ekomi = $this->review($t, ['source' => 'ekomi', 'connection_id' => null]);
+        $loose = $this->review($t, ['connection_id' => null]);
+
+        $r = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?answered=no')->assertOk();
+        $this->assertEqualsCanonicalizing(['Open', 'Dana Whitfield'], array_column($r->json('data'), 'reviewer_name'));
+        $this->assertSame(2, $r->json('meta.unanswered'));
+
+        $all = collect($this->signedInAs($t['admin'])->getJson(self::ENDPOINT)->json('data'))->keyBy('id');
+        $this->assertStringContainsString('Removed from Google', $all[$gone->id]['reply_blocked']);
+        $this->assertStringContainsString('not Google', $all[$ekomi->id]['reply_blocked']);
+        $this->assertStringContainsString('Business Profile to reply', $all[$loose->id]['reply_blocked']);
+
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$gone->id}/reply", ['body' => 'Hi.'])->assertOk();
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$gone->id}/reply/publish")->assertStatus(410);
+    }
+
     public function test_a_draft_can_be_discarded(): void
     {
         $t      = $this->provisionTenant('A1-Group');

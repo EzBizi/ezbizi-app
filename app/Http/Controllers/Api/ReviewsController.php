@@ -65,7 +65,7 @@ class ReviewsController extends Controller
         // The filter the work actually uses. Somebody opening this tab is
         // usually looking for the ones nobody has answered, not browsing.
         if ($request->query('answered') === 'no') {
-            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+            self::awaitingReply($query);
         }
 
         $rating = $request->query('rating');
@@ -81,7 +81,7 @@ class ReviewsController extends Controller
         if ($replied === 'yes') {
             $query->whereHas('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
         } elseif ($replied === 'no') {
-            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+            self::awaitingReply($query);
         }
 
         // A location is its `locations/<id>`: the account part differs by grant.
@@ -122,7 +122,7 @@ class ReviewsController extends Controller
         $locations = $this->locations(clone $query);
         // The Unanswered chip counts within every OTHER filter in play (Adeline, approved by Jose 2026-11-19:
         // "fix the counter when multiple filters selected").
-        $unanswered = (clone $query)->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))->count();
+        $unanswered = self::awaitingReply(clone $query)->count();
 
         // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.
         match ($request->query('sort')) {
@@ -500,9 +500,6 @@ class ReviewsController extends Controller
     public function publishReply(Request $request, Review $review): JsonResponse
     {
         $this->authorize('publish', $review);
-        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
-            return response()->json(['message' => 'Only Google reviews can be answered from EzBizi.'], Response::HTTP_CONFLICT);
-        }
 
         $reply = $review->reply;
 
@@ -515,11 +512,22 @@ class ReviewsController extends Controller
         if ($reply->isPublished()) {
             return response()->json(['data' => $this->present($review->load('reply'))]);
         }
+        if (($blocked = self::replyBlocked($review)) !== null) {
+            return response()->json(['message' => $blocked], $review->removed_at ? Response::HTTP_GONE : Response::HTTP_CONFLICT);
+        }
 
 
         try {
             $this->google->publish($reply);
         } catch (RuntimeException $e) {
+            // A 404 can mean the review itself is gone from Google (Adeline, 2026-11-23: Tracy Dupuis, removed
+            // after we read it). Asked directly: gone means it is marked removed and said so, with the draft kept.
+            if (str_contains($e->getMessage(), 'HTTP 404') && $this->google->reviewIsGone($review)) {
+                $review->forceFill(['removed_at' => $review->removed_at ?? now()])->save();
+
+                return response()->json(['message' => 'This review is no longer on Google: the reviewer or Google removed it, '
+                    .'so there is nothing to reply to. Your draft is kept.'], Response::HTTP_GONE);
+            }
             // The text is kept. A refusal usually means quota or an expired
             // connection, and losing what somebody wrote because Google was
             // briefly unavailable would be its own small betrayal.
@@ -645,6 +653,33 @@ class ReviewsController extends Controller
         return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
     }
 
+    /**
+     * Unanswered = a reply can still be posted (Jose, 2026-11-23: Adeline's last 8). A review Google removed,
+     * or one from eKomi, never gets a Google reply, so it is not waiting for one.
+     */
+    private static function awaitingReply($query)
+    {
+        return $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))
+            ->whereNull('removed_at')
+            ->where(fn ($w) => $w->whereNull('source')->orWhere('source', Review::SOURCE_GOOGLE));
+    }
+
+    /** Why no reply can be posted on Google for this review, in words for the screen; null when it can. */
+    private static function replyBlocked(Review $review): ?string
+    {
+        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
+            return 'This review came from '.ucfirst((string) $review->source).', not Google, so it cannot be answered from EzBizi.';
+        }
+        if ($review->removed_at !== null) {
+            return 'Removed from Google on '.$review->removed_at->format('M j, Y').'; no reply possible.';
+        }
+        if ($review->connection_id === null) {
+            return 'Connect '.($review->company?->name ?? 'this company')."'s Google Business Profile to reply.";
+        }
+
+        return null;
+    }
+
     /** @return array<string, mixed> */
     private function present(Review $review): array
     {
@@ -653,6 +688,8 @@ class ReviewsController extends Controller
         return [
             'id'            => $review->id,
             'source'        => $review->source ?? Review::SOURCE_GOOGLE,
+            'removed_at'    => $review->removed_at?->toIso8601String(),
+            'reply_blocked' => self::replyBlocked($review),
             'reviewer_name' => $review->reviewer_name,
             'reviewer_photo_url' => $review->reviewer_photo_url,
             'rating'        => $review->rating,
