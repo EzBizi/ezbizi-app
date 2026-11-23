@@ -363,6 +363,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// The task being dragged: its row stays behind as a faint ghost.
   String? _draggingId;
+  String? _renamingId;
+  final _renameText = TextEditingController();
 
   /// The groups that were folded before a group drag folded them all.
   Set<String?>? _foldedBeforeDrag;
@@ -477,6 +479,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   @override
   void dispose() {
+    _renameText.dispose();
     _live?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
@@ -2453,7 +2456,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      withBoardFont(context, Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     // A status menu is open: dim the board so the menu stands apart
     // (Jose, 2026-11-12). The menu itself sits in the overlay, above this.
     return Stack(
@@ -4476,16 +4482,40 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                           if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
-                            child: Text(
-                              taskTitle(t),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: sub
-                                    ? FontWeight.w500
-                                    : FontWeight.w600,
-                              ),
-                            ),
+                            child: _renamingId == t['id']
+                                ? _renameField(t)
+                                // Click the name to edit it in place, as on
+                                // Monday (row 40, Chaim); the rest of the row
+                                // still opens the panel.
+                                : GestureDetector(
+                                    key: ValueKey('task-name-${t['id']}'),
+                                    onTap: _canEdit
+                                        ? () => setState(() {
+                                            _renameText.text =
+                                                '${t['title'] ?? ''}';
+                                            _renamingId = t['id'] as String?;
+                                          })
+                                        : null,
+                                    child: Text(
+                                      taskTitle(t),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: sub
+                                                ? FontWeight.w500
+                                                : FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                          ),
+                          IconButton(
+                            key: ValueKey('task-open-${t['id']}'),
+                            tooltip: 'Open',
+                            iconSize: 16,
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _openTask(t),
+                            icon: const Icon(Icons.open_in_full),
                           ),
                           if (t['rolled_up_from'] case final Map from)
                             Padding(
@@ -5791,6 +5821,42 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Color _planColour(_Json t) =>
       _statusColours(context, _statusFor(_board, _statusOf(t))).fill;
 
+  Widget _renameField(_Json t) {
+    var done = false;
+    void finish(String? to) {
+      if (done) return;
+      done = true;
+      setState(() => _renamingId = null);
+      final name = to?.trim() ?? '';
+      if (name.isNotEmpty && name != '${t['title']}') {
+        _patchTask(t, {'title': name});
+      }
+    }
+
+    return Focus(
+      onKeyEvent: (_, e) {
+        if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.escape) {
+          finish(null);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: TextField(
+        key: ValueKey('task-rename-${t['id']}'),
+        controller: _renameText,
+        autofocus: true,
+        style: Theme.of(context).textTheme.bodyMedium,
+        decoration: const InputDecoration(
+          isDense: true,
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        ),
+        onSubmitted: finish,
+        onTapOutside: (_) => finish(_renameText.text),
+      ),
+    );
+  }
+
   Future<void> _patchTask(_Json task, _Json body) async {
     final res = await widget.api.patch('/tasks/${task['id']}', body);
     if (!mounted) return;
@@ -6407,7 +6473,10 @@ class _TaskPanelState extends State<_TaskPanel> {
   static const _boxPadding = panelFieldPadding;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      withBoardFont(context, Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     // Closing saves what is still typed, before the board reads again.
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -7257,7 +7326,6 @@ class _RowShadeState extends State<_RowShade> {
   }
 }
 
-
 /// Update text with its links live: Monday's "[name](url)" shows the name,
 /// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
 @visibleForTesting
@@ -7279,14 +7347,28 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
         text: m.group(1) ?? url,
         style: style,
         recognizer: TapGestureRecognizer()
-          ..onTap = () => launchUrl(
-            Uri.parse(url),
-            mode: LaunchMode.externalApplication,
-          ),
+          ..onTap = () =>
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       ),
     );
     at = m.end;
   }
   spans.add(TextSpan(text: body.substring(at)));
   return SelectableText.rich(TextSpan(children: spans), key: key);
+}
+
+/// Monday's UI font on the Task Board, its table, panels and headers (row 42,
+/// Chaim). Bundled (assets/fonts/figtree), never fetched.
+Widget withBoardFont(BuildContext context, Widget child) {
+  final t = Theme.of(context);
+  return Theme(
+    data: t.copyWith(
+      textTheme: t.textTheme.apply(fontFamily: 'Figtree'),
+      primaryTextTheme: t.primaryTextTheme.apply(fontFamily: 'Figtree'),
+    ),
+    child: DefaultTextStyle.merge(
+      style: const TextStyle(fontFamily: 'Figtree'),
+      child: child,
+    ),
+  );
 }

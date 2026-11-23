@@ -246,10 +246,12 @@ void main() {
     // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
     await tester.ensureVisible(find.byKey(const ValueKey('task-t1')));
     await tester.pumpAndSettle();
-    await tester.tapAt(
-      tester.getTopLeft(find.byKey(const ValueKey('task-t1'))) +
-          const Offset(160, 19),
-    );
+    final open = find.byKey(const ValueKey('task-open-t1'));
+    if (open.evaluate().isNotEmpty) {
+      await tester.tap(open);
+    } else {
+      await tester.tap(find.byKey(const ValueKey('task-t1'))); // a phone card
+    }
     await tester.pumpAndSettle();
   }
 

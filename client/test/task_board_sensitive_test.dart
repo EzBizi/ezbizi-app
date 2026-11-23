@@ -199,10 +199,7 @@ void main() {
   ) async {
     await pumpBoard(tester);
     // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
-    await tester.tapAt(
-      tester.getTopLeft(find.byKey(const ValueKey('task-t1'))) +
-          const Offset(160, 19),
-    );
+    await tester.tap(find.byKey(const ValueKey('task-open-t1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('task-locked')), findsOneWidget);
     expect(find.text('Chase PIN 4321'), findsNothing);
