@@ -369,10 +369,12 @@ class _RecordsTabState extends State<RecordsTab> {
       // The PANE's width, not the window's: this sits inside the HR shell, and a
       // window measurement would put a sidebar into a column too narrow for it.
       builder: (context, constraints) {
-        if (constraints.maxWidth >= 760) {
-          // At least 240 for the list and 420 for the record, whatever the
-          // window: the handle cannot squeeze either of them out.
-          final widest = constraints.maxWidth - 420;
+        // From 600 (design 206: the open iPhone Duo, an iPad mini).
+        if (constraints.maxWidth >= 600) {
+          // At least 240 for the list and 420 for the record (360 below 760),
+          // whatever the window: the handle cannot squeeze either out.
+          final widest =
+              constraints.maxWidth - (constraints.maxWidth >= 760 ? 420 : 360);
           final width = _listWidth.clamp(240.0, widest);
 
           return Row(

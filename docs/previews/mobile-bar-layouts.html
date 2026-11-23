@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mobile bar per role</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--bar:#10161b;--barink:#e8ecef}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:30px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.win{max-width:1100px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;background:var(--bar);color:var(--barink);padding:9px 14px;font-size:12px}.sp{flex:1}
+.body{display:flex;gap:20px;padding:16px;align-items:flex-start}
+.sec{flex:1}.sec h3{margin:0 0 2px;font-size:14px}.mut{color:var(--mut);font-size:12px}
+.slot{display:flex;align-items:center;gap:10px;margin:8px 0}.slot .n{width:22px;height:22px;border-radius:11px;background:var(--prif);color:var(--pri);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.pick{flex:1;border:1px solid var(--line);border-radius:8px;padding:7px 10px;display:flex;align-items:center;gap:8px}.pick small{color:var(--mut);margin-left:auto}
+.btn{border-radius:18px;padding:6px 16px;font-weight:600;font-size:12.5px;display:inline-block;border:1px solid var(--line)}.fill{background:var(--pri);color:#fff;border-color:var(--pri)}
+.phone{width:230px;height:420px;border:6px solid #2a2f35;border-radius:26px;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;flex:none}
+.phone .scr{flex:1;padding:10px;color:var(--mut);font-size:11px}
+.nav{display:flex;justify-content:space-around;border-top:1px solid var(--line);background:var(--card);padding:6px 0 10px;font-size:9.5px;color:var(--mut)}
+.nav span{text-align:center;flex:1}.nav .i{font-size:15px;display:block}.nav .on{color:var(--pri);font-weight:700}
+.nav .fixed{opacity:.75}
+.pal{display:flex;flex-wrap:wrap;gap:6px}.tok{border:1px dashed var(--pri);color:var(--pri);border-radius:14px;padding:3px 10px;font-size:12px}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left;font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.cap{font-size:11.5px;color:var(--mut);margin:0 0 4px}
+.inner{width:347px;height:488px;border:6px solid #2a2f35;border-radius:18px;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.inner .scr{flex:1;display:flex}.l{width:50%;border-right:1px solid var(--line);background:var(--card)}.r{flex:1}
+</style></head><body>
+<h1>208 · The phone's bottom bar, chosen per role</h1>
+<p class="lead">Jose, 11-23, via the desk. Each role picks up to <b>4 slots</b> for the phone's bottom bar, and <b>More</b> stays fixed as the fifth. A slot can be a whole module (Jobs) or one of its tabs (Field › Map, Jobs › Estimates), so a technician's bar can be their quick tools. It's set in Roles &amp; Permissions with a live phone mock that changes as you pick. The picker only offers what that role can reach. An empty slot falls back to today's default (Jobs, Scheduling, Leads, Phone). Example role: Technician.</p>
+
+<div class="opt"><h2>1 · Four slot pickers beside a live phone <span class="rec">(recommended)</span></h2>
+<p>A "Mobile bar" card in the role editor, under the permissions. There are four numbered searchable pickers, each listing modules with their tabs indented under them (the house SearchPickerField, never a pop-up). Slots move with ↑ ↓ and clear with ✕. The phone on the right redraws on every change, with slot 1 shown as open. "Reset to default" clears it.</p>
+<div class="win"><div class="top"><b>Roles &amp; permissions</b><span>› Technician</span><span class="sp"></span></div>
+<div class="body"><div class="sec"><h3>Mobile bar</h3><span class="mut">What a Technician sees at the bottom of the phone app. More is always last.</span>
+<div class="slot"><span class="n">1</span><div class="pick">🧭 Field › Map<small>tab</small></div><span>↑↓ ✕</span></div>
+<div class="slot"><span class="n">2</span><div class="pick">🛠 Jobs<small>module</small></div><span>↑↓ ✕</span></div>
+<div class="slot"><span class="n">3</span><div class="pick">⏱ Work hours › Clock in<small>tab</small></div><span>↑↓ ✕</span></div>
+<div class="slot"><span class="n">4</span><div class="pick" style="color:var(--mut)">Choose a module or tab…<small>default: Phone</small></div><span>✕</span></div>
+<div style="margin-top:10px"><span class="btn">Reset to default</span> <span class="btn fill">Save</span></div></div>
+<div><p class="cap">Live: Technician's phone</p><div class="phone"><div class="scr">Field › Map…</div>
+<div class="nav"><span class="on"><span class="i">🧭</span>Map</span><span><span class="i">🛠</span>Jobs</span><span><span class="i">⏱</span>Clock in</span><span style="opacity:.6"><span class="i">📞</span>Phone</span><span class="fixed"><span class="i">☰</span>More</span></div></div></div></div></div></div>
+
+<div class="opt"><h2>2 · Drag onto the phone</h2>
+<p>A palette of modules and tabs; drag a token onto a slot on the phone mock. Direct, but dragging is poor on touch and with a keyboard, and needs an accessible fallback anyway.</p>
+<div class="win"><div class="body"><div class="sec"><h3>Mobile bar</h3><div class="pal"><span class="tok">Jobs</span><span class="tok">Jobs › Estimates</span><span class="tok">Field › Map</span><span class="tok">Leads</span><span class="tok">Work hours › Clock in</span><span class="tok">Inspection</span></div></div>
+<div class="phone" style="height:200px"><div class="scr">drop here ↓</div><div class="nav"><span>🧭<br>Map</span><span>🛠<br>Jobs</span><span style="border:1px dashed var(--pri)">+</span><span style="border:1px dashed var(--pri)">+</span><span>☰<br>More</span></div></div></div></div></div>
+
+<div class="opt"><h2>3 · A table of slots</h2>
+<p>Slot, what it opens and its label as rows, with Edit per row. Compact, but you don't see the bar.</p>
+<div class="win"><div class="body"><div class="sec"><table><tr><th>Slot</th><th>Opens</th><th>Label</th><th></th></tr><tr><td>1</td><td>Field › Map</td><td>Map</td><td>Edit</td></tr><tr><td>2</td><td>Jobs</td><td>Jobs</td><td>Edit</td></tr><tr><td>3</td><td>Work hours › Clock in</td><td>Clock in</td><td>Edit</td></tr><tr><td>4</td><td class="mut">default</td><td class="mut">Phone</td><td>Edit</td></tr></table></div></div></div></div>
+
+<div class="opt"><h2>How the bar renders: phone (4), iPhone Duo folded and open</h2>
+<p>A tab slot uses its module's icon and the tab's short label, and opens the module on that tab. The bar is the same on the folded outer screen and the open inner screen (design 206). The sidebar takes over only from 900 wide (the Duo sideways, iPad, desktop). On a phone, the role-editor card stacks the mock above the four pickers.</p>
+<div class="row">
+<div><p class="cap">4 · Phone / Duo folded (466 wide)</p><div class="phone"><div class="scr">Map…</div><div class="nav"><span class="on"><span class="i">🧭</span>Map</span><span><span class="i">🛠</span>Jobs</span><span><span class="i">⏱</span>Clock in</span><span><span class="i">📞</span>Phone</span><span><span class="i">☰</span>More</span></div></div></div>
+<div><p class="cap">Duo open, upright (669 wide): same bar, list + record above it</p><div class="inner"><div class="scr"><div class="l"></div><div class="r"></div></div><div class="nav"><span><span class="i">🧭</span>Map</span><span class="on"><span class="i">🛠</span>Jobs</span><span><span class="i">⏱</span>Clock in</span><span><span class="i">📞</span>Phone</span><span><span class="i">☰</span>More</span></div></div></div>
+<div><p class="cap">5 · The role editor on a phone</p><div class="phone"><div class="scr"><b style="color:var(--ink)">Mobile bar</b><div style="margin:8px auto;width:170px;border:1px solid var(--line);border-radius:8px;font-size:8.5px;display:flex;justify-content:space-around;padding:4px;background:var(--card)"><span>Map</span><span>Jobs</span><span>Clock</span><span>Phone</span><span>More</span></div><div class="pick" style="margin:4px 0">1 · Field › Map</div><div class="pick" style="margin:4px 0">2 · Jobs</div><div class="pick" style="margin:4px 0">3 · Work hours › Clock in</div><div class="pick" style="margin:4px 0;color:var(--mut)">4 · default: Phone</div></div></div></div>
+</div></div>
+</body></html>

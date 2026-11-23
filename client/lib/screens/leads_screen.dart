@@ -687,7 +687,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     setState(() => _selectedId = id);
 
-    if (mounted && MediaQuery.sizeOf(context).width < 900) {
+    if (mounted && MediaQuery.sizeOf(context).width < 600) {
       _openThread(lead);
     }
   }
@@ -862,8 +862,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // says which source is showing and opens a page of them.
     final body = LayoutBuilder(
       builder: (context, constraints) {
-        final desk = constraints.maxWidth >= 900;
-        return desk ? _desk(theme) : _phone(theme);
+        if (constraints.maxWidth >= 900) return _desk(theme);
+        // The open iPhone Duo, an iPad mini, a foldable (design 206): the
+        // phone's header over the list, the conversation beside it.
+        if (constraints.maxWidth >= 600) return _fold(theme);
+        return _phone(theme);
       },
     );
     // (?) runs the open source's own walkthrough, by the server's name for
@@ -914,6 +917,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
       ),
     ],
   );
+
+  Widget _fold(ThemeData theme) {
+    if (_choosingSource) return _sourcesPage(theme);
+    if (_moreFilters) return _phoneFilters(theme);
+    return _twoPane(
+      theme,
+      header: _phoneHeader(theme),
+      minList: 300,
+      minThread: 340,
+    );
+  }
 
   Widget _phone(ThemeData theme) {
     if (_choosingSource) return _sourcesPage(theme);
@@ -1934,14 +1948,19 @@ class _LeadsScreenState extends State<LeadsScreen> {
     });
   }
 
-  Widget _twoPane(ThemeData theme) {
+  Widget _twoPane(
+    ThemeData theme, {
+    Widget? header,
+    double minList = _minListPx,
+    double minThread = _minThreadPx,
+  }) {
     final selected = _selected;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final maxList = (width - _minThreadPx).clamp(_minListPx, width);
-        final listWidth = (width * _listShare).clamp(_minListPx, maxList);
+        final maxList = (width - minThread).clamp(minList, width);
+        final listWidth = (width * _listShare).clamp(minList, maxList);
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1951,14 +1970,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _listHeader(theme),
+                  header ?? _listHeader(theme),
                   const Divider(height: 1),
                   Expanded(
                     child: _listBody(
                       theme,
                       selectedId: selected?['id'] as String?,
-                      onTap: (lead) =>
-                          setState(() => _selectedId = lead['id'] as String?),
+                      // Both, so folding the Duo keeps this lead open.
+                      onTap: (lead) => setState(() {
+                        _selectedId = lead['id'] as String?;
+                        _phoneLeadId = _selectedId;
+                        _phoneLeadAsOpened = lead;
+                      }),
                     ),
                   ),
                 ],
@@ -1973,8 +1996,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 behavior: HitTestBehavior.opaque,
                 onHorizontalDragUpdate: (d) => setState(() {
                   _listShare =
-                      (listWidth + d.delta.dx).clamp(_minListPx, maxList) /
-                      width;
+                      (listWidth + d.delta.dx).clamp(minList, maxList) / width;
                 }),
                 onHorizontalDragEnd: (_) => widget.session.setPreference(
                   'leads.list_percent',
@@ -2017,6 +2039,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// arrow: never a page pushed over the app (the containment rule).
   void _openThread(Map<String, dynamic> lead) => setState(() {
     _phoneLeadId = lead['id'] as String?;
+    // And for the two panes, so unfolding the Duo shows this one.
+    _selectedId = _phoneLeadId;
     _phoneLeadAsOpened = lead;
   });
 
