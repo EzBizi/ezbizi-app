@@ -1781,8 +1781,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
             '$k',
         ]);
       final days = (byKey['project_board.status_days'] as Map?) ?? const {};
-      _warnDays.text = '${days['warn'] ?? 3}';
-      _badDays.text = '${days['bad'] ?? 7}';
+      _warnDays.text = '${days['warn'] ?? 2}';
+      _badDays.text = '${days['bad'] ?? 3}';
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
         _statuses[key] = [
@@ -2519,8 +2519,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {
             'project_board.status_days': {
-              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
-              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 2,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 3,
             },
           },
         ),
