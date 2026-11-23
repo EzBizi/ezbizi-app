@@ -62,6 +62,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 36 | **Ohio Project Management missing from Field Management > Project Management** (11-23): on prod it sits in the Everdoors folder; Monday has it in Field Management > Project Management (folder 21468509). Folder mirror must follow Monday | Task Board | DONE (prod) | 11-23 14:15: Ohio PM in Field Management > Project Management beside Illinois; audit of 39 boards found 2 more off (moving to Monday folders); importer to follow Monday folders |
 | 37 | **Row line dividers on the table**, like Monday (11-23: EzBizi light mode shows rows with no horizontal lines; Monday photo shows a line under every row) | Task Board | ROUTED | Sent 11-23 |
 | 38 | Merav: **files attached to updates can't be opened** (11-23: "My board" in A1 Chimney - Excels, Shoval's updates list Seattle/MA/NY/DMV/IL/GA/CT Balance report 2026.xlsx as plain text, not links). Monday update files must import as attachments and open/download from the update | Task Board | ROUTED | Sent 11-23 |
+| 39 | **Drag ghost stays**: start moving an item, then cancel or drop it back in its own place, and the row stays greyed out (11-23 photo: 600026424 Yhav faded) | Task Board | ROUTED | Sent 11-23 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
