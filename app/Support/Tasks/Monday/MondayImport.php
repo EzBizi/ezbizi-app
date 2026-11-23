@@ -782,11 +782,13 @@ final class MondayImport
         if ($body === '' && $files === []) {
             return;
         }
+        $mentioned = array_values(array_unique(array_filter(array_map(fn ($e) => $this->person($e)?->id, (array) ($u['mention_emails'] ?? [])))));
         $update = TaskUpdate::query()->create([
             'organization_id' => $task->organization_id,
             'task_id' => $task->id,
             'user_id' => $author?->id,
             'body' => $body === '' ? '' : ($reply ? '↳ ' : '').$body,
+            'mentions' => $mentioned ?: null,
         ]);
         $at = isset($u['created_at']) ? CarbonImmutable::parse($u['created_at']) : null;
         $update->forceFill(array_filter(['external_ref' => $ref, 'created_at' => $at, 'updated_at' => $at]))->saveQuietly();
@@ -794,7 +796,8 @@ final class MondayImport
         $this->files($update, $files, $author ?? $as, false);
         // A tech's update on Monday rings the task's followers here too; the first import and old history do not.
         if (! $this->writer->quiet && ($at === null || $at->greaterThan(now()->subDay()))) {
-            DB::afterCommit(fn () => TaskWriter::tellFollowers($update));
+            DB::afterCommit(fn () => TaskWriter::tellMentioned($update, $mentioned));
+            DB::afterCommit(fn () => TaskWriter::tellFollowers($update, $mentioned));
         }
     }
 

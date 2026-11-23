@@ -798,6 +798,40 @@ class TaskWriter
         });
     }
 
+    /**
+     * A @mention made on Monday rings here as one made here does: "Mentioned"
+     * (Dieuve 11-23). Only who can see the task, never the author.
+     *
+     * @param  string[]  $userIds
+     */
+    public static function tellMentioned(TaskUpdate $update, array $userIds): int
+    {
+        $org = Organization::query()->withoutGlobalScopes()->find($update->organization_id);
+        if ($org === null || $userIds === []) {
+            return 0;
+        }
+
+        return app(TenantContext::class)->run($org, function () use ($update, $userIds) {
+            $task = Task::query()->find($update->task_id);
+            if ($task === null) {
+                return 0;
+            }
+            $who = $update->user()->value('name') ?? 'Somebody on Monday';
+            $told = 0;
+            foreach (User::query()->whereKey(array_diff($userIds, [$update->user_id]))->where('is_active', true)->get() as $user) {
+                if (Gate::forUser($user)->check('view', $task)) {
+                    $told += app(NotificationDispatcher::class)->dispatch(
+                        title: $who.' mentioned you',
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        subject: $task, onlyTo: $user, source: 'mention', kind: 'task.mentioned',
+                    );
+                }
+            }
+
+            return $told;
+        });
+    }
+
     /** @param  string[]  $userIds */
     public static function tellAssigned(Task $task, array $userIds): int
     {

@@ -488,6 +488,41 @@ class MondaySyncTest extends TestCase
         $this->assertNull($this->inTenant($this->tenant['org'], fn () => TaskActivity::query()->where('task_id', $this->task('11')->id)->where('field', 'owner')->latest('created_at')->value('user_id')), 'Monday, not Jose');
     }
 
+    /** Dieuve 11-23: an item made on Monday already assigned (a recurring item, a Monday rule) rings the person too. */
+    public function test_a_new_monday_item_assigned_on_creation_notifies_the_person_here(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'ana@a-1chimney.com');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'];
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id,
+            'board_id' => TaskBoard::query()->where('external_ref', 'monday:100')->value('id'), 'user_id' => $ana->id, 'role' => 'member']));
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z'), $this->mondayItem('12', 'Sweep the flue', '2026-11-12T12:00:00Z', ['people' => ['2']])]);
+
+        $this->assertNotNull($this->task('12'));
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => Notification::query()->where('user_id', $ana->id)->where('kind', 'task.assigned')->count()));
+    }
+
+    /** Dieuve 11-23: "when tagged i should receive a notification". A @mention made on Monday rings "Mentioned" here. */
+    public function test_a_mention_made_on_monday_rings_the_person_here(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'ana@a-1chimney.com');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'];
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id,
+            'board_id' => TaskBoard::query()->where('external_ref', 'monday:100')->value('id'), 'user_id' => $ana->id, 'role' => 'member']));
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $html = '<p>still no tech can take today <a class="user_mention_editor router" href="https://a-1group.monday.com/users/2-ana" data-mention-type="User" data-mention-id="2" target="_blank">@ana</a></p>';
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['updates' => [
+            ['id' => '901', 'body' => $html, 'text_body' => 'still no tech can take today @ana', 'created_at' => '2026-11-12T12:00:00Z', 'creator' => ['id' => '1', 'email' => 'jose@a-1chimney.com', 'name' => 'Jose'], 'assets' => [], 'replies' => []],
+        ]])]);
+
+        $this->inTenant($this->tenant['org'], function () use ($ana) {
+            $update = \App\Models\TaskUpdate::query()->where('external_ref', 'monday:901')->sole();
+            $this->assertSame([$ana->id], $update->mentions);
+            $this->assertStringEndsWith('@ana', $update->body, 'a name, not a link');
+            $this->assertSame(1, Notification::query()->where('user_id', $ana->id)->where('kind', 'task.mentioned')->count());
+        });
+    }
+
     public function test_a_job_number_title_from_monday_is_split_and_sent_back_clean(): void
     {
         Carbon::setTestNow('2026-11-12 12:05:00');
