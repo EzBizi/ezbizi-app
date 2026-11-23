@@ -147,6 +147,14 @@ class AuditLogger
 
         $actor ??= auth()->user();
 
+        // View as (2026-11-23): a write made while a developer views the app as
+        // somebody is recorded against the developer, saying who they were
+        // viewing as. Never against the person or role being viewed.
+        if ($actor instanceof \App\Support\ViewAs\ViewAsUser) {
+            $metadata['viewing_as'] ??= \App\Support\ViewAs\ViewAs::describe($actor->viewAsSession);
+            $actor = $actor->viewAsActor;
+        }
+
         // Where it happened, from what it happened to: hardly any caller says,
         // so 18,000 of 18,100 rows had no scope and a company's Activity was
         // empty (Jose, 2026-10-19). A branch beats its company.

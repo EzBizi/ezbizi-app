@@ -181,8 +181,8 @@ class TaskBoards
         }
 
         return TaskBoardMember::query()->where('board_id', $board->getKey())
-            ->where('user_id', $user->getKey())->value('role')
-            ?? ($this->implicitUserIds($board)?->where('user_id', $user->getKey())->exists()
+            ->where('user_id', $user->ownRowsKey())->value('role')
+            ?? ($this->implicitUserIds($board)?->where('user_id', $user->ownRowsKey())->exists()
                 ? TaskBoardMember::MEMBER : null);
     }
 
@@ -282,7 +282,7 @@ class TaskBoards
     /** Ids of boards the person is a member, owner or viewer of. */
     private function membershipIds(User $user)
     {
-        return TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id');
+        return TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id');
     }
 
     /**
@@ -358,13 +358,13 @@ class TaskBoards
         // My personal board, and any board I have been added to (of any kind,
         // even a place my reach does not cover).
         $mine = fn (Builder $q) => $q->where(fn (Builder $o) => $o->where('kind', TaskBoard::KIND_USER)
-            ->where('owner_user_id', $user->getKey()))
+            ->where('owner_user_id', $user->ownRowsKey()))
             ->orWhereIn('id', $this->membershipIds($user))
             // Implicit members: assigned at exactly the board's company or franchise.
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)
-                ->whereIn('company_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
+                ->whereIn('company_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
-                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
+                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
 
         if (! $user->hasPermission('tasks.view')) {
             return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
@@ -387,7 +387,7 @@ class TaskBoards
                     ->orWhere(fn (Builder $o) => $o->whereNull('company_id')->whereNull('franchise_id')))
                 ->when(! $all, fn (Builder $v) => $v->where(fn (Builder $m) => $m
                     ->where('visibility', TaskBoard::MAIN)
-                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id'))))));
+                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id'))))));
     }
 
     public function canView(User $user, TaskBoard $board): bool
