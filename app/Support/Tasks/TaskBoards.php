@@ -355,6 +355,29 @@ class TaskBoards
         )->unique('id')->sortBy('name')->values();
     }
 
+    /**
+     * Monday parity: tagging somebody in an update on a shared board makes
+     * them a member (a subscriber there), so they can open what they were
+     * tagged on. Never on a personal or private board (only its owner invites
+     * there, as on Monday; desk 11-23), never somebody an
+     * admin took off this board.
+     *
+     * @param  list<string>  $ids
+     */
+    public function addMentioned(TaskBoard $board, array $ids): void
+    {
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate() || $ids === []) {
+            return;
+        }
+        $skip = [...$board->members()->pluck('user_id')->all(), ...(array) ($board->builtin_columns['_removed'] ?? [])];
+        foreach (User::query()->whereIn('id', array_diff($ids, $skip))->where('is_active', true)->get() as $user) {
+            if (! $this->canView($user, $board)) {
+                TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id,
+                    'user_id' => $user->id, 'role' => TaskBoardMember::MEMBER]);
+            }
+        }
+    }
+
     /** @return Builder<TaskBoard> */
     public function visibleTo(User $user): Builder
     {
@@ -378,8 +401,9 @@ class TaskBoards
 
         return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
             ->where($mine)
-            // tasks.view_all: everybody's personal board.
-            ->when($all, fn (Builder $e) => $e->orWhere('kind', TaskBoard::KIND_USER))
+            // tasks.view_all: everybody's personal board, but not a removed account's (desk 11-23).
+            ->when($all, fn (Builder $e) => $e->orWhere(fn (Builder $u) => $u->where('kind', TaskBoard::KIND_USER)
+                ->whereNotIn('owner_user_id', User::query()->removed()->select('id'))))
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $companyIds))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds))
             // A custom board: its place is in view (or it is organization-level),

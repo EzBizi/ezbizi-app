@@ -46,7 +46,14 @@ class NoteActivity
     {
         // ponytail: one policy check per active user; fine at company size, a
         // scoped query if an organization ever has thousands of staff.
-        return User::query()->where('is_active', true)->orderBy('name')->get()
+        $users = User::query()->where('is_active', true)->orderBy('name')->get();
+        // Monday parity (suggestion 01a20914, 11-23): anyone can be tagged on a
+        // main (not private) task board; TasksController adds them to the board first.
+        if ($record instanceof \App\Models\Task && $record->board && $record->board->kind !== \App\Models\TaskBoard::KIND_USER && ! $record->board->isPrivate()) {
+            return $users->reject(fn (User $u) => in_array($u->id, (array) ($record->board->builtin_columns['_removed'] ?? []), true))->values();
+        }
+
+        return $users
             ->filter(fn (User $u) => Gate::forUser($u)->check('view', $record))
             ->values();
     }
