@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\HrPersonDetailsController;
 use App\Http\Controllers\Api\InboxController;
 use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
+use App\Http\Controllers\Api\BeforeAfterController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
@@ -703,6 +704,11 @@ Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
 
+Route::get('v1/web/plugin/before-after', [WebPluginController::class, 'beforeAfter'])
+    ->middleware('throttle:web-plugin');
+Route::get('v1/web/plugin/before-after/image/{attachment}', [WebPluginController::class, 'beforeAfterImage'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->name('web.plugin.before-after.image');
 Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'serviceAccount'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.service-account');
@@ -3043,6 +3049,12 @@ Route::prefix('v1')
             ->middleware('permission:inspection.reports.view');
         // Before `{inspection_report}` would otherwise be happy to bind `pdf`,
         // the same way `catalogue` sits ahead of `{inspection_definition}`.
+        Route::get('inspections/reports/{inspection_report}/before-after', [BeforeAfterController::class, 'index'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'approve'])
+            ->middleware('permission:inspection.edit');
+        Route::delete('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'withdraw'])
+            ->middleware('permission:inspection.edit');
         Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf'])
             ->middleware('permission:inspection.reports.view');
         Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show'])
