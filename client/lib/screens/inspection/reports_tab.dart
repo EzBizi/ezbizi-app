@@ -413,6 +413,9 @@ class _ReportsTabState extends State<ReportsTab> {
             InspectionReportBody(
               screens: screens,
               answers: answers,
+              findings: report['findings'] is Map
+                  ? Map<String, dynamic>.from(report['findings'] as Map)
+                  : const {},
               photos: _photos,
               formats: _formats,
             ),

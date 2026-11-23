@@ -28,12 +28,16 @@ class InspectionReportBody extends StatelessWidget {
     super.key,
     required this.screens,
     required this.answers,
+    required this.findings,
     required this.photos,
     required this.formats,
   });
 
   final List<Map<String, dynamic>> screens;
   final Map<String, dynamic> answers;
+
+  /// `findings` from the report payload: field key → {label, variant}.
+  final Map<String, dynamic> findings;
 
   /// Picture bytes by attachment id; a missing one draws a placeholder.
   final Map<String, Uint8List> photos;
@@ -61,34 +65,16 @@ class InspectionReportBody extends StatelessWidget {
     return const ['root', 'text', 'ignore'].contains(p) ? p : 'text';
   }
 
-  /// The chosen option's words and its variant; a multi-choice takes the
-  /// worst (ReportDocument::chosenOption). Null when not a choice or blank.
-  static ({String label, String variant})? chosen(
-    Map<String, dynamic> field,
-    Map<String, dynamic> answers,
-  ) {
-    if (field['type'] != 'choice') return null;
-    final answer = answers['${field['key'] ?? ''}'];
-    if (answer == null || answer == '' || (answer is List && answer.isEmpty)) {
-      return null;
-    }
-    final picked = [
-      for (final v in (answer is List ? answer : [answer])) '$v',
-    ];
-    final labels = <String>[];
-    var variant = 'neutral';
-    for (final o in InspectionOption.allOf(field['options'])) {
-      if (!picked.contains(o.value)) continue;
-      labels.add(o.label);
-      if (o.variant == 'fail') {
-        variant = 'fail';
-      } else if (o.variant == 'pass' && variant != 'fail') {
-        variant = 'pass';
-      } else if (variant == 'neutral') {
-        variant = o.variant;
-      }
-    }
-    return (label: labels.join(', '), variant: variant);
+  /// The chosen option's words and its variant, as the server's
+  /// ReportDocument::findings worked them out (the PDF's own code, so the
+  /// screen and the PDF cannot disagree). Null when unanswered.
+  ({String label, String variant})? chosen(Map<String, dynamic> field) {
+    final f = findings['${field['key'] ?? ''}'];
+    if (f is! Map) return null;
+    return (
+      label: '${f['label'] ?? ''}',
+      variant: '${f['variant'] ?? 'neutral'}',
+    );
   }
 
   static Tone _tone(String variant) => switch (variant) {
@@ -113,7 +99,7 @@ class InspectionReportBody extends StatelessWidget {
     ];
     final count = {'pass': 0, 'fail': 0, 'not_applicable': 0};
     for (final f in findings) {
-      final v = chosen(f, answers)?.variant;
+      final v = chosen(f)?.variant;
       if (count.containsKey(v)) count[v!] = count[v]! + 1;
     }
 
@@ -235,7 +221,7 @@ class InspectionReportBody extends StatelessWidget {
       if (print == 'ignore') continue;
       if (print == 'root') {
         flush();
-        if (chosen(field, answers)?.variant == 'fail') fails++;
+        if (chosen(field)?.variant == 'fail') fails++;
         body.add(_finding(context, field));
         continue;
       }
@@ -333,7 +319,7 @@ class InspectionReportBody extends StatelessWidget {
 
   Widget _finding(BuildContext context, Map<String, dynamic> field) {
     final theme = Theme.of(context);
-    final pick = chosen(field, answers);
+    final pick = chosen(field);
     final variant = pick?.variant ?? 'neutral';
     final tone = ToneColours.of(context, _tone(variant));
     final bar = variant == 'neutral'
@@ -476,7 +462,7 @@ class InspectionReportBody extends StatelessWidget {
             ),
           ),
           for (final f in findings)
-            if (chosen(f, answers) case final pick)
+            if (chosen(f) case final pick)
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,

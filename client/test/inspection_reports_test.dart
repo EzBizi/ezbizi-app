@@ -257,6 +257,9 @@ const _findings = '''
     "answers": {"system": "masonry", "client": "Dana Reyes", "crown": "bad",
       "work": [{"name": "Crown rebuild", "qty": 1, "unit_price_minor": 125000}],
       "liner": "ok"},
+    "findings": {"system": {"label": "masonry", "variant": "neutral"},
+      "crown": {"label": "Cracked, water entering", "variant": "fail"},
+      "liner": {"label": "Intact", "variant": "pass"}},
     "screens": [
       {"name": "The system", "fields": [
         {"key": "system", "label": "System type", "type": "choice", "print": "ignore",
