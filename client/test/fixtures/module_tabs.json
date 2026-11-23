@@ -159,7 +159,8 @@
                 "New Inspection",
                 "Generated Reports",
                 "Builder",
-                "Testing"
+                "Testing",
+                "Review QR"
             ]
         },
         "inventory": {

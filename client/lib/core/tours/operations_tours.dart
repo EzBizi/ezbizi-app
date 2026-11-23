@@ -642,6 +642,22 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  'inspection/Review QR': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'review-qr-search',
+        title: 'Where',
+        body:
+            'A ZIP, a client or a job. It picks the branch whose reviews page the code opens.',
+      ),
+      TourStep(
+        anchor: 'review-qr-generate',
+        title: 'Generate',
+        body: 'Makes the code. Every scan counts for you on the leaderboard.',
+      ),
+    ],
+  ),
   'inspection/Testing': Tour(
     version: 1,
     steps: [
