@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// Whether this device types on an on-screen keyboard (a phone or tablet,
 /// native or in a browser). A function so a test can say which device it is.
@@ -18,3 +19,9 @@ bool Function() hasSoftKeyboard = () =>
 /// opened by asking to type (a code, a password, a rename, a reply), and says
 /// so with a `// keyboard:` comment. client/test/soft_keyboard_guard_test.dart.
 bool get autofocusOnOpen => !hasSoftKeyboard();
+
+/// The on-screen keyboard is up. Read from the window, not `MediaQuery`: inside
+/// a Scaffold body (every module) `MediaQuery.viewInsets` is already zeroed by
+/// the resize, so `MediaQuery.viewInsetsOf(context).bottom > 0` never fires
+/// there. The body shrinking is what rebuilds a LayoutBuilder that asks this.
+bool keyboardUp(BuildContext context) => View.of(context).viewInsets.bottom > 0;
