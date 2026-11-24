@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
@@ -244,6 +245,54 @@ void main() {
     },
   );
 
+  // Design 208: the role's own slots come first, a tab slot by its label,
+  // and tapping it hands that module a tab link; the default fills the rest.
+  testWidgets(
+    "a role's bar puts its slots first; a tab slot sends a tab link",
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      addTearDown(() => DeepLinks.pending.value = null);
+
+      await _pumpShell(
+        tester,
+        modules: ['dashboard', 'customers', 'jobs'],
+        order: ['dashboard', 'customers', 'jobs'],
+        mobileBar: [
+          {'module': 'customers', 'tab': 'tags', 'label': 'Tags'},
+        ],
+      );
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      final tags = find.byKey(const ValueKey('phone-bottom-customers-tags'));
+      expect(find.descendant(of: bar, matching: tags), findsOneWidget);
+      expect(
+        tester.getCenter(tags).dx,
+        lessThan(
+          tester.getCenter(find.byKey(const ValueKey('phone-bottom-jobs'))).dx,
+        ),
+        reason: 'the role slot is first, the default after it',
+      );
+
+      // Recorded as sent: the screen that owns it may take it at once.
+      final sent = <DeepLink>[];
+      void record() {
+        if (DeepLinks.pending.value case final l?) sent.add(l);
+      }
+
+      DeepLinks.pending.addListener(record);
+      addTearDown(() => DeepLinks.pending.removeListener(record));
+      await tester.tap(tags);
+      await tester.pumpAndSettle();
+      expect(_open('Customers'), findsOneWidget);
+      expect(
+        [for (final l in sent) (l.module, l.type, l.id)],
+        [('customers', 'tab', 'tags')],
+      );
+    },
+  );
+
   testWidgets(
     'the phone bar keeps every label on one line at 320 px and large text',
     (tester) async {
@@ -315,6 +364,7 @@ Future<void> _pumpShell(
   required List<String> modules,
   required List<String> order,
   ValueChanged<List<dynamic>>? onSave,
+  List<Map<String, dynamic>>? mobileBar,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
@@ -328,7 +378,9 @@ Future<void> _pumpShell(
         return _json({'data': _me(modules, order)});
       }
       if (request.url.path.endsWith('/me')) {
-        return _json({'data': _me(modules, order)});
+        return _json({
+          'data': {..._me(modules, order), 'mobile_bar': mobileBar},
+        });
       }
 
       // Everything else is a screen fetching its own data. These tests are

@@ -172,6 +172,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// A part alert (late, or a reminder) opens the Dashboard (Jose, 2026-11-17).
   void _takeLink() {
     final link = DeepLinks.take('project_board');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      if (mounted) setState(() => _tab = link!.id);
+      return;
+    }
     if (link == null || link.type != 'job_part') return;
     if (mounted) setState(() => _tab = 'dashboard');
   }

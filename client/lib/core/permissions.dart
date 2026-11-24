@@ -345,6 +345,7 @@ class RoleSummary {
     this.lockedReason,
     this.invitableRoles,
     this.hiddenOnLeads = false,
+    this.mobileBar,
     this.people,
     this.peopleWithOwnInboxes = 0,
   });
@@ -364,6 +365,10 @@ class RoleSummary {
   /// Whether its holders are left off "X is viewing this lead" - marketing,
   /// people inspecting rather than answering (Mia, 2026-10-02).
   final bool hiddenOnLeads;
+
+  /// The phone bottom bar chosen for this role (design 208), left to right:
+  /// (module, tab or null). Null when never chosen.
+  final List<({String module, String? tab})>? mobileBar;
 
   final String id;
   final String name;
@@ -406,6 +411,16 @@ class RoleSummary {
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
     hiddenOnLeads: json['hidden_on_leads'] as bool? ?? false,
+    mobileBar: json['mobile_bar'] is List
+        ? [
+            for (final m in json['mobile_bar'] as List)
+              if (m is Map && m['module'] is String)
+                (
+                  module: '${m['module']}',
+                  tab: m['tab'] is String ? m['tab'] as String : null,
+                ),
+          ]
+        : null,
     peopleWithOwnInboxes:
         (json['people_with_own_inboxes'] as num?)?.toInt() ?? 0,
     invitableRoles: (json['invitable_roles'] as List<dynamic>?)

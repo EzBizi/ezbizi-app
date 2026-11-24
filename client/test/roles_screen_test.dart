@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/roles_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -220,6 +221,53 @@ void main() {
   /// NAME — an organization is free to create a role called "Administrators",
   /// and matching the word is the same class of bug as the server-side
   /// short-circuit this whole change removes.
+  // Design 208: a role's phone bar, chosen beside a live phone, saved alone.
+  testWidgets('the mobile bar picks a tab slot and saves only the bar', (
+    tester,
+  ) async {
+    _wide(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Technician', permissions: const ['jobs.view']),
+      ],
+      onPatch: patches.add,
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-mobile-bar-slot-0')),
+        matching: find.byType(SearchPickerField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs › Estimates').last);
+    await tester.pumpAndSettle();
+
+    final phone = find.byKey(const ValueKey('role-mobile-bar-phone'));
+    expect(
+      find.descendant(of: phone, matching: find.text('Estimates')),
+      findsOneWidget,
+      reason: 'the live phone redraws with the new slot',
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('role-mobile-bar-save')));
+    await tester.tap(find.byKey(const ValueKey('role-mobile-bar-save')));
+    await tester.pumpAndSettle();
+    expect(patches.last, {
+      'mobile_bar': [
+        {'module': 'jobs', 'tab': 'estimates'},
+      ],
+    });
+  });
+
   testWidgets('the built-in administrator opens, and cannot be changed', (
     tester,
   ) async {
@@ -1804,6 +1852,24 @@ Future<void> _pumpRoles(
     if (request.method == 'PATCH') {
       onPatch?.call(jsonDecode(request.body) as Map<String, dynamic>);
       return _json({'data': roles.first});
+    }
+
+    // Design 208: what this role may put on the phone's bottom bar.
+    if (request.url.path.endsWith('/mobile-bar/options')) {
+      return _json({
+        'data': {
+          'modules': [
+            {
+              'module': 'jobs',
+              'label': 'Jobs',
+              'tabs': [
+                {'tab': 'estimates', 'label': 'Estimates'},
+              ],
+            },
+            {'module': 'customers', 'label': 'Customers', 'tabs': []},
+          ],
+        },
+      });
     }
 
     return _json({'data': roles});
