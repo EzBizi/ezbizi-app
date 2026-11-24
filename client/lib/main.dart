@@ -969,6 +969,13 @@ class _HomeShellState extends State<HomeShell> {
     final key = DeepLinks.module.value;
     if (key == null || !mounted) return;
     DeepLinks.module.value = null;
+    // Leads opens one lead through its constructor, not DeepLinks.
+    if (key == 'leads') {
+      if (DeepLinks.take('leads') case final lead?) {
+        _show(_Rail.modules, 'leads', openLead: lead.id);
+        return;
+      }
+    }
     _open(key);
   }
 

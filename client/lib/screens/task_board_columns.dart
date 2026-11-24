@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../widgets/cell_tap.dart';
+import '../core/deep_links.dart';
 import '../widgets/lazy_menu_anchor.dart';
 import '../widgets/people_search_list.dart';
 import '../widgets/panel_field.dart';
@@ -361,6 +362,36 @@ Object? evalFormula(String compiled, Map values) {
 
 /// A number as its column shows it: currency with two decimals, a
 /// percentage, or plain with the column's unit.
+/// An empty cell shows what it takes (Jose 11-24): a muted icon, never "—".
+class EmptyCellIcon extends StatelessWidget {
+  const EmptyCellIcon(this.icon, {super.key});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Icon(icon, size: 16, color: Theme.of(context).colorScheme.outline),
+  );
+}
+
+/// The first web address in a cell's value (a link's url, or one inside text).
+String? cellUrl(Object? v) {
+  if (v is Map && v['url'] is String && '${v['url']}'.isNotEmpty) {
+    return '${v['url']}';
+  }
+  if (v is! String) return null;
+  return RegExp(r'https?://[^\s<>"]+').firstMatch(v)?.group(0);
+}
+
+/// An EzBizi address opens in place (web, desktop, phone); any other in a
+/// browser tab (Jose 11-24).
+void openCellUrl(String url, {Future<bool> Function(Uri)? launch}) {
+  final path = DeepLinks.appPath(url);
+  if (path != null) return DeepLinks.openPath(path);
+  final uri = Uri.tryParse(url);
+  if (uri != null) (launch ?? launchUrl)(uri);
+}
+
 String formatColumnNumber(Object? v, BoardColumn c) {
   final n = v is num ? v : num.tryParse('${v ?? ''}');
   if (n == null) return v == null ? '' : '$v';
@@ -717,6 +748,34 @@ class ColumnCell extends StatelessWidget {
     final theme = Theme.of(context);
     final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
     final v = value;
+    // Jose 11-24: an address in any text or link cell is a link; an EzBizi one
+    // opens here, any other in the browser.
+    if (const {'text', 'long_text', 'link', 'url'}.contains(column.type)) {
+      final url = cellUrl(v);
+      if (url != null) {
+        final label = v is Map
+            ? '${v['label'] ?? url}'
+            : '$v'.split('\n').first;
+        // Only the words open it; the rest of the cell still edits.
+        return Align(
+          alignment: Alignment.centerLeft,
+          widthFactor: 1,
+          child: InkWell(
+            key: ValueKey('column-url-${column.id}'),
+            onTap: () => openCellUrl(url),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        );
+      }
+    }
 
     switch (column.type) {
       case 'checkbox':
@@ -900,7 +959,13 @@ class ColumnCell extends StatelessWidget {
       case 'phone':
       case 'email':
       case 'url':
-        if (v is! String || v.isEmpty) return Text('—', style: muted);
+        if (v is! String || v.isEmpty) {
+          return switch (column.type) {
+            'url' => const EmptyCellIcon(Icons.link),
+            'phone' => const EmptyCellIcon(Icons.phone_outlined),
+            _ => const EmptyCellIcon(Icons.alternate_email),
+          };
+        }
         final uri = contactUri(column.type, v);
         return InkWell(
           onTap: uri == null ? null : () => launchUrl(uri),
@@ -916,19 +981,12 @@ class ColumnCell extends StatelessWidget {
         );
       case 'datetime':
         final label = dateTimeLabel(v, formats);
-        return Text(
-          label ?? '—',
-          maxLines: 1,
-          style: label == null ? muted : null,
-        );
+        if (label == null) return const EmptyCellIcon(Icons.event_outlined);
+        return Text(label, maxLines: 1);
       case 'link':
         final label = (v as Map?)?['label'] as String?;
-        return Text(
-          label ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: label == null ? muted : null,
-        );
+        if (label == null) return const EmptyCellIcon(Icons.link);
+        return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
       case 'long_text':
         final text = v is String ? v.split('\n').first : null;
         return Text(
@@ -959,10 +1017,10 @@ class ColumnCell extends StatelessWidget {
         );
       case 'date':
         final day = v is String ? DateTime.tryParse(v) : null;
-        return Text(
-          day == null ? '—' : formats.formatDate(day),
-          style: day == null ? muted : null,
-        );
+        if (day == null) {
+          return const EmptyCellIcon(Icons.calendar_today_outlined);
+        }
+        return Text(formats.formatDate(day));
       case 'rating':
         // settings.max stars (default 5), more if a value is higher.
         final n = v is num ? v.toInt() : 0;
@@ -2548,7 +2606,12 @@ class InlineCellEditor extends StatefulWidget {
     required this.onChanged,
     required this.child,
     this.onFilter,
+    this.cellMenu = true,
   });
+
+  /// The cell's Copy/Paste/Clear right-click menu; off where the right-click
+  /// belongs to something else (the task name: the row's fast actions).
+  final bool cellMenu;
 
   /// Adds "Filter by this value" to the right-click menu.
   final VoidCallback? onFilter;
@@ -2580,8 +2643,8 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
   /// calendar, a picker or a validation message.
   /// Text and notes edit in the card too (Jose 11-17: "u cant even tell
   /// what ur typing on notes"): a 38 px cell is no place to read a sentence.
-  bool get _inPlace =>
-      const {'number', 'currency'}.contains(widget.column.type);
+  /// Jose 11-24: nothing edits in the cell; numbers use the card too.
+  bool get _inPlace => false;
 
   /// The value this cell last sent, and whether the value under it moved to
   /// something else while it was open (a remote change: Monday, a colleague).
@@ -2760,7 +2823,9 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     final cell = CellTap(
       key: key,
       onTap: _editing ? null : _start,
-      onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
+      onSecondaryTapDown: _editing || !widget.cellMenu
+          ? null
+          : (d) => _menu(d.globalPosition),
       child: SizedBox.expand(
         child: Align(alignment: Alignment.centerLeft, child: widget.child),
       ),
@@ -2932,14 +2997,7 @@ class TimelinePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final label = timelineLabel(value, formats);
-    if (label == null) {
-      return Center(
-        child: Text(
-          '-',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
+    if (label == null) return const EmptyCellIcon(Icons.date_range_outlined);
     final v = value as Map;
     final from = DateTime.parse('${v['from']}');
     final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));

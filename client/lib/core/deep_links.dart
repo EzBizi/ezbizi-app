@@ -96,8 +96,48 @@ class DeepLinks {
     'tasks': 'task',
   };
 
+  /// Jose 11-24: an EzBizi address in a cell ("https://app.ezbizi.com/app/#/
+  /// customer_experience/complaints/{id}") opens here, not in a browser tab.
+  /// The place inside the app it names, as a path, or null for any other
+  /// address.
+  static String? appPath(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.hasScheme) return null;
+    final host = uri.host.toLowerCase();
+    if (host != 'app.ezbizi.com' && host != Uri.base.host.toLowerCase()) {
+      return null;
+    }
+    final inner = uri.fragment.startsWith('/')
+        ? uri.fragment
+        : uri.path.replaceFirst(RegExp(r'^/app(?=/|$)'), '');
+    final path = inner.isEmpty ? '/' : inner;
+    return path == '/' ? null : path;
+  }
+
+  /// Opens [path] (from [appPath]): its record when it names one, else its
+  /// module.
+  static void openPath(String path) {
+    final uri = Uri.parse(path);
+    final link = fromUri(uri);
+    final module =
+        link?.module ??
+        uri.pathSegments.firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (link != null) open(link);
+    if (module.isNotEmpty) openModule(module);
+  }
+
   static DeepLink? fromUri(Uri uri) {
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    // /customer_experience/complaints/{id}: the Reviews & Complaints board's links.
+    if (segments.length == 3 &&
+        segments[0] == 'customer_experience' &&
+        segments[1] == 'complaints') {
+      return DeepLink(
+        module: 'customer_experience',
+        type: 'complaint',
+        id: segments[2],
+      );
+    }
     // /jobs/{id}, /leads/{id}, /customers/{id}: one record, opened in its
     // module's panel (monday port, 2026-11-09).
     if (segments.length == 2 && _records.containsKey(segments[0])) {

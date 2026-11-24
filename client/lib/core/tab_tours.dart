@@ -59,7 +59,7 @@ const Map<String, Tour> tabTours = {
         since: 4,
         body:
             'Pick a board here. Your Personal Task Board is yours alone; '
-            'Team boards are the boards shared with you. Under All markets, '
+            'Franchise boards are the boards shared with you. Under All markets, '
             "each company's board shows every one of its markets' tasks "
             'together, each marked with its market.',
       ),
