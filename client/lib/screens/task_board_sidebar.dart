@@ -614,6 +614,8 @@ class _BoardTreeState extends State<BoardTree> {
           border: Border(right: BorderSide(color: theme.dividerColor)),
         ),
         alignment: Alignment.topCenter,
+        // On the board's toolbar line (Jose 11-24).
+        padding: const EdgeInsets.only(top: 10),
         child: IconButton(
           key: const Key('tasks-boards-expand'),
           tooltip: 'Show boards',
