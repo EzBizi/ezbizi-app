@@ -46,6 +46,7 @@ class TasksJobTitles extends Command
         foreach ($orgs as $org) {
             $tenant->run($org, function () use ($writer, $backup, &$counts, &$unresolved) {
                 $actor = User::query()->oldest()->first();
+                JobTitle::preload(); // one read of the Workiz numbers, not a scan per task
                 Task::query()->with('board')->whereNotNull('board_id')->chunkById(500, function ($tasks) use ($writer, $backup, $actor, &$counts, &$unresolved) {
                     foreach ($tasks as $task) {
                         $split = JobTitle::split((string) $task->title);
@@ -67,7 +68,7 @@ class TasksJobTitles extends Command
                         }
                         $filled = TaskColumnValue::query()->where('task_id', $task->id)->where('value_text', '!=', '')->pluck('column_id')->all();
                         $values = array_diff_key($writer->jobValues($task, 'job', $job->id), array_flip($filled));
-                        $title = $split['rest'] !== '' ? $split['rest'] : ($job->customer?->name ?? (string) $task->title);
+                        $title = JobTitle::clean($split, $job, (string) $task->title);
                         $counts['fixed']++;
                         if ($this->option('dry-run')) {
                             continue;
@@ -76,6 +77,7 @@ class TasksJobTitles extends Command
                         $writer->update($task, ['title' => mb_substr($title, 0, 255), 'about_type' => 'job', 'about_id' => $job->id] + ($values ? ['values' => $values] : []), $actor);
                     }
                 });
+                JobTitle::forget();
             });
         }
 

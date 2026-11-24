@@ -523,6 +523,31 @@ class MondaySyncTest extends TestCase
         });
     }
 
+    /** Desk 11-23: past Monday @mentions are filled in on imported updates, quietly. */
+    public function test_the_backfill_fills_past_monday_mentions_without_a_bell(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view', 'tasks.edit'], 'ana@a-1chimney.com');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Ana', 'email' => 'ana@a-1chimney.com'];
+        $update = $this->inTenant($this->tenant['org'], function () use ($ana) {
+            TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id,
+                'board_id' => TaskBoard::query()->where('external_ref', 'monday:100')->value('id'), 'user_id' => $ana->id, 'role' => 'member']);
+            $u = \App\Models\TaskUpdate::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task('11')->id, 'body' => '25th next availability @ana']);
+            $u->forceFill(['external_ref' => 'monday:5732558477.5732719371'])->saveQuietly();
+
+            return $u;
+        });
+        $this->monday['update_bodies'] = [['id' => '5732719371', 'text_body' => '25th next availability @ana',
+            'body' => '<p>25th next availability <a class="user_mention_editor router" href="https://x/users/2" data-mention-type="User" data-mention-id="2">@ana</a></p>']];
+
+        $this->artisan('ezbizi:monday-update-links')->expectsOutputToContain('mentions filled: 1')->assertSuccessful();
+
+        $this->inTenant($this->tenant['org'], function () use ($update, $ana) {
+            $this->assertSame([$ana->id], \App\Models\TaskUpdate::query()->find($update->id)->mentions);
+            // Listed under Mentioned, already read: nothing rings (desk 11-23).
+            $this->assertSame([['task.mentioned', true]], Notification::query()->where('user_id', $ana->id)->get()->map(fn ($n) => [$n->kind, $n->read_at !== null])->all());
+        });
+    }
+
     public function test_a_job_number_title_from_monday_is_split_and_sent_back_clean(): void
     {
         Carbon::setTestNow('2026-11-12 12:05:00');

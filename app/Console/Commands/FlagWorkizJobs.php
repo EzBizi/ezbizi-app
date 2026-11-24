@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Jobs\JobAddress;
+use App\Models\Task;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\People\NameMatch;
 use App\Support\Settings\SettingsResolver;
@@ -98,11 +99,8 @@ class FlagWorkizJobs extends Command
 
                         $booker = self::booker($w);
                         $job = $w->job_id ? Job::query()->find($w->job_id) : null;
-                        if ($booker) {
-                            $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: [$booker->getKey()]);
-                        }
-
-                        self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
+                        $task = self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
+                        self::tellFlag($notify, $title, $job, $task, [$booker?->getKey()]);
                     }
                 }
             });
@@ -125,10 +123,10 @@ class FlagWorkizJobs extends Command
      *
      * @param  list<?string>  $userIds
      */
-    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds, ?string $group = null, ?string $bookedBy = null): void
+    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds, ?string $group = null, ?string $bookedBy = null): ?Task
     {
         if ($franchise === null || ! TaskBoards::hasPlaceBoard($franchise)) {
-            return;
+            return null;
         }
         $board = $boards->ensureFor($franchise);
         $can = $boards->assignable($board)->pluck('id')->map(fn ($id) => (string) $id)->all();
@@ -149,7 +147,7 @@ class FlagWorkizJobs extends Command
         // Short title, the whole sentence in Notes (row 6, desk 11-20: titles over 120 like the rules' cut).
         $full = implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null]));
         $values[self::textColumn($board, 'Notes')->id] = $full;
-        $tasks->create($board, array_filter([
+        $task = $tasks->create($board, array_filter([
             'title' => self::shortTitle($title),
             // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
             'group_id' => $group ? self::groupOn($board, $group)->id : null,
@@ -161,6 +159,28 @@ class FlagWorkizJobs extends Command
             'assignee_user_ids' => self::owners($board, $franchise, self::seat($board, $userIds, $can), $can) ?: null,
         ]), null);
         $tasks->quiet = $quiet;
+
+        return $task;
+    }
+
+    /**
+     * One bell per person (desk 11-23, Monday parity): the flag task's owners
+     * are told they were given it ("Assigned to me", opens the task); anyone
+     * else the alert reaches gets the job alert as before.
+     *
+     * @param  list<?string>  $to
+     */
+    public static function tellFlag(NotificationDispatcher $notify, string $title, ?Job $job, ?Task $task, array $to, bool $urgent = false): void
+    {
+        $owners = $task ? $task->owners()->pluck('user_id')->map(fn ($id) => (string) $id)->all() : [];
+        if ($owners !== []) {
+            $notify->dispatch(title: $title, body: 'On '.($task->board?->name ?? 'the Task Board'), subject: $task, source: 'tasks',
+                userIds: $owners, urgent: $urgent, kind: 'task.assigned');
+        }
+        $rest = array_values(array_diff(array_filter(array_map(fn ($id) => $id === null ? null : (string) $id, $to)), $owners));
+        if ($rest !== []) {
+            $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: $rest, urgent: $urgent);
+        }
     }
 
     /**

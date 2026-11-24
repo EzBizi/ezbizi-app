@@ -43,6 +43,7 @@ trait FakesMonday
         return match (true) {
             str_contains($query, '{ me ') => ['me' => $this->monday['me'] ?? ['id' => '1', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com', 'account' => ['id' => 'acc1', 'name' => 'A-1 Group', 'slug' => 'a-1group']]],
             str_contains($query, 'users(') => ['users' => $this->monday['users']],
+            str_contains($query, 'updates(ids:') => ['updates' => array_values(array_filter($this->monday['update_bodies'] ?? [], fn ($u) => in_array((string) $u['id'], array_map('strval', $vars['i']), true)))],
             str_contains($query, 'workspaces(') => ['workspaces' => [['id' => '1']]],
             str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
