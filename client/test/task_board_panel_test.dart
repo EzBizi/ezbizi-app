@@ -37,6 +37,8 @@ void main() {
     headers: const {'content-type': 'application/json'},
   );
 
+  String? textValue;
+
   ApiClient fakeServer() {
     log = [];
     refuseNext = null;
@@ -59,7 +61,7 @@ void main() {
       'updates_count': 0,
       'values': {
         'c-time': {'from': '2099-11-10', 'to': '2099-11-16'},
-        'c-text': null,
+        'c-text': textValue,
         'c-cat': null,
       },
     };
@@ -179,6 +181,15 @@ void main() {
               ],
               'tasks': [task],
             },
+          });
+        }
+        if (path == '/task-boards/b-1/search') {
+          // Natalie 11-24: a task the board has not loaded.
+          return json({
+            'data': [
+              if (request.url.queryParameters['q'] == 'harbor')
+                {...task, 'id': 't9', 'title': 'Harbor deck'},
+            ],
           });
         }
         if (path == '/tasks/t1' && request.method == 'PATCH') {
@@ -586,6 +597,33 @@ void main() {
     await g.up();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+  });
+
+  testWidgets('search finds any column, a number by its digits, and asks '
+      'the server for tasks not loaded (Natalie 11-24)', (tester) async {
+    textValue = 'Job 600-025-660';
+    addTearDown(() => textValue = null);
+    await pump(tester);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    final box = find.descendant(
+      of: find.byKey(const Key('tasks-search')),
+      matching: find.byType(TextField),
+    );
+    Future<void> search(String q) async {
+      await tester.enterText(box, q);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+    }
+
+    await search('600025660');
+    expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+    await search('025-660');
+    expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+    await search('9999999');
+    expect(find.byKey(const ValueKey('task-t1')), findsNothing);
+    await search('harbor');
+    expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
   });
 
   testWidgets('a group header counts the tasks it shows: a search that hides '

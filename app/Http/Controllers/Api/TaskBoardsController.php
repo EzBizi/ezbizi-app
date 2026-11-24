@@ -448,6 +448,42 @@ class TaskBoardsController extends Controller
         ]);
     }
 
+    /**
+     * GET task-boards/{board}/search?q= (Natalie 11-24, 01a20df2): the board's
+     * tasks, open and done, whose title or any column holds q: an option by
+     * its label, a number by its digits ("600025660" finds "600-025-660").
+     * The board shows only a page per group, so its search asks here too.
+     */
+    public function search(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']])['q']);
+        $like = '%'.addcslashes($q, '%_\\').'%';
+        $digits = preg_match('/^[\d\s\-()#.]+$/', $q) ? preg_replace('/\D/', '', $q) : '';
+        $options = [];
+        foreach (TaskColumn::query()->where('board_id', $taskBoard->id)->whereIn('type', TaskColumn::WITH_OPTIONS)->get() as $c) {
+            foreach ($c->options() as $o) {
+                if (mb_stripos((string) ($o['label'] ?? ''), $q) !== false) {
+                    $options[] = (string) $o['id'];
+                }
+            }
+        }
+        $values = TaskColumnValue::query()->select('task_id')
+            ->whereIn('column_id', TaskColumn::query()->select('id')->where('board_id', $taskBoard->id))->where(function ($w) use ($like, $digits, $options) {
+                $w->where('value_text', 'like', $like);
+                if (strlen($digits) >= 3) {
+                    // ponytail: a scan of the board's values, an index if boards outgrow it
+                    $w->orWhereRaw("REGEXP_REPLACE(value_text, '[^0-9]', '') LIKE ?", ['%'.$digits.'%']);
+                }
+                $options && $w->orWhereIn('value_text', $options);
+            });
+        $tasks = $this->ownTasks($taskBoard, SensitiveTasks::machineReader($request->user()))
+            ->where(fn ($w) => $w->where('title', 'like', $like)->orWhereIn('id', $values))
+            ->limit(200)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => TasksController::present($t))->all()]);
+    }
+
     /** POST task-boards {name, visibility, company_id?, franchise_id?}: a custom board, filed on the current view. */
     public function store(Request $request): JsonResponse
     {
