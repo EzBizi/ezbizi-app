@@ -23,6 +23,7 @@ class VersionHistory {
       'Task Board: web addresses in cells are clickable; EzBizi links open the record inside the app',
       'Task Board: every field, the task name included, is edited in the same pop-up card',
       'Task Board: empty date, link, phone and email cells show an icon to click instead of a dash',
+      'HR › Invitations: an accepted invitation has no Revoke button; remove the person from their HR record instead',
       'Activity: changes the Monday sync makes are shown as Monday sync, not as the person who connected Monday',
       'Scheduling › Locations: a new Address column shows the address of each branch',
       "Work Hours: an Administrator's own clock-ins, clock-outs and edits are no longer kept in the activity log",
