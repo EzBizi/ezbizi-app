@@ -14,6 +14,7 @@ import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/open_destination.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../customers/customer_detail_panel.dart';
 import 'compose_panel.dart';
@@ -1019,18 +1020,23 @@ class _GmailInboxState extends State<GmailInbox> {
     if (sendable.isEmpty) return const SizedBox.shrink();
     if (sendable.length == 1) return button(() => _compose(sendable.single));
 
-    return MenuAnchor(
-      menuChildren: [
-        for (final mailbox in sendable)
-          MenuItemButton(
-            onPressed: () => _compose(mailbox),
-            child: Text('From ${mailbox.address}'),
-          ),
-      ],
-      builder: (context, controller, _) => button(
-        () => controller.isOpen ? controller.close() : controller.open(),
-      ),
-    );
+    // A searchable list, not a menu: forty addresses filled a phone with no
+    // way to find one (Mobile review 11-24; every list gets a search).
+    return button(() async {
+      final mailbox = await showSearchPicker<Mailbox>(
+        context,
+        title: 'Send from',
+        options: [
+          for (final m in sendable)
+            SearchOption(
+              value: m,
+              label: m.address,
+              detail: m.label == m.address ? null : m.label,
+            ),
+        ],
+      );
+      if (mailbox != null && mounted) _compose(mailbox);
+    });
   }
 
   // ── building ────────────────────────────────────────────────────────
