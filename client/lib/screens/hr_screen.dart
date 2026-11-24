@@ -1,6 +1,7 @@
 import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -355,6 +356,10 @@ class _HrScreenState extends State<HrScreen> {
             // leaking back into the state it was just taken out of.
             selected: _selectedIndex,
             onSelected: (i) => _select(_shownTabs[i].$1),
+            windowPaths: [
+              for (final tab in _shownTabs)
+                AppWindow.pathFor('hr', tab: tab.$1),
+            ],
           ),
         ),
         const Divider(height: 1),

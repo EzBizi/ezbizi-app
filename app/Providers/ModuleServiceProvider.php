@@ -2623,6 +2623,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('bills', 'Bills'),
                     // Expenses per market from QuickBooks, closing rate, cost per closed job (Shoval, 11-20).
                     new TabDefinition('markets', 'Markets'),
+                    // Banks connected through Plaid: accounts, balances, transactions (Jose, 11-24).
+                    new TabDefinition('bank', 'Bank'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],

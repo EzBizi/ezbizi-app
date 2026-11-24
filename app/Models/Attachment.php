@@ -244,9 +244,16 @@ class Attachment extends Model implements HoldsPersonalData
      */
     public function realName(): string
     {
-        return $this->sealed_name !== null
+        $name = $this->sealed_name !== null
             ? (string) \App\Support\Tasks\SensitiveTasks::open($this->sealed_name)
             : (string) $this->original_name;
+        // Monday assets often arrive without an extension (Adeline 11-24): add the mime's.
+        if (pathinfo($name, PATHINFO_EXTENSION) === '' && $this->mime) {
+            $ext = (new \Symfony\Component\Mime\MimeTypes)->getExtensions($this->mime)[0] ?? null;
+            $name .= $ext ? '.'.$ext : '';
+        }
+
+        return $name;
     }
 
     /** The file's bytes, decrypted when stored encrypted; null when it has gone. */

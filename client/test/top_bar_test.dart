@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:ezbizi_client/widgets/scope_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,48 @@ import 'package:http/testing.dart';
 /// is on screen; only that asserts the bar FITS, which is the actual complaint.
 void main() {
   group('phone', () {
+    /// Jose 11-24: "when the keyboard is on, you can barely see stuff". With
+    /// the keyboard up a phone keeps the toolbar only: no company row, no
+    /// state strip, no page title. They come back when it goes down.
+    testWidgets('the keyboard folds the chrome away, and it comes back', (
+      tester,
+    ) async {
+      await _pump(tester, width: 375, choices: true, twoFactor: true);
+      final row = find.byKey(const Key('top-bar-scope-row'));
+      expect(row, findsOneWidget);
+      expect(find.text('Set up two-factor'), findsOneWidget);
+      expect(find.byType(ModulePageHeader), findsOneWidget);
+      final up = tester.getTopLeft(find.byType(ModuleToolbarScope)).dy;
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(row, findsNothing);
+      expect(find.text('Set up two-factor'), findsNothing);
+      expect(find.byType(ModulePageHeader), findsNothing);
+      expect(
+        tester.getTopLeft(find.byType(ModuleToolbarScope)).dy,
+        lessThan(up - 100),
+        reason: 'The page did not move up into the room the chrome left.',
+      );
+
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(row, findsOneWidget);
+      expect(find.byType(ModulePageHeader), findsOneWidget);
+    });
+
+    testWidgets('a computer keeps its header with the keyboard up', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1200);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(find.byType(ModulePageHeader), findsOneWidget);
+    });
+
     testWidgets('the brand is dropped rather than shrunk, and the company is '
         'still named', (tester) async {
       await _pump(tester, width: 375);
@@ -84,7 +127,8 @@ void main() {
       await _pump(tester, width: 375);
 
       for (final icon in [
-        Icons.contrast,
+        Icons.wb_sunny_outlined,
+        Icons.dark_mode_outlined,
         Icons.light_mode,
         Icons.dark_mode,
       ]) {

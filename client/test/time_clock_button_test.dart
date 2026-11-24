@@ -41,7 +41,7 @@ void main() {
 
     final clockX = tester.getTopLeft(_inAppBar('Clock In')).dx;
     final themeX = tester
-        .getTopLeft(find.byTooltip('Matching your device — switch to light'))
+        .getTopLeft(find.byTooltip('Light — switch to dark'))
         .dx;
 
     expect(
@@ -113,6 +113,11 @@ void main() {
               request.url.path.endsWith('/time-clock/clock-in')) {
             posts.add(request.url.path);
             return release.future;
+          }
+          // The shell saves the device's theme once (Jose 11-24).
+          if (request.method == 'PATCH' &&
+              request.url.path.endsWith('/me/preferences')) {
+            return _json({'data': {}});
           }
 
           return http.Response(
@@ -247,6 +252,35 @@ void main() {
     },
   );
 
+  // Jose 11-24: "get rid of the middle matching your device mode, just leave
+  // dark and light mode".
+  testWidgets('no theme chosen is saved once as the device shows, and the '
+      'button flips light and dark only', (tester) async {
+    final saved = <Object?>[];
+    await _pumpShell(
+      tester,
+      onRequest: (request) async {
+        if (request.method == 'PATCH' &&
+            request.url.path.endsWith('/me/preferences')) {
+          saved.add(
+            (jsonDecode(request.body)['preferences']
+                as Map)['appearance.theme'],
+          );
+          return _json({'data': {}});
+        }
+        return null;
+      },
+    );
+    await tester.pumpAndSettle();
+    expect(saved, ['light'], reason: 'the device (light in a test), kept');
+
+    await tester.tap(find.byTooltip('Light — switch to dark'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dark — switch to light'));
+    await tester.pumpAndSettle();
+    expect(saved, ['light', 'dark', 'light']);
+  });
+
   testWidgets('changing theme keeps the clock button', (tester) async {
     await _pumpShell(
       tester,
@@ -261,14 +295,12 @@ void main() {
     );
 
     expect(_inAppBar('Clock In'), findsOneWidget);
-    expect(
-      find.byIcon(Icons.contrast),
-      findsOneWidget,
-      reason: 'Follow-the-device is a half-and-half circle, not the auto-A.',
-    );
-    expect(find.byIcon(Icons.brightness_auto_outlined), findsNothing);
+    // Jose 11-24: light and dark only. Never chosen reads as the device
+    // (light in a test), shown as the sun.
+    expect(find.byIcon(Icons.wb_sunny_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.contrast), findsNothing);
 
-    await tester.tap(find.byTooltip('Matching your device — switch to light'));
+    await tester.tap(find.byTooltip('Light — switch to dark'));
     await tester.pumpAndSettle();
 
     expect(

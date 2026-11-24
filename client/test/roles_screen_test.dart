@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/roles_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/widgets/phone_bottom_bar.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -266,6 +267,77 @@ void main() {
         {'module': 'jobs', 'tab': 'estimates'},
       ],
     });
+  });
+
+  // Jose, 2026-11-24: "this is hard to view, you can't tell stuff apart".
+  testWidgets('the mobile bar preview is a readable 360 px phone', (
+    tester,
+  ) async {
+    _wide(tester);
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Technician', permissions: const ['jobs.view']),
+      ],
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-mobile-bar-slot-0')),
+        matching: find.byType(SearchPickerField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs › Estimates').last);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final phone = find.byKey(const ValueKey('role-mobile-bar-phone'));
+    expect(tester.getSize(phone).width, greaterThanOrEqualTo(360));
+    final bar = find.descendant(of: phone, matching: find.byType(PhoneBottomBar));
+    final labels = [
+      for (final e in find
+          .descendant(of: bar, matching: find.byType(Text))
+          .evaluate())
+        if ((e.widget as Text).data != null) e,
+    ];
+    expect(labels, hasLength(5));
+    final rects = [for (final e in labels) tester.getRect(find.byWidget(e.widget))];
+    for (var i = 0; i < rects.length; i++) {
+      final t = labels[i].widget as Text;
+      expect(t.style?.fontSize, greaterThanOrEqualTo(11), reason: t.data);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(rects[i].overlaps(rects[j]), isFalse, reason: t.data);
+      }
+    }
+    expect(
+      find.descendant(of: bar, matching: find.text('Work Hours (default)')),
+      findsOneWidget,
+      reason: 'the default slot says so, in full',
+    );
+    final defaultText = tester.widget<Text>(
+      find.descendant(of: bar, matching: find.text('Work Hours (default)')),
+    );
+    expect(defaultText.style?.color?.a, 1.0, reason: 'no faint grey');
+
+    IconData iconIn(String key) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+    expect(
+      iconIn('role-mobile-bar-item-jobs:estimates'),
+      isNot(iconIn('role-mobile-bar-item-jobs')),
+      reason: "a tab slot has its own icon, not its module's",
+    );
   });
 
   testWidgets('the built-in administrator opens, and cannot be changed', (
@@ -1982,6 +2054,7 @@ Future<void> _pumpRoles(
               ],
             },
             {'module': 'customers', 'label': 'Customers', 'tabs': []},
+            {'module': 'work_hours', 'label': 'Work Hours', 'tabs': []},
           ],
         },
       });

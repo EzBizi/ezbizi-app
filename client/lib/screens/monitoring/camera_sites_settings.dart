@@ -12,6 +12,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'device_display.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Settings › Monitoring › Camera sites (UI queue 117, desktop 1 + phone 4;
 /// camera bridge plan, Task 3).
@@ -1005,7 +1006,7 @@ class _NewSiteState extends State<_NewSite> {
         TextField(
           key: const ValueKey('camera-site-new-name'),
           controller: _name,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           maxLength: 120,
           decoration: const InputDecoration(
             labelText: 'Site name',

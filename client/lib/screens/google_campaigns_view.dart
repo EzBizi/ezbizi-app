@@ -6,6 +6,7 @@ import '../core/numbers.dart';
 import '../widgets/ad_change_confirm.dart';
 import '../widgets/side_panel.dart';
 import 'ad_campaigns_shell.dart';
+import '../core/soft_keyboard.dart';
 
 /// Marketing › Ads › Google (Jose, 2026-11-09): run Google campaigns the way
 /// MetaCampaignsView runs Meta's - the same filter bar, tiles and table - with
@@ -539,7 +540,7 @@ class _AmountPanelState extends State<_AmountPanel> {
           TextField(
             key: const ValueKey('google-amount'),
             controller: _amount,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               prefixText: _roas ? null : r'$ ',

@@ -12,6 +12,7 @@ import '../../widgets/side_panel.dart';
 import 'floor_plan_canvas.dart';
 import 'floor_plan_summary.dart';
 import 'note_card.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
@@ -1686,7 +1687,7 @@ class _PlanFormPanelState extends State<_PlanFormPanel> {
           TextField(
             key: const Key('plan-name'),
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Plan name',
               hintText: 'Main office',

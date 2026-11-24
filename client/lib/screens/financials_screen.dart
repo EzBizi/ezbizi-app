@@ -9,6 +9,7 @@ import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'financials/financial_adjustments.dart';
+import 'financials/financial_bank.dart';
 import 'financials/financial_bills.dart';
 import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
@@ -18,6 +19,7 @@ import 'financials/financial_results.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
 import 'financials/invoices_tab.dart';
+import '../core/soft_keyboard.dart';
 
 /// Financials — the Airtable replacement (Jose, 2026-10-14).
 ///
@@ -74,6 +76,13 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Markets',
           Icons.store_mall_directory_outlined,
           FinancialMarketsTab(api: widget.api, me: widget.session.me!),
+        ),
+      // Banks connected through Plaid: balances and transactions (Jose, 11-24).
+      if (_may('bank'))
+        (
+          'Bank',
+          Icons.account_balance_outlined,
+          FinancialBankTab(api: widget.api, me: widget.session.me!),
         ),
       // A child module, drawn as a tab here (design 128).
       if (widget.session.me?.reachableModules.any((m) => m.key == 'invoices') ??
@@ -1301,7 +1310,7 @@ class _NewBasePanelState extends State<_NewBasePanel> {
             ),
           TextField(
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Base name'),
           ),
           const SizedBox(height: 12),

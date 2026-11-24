@@ -13,6 +13,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';
 import 'mailbox_settings.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The three acts that set a shared inbox up, each in a side panel.
 ///
@@ -388,7 +389,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
         TextFormField(
           key: const Key('email-directory-search'),
           controller: _directorySearch,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           enabled: !_saving,
           decoration: InputDecoration(
             labelText: 'Search the directory',
@@ -530,7 +531,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
             else
               TextFormField(
                 controller: _address,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 keyboardType: TextInputType.emailAddress,
                 onChanged: (v) {
                   _server.currentState?.suggestFor(v);
@@ -2027,7 +2028,7 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
           TextField(
             controller: _domain,
             enabled: !_busy,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Company domain',
               hintText: 'a-1chimney.com',

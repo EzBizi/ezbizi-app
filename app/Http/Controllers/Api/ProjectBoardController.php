@@ -715,6 +715,7 @@ class ProjectBoardController extends Controller
                 ->whereNotNull('starts_at')->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) AS at')->pluck('at', 'job_id')->all(),
             'files' => DB::table('attachments')->where('attachable_type', 'jobs')->whereIn('attachable_id', $ids)->groupBy('attachable_id')->selectRaw('attachable_id, COUNT(*) AS n')->pluck('n', 'attachable_id')->all(),
             'parts' => JobPart::query()->whereIn('job_id', $ids)->orderBy('position')->get()->groupBy('job_id')->all(),
+            'technicians' => Job::technicianNames($ids),
             'notes' => JobNote::query()->whereIn('job_id', $ids)->latest()->get(['job_id', 'body'])
                 ->groupBy('job_id')->map(fn ($n) => ['count' => $n->count(), 'latest' => (string) $n->first()->body])->all(),
         ];
@@ -734,7 +735,8 @@ class ProjectBoardController extends Controller
         $paid = $paidAt === null ? null : Carbon::parse($paidAt);
         $since = $paid ?? $job->created_at;
         // The one set here first (Jose, 2026-11-12), else Workiz's team.
-        $technician = $job->performedBy?->name ?: collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ');
+        // The job's technicians by name, never an erased account (Jose, 2026-11-24); else Workiz's team.
+        $technician = ($extras['technicians'][$job->id] ?? null) ?: collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ');
         $workizNote = trim((string) ($payload['JobNotes'] ?? ''));
         $note = $extras['notes'][$job->id] ?? null;
         $files = (int) ($extras['files'][$job->id] ?? 0) + count(WorkizExtras::files(is_array($payload) ? $payload : []));

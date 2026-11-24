@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import 'logo_badge.dart';
 import 'side_panel.dart';
+import '../core/soft_keyboard.dart';
 
 /// Choosing which part of the business to look at, at any size (plan §3).
 ///
@@ -170,7 +171,7 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
               key: const Key('scope-picker-search'),
               controller: _search,
               focusNode: _focus,
-              autofocus: true,
+              autofocus: autofocusOnOpen,
               decoration: InputDecoration(
                 hintText: 'Search companies and places',
                 prefixIcon: const Icon(Icons.search, size: 20),

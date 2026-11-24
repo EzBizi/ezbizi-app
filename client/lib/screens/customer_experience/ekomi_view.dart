@@ -9,6 +9,7 @@ import '../../widgets/date_range_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../reports/report_dates.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Customer Experience › eKomi (UI queue 165, option 1 + phone 4; Jose,
 /// 2026-11-02: "as you recommend"). What A1 Tools did with eKomi: the account
@@ -615,7 +616,7 @@ class _JobChooserState extends State<_JobChooser> {
           key: const ValueKey('ekomi-ask-search'),
           hint: 'Job number, customer or address',
           onChanged: _search,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
         ),
         const SizedBox(height: 8),
         for (final j in _rows)

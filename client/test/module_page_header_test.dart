@@ -100,6 +100,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Mobile review 11-24 (iPhone 17, 402 wide): the shell always draws the
+  // (?) and the video button beside the title, 86 px, and the header budgeted
+  // 46. "Customers" read "Cust..." beside "Add customer".
+  testWidgets('on a phone the help buttons are budgeted before the action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 402,
+            child: ModulePageHeader(
+              title: 'Agenda',
+              subtitle: 'What it is for.',
+              beside: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final icon in [Icons.help_outline, Icons.play_arrow])
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {},
+                      icon: Icon(icon),
+                    ),
+                ],
+              ),
+              actions: [
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add customer'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final title = tester.renderObject<RenderParagraph>(find.text('Agenda'));
+    expect(title.didExceedMaxLines, isFalse, reason: 'the title was cut');
+    final button = tester.getRect(find.byType(FilledButton));
+    expect(button.right, lessThanOrEqualTo(402));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('on a phone a long title puts the action on its own line', (
     tester,
   ) async {

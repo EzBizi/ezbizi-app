@@ -41,6 +41,31 @@ static void RegisterToastActivator() {
       static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
 }
 
+// A second window closes with the first (lib/core/app_window.dart): the
+// first EzBizi's Quit, an update, or a crash takes its windows with it.
+static void CALLBACK FirstWindowGone(PVOID window, BOOLEAN) {
+  ::PostMessageW(static_cast<HWND>(window), WM_COMMAND,
+                 Win32Window::kCommandQuit, 0);
+}
+
+static void WatchFirstWindow(HWND window) {
+  wchar_t text[16] = {};
+  if (::GetEnvironmentVariableW(L"EZBIZI_PARENT", text, 16) == 0) {
+    return;
+  }
+  HANDLE first =
+      ::OpenProcess(SYNCHRONIZE, FALSE, ::wcstoul(text, nullptr, 10));
+  if (first == nullptr) {
+    // Already gone between the click and here.
+    FirstWindowGone(window, TRUE);
+    return;
+  }
+  // Both handles live as long as this process; the OS takes them back.
+  HANDLE wait = nullptr;
+  ::RegisterWaitForSingleObject(&wait, first, FirstWindowGone, window,
+                                INFINITE, WT_EXECUTEONLYONCE);
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -70,8 +95,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // could run twice. The mutex is held for the life of the process and the OS
   // releases it on exit, so a crash cannot leave it behind. An unprefixed name
   // lives in this Windows session's namespace; another user gets their own.
+  // A second window (EZBIZI_WINDOW) is asked for by the first one, so it is
+  // let through: no mutex, no hand-off. It runs no softphone or updater
+  // (lib/core/app_window.dart), which is what the one-copy rule protects.
+  const bool second_window = Win32Window::IsSecondWindow();
   HANDLE instance_mutex =
-      ::CreateMutexW(nullptr, TRUE, L"EzBizi.Desktop.SingleInstance");
+      second_window
+          ? nullptr
+          : ::CreateMutexW(nullptr, TRUE, L"EzBizi.Desktop.SingleInstance");
   if (instance_mutex != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
     // Bring the running one forward instead of making another. Class AND
     // title, because every Flutter desktop app on the machine shares the class.
@@ -104,7 +135,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   // Only the instance that stays, so a second launch that hands off above
   // never rewrites the path.
-  RegisterToastActivator();
+  if (!second_window) {
+    RegisterToastActivator();
+  }
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
@@ -113,6 +146,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+  if (second_window) {
+    WatchFirstWindow(window.GetHandle());
+  }
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

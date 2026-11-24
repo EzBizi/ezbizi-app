@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\SubscriptionLapsedException;
 use App\Jobs\CheckNewConnections;
 use App\Jobs\OnboardWhatsAppNumber;
+use App\Jobs\RecheckPlaidItem;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Jobs\SyncBusinessProfileConnection;
 use App\Jobs\SubscribeMetaMessages;
@@ -29,6 +30,7 @@ use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\SocialOAuthSignIns;
+use App\Support\Social\PlaidOAuth;
 use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\YouTubeOAuth;
@@ -38,6 +40,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -174,6 +177,24 @@ class SocialAuthController extends Controller
 
             return $this->page('That did not work', $e->getMessage(), $e->status, $oauth->provider());
         }
+    }
+
+    /**
+     * Plaid returns here after a reconnect (update mode, FinancialBankController::reconnect).
+     * The state names which bank login; whether it worked is asked of Plaid
+     * (RecheckPlaidItem), so this page says only that the check is running.
+     */
+    public function plaidRelinked(Request $request): Response
+    {
+        $state = (string) $request->query('state', '');
+        $id = $state === '' ? null : Cache::pull(PlaidOAuth::cacheKey('relink:'.$state));
+        if (! is_string($id)) {
+            return $this->page('That did not work', SocialOAuthRefused::noOpenSignIn('Plaid')->getMessage(), Status::HTTP_BAD_REQUEST, SocialProvider::Plaid);
+        }
+        RecheckPlaidItem::dispatch($id);
+
+        return $this->page('Thanks', 'EzBizi is checking the bank again now. You can close this window — '
+            .'Financials › Bank shows it connected once the bank confirms.', Status::HTTP_OK, SocialProvider::Plaid);
     }
 
     /**
@@ -458,6 +479,13 @@ class SocialAuthController extends Controller
                     // matched to a branch by name (QuickBooksSync), not at the next run.
                     if ($provider === SocialProvider::QuickBooks) {
                         QueuedCommand::dispatch(['ezbizi:quickbooks-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
+                    }
+
+                    // Plaid: the bank's accounts, balances and first transactions are read now
+                    // (PlaidSync), not at the next run. History still arriving comes by webhook.
+                    if ($provider === SocialProvider::Plaid) {
+                        QueuedCommand::dispatch(['ezbizi:plaid-sync', ['--connection' => (string) $connection->getKey()]])
                             ->afterCommit();
                     }
 

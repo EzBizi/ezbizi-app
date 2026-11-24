@@ -43,7 +43,9 @@ void main() {
   /// The check this pins used to ask `value.toString().trim().isEmpty`, which
   /// is `'[]'` for an empty list — never empty, so a required photograph waved
   /// every technician straight through to Submit with no picture taken.
-  testWidgets('a required photo with nothing taken blocks Next', (tester) async {
+  testWidgets('a required photo with nothing taken blocks Next', (
+    tester,
+  ) async {
     await _pump(tester, startBody: _photoRun);
 
     await tester.tap(find.text('14 Maple'));
@@ -51,8 +53,11 @@ void main() {
     await tester.tap(find.text('Level 1'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('field-damage')), findsOneWidget,
-        reason: 'a photo field is a camera control, not a text box');
+    expect(
+      find.byKey(const Key('field-damage')),
+      findsOneWidget,
+      reason: 'a photo field is a camera control, not a text box',
+    );
     expect(find.byKey(const Key('add-photo-Damage')), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
@@ -77,8 +82,11 @@ void main() {
     await tester.tap(find.text('Level 1'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SearchPickerField<String>), findsOneWidget,
-        reason: 'a one-of-a-list must offer the list');
+    expect(
+      find.byType(SearchPickerField<String>),
+      findsOneWidget,
+      reason: 'a one-of-a-list must offer the list',
+    );
     expect(find.byKey(const Key('field-flue')), findsOneWidget);
 
     // The date field is a calendar control. Counting TextFields would be wrong:
@@ -102,7 +110,9 @@ void main() {
   /// This field used to be a TextField. The failure that made it worth building
   /// was not cosmetic: a typed name printed in the position a signature goes
   /// reads as somebody having signed, and nobody had.
-  testWidgets('a signature is drawn, and an unsigned one blocks Next', (tester) async {
+  testWidgets('a signature is drawn, and an unsigned one blocks Next', (
+    tester,
+  ) async {
     await _pump(tester, startBody: _signatureRun);
 
     await tester.tap(find.text('14 Maple'));
@@ -111,9 +121,15 @@ void main() {
     await tester.pumpAndSettle();
 
     // A pad, not a box. No EditableText anywhere on this screen.
-    expect(find.byKey(const Key('signature-pad-Customer signature')), findsOneWidget);
-    expect(find.byType(EditableText), findsNothing,
-        reason: 'a signature must never be typed');
+    expect(
+      find.byKey(const Key('signature-pad-Customer signature')),
+      findsOneWidget,
+    );
+    expect(
+      find.byType(EditableText),
+      findsNothing,
+      reason: 'a signature must never be typed',
+    );
 
     // Nothing drawn yet, so there is nothing to save.
     final save = tester.widget<FilledButton>(
@@ -167,7 +183,8 @@ void main() {
     expect(
       find.text('Wood stove type needs an answer before you can continue.'),
       findsNothing,
-      reason: 'a question that was never asked cannot be the thing blocking Submit',
+      reason:
+          'a question that was never asked cannot be the thing blocking Submit',
     );
   });
 
@@ -184,8 +201,11 @@ void main() {
     await tester.tap(find.text('wood').last);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('field-wood_stove_type')), findsOneWidget,
-        reason: 'answering the branch has to bring its questions with it');
+    expect(
+      find.byKey(const Key('field-wood_stove_type')),
+      findsOneWidget,
+      reason: 'answering the branch has to bring its questions with it',
+    );
   });
 
   /// Failing a finding demands its evidence, on screen and at Submit.
@@ -193,7 +213,9 @@ void main() {
   /// This is the pattern the whole A1 port rests on: their Fail branch carries
   /// a required photograph, an explanation and priced work, so a technician
   /// cannot record a failure and move on.
-  testWidgets('choosing the failing option reveals what it demands', (tester) async {
+  testWidgets('choosing the failing option reveals what it demands', (
+    tester,
+  ) async {
     await _pump(tester, startBody: _findingRun);
 
     await tester.tap(find.text('14 Maple'));
@@ -239,8 +261,11 @@ void main() {
 
     expect(find.byKey(const ValueKey('inspection-step-0')), findsOneWidget);
     expect(find.byKey(const ValueKey('inspection-step-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('inspection-step-2')), findsNothing,
-        reason: 'the hidden Wood stove screen is not a step');
+    expect(
+      find.byKey(const ValueKey('inspection-step-2')),
+      findsNothing,
+      reason: 'the hidden Wood stove screen is not a step',
+    );
     expect(find.text('Wood stove'), findsNothing);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Next'));
@@ -250,10 +275,41 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('inspection-step-0')));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(FilledButton, 'Next'), findsOneWidget,
-        reason: 'back on the first screen');
+    expect(
+      find.widgetWithText(FilledButton, 'Next'),
+      findsOneWidget,
+      reason: 'back on the first screen',
+    );
     expect(find.byIcon(Icons.check), findsNothing);
   });
+
+  testWidgets('two dividers on one screen do not share a key', (tester) async {
+    // Bar 11-24: both took Key('field-null'); the duplicate corrupted the list
+    // in release (half drawn, no clicks, no Next). Debug did not assert.
+    await _pump(tester, startBody: _twoDividers);
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Door and panels'), findsOneWidget);
+    expect(find.text('Seals'), findsOneWidget);
+    expect(find.byKey(const Key('field-null')), findsNothing);
+    expect(find.byKey(const Key('field-door_type')), findsOneWidget);
+  });
+
+  testWidgets(
+    'a role with no named inspection is told why, not shown a blank tab',
+    (tester) async {
+      await _pump(tester, picker: '{"data":[],"message":null}', searchBody: '');
+
+      expect(
+        find.textContaining('No inspection is granted to your role'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextField), findsNothing);
+    },
+  );
 
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
@@ -272,6 +328,7 @@ void main() {
 
 Future<void> _pump(
   WidgetTester tester, {
+  String picker = _picker,
   String? searchBody,
   String startBody = _run,
   int startStatus = 201,
@@ -284,14 +341,10 @@ Future<void> _pump(
     client: MockClient((request) async {
       final path = request.url.path;
       if (path.endsWith('/inspections/search')) {
-        return http.Response(
-          searchBody ?? _hits,
-          200,
-          headers: _json,
-        );
+        return http.Response(searchBody ?? _hits, 200, headers: _json);
       }
       if (path.endsWith('/inspections/startable')) {
-        return http.Response(_picker, 200, headers: _json);
+        return http.Response(picker, 200, headers: _json);
       }
       if (path.endsWith('/inspections/runs') && request.method == 'POST') {
         return http.Response(startBody, startStatus, headers: _json);
@@ -478,6 +531,15 @@ const _resume = '''
     }
   }
 }
+''';
+
+const _twoDividers = '''
+{"data":{"id":"run-1","definition_name":"Level 1","customer_name":"14 Maple","layout_preset":"step_strip","answers":{},
+ "screens":[{"name":"The door","fields":[
+  {"key":"door_type","type":"choice","label":"Door type","options":[{"value":"a","label":"A"}]},
+  {"type":"divider","label":"Door and panels"},
+  {"key":"lock","type":"text","label":"Lock"},
+  {"type":"divider","label":"Seals"}]}]}}
 ''';
 
 const _steppedRun = '''

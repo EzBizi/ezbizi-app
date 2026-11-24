@@ -75,7 +75,9 @@ class TasksImportMondayTest extends TestCase
             $this->assertSame($task->id, Task::query()->where('external_ref', 'monday:111')->value('parent_task_id'));
 
             $updates = TaskUpdate::query()->where('task_id', $task->id)->orderBy('created_at')->get();
-            $this->assertSame(['gone@a-1chimney.com (on Monday): Left a voicemail', '↳ Try again Monday'], $updates->pluck('body')->all());
+            $this->assertSame(['gone@a-1chimney.com (on Monday): Left a voicemail', 'Try again Monday'], $updates->pluck('body')->all());
+            // Chaim 11-24: the reply hangs under its update, no "↳ " mark.
+            $this->assertSame($updates[0]->id, $updates[1]->parent_update_id);
             $this->assertSame([null, $this->jose->id], $updates->pluck('user_id')->all());
 
             $ohio = Task::query()->where('external_ref', 'monday:21')->firstOrFail();

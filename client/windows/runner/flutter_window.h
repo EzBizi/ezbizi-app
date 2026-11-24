@@ -24,6 +24,7 @@ class FlutterWindow : public Win32Window {
   // Win32Window:
   bool OnCreate() override;
   void OnDestroy() override;
+  void OnNewWindowRequested() override;
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
@@ -54,6 +55,10 @@ class FlutterWindow : public Win32Window {
   // `this` to reach the tray; kept alive for the life of the window.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       monitoring_indicator_channel_;
+
+  // com.ezbizi.app/window: the tray asks Dart to open a second window.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
 
   // Freeze ping and last-crash pickup (watchdog.h).
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>

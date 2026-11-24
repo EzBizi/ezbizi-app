@@ -67,7 +67,11 @@ void main() {
       'inspection.builder.view',
     ]);
 
-    expect(_chips(tester), ['New Inspection', 'Generated Reports', 'Review QR']);
+    expect(_chips(tester), [
+      'New Inspection',
+      'Generated Reports',
+      'Review QR',
+    ]);
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
   });
 

@@ -43,7 +43,7 @@ class SignatureThatRefusesTheErase extends ContractSignature
             new PersonalDataEntry('signer_label', PersonalDataEntry::IDENTITY,
                 'Who signed. Declared erasable here, which the real model argues at length '
                 .'that it must never be.',
-                Erasure::erase('Removed account')),
+                Erasure::erase('Former staff')),
         ];
     }
 }

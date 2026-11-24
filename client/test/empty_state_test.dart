@@ -53,4 +53,25 @@ void main() {
     expect(find.byType(FilledButton), findsNothing);
     expect(find.text('An owner can add one.'), findsOneWidget);
   });
+
+  // Mobile review 11-24: inside HeaderAboveList's NestedScrollView on iOS an
+  // empty state that took the page's scroll controller overflowed the stack
+  // ("could not be drawn", Inventory > Orders on an iPhone Duo). It scrolls on
+  // its own controller.
+  testWidgets('its scroll view never takes the page scroller', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: EmptyState(icon: Icons.inbox, title: 'None', message: 'Yet.'),
+        ),
+      ),
+    );
+    final scroll = tester.widget<SingleChildScrollView>(
+      find.descendant(
+        of: find.byType(EmptyState),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    );
+    expect(scroll.primary, isFalse);
+  });
 }

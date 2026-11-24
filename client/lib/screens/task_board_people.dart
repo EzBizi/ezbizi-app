@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../widgets/error_note.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../core/soft_keyboard.dart';
 
 /// Task Board › People and New board (Jose, 2026-10-13: "the owner of a board
 /// can assign other people to the board, read up on how monday works"; UI
@@ -351,7 +352,7 @@ class _NewBoardPanelState extends State<NewBoardPanel> {
           TextField(
             key: const Key('new-board-name'),
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             maxLength: 120,
             decoration: const InputDecoration(
               labelText: 'Name',

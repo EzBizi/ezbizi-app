@@ -9,6 +9,7 @@ import 'date_range_picker.dart';
 import 'error_note.dart';
 import 'side_panel.dart';
 import 'status_pill.dart';
+import '../core/soft_keyboard.dart';
 
 /// Your account › API keys (UI queue 62).
 ///
@@ -257,7 +258,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
         TextField(
           key: const Key('api-key-name'),
           controller: _name,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           maxLength: 60,
           decoration: const InputDecoration(
             labelText: 'What is it for?',

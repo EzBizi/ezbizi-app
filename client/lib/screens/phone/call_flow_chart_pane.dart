@@ -7,6 +7,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import 'call_flow_chart.dart';
 import 'call_flow_edit_drawer.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The call flow as a chart (Jose, 2026-09-15: desktop 2 + mobile 4).
 ///
@@ -467,7 +468,7 @@ class _LinePickerState extends State<_LinePicker> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: TextField(
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: const Icon(Icons.search, size: 18),

@@ -118,15 +118,25 @@ void main() {
     }
   }
 
-  Future<void> pumpScreen(WidgetTester tester, ApiClient api) async {
+  late Session session;
+  Future<void> pumpScreen(
+    WidgetTester tester,
+    ApiClient api, {
+    bool dark = false,
+    bool fresh = true,
+    Duration? animate,
+  }) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    final session = Session(api);
-    await session.adopt('tok');
+    if (fresh) {
+      session = Session(api);
+      await session.adopt('tok');
+    }
     await tester.pumpWidget(
       MaterialApp(
-        theme: EzBiziTheme.light(),
+        theme: dark ? EzBiziTheme.dark() : EzBiziTheme.light(),
+        themeAnimationDuration: animate ?? kThemeAnimationDuration,
         home: Scaffold(
           body: TaskBoardScreen(api: api, session: session),
         ),
@@ -186,6 +196,28 @@ void main() {
       'task board perf (debug ms): open ${open.elapsedMilliseconds}, '
       'scroll $frames, worst hover ${hovers.reduce((a, b) => a > b ? a : b)}',
     );
+    // Jose 11-24: switching light/dark lagged on a big board.
+    final api =
+        (tester.widget(find.byType(TaskBoardScreen)) as TaskBoardScreen).api;
+    final themes = <String>[];
+    for (final animate in [kThemeAnimationDuration, Duration.zero]) {
+      for (final dark in [true, false]) {
+        var frames = 0;
+        final ms = await timed(() async {
+          await pumpScreen(
+            tester,
+            api,
+            dark: dark,
+            fresh: false,
+            animate: animate,
+          );
+          frames = await tester.pumpAndSettle();
+        });
+        themes.add('${animate.inMilliseconds}ms anim: $ms ms/$frames frames');
+      }
+    }
+    // ignore: avoid_print
+    print('task board theme switch (debug ms): $themes');
     expect(tester.takeException(), isNull);
     // Off the rows, past a hovered tooltip's delay (Updates now sits by the name).
     await gesture.moveTo(Offset.zero);

@@ -137,6 +137,7 @@ void main() {
       'lib/widgets/shift_reminder.dart': 'Clock In, must interrupt',
       'lib/screens/phone/call_flow_chart_pane.dart': 'Phone',
       'lib/screens/web/widgets_tab.dart': 'Web Management',
+      'lib/screens/task_board_files.dart': 'Task Board image lightbox, Monday parity (Adeline 11-24)',
     };
     final opening = {
       for (final file in Directory('lib').listSync(recursive: true))

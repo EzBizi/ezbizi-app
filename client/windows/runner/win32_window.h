@@ -82,6 +82,15 @@ class Win32Window {
    */
   static constexpr UINT kCommandShowFromTray = 1001;
 
+  // Really quit; posted by the tray's Quit and, in a second window, when the
+  // first one has gone (main.cpp).
+  static constexpr UINT kCommandQuit = 1002;
+
+  // A second EzBizi window (Jose, 2026-11-24; lib/core/app_window.dart): the
+  // app started it with EZBIZI_WINDOW set. It has no tray icon, never saves
+  // or restores the placement, and its X closes it instead of hiding.
+  static bool IsSecondWindow();
+
   // Really exit, as opposed to hiding. Used by the tray menu and by Windows
   // when it is shutting down or an installer has asked us to close.
   void RequestQuit();
@@ -116,6 +125,10 @@ class Win32Window {
   // Called when CreateAndShow is called, allowing subclass window-related
   // setup. Subclasses should return false if setup fails.
   virtual bool OnCreate();
+
+  // The tray's "New window". Dart opens it (lib/core/app_window.dart), since
+  // only Dart holds a session that was not kept on disk to hand it.
+  virtual void OnNewWindowRequested() {}
 
   // Called when Destroy is called.
   virtual void OnDestroy();

@@ -492,15 +492,22 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     );
     if (_requests.isEmpty) return week;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Requests(
-          requests: _requests,
-          onDecide: (request, verb) => _decide(context, request, verb),
-        ),
-        Expanded(child: week),
-      ],
+    // At most ~45% of the pane, scrolling inside: on a phone two requests
+    // pushed the week 21 px past the bottom (mobile review 11-24).
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: box.maxHeight * 0.45),
+            child: _Requests(
+              requests: _requests,
+              onDecide: (request, verb) => _decide(context, request, verb),
+            ),
+          ),
+          Expanded(child: week),
+        ],
+      ),
     );
   }
 
@@ -634,83 +641,87 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     final theme = Theme.of(context);
     final people = _visible;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: ListSearch(
-            key: const ValueKey('tour-work_hours-search'),
-            hint: UiStrings.t('time_clock.search_people'),
-            onChanged: (value) => setState(() => _search = value),
-          ),
-        ),
-        if (_roles.length > 1)
+    // On a phone the search and filters scroll away with the people (and
+    // float back): on an iPhone Duo's cover screen they overflowed the
+    // list by 20 px (mobile review 11-24).
+    return HeaderAboveList(
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: SearchPickerField<String?>(
-              key: const ValueKey('tour-work_hours-role'),
-              isDense: true,
-              value: _roles.containsKey(_roleId) ? _roleId : null,
-              options: [
-                SearchOption(
-                  value: null,
-                  label: UiStrings.t('time_clock.all_roles'),
-                ),
-                for (final role in _roles.entries)
-                  SearchOption(value: role.key, label: role.value),
-              ],
-              onChanged: (id) => setState(() => _roleId = id),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: ListSearch(
+              key: const ValueKey('tour-work_hours-search'),
+              hint: UiStrings.t('time_clock.search_people'),
+              onChanged: (value) => setState(() => _search = value),
             ),
           ),
-        if (_idleCount > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
-              child: TextButton(
-                key: const ValueKey('tour-work_hours-everyone'),
-                onPressed: () => setState(() => _everyone = !_everyone),
-                child: Text(
-                  _everyone
-                      ? UiStrings.t('time_clock.only_clocked_in')
-                      : UiStrings.t(
-                          'time_clock.show_everyone',
-                        ).replaceAll('{count}', '$_idleCount'),
+          if (_roles.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: SearchPickerField<String?>(
+                key: const ValueKey('tour-work_hours-role'),
+                isDense: true,
+                value: _roles.containsKey(_roleId) ? _roleId : null,
+                options: [
+                  SearchOption(
+                    value: null,
+                    label: UiStrings.t('time_clock.all_roles'),
+                  ),
+                  for (final role in _roles.entries)
+                    SearchOption(value: role.key, label: role.value),
+                ],
+                onChanged: (id) => setState(() => _roleId = id),
+              ),
+            ),
+          if (_idleCount > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
+                child: TextButton(
+                  key: const ValueKey('tour-work_hours-everyone'),
+                  onPressed: () => setState(() => _everyone = !_everyone),
+                  child: Text(
+                    _everyone
+                        ? UiStrings.t('time_clock.only_clocked_in')
+                        : UiStrings.t(
+                            'time_clock.show_everyone',
+                          ).replaceAll('{count}', '$_idleCount'),
+                  ),
                 ),
               ),
             ),
-          ),
-        Expanded(
-          child: people.isEmpty
-              ? Center(
-                  child: Text(
-                    UiStrings.t('time_clock.no_hours'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : ListView.builder(
-                  key: const ValueKey('tour-work_hours-people'),
-                  itemCount: people.length,
-                  itemBuilder: (context, i) => _PersonRow(
-                    api: widget.api,
-                    person: people[i],
-                    selected: !tappable && people[i].id == _personId,
-                    trailing: tappable,
-                    onTap: () {
-                      if (!tappable) {
-                        setState(() => _personId = people[i].id);
+        ],
+      ),
+      list: people.isEmpty
+          ? Center(
+              child: Text(
+                UiStrings.t('time_clock.no_hours'),
+                style: theme.textTheme.bodySmall,
+              ),
+            )
+          : ListView.builder(
+              key: const ValueKey('tour-work_hours-people'),
+              itemCount: people.length,
+              itemBuilder: (context, i) => _PersonRow(
+                api: widget.api,
+                person: people[i],
+                selected: !tappable && people[i].id == _personId,
+                trailing: tappable,
+                onTap: () {
+                  if (!tappable) {
+                    setState(() => _personId = people[i].id);
 
-                        return;
-                      }
+                    return;
+                  }
 
-                      // In place, not pushed: the containment rule.
-                      setState(() => _phoneOpenId = people[i].id);
-                    },
-                  ),
-                ),
-        ),
-      ],
+                  // In place, not pushed: the containment rule.
+                  setState(() => _phoneOpenId = people[i].id);
+                },
+              ),
+            ),
     );
   }
 }
@@ -2212,7 +2223,7 @@ class _Requests extends StatelessWidget {
     return Card(
       key: const Key('correction-requests'),
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2223,56 +2234,63 @@ class _Requests extends StatelessWidget {
             ),
             for (final r in requests) ...[
               const Divider(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          (r['user'] as Map?)?['name']?.toString() ?? '',
-                          style: theme.textTheme.labelLarge,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_was')}: '
-                          '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_asks')}: '
-                          '${_span(r['clocked_in'], r['clocked_out'])}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          r['reason']?.toString() ?? '',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => onDecide(r, 'deny'),
-                        child: Text(UiStrings.t('time_clock.decline')),
-                      ),
-                      FilledButton(
-                        onPressed: () => onDecide(r, 'approve'),
-                        child: Text(UiStrings.t('time_clock.approve')),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              // On a phone the buttons go under the request: beside it they
+              // left the text ~80 px and it wrapped word by word.
+              if (MediaQuery.sizeOf(context).width < 520) ...[
+                _info(theme, r),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: _buttons(r),
+                ),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _info(theme, r)),
+                    const SizedBox(width: 8),
+                    _buttons(r),
+                  ],
+                ),
             ],
           ],
         ),
       ),
     );
   }
+
+  Widget _info(ThemeData theme, Map<String, dynamic> r) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        (r['user'] as Map?)?['name']?.toString() ?? '',
+        style: theme.textTheme.labelLarge,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_was')}: '
+        '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
+        style: theme.textTheme.bodySmall,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_asks')}: '
+        '${_span(r['clocked_in'], r['clocked_out'])}',
+        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      Text(r['reason']?.toString() ?? '', style: theme.textTheme.bodySmall),
+    ],
+  );
+
+  Widget _buttons(Map<String, dynamic> r) => Wrap(
+    spacing: 8,
+    children: [
+      OutlinedButton(
+        onPressed: () => onDecide(r, 'deny'),
+        child: Text(UiStrings.t('time_clock.decline')),
+      ),
+      FilledButton(
+        onPressed: () => onDecide(r, 'approve'),
+        child: Text(UiStrings.t('time_clock.approve')),
+      ),
+    ],
+  );
 }

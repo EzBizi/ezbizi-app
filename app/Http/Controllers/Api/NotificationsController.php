@@ -122,7 +122,7 @@ class NotificationsController extends Controller
         $senders = Alert::query()
             ->whereIn('id', $rows->where('subject_type', Alert::class)->pluck('subject_id'))
             ->with('sender:id,name')
-            ->get(['id', 'sender_id', 'kind', 'context', 'choices', 'allow_text'])
+            ->get(['id', 'sender_id', 'sender_label', 'kind', 'context', 'choices', 'allow_text'])
             ->keyBy('id');
 
         return $rows->map(function (Notification $row) use ($senders) {
@@ -134,7 +134,7 @@ class NotificationsController extends Controller
                 'id' => $row->id,
                 'title' => $row->title,
                 'body' => $row->body,
-                'sender' => $suggestion ? 'EzBizi' : $senders->get($row->subject_id)?->sender?->name,
+                'sender' => $suggestion ? 'EzBizi' : ($senders->get($row->subject_id)?->sender_label ?? $senders->get($row->subject_id)?->sender?->name),
                 'created_at' => $row->created_at?->toIso8601String(),
                 'suggestion_id' => $suggestion ? $row->subject_id : null,
                 'update' => $suggestion && $row->body === SuggestionAlerts::UPDATE_BODY,
@@ -160,6 +160,34 @@ class NotificationsController extends Controller
         $notification->markRead();
 
         return response()->json(['data' => ['id' => $notification->id, 'read_at' => $notification->read_at]]);
+    }
+
+    /** POST /api/v1/notifications/{id}/unread — Monday parity (desk, 2026-11-24). */
+    public function markUnread(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->forceFill(['read_at' => null])->save();
+
+        return response()->json(['data' => ['id' => $notification->id, 'read_at' => null]]);
+    }
+
+    /** DELETE /api/v1/notifications/{id} — one row, the person's own. */
+    public function destroy(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->delete();
+
+        return response()->json(['data' => ['deleted' => 1]]);
+    }
+
+    /** DELETE /api/v1/notifications — every row of the person's own. */
+    public function destroyAll(Request $request): JsonResponse
+    {
+        $deleted = Notification::query()->where('user_id', $request->user()->getKey())->delete();
+
+        return response()->json(['data' => ['deleted' => $deleted]]);
     }
 
     /** POST /api/v1/notifications/read-all */

@@ -1208,7 +1208,10 @@ $result = app(App\Support\Tenancy\TenantContext::class)->run($organization, func
 fwrite(STDOUT, 'RESULT|'.$result."\n");
 PHP;
         $command = [PHP_BINARY, '-r', $worker, $operation, ...$arguments];
-        $process = proc_open($command, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes, base_path());
+        // The worker's database by name: under the parallel gate this process tests in
+        // <DB_DATABASE>_test_<n>, which the child cannot learn from the environment.
+        $env = [...getenv(), 'DB_DATABASE' => DB::connection()->getDatabaseName()];
+        $process = proc_open($command, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes, base_path(), $env);
         $this->assertIsResource($process);
 
         return ['process' => $process, 'pipes' => $pipes, 'finished' => false];

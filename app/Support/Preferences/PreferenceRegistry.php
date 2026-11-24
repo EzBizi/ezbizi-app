@@ -39,6 +39,9 @@ class PreferenceRegistry
      */
     public const DIVIDER = '--';
 
+    /** Prefix of a sidebar section heading in a saved order. */
+    public const HEADING = '#';
+
     /**
      * @return array<string, array{type: string, default: mixed, options?: array, label: string, help?: string}>
      */
@@ -67,8 +70,9 @@ class PreferenceRegistry
                  * would eventually find the pair in a state that means nothing.
                  */
                 'options' => ['system', 'light', 'dark', 'mixed_dark_nav', 'mixed_light_nav'],
-                'help' => '"Match my device" follows whatever your phone or computer is set to. '
-                    .'Mixed keeps the sidebar and the page in opposite themes.',
+                // 'system' stays valid for older apps; the app no longer offers
+                // it and saves the device's theme in its place (Jose 11-24).
+                'help' => 'Light or dark. Mixed keeps the sidebar and the page in opposite themes.',
             ],
 
             /*
@@ -556,7 +560,8 @@ class PreferenceRegistry
 
     /**
      * A sidebar order: module keys in the order somebody dragged them into,
-     * with [DIVIDER] wherever they put a rule.
+     * with [DIVIDER] wherever they put a rule and [HEADING]-prefixed section
+     * labels where their sections start.
      *
      * CORRECTED rather than refused, following `clampInt` below. The docblock
      * above is about nonsense the client cannot render; this is different. A
@@ -581,6 +586,7 @@ class PreferenceRegistry
         $known = array_keys($this->modules->all());
         $seen = [];
         $out = [];
+        $headings = 0;
 
         foreach ($value as $entry) {
             if (! is_string($entry)) {
@@ -588,6 +594,16 @@ class PreferenceRegistry
             }
             if ($entry === self::DIVIDER) {
                 $out[] = $entry;
+
+                continue;
+            }
+            // A section heading the person named (Jose 11-24): "#" + its label.
+            // Module keys are bare words, so this cannot collide with one.
+            if (str_starts_with($entry, self::HEADING)) {
+                $label = trim(mb_substr($entry, 1));
+                if ($label !== '' && mb_strlen($label) <= 40 && ++$headings <= 30) {
+                    $out[] = self::HEADING.$label;
+                }
 
                 continue;
             }

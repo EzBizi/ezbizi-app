@@ -32,7 +32,11 @@ void main() {
     'notes',
   ];
 
-  Future<Session> app(WidgetTester tester) async {
+  Future<Session> app(
+    WidgetTester tester, {
+    Size size = const Size(1440, 900),
+    double above = 0,
+  }) async {
     final api = ApiClient(
       client: MockClient((request) async {
         final path = request.url.path;
@@ -81,6 +85,12 @@ void main() {
             'total': 100,
             'last_page': 2,
             'counts': {'unscheduled': 100, 'scheduled': 100},
+            'totals': {
+              'paid': 57178215,
+              'due': 61675577,
+              'total': 117580268,
+              'overpaid': 1273524,
+            },
             'places': <dynamic>[],
             'columns': [
               for (final k in keys) {'key': k, 'label': k, 'visible': true},
@@ -94,14 +104,22 @@ void main() {
     );
     final session = Session(api);
     await tester.runAsync(() => session.adopt('tok'));
-    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: ProjectBoardScreen(api: api, session: session),
+          // [above] stands for the shell's bars over the module.
+          body: Column(
+            children: [
+              SizedBox(height: above),
+              Expanded(
+                child: ProjectBoardScreen(api: api, session: session),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -131,6 +149,16 @@ void main() {
       )
       .controller!
       .position;
+
+  // Mobile review 11-24: an iPhone Duo's cover screen is 678 tall, but after
+  // the shell's bars the board gets ~400. Deciding by the screen, the table
+  // was given the leftover and ran 81 px past the bottom.
+  testWidgets('a short board on a tall-enough screen does not overflow', (
+    tester,
+  ) async {
+    await app(tester, size: const Size(466, 678), above: 278);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('the sideways bar stays put as more rows load', (tester) async {
     await app(tester);

@@ -224,6 +224,7 @@
                 "Home",
                 "Bills",
                 "Markets",
+                "Bank",
                 "Settings"
             ],
             "grants": {
@@ -237,6 +238,10 @@
                 ],
                 "Markets": [
                     "financials.markets.view",
+                    "financials.view"
+                ],
+                "Bank": [
+                    "financials.bank.view",
                     "financials.view"
                 ],
                 "Settings": [
@@ -1167,6 +1172,7 @@
         "financial_results.edit",
         "financial_results.view",
         "financials.approve",
+        "financials.bank.view",
         "financials.bases.view",
         "financials.bills.view",
         "financials.create",

@@ -172,7 +172,7 @@ class MondaySyncTest extends TestCase
         $this->assertSame('2026-11-20', $done->due_on->toDateString());
         $this->assertSame([$this->jose->id], $done->owners->pluck('user_id')->all(), 'matched by name across the two emails');
         $updates = $this->inTenant($this->tenant['org'], fn () => TaskUpdate::query()->where('task_id', $done->id)->orderBy('created_at')->get());
-        $this->assertSame(['Policy found', '↳ Great'], $updates->pluck('body')->all());
+        $this->assertSame(['Policy found', 'Great'], $updates->pluck('body')->all());
         $this->assertSame([$this->jose->id, $this->jose->id], $updates->pluck('user_id')->all());
 
         $new = $this->task('12');
