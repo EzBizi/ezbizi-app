@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../widgets/cell_tap.dart';
 import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/people_search_list.dart';
 import '../widgets/panel_field.dart';
 import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
@@ -833,21 +834,20 @@ class ColumnCell extends StatelessWidget {
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
         return LazyMenuAnchor(
           menuChildren: [
-            for (final p in people.entries)
-              CheckboxMenuButton(
-                key: ValueKey('column-person-${column.id}-${p.key}'),
-                value: ids.contains(p.key),
-                closeOnActivate: false,
-                onChanged: (on) {
-                  final next = [
-                    for (final id in ids)
-                      if (id != p.key) id,
-                    if (on == true) p.key,
-                  ];
-                  onChanged?.call(next.isEmpty ? null : next);
-                },
-                child: Text(p.value),
-              ),
+            PeopleSearchList(
+              people: people,
+              picked: ids,
+              multi: true,
+              keyPrefix: 'column-person-${column.id}',
+              onPick: (id) {
+                final next = [
+                  for (final x in ids)
+                    if (x != id) x,
+                  if (!ids.contains(id)) ?id,
+                ];
+                onChanged?.call(next.isEmpty ? null : next);
+              },
+            ),
           ],
           builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
@@ -1553,7 +1553,9 @@ class _ColumnEditorState extends State<ColumnEditor> {
           // line is readable, and Enter still saves it.
           maxLines: long ? 12 : (c.type == 'text' ? 4 : 1),
           minLines: long ? 5 : 1,
-          textInputAction: long ? TextInputAction.newline : TextInputAction.done,
+          textInputAction: long
+              ? TextInputAction.newline
+              : TextInputAction.done,
           keyboardType: switch (c.type) {
             'number' ||
             'currency' => const TextInputType.numberWithOptions(decimal: true),
@@ -1582,7 +1584,8 @@ class _ColumnEditorState extends State<ColumnEditor> {
 
         return CallbackShortcuts(
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.enter, control: true): save,
+            const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                save,
             const SingleActivator(LogicalKeyboardKey.enter, meta: true): save,
           },
           child: field,
@@ -2782,7 +2785,8 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
               child: Padding(
                 padding: const EdgeInsets.all(10),
                 child: SizedBox(
-                  width: const {'text', 'long_text'}.contains(widget.column.type)
+                  width:
+                      const {'text', 'long_text'}.contains(widget.column.type)
                       ? 340
                       : 300,
                   child: _editor(),

@@ -93,14 +93,14 @@ class TaskBoards
             // Jose 11-19/11-23: one board, not two) holds its key: writers land there.
             $board = TaskBoard::query()->where('auto_key', $kind.':'.$owner->getKey())->where('kind', '!=', $kind)->first()
                 ?? TaskBoard::query()->firstOrCreate(
-                ['kind' => $kind, $column => $owner->getKey()],
-                [
-                    'organization_id' => $owner->organization_id,
-                    'name' => $owner->name ?: 'Tasks',
-                    'auto_key' => $kind.':'.$owner->getKey(),
-                    'visibility' => TaskBoard::MAIN,
-                ],
-            );
+                    ['kind' => $kind, $column => $owner->getKey()],
+                    [
+                        'organization_id' => $owner->organization_id,
+                        'name' => $owner->name ?: 'Tasks',
+                        'auto_key' => $kind.':'.$owner->getKey(),
+                        'visibility' => TaskBoard::MAIN,
+                    ],
+                );
 
             if ($board->wasRecentlyCreated) {
                 $this->seed($board);
@@ -342,6 +342,15 @@ class TaskBoards
      * @return Collection<int, User>
      */
     public function assignable(TaskBoard $board): Collection
+    {
+        // Jose 11-24: removed and deactivated accounts are nobody to give a task to.
+        $all = $this->assignableAll($board);
+        $active = User::query()->whereKey($all->pluck('id'))->where('is_active', true)->pluck('id')->flip();
+
+        return $all->filter(fn ($u) => $active->has($u->id))->values();
+    }
+
+    private function assignableAll(TaskBoard $board): Collection
     {
         if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return User::query()->orderBy('name')

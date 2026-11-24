@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import '../widgets/cell_tap.dart';
 import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/people_search_list.dart';
 import '../widgets/list_search.dart';
 import '../widgets/panel_field.dart';
 import 'dart:math' as math;
@@ -5597,16 +5598,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// only the name opens the task).
   Widget _ownerMenu(_Json t, Widget shown) => LazyMenuAnchor(
     menuChildren: [
-      MenuItemButton(
-        onPressed: () => _patchTask(t, {'assignee_user_id': null}),
-        child: const Text('Nobody'),
-      ),
-      for (final p in _people.entries)
-        MenuItemButton(
-          key: ValueKey('task-owner-${t['id']}-${p.key}'),
-          onPressed: () => _patchTask(t, {'assignee_user_id': p.key}),
-          child: Text(p.value),
+      Builder(
+        builder: (context) => PeopleSearchList(
+          people: _people,
+          nobody: true,
+          keyPrefix: 'task-owner-${t['id']}',
+          onPick: (id) {
+            MenuController.maybeOf(context)?.close();
+            _patchTask(t, {'assignee_user_id': id});
+          },
         ),
+      ),
     ],
     builder: (context, menu, _) => CellTap(
       key: ValueKey('task-owner-${t['id']}'),

@@ -266,9 +266,11 @@ class TaskBoardsController extends Controller
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             // has_avatar: a face without a photo is not asked for one (each was a 404).
+            // Two active accounts of one name (Artem Maliuk, Jose 11-24) say which is which.
             'assignable' => $assignable->map(fn ($u) => [
                 'id' => $u->id,
-                'name' => $u->name,
+                'name' => $assignable->where('name', $u->name)->count() > 1
+                    ? $u->name.' · '.User::query()->whereKey($u->id)->value('email') : $u->name,
                 'has_avatar' => isset($withPhoto[(string) $u->id]),
             ])->all(),
             'tasks' => $tasks->map($present)
