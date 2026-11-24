@@ -325,6 +325,80 @@ void main() {
       }
     },
   );
+
+  // Jose, 2026-11-24, on the Technician bar: "this is hard to view, you
+  // can't tell stuff apart". Five items at 360 px, two of them long tabs.
+  testWidgets('the phone bar keeps five labels apart at 360 px', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpShell(
+      tester,
+      modules: ['training', 'inspection', 'work_hours', 'customers'],
+      order: ['training', 'inspection', 'work_hours', 'customers'],
+      mobileBar: [
+        {'module': 'training', 'tab': null, 'label': 'Training'},
+        {'module': 'inspection', 'tab': null, 'label': 'Inspection'},
+        {'module': 'inspection', 'tab': 'review-qr', 'label': 'Review QR'},
+        {
+          'module': 'customers',
+          'tab': 'loyalty-members',
+          'label': 'Loyalty Members Waiting For Callback',
+        },
+      ],
+    );
+    expect(tester.takeException(), isNull);
+
+    final bar = find.byKey(const Key('phone-bottom-bar'));
+    final labels = [
+      for (final e
+          in find.descendant(of: bar, matching: find.byType(Text)).evaluate())
+        if ((e.widget as Text).data != null) e,
+    ];
+    expect(labels, hasLength(5));
+    final rects = [
+      for (final e in labels) tester.getRect(find.byWidget(e.widget)),
+    ];
+    for (var i = 0; i < rects.length; i++) {
+      final t = labels[i].widget as Text;
+      expect(t.style?.fontSize, greaterThanOrEqualTo(11), reason: t.data);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(
+          rects[i].overlaps(rects[j]),
+          isFalse,
+          reason: '"${t.data}" overlaps "${(labels[j].widget as Text).data}"',
+        );
+      }
+    }
+
+    IconData iconIn(String key) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+    expect(
+      iconIn('phone-bottom-inspection-review-qr'),
+      isNot(iconIn('phone-bottom-inspection')),
+      reason: "a tab slot has its own icon, not its module's",
+    );
+    expect(iconIn('phone-bottom-inspection-review-qr'), Icons.qr_code);
+    // A tab with no known icon: the module's icon, badged.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('phone-bottom-customers-loyalty-members'),
+        ),
+        matching: find.byType(Badge),
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────

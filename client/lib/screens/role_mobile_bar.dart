@@ -14,6 +14,7 @@ import '../core/api_client.dart';
 import '../core/module_screens.dart';
 import '../core/permissions.dart';
 import '../widgets/error_note.dart';
+import '../widgets/phone_bottom_bar.dart';
 import '../widgets/search_picker.dart';
 
 class RoleMobileBar extends StatefulWidget {
@@ -311,47 +312,15 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
     );
   }
 
-  /// The live phone: the bar as somebody with this role will see it.
+  /// The live phone at real phone width (360 logical px), drawn with the
+  /// same bar the phone uses, so the two cannot drift.
   Widget _phone(ThemeData theme) {
     final scheme = theme.colorScheme;
     final shown = _shown;
-    Widget slot(
-      IconData icon,
-      String label, {
-      bool on = false,
-      bool dim = false,
-    }) => Expanded(
-      child: Opacity(
-        opacity: dim ? .55 : 1,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 34,
-              height: 22,
-              decoration: BoxDecoration(
-                color: on ? scheme.secondaryContainer : null,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(icon, size: 16),
-            ),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: theme.textTheme.labelSmall,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    return Container(
+    final phone = Container(
       key: const ValueKey('role-mobile-bar-phone'),
-      width: 220,
-      height: 360,
+      width: 360 + 10,
+      height: 320,
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,
         borderRadius: BorderRadius.circular(26),
@@ -364,28 +333,36 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
             child: Center(
               child: Text(
                 shown.isEmpty ? '' : _labelOf(shown.first.$1),
-                style: theme.textTheme.bodySmall,
+                style: theme.textTheme.titleSmall,
               ),
             ),
           ),
-          Container(
-            color: scheme.surfaceContainer,
-            padding: const EdgeInsets.fromLTRB(2, 6, 2, 10),
-            child: Row(
-              children: [
-                for (final (i, (s, chosen)) in shown.indexed)
-                  slot(
+          PhoneBottomBar(
+            selected: 0,
+            items: [
+              for (final (s, chosen) in shown)
+                () {
+                  final cut = s.indexOf(':');
+                  final (icon, badge) = slotIcon(
                     _iconOf(s),
-                    _labelOf(s, short: true),
-                    on: i == 0,
-                    dim: !chosen,
-                  ),
-                slot(Icons.menu, 'More'),
-              ],
-            ),
+                    cut < 0 ? null : s.substring(cut + 1),
+                  );
+                  return PhoneBarItem(
+                    icon: icon,
+                    badge: badge,
+                    label: _labelOf(s, short: true),
+                    tooltip: _labelOf(s),
+                    isDefault: !chosen,
+                    key: ValueKey('role-mobile-bar-item-$s'),
+                  );
+                }(),
+              const PhoneBarItem(icon: Icons.menu, label: 'More'),
+            ],
           ),
         ],
       ),
     );
+    // Scaled down, never cut, where the card is narrower than a phone.
+    return FittedBox(fit: BoxFit.scaleDown, child: phone);
   }
 }
