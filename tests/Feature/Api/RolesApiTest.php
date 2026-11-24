@@ -224,6 +224,39 @@ class RolesApiTest extends TestCase
         $this->assertSame($argued, $declaring);
     }
 
+    public function test_a_requirement_declared_later_blocks_only_a_new_tick(): void
+    {
+        // Roles audit 2026-11-24: Staff bot gained `requires manage`. A role
+        // that already held the tab without manage must still save other
+        // edits; ticking the tab anew without manage is still refused.
+        $alpha = $this->provisionTenant('Alpha');
+
+        $roleId = $this->inTenant($alpha['org'], function () {
+            $role = Role::create(['name' => 'Bot desk']);
+            $role->syncPermissionKeys(['ai_assistance.view', 'ai_assistance.staff_bot.view']);
+
+            return $role->getKey();
+        });
+
+        // An unrelated edit to the role as stored: accepted, the tab kept.
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$roleId}", ['permissions' => [
+                'ai_assistance.view', 'ai_assistance.staff_bot.view', 'customers.view',
+            ]])
+            ->assertOk();
+
+        // The same tick on a role that never held it: refused, naming why.
+        $fresh = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'New desk', 'permissions' => ['customers.view']])
+            ->assertCreated()->json('data.id');
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$fresh}", ['permissions' => [
+                'customers.view', 'ai_assistance.view', 'ai_assistance.staff_bot.view',
+            ]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions');
+    }
+
     public function test_a_role_payload_cannot_make_itself_administrator(): void
     {
         $alpha = $this->provisionTenant('Alpha');
