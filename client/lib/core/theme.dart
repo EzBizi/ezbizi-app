@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// The EzBizi look — cyan on white, from the brand mark (ezbizi.com).
@@ -105,6 +107,22 @@ class EzBiziTheme {
       Theme.of(context).brightness == Brightness.dark
       ? const Color(0xFF252D35)
       : const Color(0xFFEDF2F7);
+
+  /// A group's title row (gallery 210, Jose 11-24): the board's group grey
+  /// and the group colour half and half.
+  static Color groupTitleFill(BuildContext context, Color colour) =>
+      Color.lerp(boardGroup(context), colour, 0.5)!;
+
+  /// The ink for text on [fill]: white or near-black, whichever reads more.
+  static Color inkOn(Color fill) {
+    const ink = Color(0xFF16191C);
+    double ratio(Color a, Color b) {
+      final x = a.computeLuminance(), y = b.computeLuminance();
+      return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
+    }
+
+    return ratio(Colors.white, fill) >= ratio(ink, fill) ? Colors.white : ink;
+  }
 
   /// The Task Board's rule between rows, Monday's grey (Jose 11-23, row 37).
   static Color boardRowLine(BuildContext context) =>

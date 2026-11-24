@@ -22,6 +22,11 @@ class PeopleSearchList extends StatefulWidget {
   final String keyPrefix;
   final void Function(String? id) onPick;
 
+  /// Other words each person is found by, by id: the start of their email and
+  /// their Monday name (Adeline 11-24: "Chris" finds Kristopher). The board
+  /// fills it from its people as it loads.
+  static final Map<String, String> aliases = {};
+
   @override
   State<PeopleSearchList> createState() => _PeopleSearchListState();
 }
@@ -40,7 +45,11 @@ class _PeopleSearchListState extends State<PeopleSearchList> {
     final q = _q.text.trim().toLowerCase();
     final shown = [
       for (final p in widget.people.entries)
-        if (q.isEmpty || p.value.toLowerCase().contains(q)) p,
+        if (q.isEmpty ||
+            p.value.toLowerCase().contains(q) ||
+            (PeopleSearchList.aliases[p.key]?.toLowerCase().contains(q) ??
+                false))
+          p,
     ];
     return Column(
       mainAxisSize: MainAxisSize.min,
