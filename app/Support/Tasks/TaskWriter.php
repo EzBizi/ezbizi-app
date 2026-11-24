@@ -614,9 +614,12 @@ class TaskWriter
         });
     }
 
-    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null): TaskUpdate
+    /** [$at]: a time to post it (Monday's scheduled update); until then nobody sees or hears of it. */
+    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null, ?\DateTimeInterface $at = null): TaskUpdate
     {
-        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent) {
+        $later = $at !== null && $at > now();
+
+        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent, $later, $at) {
             $update = TaskUpdate::query()->create([
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
@@ -625,6 +628,12 @@ class TaskWriter
                 'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
             ]);
+            if ($later) {
+                $update->forceFill(['scheduled_for' => $at, 'created_at' => $at, 'updated_at' => $at])->saveQuietly();
+                $this->audit->log('task.update_scheduled', $task, actor: $author);
+
+                return $update;
+            }
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);
@@ -798,6 +807,8 @@ class TaskWriter
             $ids = collect([$task->created_by_user_id])
                 ->merge($task->owners()->pluck('user_id'))
                 ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
+                // Monday's bell: whoever follows the update this one replies to.
+                ->merge($update->parent_update_id ? (array) (TaskUpdate::query()->find($update->parent_update_id)?->followers ?? []) : [])
                 ->filter()->unique()->diff([...$skip, $update->user_id])->all();
             $who = $update->user()->value('name') ?? 'Monday';
             $told = 0;
