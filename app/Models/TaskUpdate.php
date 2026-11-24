@@ -29,7 +29,7 @@ class TaskUpdate extends Model implements HoldsPersonalData
 
     protected $fillable = ['organization_id', 'task_id', 'parent_update_id', 'user_id', 'body', 'mentions'];
 
-    protected $casts = ['mentions' => 'array', 'likes' => 'array', 'edited_at' => 'datetime'];
+    protected $casts = ['mentions' => 'array', 'likes' => 'array', 'followers' => 'array', 'bookmarks' => 'array', 'scheduled_for' => 'datetime', 'edited_at' => 'datetime'];
 
     public function task(): BelongsTo
     {
@@ -57,8 +57,14 @@ class TaskUpdate extends Model implements HoldsPersonalData
             new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
                 'Which person wrote this comment on the task.',
                 Erasure::erase()),
+            new PersonalDataEntry('bookmarks', PersonalDataEntry::IDENTITY,
+                'Who saved this comment to find it again.',
+                Erasure::erase()),
+            new PersonalDataEntry('followers', PersonalDataEntry::IDENTITY,
+                'Who asked to be told of replies to this comment.',
+                Erasure::erase()),
             new PersonalDataEntry('likes', PersonalDataEntry::IDENTITY,
-                'Who liked this comment.',
+                'Who liked this comment, shown as the like count and names on it.',
                 Erasure::erase()),
             new PersonalDataEntry('body', PersonalDataEntry::CONTENT,
                 'What the person wrote in the comment.',

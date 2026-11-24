@@ -164,12 +164,13 @@ void main() {
     // The list, not the rail: a handle on every row, and the filter gone —
     // reordering a list that is hiding rows drops things between two that are
     // neighbours on screen and not in the order.
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
-    expect(find.byType(TextField), findsNothing);
+    // Two modules and their two section headings (Jose 11-24).
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
+    expect(find.text('Find a module'), findsNothing);
 
     await tester.tap(find.text('Add a divider'));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(5));
 
     expect(saved, isEmpty, reason: 'Nothing is written until Done.');
 
@@ -177,13 +178,115 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saved, [
-      ['dashboard', '--', 'customers'],
+      ['#Work', 'dashboard', '--', '#Customers', 'customers'],
     ]);
     expect(
       find.text('Rearrange'),
       findsOneWidget,
       reason: 'Done puts the rail back.',
     );
+  });
+
+  // Jose 11-24: "on the re-arrange mode you don't see the group divisions, so
+  // u can't properly reorganize stuff".
+  testWidgets('rearrange shows the sections, and a cross-section drop is '
+      'saved and then drawn there', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    // The headings normal mode draws, in place, in the list being arranged.
+    expect(_inSidebar('Work'), findsOneWidget);
+    expect(_inSidebar('Communication'), findsOneWidget);
+    expect(
+      tester.getTopLeft(_inSidebar('Communication')).dy,
+      greaterThan(tester.getTopLeft(_inSidebar('Jobs')).dy),
+    );
+
+    // Jobs, from Work, dropped under Communication.
+    await _dragRow(tester, find.widgetWithText(ListTile, 'Jobs'), 160);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    final order = saved.single;
+    expect(order.first, '#Work');
+    expect(
+      order.indexOf('jobs'),
+      greaterThan(order.indexOf('#Communication')),
+      reason: 'Jobs was dropped into Communication: $order',
+    );
+
+    // And normal mode draws exactly that.
+    await tester.pumpWidget(const SizedBox());
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: [for (final e in order) '$e'],
+    );
+    expect(
+      tester.getTopLeft(_inSidebar('Jobs')).dy,
+      greaterThan(tester.getTopLeft(_inSidebar('COMMUNICATION')).dy),
+    );
+  });
+
+  testWidgets('a heading moves its whole section', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    await _dragRow(tester, _inSidebar('Communication'), -200);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved.single, [
+      '#Communication',
+      'phone',
+      '#Work',
+      'dashboard',
+      'jobs',
+    ]);
+  });
+
+  testWidgets('sections are added, renamed and removed', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add a section'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'New section'),
+      ' Dispatch ',
+    );
+    // Removing Communication puts Phone in the section above it.
+    await tester.tap(find.byTooltip('Remove this section').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved.single, ['#Dispatch', '#Work', 'dashboard', 'phone']);
   });
 
   testWidgets('Done without moving anything writes nothing', (tester) async {
@@ -243,7 +346,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReorderableListView), findsOneWidget);
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
+    // Three modules, the rule, and the Work and Customers headings.
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(6));
   });
 
   testWidgets(
@@ -352,9 +456,102 @@ void main() {
       }
     },
   );
+
+  // Jose, 2026-11-24, on the Technician bar: "this is hard to view, you
+  // can't tell stuff apart". Five items at 360 px, two of them long tabs.
+  testWidgets('the phone bar keeps five labels apart at 360 px', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpShell(
+      tester,
+      modules: ['training', 'inspection', 'work_hours', 'customers'],
+      order: ['training', 'inspection', 'work_hours', 'customers'],
+      mobileBar: [
+        {'module': 'training', 'tab': null, 'label': 'Training'},
+        {'module': 'inspection', 'tab': null, 'label': 'Inspection'},
+        {'module': 'inspection', 'tab': 'review-qr', 'label': 'Review QR'},
+        {
+          'module': 'customers',
+          'tab': 'loyalty-members',
+          'label': 'Loyalty Members Waiting For Callback',
+        },
+      ],
+    );
+    expect(tester.takeException(), isNull);
+
+    final bar = find.byKey(const Key('phone-bottom-bar'));
+    final labels = [
+      for (final e
+          in find.descendant(of: bar, matching: find.byType(Text)).evaluate())
+        if ((e.widget as Text).data != null) e,
+    ];
+    expect(labels, hasLength(5));
+    final rects = [
+      for (final e in labels) tester.getRect(find.byWidget(e.widget)),
+    ];
+    for (var i = 0; i < rects.length; i++) {
+      final t = labels[i].widget as Text;
+      expect(t.style?.fontSize, greaterThanOrEqualTo(11), reason: t.data);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(
+          rects[i].overlaps(rects[j]),
+          isFalse,
+          reason: '"${t.data}" overlaps "${(labels[j].widget as Text).data}"',
+        );
+      }
+    }
+
+    IconData iconIn(String key) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+    expect(
+      iconIn('phone-bottom-inspection-review-qr'),
+      isNot(iconIn('phone-bottom-inspection')),
+      reason: "a tab slot has its own icon, not its module's",
+    );
+    expect(iconIn('phone-bottom-inspection-review-qr'), Icons.qr_code);
+    // A tab with no known icon: the module's icon, badged.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('phone-bottom-customers-loyalty-members'),
+        ),
+        matching: find.byType(Badge),
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 // ── harness ────────────────────────────────────────────────────────
+
+/// Drags the handle level with [row] by [dy] in small steps, as a hand does.
+Future<void> _dragRow(WidgetTester tester, Finder row, double dy) async {
+  final y = tester.getCenter(row.first).dy;
+  final handles = find.byIcon(Icons.drag_handle);
+  var at = tester.getCenter(handles.first);
+  for (var i = 1; i < handles.evaluate().length; i++) {
+    final c = tester.getCenter(handles.at(i));
+    if ((c.dy - y).abs() < (at.dy - y).abs()) at = c;
+  }
+  final g = await tester.startGesture(at);
+  await tester.pump();
+  for (var k = 0; k < 10; k++) {
+    await g.moveBy(Offset(0, dy / 10));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await g.up();
+  await tester.pumpAndSettle();
+}
 
 void _wide(WidgetTester tester) {
   tester.view.physicalSize = const Size(1280, 900);

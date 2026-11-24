@@ -87,6 +87,12 @@ class User extends Authenticatable implements HoldsPersonalData
         );
     }
 
+    /** An erased account's stand-in name (see personalDataHeld), or no name at all. */
+    public static function isErasedName(?string $name): bool
+    {
+        return $name === null || trim($name) === '' || $name === 'Removed account';
+    }
+
     public static function personalDataHeld(): array
     {
         return [

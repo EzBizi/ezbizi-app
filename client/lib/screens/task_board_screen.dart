@@ -21,13 +21,17 @@ import '../core/device_key_store_io.dart'
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/files.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import 'task_board_activity.dart';
 import 'task_board_automate.dart';
+import 'task_board_feed.dart';
+import 'task_board_my_work.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
@@ -113,7 +117,13 @@ Widget _avatar(
 /// One of a board's statuses. Each board has its own (UI queue 84), sent as
 /// `{id, name, colour, is_done}`; the fixed four came as `{key, label}` and
 /// still read here, coloured by [_tone].
-typedef _Status = ({String id, String name, Color? colour, bool done});
+typedef _Status = ({
+  String id,
+  String name,
+  Color? colour,
+  bool done,
+  bool retired,
+});
 
 /// Parsed once per statuses list: every row asks for them (freeze 11-16).
 final _statusMemo = Expando<List<_Status>>('statuses');
@@ -134,6 +144,8 @@ List<_Status> _parseStatuses(List raw) => [
           : null,
       done:
           s['is_done'] == true || (s['is_done'] == null && s['key'] == 'done'),
+      // Gap review P1: kept on its tasks, out of the pickers.
+      retired: s['retired'] == true,
     ),
 ];
 
@@ -1167,7 +1179,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ],
   );
 
+  /// Monday's Export to Excel (gap review P1): the board, one group or the
+  /// picked tasks, as an .xlsx the browser or the desktop saves.
+  Future<void> _export({String? groupId, List<String>? ids}) async {
+    final board = _board;
+    if (board == null) return;
+    final res = await widget.api.getBytesResponse(
+      '/task-boards/${board['id']}/export',
+      {
+        'group_id': ?groupId,
+        for (final (i, id) in (ids ?? const <String>[]).indexed) 'ids[$i]': id,
+      },
+    );
+    if (!mounted) return;
+    final bytes = res.bytes;
+    if (bytes == null) return _say(res.message ?? 'The export failed.');
+    final name = '${board['name']}'.replaceAll(RegExp(r'[^\w\- ]+'), '').trim();
+    Files.download('${name.isEmpty ? 'Board' : name}.xlsx', bytes);
+  }
+
   Future<void> _bulk(String op) async {
+    if (op == 'export') return _export(ids: _picked.toList());
     final ids = _picked.toList();
     Map<String, Object?>? extra;
     switch (op) {
@@ -1261,6 +1293,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ('duplicate', 'Duplicate'),
               ('status', 'Status'),
               ('assign', 'Assign'),
+              ('export', 'Export'),
               ('delete', 'Delete'),
             ])
               TextButton(
@@ -1628,6 +1661,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             _groupName.text = '${group['name']}';
           }),
           child: const Text('Rename'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-export-$id'),
+          leadingIcon: const Icon(Icons.download_outlined, size: 18),
+          onPressed: () => _export(groupId: id),
+          child: const Text('Export to Excel'),
         ),
         // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
         MenuItemButton(
@@ -3394,6 +3433,69 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           }),
         ),
       ],
+      // Monday's board Activity Log (gap review P1): for everyone who sees the board.
+      MenuItemButton(
+        key: const Key('tasks-board-activity'),
+        leadingIcon: const Icon(Icons.history, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => BoardActivityPanel(
+            api: widget.api,
+            board: _board!,
+            formats: _formats,
+            people: _people,
+            onOpenTask: (id) {
+              Navigator.of(context).maybePop();
+              _openTaskById(id);
+            },
+          ),
+        ),
+        child: const Text('Activity Log'),
+      ),
+      // Monday's update feed (gap review P1): every board's updates in one list.
+      MenuItemButton(
+        key: const Key('tasks-updates-feed'),
+        leadingIcon: const Icon(Icons.forum_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => UpdatesFeedPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('Updates feed'),
+      ),
+      // Monday's My Work (gap review P1): what I own on every board.
+      MenuItemButton(
+        key: const Key('tasks-my-work'),
+        leadingIcon: const Icon(Icons.assignment_ind_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => MyWorkPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('My Work'),
+      ),
+      MenuItemButton(
+        key: const Key('tasks-board-export'),
+        leadingIcon: const Icon(Icons.download_outlined, size: 18),
+        onPressed: _export,
+        child: const Text('Export to Excel'),
+      ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(
             (s) => s is Map && s.containsKey('id'),
@@ -5574,11 +5676,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             keyPrefix: 'task-status-${t['id']}',
             labels: [
               for (final s in _statuses(_board))
-                (
-                  id: s.id,
-                  label: s.name,
-                  colour: _statusColours(context, s).fill,
-                ),
+                if (!s.retired || s.id == _statusOf(t))
+                  (
+                    id: s.id,
+                    label: s.name,
+                    colour: _statusColours(context, s).fill,
+                  ),
             ],
             current: _statusOf(t),
             onPick: (id) {
@@ -6597,14 +6700,7 @@ class _TaskPanelState extends State<_TaskPanel> {
                 const SizedBox(height: 2),
                 // Selectable, to copy as is (Merav via Jose 11-19).
                 if ('${u['body'] ?? ''}'.isNotEmpty)
-                  _clamped(
-                    u,
-                    linkedText(
-                      context,
-                      '${u['body']}',
-                      key: ValueKey('task-update-body-${u['id']}'),
-                    ),
-                  ),
+                  _clamped(u, _withChecklist(context, u)),
                 TaskAttachments(
                   api: widget.api,
                   attachments: [
@@ -6685,7 +6781,10 @@ class _TaskPanelState extends State<_TaskPanel> {
     final seen = (u['seen'] as num? ?? 0).toInt();
     return Padding(
       padding: const EdgeInsets.only(left: 40, bottom: 8),
-      child: Row(
+      // A Wrap: a narrow docked panel takes Like, Reply, the bell and the seen count on two lines.
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
         children: [
           TextButton.icon(
             key: ValueKey('task-update-like-${u['id']}'),
@@ -6708,7 +6807,31 @@ class _TaskPanelState extends State<_TaskPanel> {
               icon: const Icon(Icons.reply, size: 16),
               label: const Text('Reply'),
             ),
-          const Spacer(),
+          IconButton(
+            key: ValueKey('task-update-bookmark-${u['id']}'),
+            tooltip: u['bookmarked'] == true ? 'Bookmarked' : 'Bookmark',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              u['bookmarked'] == true ? Icons.bookmark : Icons.bookmark_border,
+              size: 18,
+            ),
+            onPressed: () => _bookmark(u),
+          ),
+          if (!reply)
+            IconButton(
+              key: ValueKey('task-update-follow-${u['id']}'),
+              tooltip: u['following'] == true
+                  ? 'Following its replies. Stop'
+                  : 'Tell me of its replies',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                u['following'] == true
+                    ? Icons.notifications_active
+                    : Icons.notifications_none,
+                size: 18,
+              ),
+              onPressed: () => _follow(u),
+            ),
           if (seen > 0)
             Tooltip(
               message: 'Seen by $seen',
@@ -6826,6 +6949,9 @@ class _TaskPanelState extends State<_TaskPanel> {
     for (final u in updates.reversed)
       for (final a in (u['attachments'] as List? ?? const []))
         if (a is Map) a.cast<String, dynamic>(),
+    // The file columns' files too (Chaim 11-24).
+    for (final a in (_task?['column_files'] as List? ?? const []))
+      if (a is Map) a.cast<String, dynamic>(),
   ];
 
   /// The task's changes, newest first (Monday's Activity Log).
@@ -6862,6 +6988,210 @@ class _TaskPanelState extends State<_TaskPanel> {
       ],
     );
   }
+
+  /// An update's words, its checklist lines ("☐ " or "☑ ") as boxes that
+  /// tick for whoever may work the task (Monday's update checklist).
+  Widget _withChecklist(BuildContext context, _Json u) {
+    final body = '${u['body']}';
+    final lines = body.split('\n');
+    if (!lines.any((l) => l.startsWith('☐ ') || l.startsWith('☑ '))) {
+      return linkedText(
+        context,
+        body,
+        key: ValueKey('task-update-body-${u['id']}'),
+      );
+    }
+    final out = <Widget>[];
+    final prose = <String>[];
+    void flush() {
+      if (prose.isEmpty) return;
+      out.add(linkedText(context, prose.join('\n')));
+      prose.clear();
+    }
+
+    for (final (i, l) in lines.indexed) {
+      if (l.startsWith('☐ ') || l.startsWith('☑ ')) {
+        flush();
+        out.add(
+          CheckboxListTile(
+            key: ValueKey('task-update-check-${u['id']}-$i'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: l.startsWith('☑'),
+            onChanged: _canEdit ? (_) => _check(u, i) : null,
+            title: Text(l.substring(2)),
+          ),
+        );
+      } else {
+        prose.add(l);
+      }
+    }
+    flush();
+    return Column(
+      key: ValueKey('task-update-body-${u['id']}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: out,
+    );
+  }
+
+  void _replaceUpdate(_Json updated) => setState(() {
+    _task = {
+      ..._task!,
+      'updates': [
+        for (final x in (_task!['updates'] as List? ?? const []).cast<_Json>())
+          if (x['id'] == updated['id']) {...x, ...updated} else x,
+      ],
+    };
+  });
+
+  Future<void> _check(_Json u, int line) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/check',
+      {'line': line},
+    );
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _postError = res.reason);
+    _replaceUpdate((res.body['data'] as Map).cast<String, dynamic>());
+  }
+
+  Future<void> _bookmark(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/bookmark',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    _replaceUpdate({
+      'id': u['id'],
+      'bookmarked': (res.body['data'] as Map)['bookmarked'],
+    });
+  }
+
+  /// Monday's scheduled update: the day and time it posts.
+  Future<void> _schedule() async {
+    if (_update.text.trim().isEmpty) return;
+    final now = DateTime.now();
+    final day = await showDatePicker(
+      context: context,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      initialDate: now,
+    );
+    if (day == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+    final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    final body = _update.text.trim();
+    final mentions = _mentions.ids(body);
+    final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
+      'body': body,
+      'post_at': at.toUtc().toIso8601String(),
+      if (mentions.isNotEmpty) 'mentions': mentions,
+    });
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _postError = res.reason);
+    _update.clear();
+    _mentions.clear();
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Scheduled for ${formatStamp(at.toUtc().toIso8601String(), '', formats: widget.formats)}',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _follow(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/follow',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    _replaceUpdate({
+      'id': u['id'],
+      'following': (res.body['data'] as Map)['following'],
+    });
+  }
+
+  /// Inserts [text] at the composer's caret, or wraps the selection in
+  /// [text] and [after] (bold).
+  void _insert(String text, [String after = '']) {
+    final v = _update.value;
+    final sel = v.selection.isValid
+        ? v.selection
+        : TextSelection.collapsed(offset: v.text.length);
+    final picked = v.text.substring(sel.start, sel.end);
+    _update.value = TextEditingValue(
+      text: v.text.replaceRange(sel.start, sel.end, '$text$picked$after'),
+      selection: TextSelection.collapsed(
+        offset: sel.start + text.length + picked.length,
+      ),
+    );
+  }
+
+  static const _emoji = [
+    '👍',
+    '🙏',
+    '✅',
+    '🔥',
+    '😀',
+    '😂',
+    '❤️',
+    '👀',
+    '🎉',
+    '⚠️',
+    '📅',
+    '📞',
+  ];
+
+  Widget _composerTools() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      IconButton(
+        key: const Key('task-update-tool-mention'),
+        tooltip: 'Mention someone',
+        icon: const Icon(Icons.alternate_email, size: 18),
+        onPressed: () => _insert('@'),
+      ),
+      IconButton(
+        key: const Key('task-update-tool-checklist'),
+        tooltip: 'Add a checklist item',
+        icon: const Icon(Icons.checklist, size: 18),
+        onPressed: () => _insert(
+          _update.text.isEmpty || _update.text.endsWith('\n') ? '☐ ' : '\n☐ ',
+        ),
+      ),
+      IconButton(
+        key: const Key('task-update-tool-bold'),
+        tooltip: 'Bold',
+        icon: const Icon(Icons.format_bold, size: 18),
+        onPressed: () => _insert('**', '**'),
+      ),
+      MenuAnchor(
+        menuChildren: [
+          Wrap(
+            children: [
+              for (final e in _emoji)
+                IconButton(
+                  key: ValueKey('task-update-emoji-$e'),
+                  onPressed: () => _insert(e),
+                  icon: Text(e, style: const TextStyle(fontSize: 18)),
+                ),
+            ],
+          ),
+        ],
+        builder: (context, menu, _) => IconButton(
+          key: const Key('task-update-tool-emoji'),
+          tooltip: 'Emoji',
+          icon: const Icon(Icons.emoji_emotions_outlined, size: 18),
+          onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        ),
+      ),
+    ],
+  );
 
   Future<void> _post() async {
     final body = _update.text.trim();
@@ -7066,14 +7396,15 @@ class _TaskPanelState extends State<_TaskPanel> {
     return MenuAnchor(
       menuChildren: [
         for (final s in _statuses(widget.board))
-          MenuItemButton(
-            key: ValueKey('task-panel-status-${s.id}'),
-            leadingIcon: _statusDot(context, s),
-            onPressed: _statusOf(task) == s.id
-                ? null
-                : () => _patch(_statusBody(widget.board, s.id, task)),
-            child: Text(s.name),
-          ),
+          if (!s.retired || s.id == _statusOf(task))
+            MenuItemButton(
+              key: ValueKey('task-panel-status-${s.id}'),
+              leadingIcon: _statusDot(context, s),
+              onPressed: _statusOf(task) == s.id
+                  ? null
+                  : () => _patch(_statusBody(widget.board, s.id, task)),
+              child: Text(s.name),
+            ),
       ],
       // A box like every other field, the status's colour inside it.
       builder: (context, menu, _) => PanelFieldBox(
@@ -7492,6 +7823,8 @@ class _TaskPanelState extends State<_TaskPanel> {
                 spacing: 8,
                 runSpacing: 6,
                 children: [
+                  // Monday's composer tools (Chaim 11-24): @, a checklist line, bold, emoji.
+                  _composerTools(),
                   TextButton.icon(
                     key: const Key('task-update-attach'),
                     onPressed: _posting || _files.length >= taskUpdateMaxFiles
@@ -7499,6 +7832,12 @@ class _TaskPanelState extends State<_TaskPanel> {
                         : _attach,
                     icon: const Icon(Icons.attach_file, size: 18),
                     label: const Text('Attach'),
+                  ),
+                  TextButton.icon(
+                    key: const Key('task-update-schedule'),
+                    onPressed: _posting || _files.isNotEmpty ? null : _schedule,
+                    icon: const Icon(Icons.schedule_send_outlined, size: 18),
+                    label: const Text('Schedule'),
                   ),
                   FilledButton(
                     key: const Key('task-update-post'),
@@ -7770,8 +8109,9 @@ class _RowShadeState extends State<_RowShade> {
 /// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
 @visibleForTesting
 Widget linkedText(BuildContext context, String body, {Key? key}) {
+  // Links, bare addresses, and **bold** (the composer's Bold, Chaim 11-24).
   final link = RegExp(
-    r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)',
+    r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)|\*\*([^*\n]+)\*\*',
   );
   final style = TextStyle(
     color: Theme.of(context).colorScheme.primary,
@@ -7781,6 +8121,16 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
   var at = 0;
   for (final m in link.allMatches(body)) {
     spans.add(TextSpan(text: body.substring(at, m.start)));
+    if (m.group(4) case final bold?) {
+      spans.add(
+        TextSpan(
+          text: bold,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+      at = m.end;
+      continue;
+    }
     final url = m.group(2) ?? m.group(3)!;
     spans.add(
       TextSpan(

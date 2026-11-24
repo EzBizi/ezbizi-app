@@ -129,6 +129,7 @@ void main() {
       'screens/settings/integration_provider_screen.dart': 1,
       'screens/task_board_columns.dart': 1,
       'screens/task_board_screen.dart': 8, // + the update reply box
+      'screens/task_board_feed.dart': 1, // the feed's reply box, opened by Reply to type in
       'screens/task_board_sidebar.dart': 1,
       'screens/web/widgets_tab.dart': 1,
       // A reply, note or reason, after tapping Reply / Note / Deny.

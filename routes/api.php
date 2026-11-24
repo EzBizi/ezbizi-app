@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialBankController;
 use App\Http\Controllers\Api\FinancialMarketsController;
 use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialsController;
@@ -171,6 +172,7 @@ use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
+use App\Http\Controllers\Api\PlaidWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
@@ -668,6 +670,17 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
 
+// Plaid returns here after a bank reconnect (update mode); the state names the bank login.
+Route::get('v1/social/plaid/relinked', [SocialAuthController::class, 'plaidRelinked'])
+    ->middleware('throttle:30,1')
+    ->name('social.plaid.relinked');
+
+// Plaid says a bank login changed. Unauthenticated by necessity; it names an
+// item and EzBizi re-reads that item from Plaid (PlaidWebhookController).
+Route::post('v1/integrations/plaid/webhook', PlaidWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.plaid.webhook');
+
 // Monday says an item changed. Unauthenticated by necessity: the JWT Monday
 // signs with the app's Signing Secret is what is checked (MondayWebhookController).
 Route::post('v1/integrations/monday/webhook', MondayWebhookController::class)
@@ -1086,6 +1099,8 @@ Route::prefix('v1')
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
         Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
         Route::get('task-boards/{taskBoard}/search', [TaskBoardsController::class, 'search']);
+        Route::get('task-boards/{taskBoard}/activity', [TasksController::class, 'boardActivity']);
+        Route::get('task-boards/{taskBoard}/export', [TaskBoardsController::class, 'export']);
         Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
@@ -1130,6 +1145,9 @@ Route::prefix('v1')
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
         Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
+        Route::get('task-updates', [TasksController::class, 'feed']);
+        Route::get('my-work', [TasksController::class, 'myWork']);
+        Route::post('task-updates/read-all', [TasksController::class, 'feedReadAll']);
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
@@ -1137,6 +1155,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}/updates/{update}', [TasksController::class, 'editUpdate']);
         Route::delete('tasks/{task}/updates/{update}', [TasksController::class, 'destroyUpdate']);
         Route::post('tasks/{task}/updates/{update}/like', [TasksController::class, 'likeUpdate']);
+        Route::post('tasks/{task}/updates/{update}/follow', [TasksController::class, 'followUpdate']);
+        Route::post('tasks/{task}/updates/{update}/bookmark', [TasksController::class, 'bookmarkUpdate']);
+        Route::post('tasks/{task}/updates/{update}/check', [TasksController::class, 'checkUpdate']);
         Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
         Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
         Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
@@ -1399,6 +1420,13 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Bank (Jose, 11-24): banks connected through Plaid, balances, transactions.
+        Route::middleware('permission:financials.bank.view')->group(function (): void {
+            Route::get('financials/bank', [FinancialBankController::class, 'index']);
+            Route::get('financials/bank/transactions', [FinancialBankController::class, 'transactions']);
+            Route::post('financials/bank/{connection}/reconnect', [FinancialBankController::class, 'reconnect']);
+            Route::post('financials/bank/{connection}/refresh', [FinancialBankController::class, 'refresh']);
         });
         // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
         Route::middleware('permission:financials.markets.view')->group(function (): void {
@@ -3716,6 +3744,9 @@ Route::prefix('v1')
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
+        Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
+        Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);
+        Route::delete('notifications', [NotificationsController::class, 'destroyAll']);
 
         // Alerts: one person to chosen colleagues (Communication ▸ Alerts).
         // Gated in the controller on phone.alerts.view, the tab's own key.

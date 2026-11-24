@@ -317,6 +317,17 @@ class PreferencesTest extends TestCase
         $this->assertSame(['--', 'dashboard', '--', '--'], $this->savedOrder());
     }
 
+    public function test_section_headings_are_kept_trimmed_and_blank_ones_dropped(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['#  Dispatch ', 'customers', '#', '#'.str_repeat('x', 41), '#Office', 'dashboard'],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(['#Dispatch', 'customers', '#Office', 'dashboard'], $this->savedOrder());
+    }
+
     public function test_something_that_is_not_a_list_saves_as_no_order_at_all(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [

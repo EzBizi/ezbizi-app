@@ -166,3 +166,76 @@ groupSidebar<T>(List<T> rows, Set<int> divideAfter, String Function(T) idOf) {
 
   return (rows: out, divideAfter: outDivide, headingAt: headingAt);
 }
+
+/// Prefix of a section heading in a saved order (Jose 11-24: sections are
+/// his to move, rename, add and remove). `#Work` is the heading "Work".
+const String sidebarHeading = '#';
+
+bool isSidebarHeading(String entry) => entry.startsWith(sidebarHeading);
+
+/// The whole sidebar from a saved order: rows, rules and headings.
+///
+/// An order with no heading in it (everybody before 11-24) gets the fixed
+/// [sidebarGroups]. One with headings is drawn exactly as saved: each heading
+/// starts a section, a section with no modules is not drawn, and a module the
+/// order does not name joins the section carrying its default group's name,
+/// or the last one.
+({List<T> rows, Set<int> divideAfter, Map<int, String> headingAt})
+layoutSidebar<T>(List<T> modules, List<String> order, String Function(T) idOf) {
+  if (!order.any(isSidebarHeading)) {
+    final a = arrangeSidebar(modules, order, idOf);
+    return groupSidebar(a.rows, a.divideAfter, idOf);
+  }
+
+  final byId = {for (final m in modules) idOf(m): m};
+  final sections = <({String label, List<T> rows, Set<int> rules})>[
+    (label: '', rows: [], rules: {}),
+  ];
+  final placed = <String>{};
+  for (final entry in order) {
+    if (isSidebarHeading(entry)) {
+      sections.add((label: entry.substring(1), rows: [], rules: {}));
+    } else if (entry == sidebarDivider) {
+      final s = sections.last;
+      if (s.rows.isNotEmpty) s.rules.add(s.rows.length - 1);
+    } else if (byId[entry] != null && placed.add(entry)) {
+      sections.last.rows.add(byId[entry] as T);
+    }
+  }
+  for (final m in modules) {
+    if (placed.contains(idOf(m))) continue;
+    final home = sidebarGroups[_groupOf(idOf(m))].label;
+    (sections.lastWhere(
+      (s) => s.label == home,
+      orElse: () => sections.last,
+    )).rows.add(m);
+  }
+
+  final rows = <T>[];
+  final divideAfter = <int>{};
+  final headingAt = <int, String>{};
+  for (final s in sections) {
+    if (s.rows.isEmpty) continue;
+    if (s.label.isNotEmpty) headingAt[rows.length] = s.label;
+    for (final r in s.rules) {
+      if (r < s.rows.length - 1) divideAfter.add(rows.length + r);
+    }
+    rows.addAll(s.rows);
+  }
+
+  return (rows: rows, divideAfter: divideAfter, headingAt: headingAt);
+}
+
+/// [sidebarOrderOf] with each heading written in front of its first row.
+List<String> sidebarSectionsOf<T>(
+  List<T> rows,
+  Set<int> divideAfter,
+  Map<int, String> headingAt,
+  String Function(T) idOf,
+) => [
+  for (var i = 0; i < rows.length; i++) ...[
+    if (headingAt[i] != null) '$sidebarHeading${headingAt[i]}',
+    idOf(rows[i]),
+    if (divideAfter.contains(i)) sidebarDivider,
+  ],
+];

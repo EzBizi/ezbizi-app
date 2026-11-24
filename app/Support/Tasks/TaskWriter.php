@@ -83,6 +83,8 @@ class TaskWriter
             };
 
             $status = $this->resolveStatus($board, $input)
+                // The board's chosen default label (gap review P1), else Not started.
+                ?? $board->statuses()->where('is_default', true)->first()
                 ?? $board->statuses()->where('key', Task::STATUS_NOT_STARTED)->first()
                 ?? $board->statuses()->first();
 
@@ -381,9 +383,23 @@ class TaskWriter
     /** Where a task with no group named goes. */
     public function openTasks(TaskBoard $board): TaskGroup
     {
-        return $board->groups()->get()->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === mb_strtolower(self::DEFAULT_GROUP))
-            ?? TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => self::DEFAULT_GROUP,
-                'colour' => '#579BFC', 'position' => (int) $board->groups()->max('position') + 1]);
+        $groups = $board->groups()->orderBy('position')->get();
+        $open = $groups->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === mb_strtolower(self::DEFAULT_GROUP));
+        if ($open !== null) {
+            return $open;
+        }
+        // Desk 11-24: a group deleted on Monday is never made again. Its work goes to the
+        // board's last group that is not a done or archive one (never the first: Company Info).
+        if (in_array(mb_strtolower(self::DEFAULT_GROUP), (array) ($board->builtin_columns['_monday_deleted_groups'] ?? []), true)) {
+            $last = $groups->reverse()->first(fn (TaskGroup $g) => ! preg_match('/done|complete|closed|archive|cancel/i', $g->name)
+                && $g->id !== $groups->first()?->id);
+            if ($last !== null) {
+                return $last;
+            }
+        }
+
+        return TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => self::DEFAULT_GROUP,
+            'colour' => '#579BFC', 'position' => (int) $board->groups()->max('position') + 1]);
     }
 
     public const WORKIZ_JOB_COLUMN = 'Workiz Job ID';
@@ -598,9 +614,12 @@ class TaskWriter
         });
     }
 
-    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null): TaskUpdate
+    /** [$at]: a time to post it (Monday's scheduled update); until then nobody sees or hears of it. */
+    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null, ?\DateTimeInterface $at = null): TaskUpdate
     {
-        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent) {
+        $later = $at !== null && $at > now();
+
+        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent, $later, $at) {
             $update = TaskUpdate::query()->create([
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
@@ -609,6 +628,12 @@ class TaskWriter
                 'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
             ]);
+            if ($later) {
+                $update->forceFill(['scheduled_for' => $at, 'created_at' => $at, 'updated_at' => $at])->saveQuietly();
+                $this->audit->log('task.update_scheduled', $task, actor: $author);
+
+                return $update;
+            }
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);
@@ -782,6 +807,8 @@ class TaskWriter
             $ids = collect([$task->created_by_user_id])
                 ->merge($task->owners()->pluck('user_id'))
                 ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
+                // Monday's bell: whoever follows the update this one replies to.
+                ->merge($update->parent_update_id ? (array) (TaskUpdate::query()->find($update->parent_update_id)?->followers ?? []) : [])
                 ->filter()->unique()->diff([...$skip, $update->user_id])->all();
             $who = $update->user()->value('name') ?? 'Monday';
             $told = 0;

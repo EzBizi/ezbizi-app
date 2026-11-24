@@ -489,7 +489,10 @@ class _TestingTabState extends State<TestingTab> {
   Widget _control(Map<String, dynamic> field) {
     final key = '${field['key']}';
     final label = '${field['label'] ?? key}';
-    final widgetKey = ValueKey('testing-field-$key');
+    // Unkeyed dividers/alerts must not share one key (see New Inspection).
+    final widgetKey = field['key'] == null
+        ? null
+        : ValueKey('testing-field-$key');
     final declared = _declaredField(key);
     final theme = Theme.of(context);
 
@@ -630,7 +633,9 @@ class _TestingTabState extends State<TestingTab> {
               for (final field in _fieldsOf(screen))
                 _whyRow(
                   context,
-                  key: ValueKey('testing-why-field-${field['key']}'),
+                  key: field['key'] == null
+                      ? null
+                      : ValueKey('testing-why-field-${field['key']}'),
                   title:
                       '${field['label'] ?? field['key']}'
                       '${field['required'] == true ? ' *' : ''}',
@@ -649,7 +654,7 @@ class _TestingTabState extends State<TestingTab> {
 
   Widget _whyRow(
     BuildContext context, {
-    required Key key,
+    Key? key,
     required String title,
     required bool shown,
     required String why,

@@ -32,6 +32,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
@@ -1265,21 +1266,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // source means none of them has to know the order exists. `divideAfter`
     // holds positions in it, and is empty for everybody who has never dragged
     // anything.
-    final arranged = arrangeSidebar(
-      destinations,
-      me.navigationOrder,
-      (d) => d.id,
-    );
-    // Under fixed group headings (Muse audit 1A); their order still
-    // decides the order inside each group.
-    final grouped = groupSidebar(
-      arranged.rows,
-      arranged.divideAfter,
-      (d) => d.id,
-    );
-    destinations = grouped.rows;
-    final divideAfter = grouped.divideAfter;
-    final headingAt = grouped.headingAt;
+    final laid = layoutSidebar(destinations, me.navigationOrder, (d) => d.id);
+    destinations = laid.rows;
+    final divideAfter = laid.divideAfter;
+    // Their sections (Jose 11-24), or the fixed groups until they arrange.
+    final headingAt = laid.headingAt;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -2391,96 +2382,46 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final at = _rail == _Rail.modules
         ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
-    // One line under each icon at any width and text size (Jose,
-    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
-    // label to one line, so the bar is drawn here: a short word, scaled
-    // down to fit its slot rather than wrapped.
-    final scheme = Theme.of(context).colorScheme;
-    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
-      final on = i == at;
-      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
-      return Expanded(
-        child: Tooltip(
-          message: tip,
-          child: InkWell(
-            key: key,
-            onTap: () {
-              if (i == slots.length) {
-                _scaffoldKey.currentState?.openDrawer();
-                return;
-              }
-              final (d, tab, label) = slots[i];
-              // A tab slot: the module takes the link and opens on that tab.
-              if (tab != null) {
-                DeepLinks.open(
-                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
-                );
-              }
-              _show(_Rail.modules, d.id);
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 56,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: on ? scheme.secondaryContainer : null,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(icon, color: ink, size: 22),
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: ink,
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
+    // One shared bar with the Roles editor's preview (Jose 2026-11-24:
+    // "you can't tell stuff apart"): equal slots, readable labels, and a
+    // tab slot with its own icon.
+    return PhoneBottomBar(
       key: const Key('phone-bottom-bar'),
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              for (final (i, (d, tab, label)) in slots.indexed)
-                slot(
-                  i,
-                  d.icon,
-                  label,
-                  tab == null ? d.label : '${d.label} › $label',
-                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
-                ),
-              slot(
-                slots.length,
-                Icons.menu,
-                'More',
-                'More',
-                const Key('phone-bottom-more'),
+      selected: at,
+      items: [
+        for (final (d, tab, label) in slots)
+          () {
+            final (icon, badge) = slotIcon(d.icon, tab);
+            return PhoneBarItem(
+              icon: icon,
+              badge: badge,
+              label: label,
+              tooltip: tab == null ? d.label : '${d.label} › $label',
+              key: ValueKey(
+                'phone-bottom-${d.id}${tab == null ? '' : '-$tab'}',
               ),
-            ],
-          ),
+            );
+          }(),
+        const PhoneBarItem(
+          icon: Icons.menu,
+          label: 'More',
+          key: Key('phone-bottom-more'),
         ),
-      ),
+      ],
+      onTap: (i) {
+        if (i == slots.length) {
+          _scaffoldKey.currentState?.openDrawer();
+          return;
+        }
+        final (d, tab, label) = slots[i];
+        // A tab slot: the module takes the link and opens on that tab.
+        if (tab != null) {
+          DeepLinks.open(
+            DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+          );
+        }
+        _show(_Rail.modules, d.id);
+      },
     );
   }
 
@@ -2530,6 +2471,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     child: _SidebarArranger(
                       destinations: destinations,
                       divideAfter: divideAfter,
+                      headingAt: headingAt,
                       onDone: (order) {
                         setState(() => _arrangingDrawer = false);
                         if (order != null) onArranged(order);
@@ -3284,6 +3226,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                   ? _SidebarArranger(
                       destinations: widget.destinations,
                       divideAfter: widget.divideAfter,
+                      headingAt: widget.headingAt,
                       onDone: (order) {
                         setState(() => _arranging = false);
                         if (order != null) widget.onArranged!(order);
@@ -3555,11 +3498,16 @@ class _SidebarArranger extends StatefulWidget {
   const _SidebarArranger({
     required this.destinations,
     required this.divideAfter,
+    required this.headingAt,
     required this.onDone,
   });
 
   final List<Destination> destinations;
   final Set<int> divideAfter;
+
+  /// The section headings, where they sit (Jose 11-24: "on the re-arrange
+  /// mode you don't see the group divisions").
+  final Map<int, String> headingAt;
 
   /// The order to save, or null when nothing moved — leaving without changing
   /// anything must not write a preference.
@@ -3569,7 +3517,7 @@ class _SidebarArranger extends StatefulWidget {
   State<_SidebarArranger> createState() => _SidebarArrangerState();
 }
 
-/// One row being dragged: a module, or a divider with an identity of its own.
+/// One row being dragged: a module, a divider, or a section heading.
 ///
 /// Dividers are identical to look at and must NOT be identical to the reorder
 /// animation — every child of a ReorderableListView needs a key that is unique
@@ -3580,8 +3528,15 @@ class _ArrangeRow {
 
   _ArrangeRow.divider() : id = sidebarDivider, key = UniqueKey();
 
-  final String id;
+  _ArrangeRow.heading(String label)
+    : id = '$sidebarHeading$label',
+      key = UniqueKey();
+
+  /// A heading's id changes as it is renamed.
+  String id;
   final Key key;
+
+  bool get isHeading => isSidebarHeading(id);
 }
 
 class _SidebarArrangerState extends State<_SidebarArranger> {
@@ -3591,27 +3546,73 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
   @override
   void initState() {
     super.initState();
-    _was = sidebarOrderOf(widget.destinations, widget.divideAfter, (d) => d.id);
+    _was = sidebarSectionsOf(
+      widget.destinations,
+      widget.divideAfter,
+      widget.headingAt,
+      (d) => d.id,
+    );
     _rows = [
       for (final entry in _was)
         if (entry == sidebarDivider)
           _ArrangeRow.divider()
+        else if (isSidebarHeading(entry))
+          _ArrangeRow.heading(entry.substring(1))
         else
           _ArrangeRow(entry, ValueKey(entry)),
     ];
   }
 
-  List<String> get _order => [for (final row in _rows) row.id];
+  // A heading cleared to nothing still saves as a heading, so the sections
+  // drawn after Done are the ones on screen now.
+  List<String> get _order => [
+    for (final row in _rows)
+      row.id == sidebarHeading
+          ? '$sidebarHeading${UiStrings.t('shell.new_section')}'
+          : row.id,
+  ];
 
   void _done() {
     final order = _order;
     widget.onDone(listEquals(order, _was) ? null : order);
   }
 
+  void _reorder(int from, int to) => setState(() {
+    if (!_rows[from].isHeading) {
+      // The index a drop reports is a GAP, so moving a row downwards counts
+      // the gap it vacated. A module dropped under another heading is now in
+      // that section; nothing else records which section it is in.
+      if (to > from) to -= 1;
+      _rows.insert(to, _rows.removeAt(from));
+      return;
+    }
+    // A heading carries its section with it, and lands between sections
+    // rather than splitting one.
+    var end = from + 1;
+    while (end < _rows.length && !_rows[end].isHeading) {
+      end++;
+    }
+    if (to >= from && to <= end) return;
+    final block = _rows.sublist(from, end);
+    _rows.removeRange(from, end);
+    if (to > end) to -= block.length;
+    bool edge(int i) => i == 0 || i == _rows.length || _rows[i].isHeading;
+    while (!edge(to)) {
+      to += to < from ? -1 : 1;
+    }
+    _rows.insertAll(to, block);
+  });
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final labels = {for (final d in widget.destinations) d.id: d};
+    final small = TextButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      textStyle: theme.textTheme.labelMedium,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3619,28 +3620,37 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextButton.icon(
-                  // After the first row, not at the end.
-                  //
-                  // A rule needs something on both sides to draw at all, so a
-                  // new one appended to the bottom is one you add, see in the
-                  // list, press Done on, and never see again. Here it is legal
-                  // the moment it exists, and on screen without scrolling.
-                  onPressed: () => setState(
-                    () => _rows.insert(
-                      math.min(1, _rows.length),
-                      _ArrangeRow.divider(),
+                child: Wrap(
+                  children: [
+                    TextButton.icon(
+                      // A new section goes on top, empty; drag modules in.
+                      onPressed: () => setState(
+                        () => _rows.insert(
+                          0,
+                          _ArrangeRow.heading(UiStrings.t('shell.new_section')),
+                        ),
+                      ),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: Text(UiStrings.t('shell.add_section')),
+                      style: small,
                     ),
-                  ),
-                  icon: const Icon(Icons.horizontal_rule, size: 16),
-                  label: Text(UiStrings.t('shell.add_divider')),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    alignment: Alignment.centerLeft,
-                    textStyle: theme.textTheme.labelMedium,
-                  ),
+                    TextButton.icon(
+                      // After the first module, where a rule is legal the
+                      // moment it exists and on screen without scrolling.
+                      onPressed: () => setState(() {
+                        final first = _rows.indexWhere(
+                          (r) => !r.isHeading && r.id != sidebarDivider,
+                        );
+                        _rows.insert(first + 1, _ArrangeRow.divider());
+                      }),
+                      icon: const Icon(Icons.horizontal_rule, size: 16),
+                      label: Text(UiStrings.t('shell.add_divider')),
+                      style: small,
+                    ),
+                  ],
                 ),
               ),
               TextButton(
@@ -3654,18 +3664,13 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           child: ReorderableListView.builder(
             padding: const EdgeInsets.only(bottom: 12),
             itemCount: _rows.length,
-            onReorder: (from, to) => setState(() {
-              // The index a drop reports is a GAP, so moving a row downwards
-              // counts the gap it vacated. Without this every downward drag
-              // lands one row short of where it was dropped.
-              if (to > from) to -= 1;
-              _rows.insert(to, _rows.removeAt(from));
-            }),
+            onReorder: _reorder,
             itemBuilder: (context, i) {
               final row = _rows[i];
               if (row.id == sidebarDivider) {
                 return _dividerRow(context, i, key: row.key);
               }
+              if (row.isHeading) return _headingRow(context, i, row);
               final destination = labels[row.id];
 
               return ListTile(
@@ -3685,6 +3690,48 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           ),
         ),
       ],
+    );
+  }
+
+  /// A section heading: its name, editable in place, a way to remove it (its
+  /// modules join the section above), and a handle that moves the section.
+  Widget _headingRow(BuildContext context, int i, _ArrangeRow row) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      key: row.key,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              initialValue: row.id.substring(1),
+              onChanged: (v) => row.id = '$sidebarHeading${v.trim()}',
+              inputFormatters: [LengthLimitingTextInputFormatter(40)],
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: UiStrings.t('shell.section_name'),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: UiStrings.t('shell.remove_section'),
+            onPressed: () => setState(() => _rows.removeAt(i)),
+          ),
+          ReorderableDragStartListener(
+            index: i,
+            child: const Icon(Icons.drag_handle),
+          ),
+        ],
+      ),
     );
   }
 
