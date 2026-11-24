@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
+      'Financials › Bank: connect your company bank and card accounts through Plaid to see balances and transactions (read-only; EzBizi never moves money)',
       'Sidebar: Rearrange shows the section headings; drag modules between sections, move, rename, add or remove sections',
       'Inspection: the garage door inspection step 2 works again (a step with two section dividers broke the form)',
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
