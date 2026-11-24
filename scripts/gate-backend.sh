@@ -77,10 +77,10 @@ sed 's/^/     /' "$RECORD.failed"
 # shellcheck disable=SC2046  # one test file per line, no spaces
 if EZBIZI_INCLUDED_FILES="$RECORD.exercised.raw" php8.4 -d memory_limit=1G \
     -d auto_prepend_file="$ROOT/scripts/gate-included-files.php" \
-    vendor/bin/phpunit --colors=never $(cat "$RECORD.failed") > "$RECORD.alone.log" 2>&1; then
+    vendor/bin/phpunit --colors=never $(cat "$RECORD.failed") > "$RECORD.alone.txt" 2>&1; then
   echo "   they PASS alone: the failure depends on what ran beside them (order, shared state), not only on the code"
 else
-  echo "   they fail alone too ($RECORD.alone.log)"
+  echo "   they fail alone too ($RECORD.alone.txt)"
 fi
 if [ -s "$RECORD.exercised.raw" ]; then
   sed -n "s|^$ROOT/||p" "$RECORD.exercised.raw" | sort -u > "$RECORD.exercised"

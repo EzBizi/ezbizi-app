@@ -296,7 +296,8 @@ GATE_LOCAL=$(mktemp -d)
     bash scripts/gate-backend.sh full /opt/ezbizi-test/backend-junit.xml "$GATE_RUNS/$GATE_RUN"
   else
     # shellcheck disable=SC2086  # test file paths, one word each
-    bash scripts/gate-backend.sh tests /opt/ezbizi-test/backend-junit.xml "$GATE_RUNS/$GATE_RUN" $GATE_TESTS
+    bash scripts/gate-backend.sh tests /opt/ezbizi-test/backend-junit.xml "$GATE_RUNS/$GATE_RUN" $GATE_TESTS \
+      || { rm -f "$GATE_RUNS/$GATE_RUN.tar"; exit 1; }
     # Passed: the full suite still runs, detached, on this same tree. `9>&-`, or
     # it would inherit this gate's lock and hold the next cut for its whole run.
     cp scripts/gate-background.sh "$GATE_RUNS/$GATE_RUN.background.sh"
