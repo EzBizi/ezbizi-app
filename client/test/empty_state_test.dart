@@ -1,5 +1,6 @@
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/empty_state.dart';
+import 'package:ezbizi_client/widgets/async_body.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,5 +74,34 @@ void main() {
       ),
     );
     expect(scroll.primary, isFalse);
+  });
+
+  // Mobile review 11-24: Inventory > Orders put a HeaderAboveList inside the
+  // one InventorySplitScaffold already draws. Two NestedScrollViews, the
+  // inner taking the outer's controller, overflowed the stack on "Add
+  // purchase order". Nested, the inner one is a plain column.
+  testWidgets('a HeaderAboveList inside another adds no second scroller', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HeaderAboveList(
+            header: const Text('outer'),
+            list: HeaderAboveList(
+              header: const Text('inner'),
+              list: ListView(children: const [Text('row')]),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(NestedScrollView), findsOneWidget);
+    expect(find.text('inner'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
