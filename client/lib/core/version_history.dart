@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
+      "Roles & permissions: every tab says in plain words what else it needs, with search, select all per module and a What this role sees preview; 15 tabs that hid or refused despite being ticked now work",
       'Task Board: the Calendar shows the scheduled jobs (it plots Schedule Date on Project Management boards), with a Date column picker',
       'Email: Compose Send from is a searchable list',
     ]),
