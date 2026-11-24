@@ -298,6 +298,19 @@ void main() {
     expect(find.byKey(const Key('field-door_type')), findsOneWidget);
   });
 
+  testWidgets(
+    'a role with no named inspection is told why, not shown a blank tab',
+    (tester) async {
+      await _pump(tester, picker: '{"data":[],"message":null}', searchBody: '');
+
+      expect(
+        find.textContaining('No inspection is granted to your role'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextField), findsNothing);
+    },
+  );
+
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
 
@@ -315,6 +328,7 @@ void main() {
 
 Future<void> _pump(
   WidgetTester tester, {
+  String picker = _picker,
   String? searchBody,
   String startBody = _run,
   int startStatus = 201,
@@ -330,7 +344,7 @@ Future<void> _pump(
         return http.Response(searchBody ?? _hits, 200, headers: _json);
       }
       if (path.endsWith('/inspections/startable')) {
-        return http.Response(_picker, 200, headers: _json);
+        return http.Response(picker, 200, headers: _json);
       }
       if (path.endsWith('/inspections/runs') && request.method == 'POST') {
         return http.Response(startBody, startStatus, headers: _json);
