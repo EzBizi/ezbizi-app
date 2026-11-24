@@ -11,9 +11,10 @@ use App\Models\TaskActivity;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
+use App\Models\TaskUpdate;
 use App\Models\User;
-use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -262,8 +263,11 @@ final class MondayPush
                 $this->writer->editUpdate($mondayId, trim((string) SensitiveTasks::open($update->body))."\n\n— from EzBizi".($who ? ', '.$who : ''));
             } elseif ($update !== null && ! $update->trashed() && $mondayId === null) {
                 $who = $update->user_id ? User::query()->find($update->user_id)?->name : null;
-                $id = $this->writer->createUpdate($itemId, trim($update->body)."\n\n— from EzBizi".($who ? ', '.$who : ''));
-                $update->forceFill(['external_ref' => 'monday:'.$id])->saveQuietly();
+                // A reply goes under its update's Monday twin (Chaim 11-24).
+                $parentRef = $update->parent_update_id ? (string) TaskUpdate::query()->withTrashed()->whereKey($update->parent_update_id)->value('external_ref') : '';
+                $parentMonday = str_starts_with($parentRef, 'monday:') ? (string) last(explode('.', substr($parentRef, 7))) : null;
+                $id = $this->writer->createUpdate($itemId, trim($update->body)."\n\n— from EzBizi".($who ? ', '.$who : ''), $parentMonday);
+                $update->forceFill(['external_ref' => 'monday:'.($parentMonday !== null ? $parentMonday.'.' : '').$id])->saveQuietly();
             }
         } else {
             $values = $this->values($task, $kinds, $this->meta($itemBoard));

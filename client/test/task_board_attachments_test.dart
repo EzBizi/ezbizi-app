@@ -505,10 +505,18 @@ void main() {
     Files.debugOnDownload = (name, _) => saved.add(name);
     await pumpBoard(tester);
     await openTask(tester);
+    await tester.ensureVisible(
+      find.byKey(const Key('task-attachments-select')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-attachments-select')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-pdf')));
     await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-doc')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('task-attachments-download')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-attachments-download')));
     await tester.pumpAndSettle();
@@ -520,7 +528,10 @@ void main() {
     await pumpBoard(tester);
     await openTask(tester);
     final body = find.byKey(const ValueKey('task-update-body-u1'));
-    expect(tester.widget<SelectableText>(body).textSpan!.toPlainText(), 'Photos from the roof');
+    expect(
+      tester.widget<SelectableText>(body).textSpan!.toPlainText(),
+      'Photos from the roof',
+    );
   });
 
   testWidgets('the author edits an update from its menu (row 43, Sheryl)', (

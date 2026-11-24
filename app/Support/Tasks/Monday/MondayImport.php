@@ -756,13 +756,15 @@ final class MondayImport
                 // The 11-03 run keyed a reply by its position; now by its own id.
                 $ref = 'monday:'.$u['monday_id'].'.'.($r['monday_id'] ?? $i);
                 $legacy = 'monday:'.$u['monday_id'].'.'.$i;
-                $this->update($task, $r, $ref, $as, true, $legacy);
+                $this->update($task, $r, $ref, $as, true, $legacy, 'monday:'.$u['monday_id']);
             }
         }
     }
 
-    private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null): void
+    private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null, ?string $parentRef = null): void
     {
+        // Chaim 11-24: a Monday reply hangs under its update here.
+        $parentId = $parentRef === null ? null : TaskUpdate::query()->withTrashed()->where('external_ref', $parentRef)->value('id');
         $files = $u['files'] ?? [];
         $existing = TaskUpdate::query()->withTrashed()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
         $body = trim((string) preg_replace('/\n\n— from EzBizi.*$/su', '', trim((string) ($u['body'] ?? ''))));
@@ -773,10 +775,14 @@ final class MondayImport
         }
         if ($existing !== null) {
             $this->counts['updates already there']++;
+            if ($parentId !== null && $existing->parent_update_id === null) {
+                $existing->forceFill(['parent_update_id' => $parentId])->saveQuietly();
+            }
             $this->files($existing, $files, $as, true);
             // Edited on Monday (row 43): its text comes here, marked Edited unless only a link's form changed.
-            $now = $body === '' ? '' : ($reply ? '↳ ' : '').$body;
             $had = (string) SensitiveTasks::open($existing->body);
+            // An old reply kept its "↳ " mark; one threaded under its update has none.
+            $now = $body === '' ? '' : ($reply && str_starts_with($had, '↳ ') ? '↳ ' : '').$body;
             if ($this->refresh && ! $existing->trashed() && $now !== '' && $now !== $had) {
                 $plain = fn (string $s) => (string) preg_replace('/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/', '$1', $s);
                 $sensitive = (bool) Task::query()->withTrashed()->whereKey($existing->task_id)->value('sensitive');
@@ -795,7 +801,8 @@ final class MondayImport
             'organization_id' => $task->organization_id,
             'task_id' => $task->id,
             'user_id' => $author?->id,
-            'body' => $body === '' ? '' : ($reply ? '↳ ' : '').$body,
+            'parent_update_id' => $parentId,
+            'body' => $body === '' ? '' : ($reply && $parentId === null ? '↳ ' : '').$body,
             'mentions' => $mentioned ?: null,
         ]);
         $at = isset($u['created_at']) ? CarbonImmutable::parse($u['created_at']) : null;

@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
+      'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
+      'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
+      'Task Board: label text is slightly bigger, matching Monday',
+      'Windows and web: right-click a module or tab for Open in new window, to keep two EzBizi screens side by side; the tray menu has New window',
+    ]),
     VersionRelease(version: '0.0.0635', date: '24 Nov 2026', items: [
       'Task Board: group title rows are tinted in the group colour with a bigger title',
       'Task Board: a status name saves as you type, and a name already in use says so',
