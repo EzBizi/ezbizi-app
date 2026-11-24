@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
+      'Inspection: the garage door inspection step 2 works again (a step with two section dividers broke the form)',
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
       'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
       'Task Board: label text is slightly bigger, matching Monday',
