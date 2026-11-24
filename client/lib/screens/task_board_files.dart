@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
 import '../core/files.dart';
@@ -81,8 +80,18 @@ Future<ApiBytesResponse> fetchTaskAttachment(ApiClient api, String url) {
 Future<void> openTaskAttachment(
   BuildContext context,
   ApiClient api,
-  Map<String, dynamic> a,
-) async {
+  Map<String, dynamic> a, {
+  List<Map<String, dynamic>> siblings = const [],
+}) async {
+  if (_isImage(a)) {
+    final images = [
+      for (final s in siblings.isEmpty ? [a] : siblings)
+        if (_isImage(s)) s,
+    ];
+    final at = images.indexWhere((s) => s['id'] == a['id']);
+    await showTaskImageLightbox(context, api, images, at < 0 ? 0 : at);
+    return;
+  }
   if (a['inline_url'] is String) {
     await showSidePanel<void>(
       context,
@@ -130,13 +139,18 @@ class _TaskAttachmentsState extends State<TaskAttachments> {
     if (attachments.isEmpty) return const SizedBox.shrink();
     Widget item(Map<String, dynamic> a) {
       final file = a['thumbnail_url'] is String
-          ? _Thumbnail(api: widget.api, attachment: a)
+          ? _Thumbnail(api: widget.api, attachment: a, siblings: attachments)
           : TaskFileChip(
               key: ValueKey('task-attachment-${a['id']}'),
               name: '${a['name']}',
               mime: a['mime'] as String?,
               size: a['size'] as num?,
-              onTap: () => openTaskAttachment(context, widget.api, a),
+              onTap: () => openTaskAttachment(
+                context,
+                widget.api,
+                a,
+                siblings: attachments,
+              ),
             );
       if (!_selecting) return file;
       final id = '${a['id']}';
@@ -225,10 +239,15 @@ class TaskFileChip extends StatelessWidget {
 }
 
 class _Thumbnail extends StatefulWidget {
-  const _Thumbnail({required this.api, required this.attachment});
+  const _Thumbnail({
+    required this.api,
+    required this.attachment,
+    this.siblings = const [],
+  });
 
   final ApiClient api;
   final Map<String, dynamic> attachment;
+  final List<Map<String, dynamic>> siblings;
 
   @override
   State<_Thumbnail> createState() => _ThumbnailState();
@@ -263,7 +282,12 @@ class _ThumbnailState extends State<_Thumbnail> {
       child: InkWell(
         key: ValueKey('task-attachment-${a['id']}'),
         borderRadius: BorderRadius.circular(8),
-        onTap: () => openTaskAttachment(context, widget.api, a),
+        onTap: () => openTaskAttachment(
+          context,
+          widget.api,
+          a,
+          siblings: widget.siblings,
+        ),
         child: Container(
           width: 72,
           height: 72,
@@ -376,6 +400,168 @@ class _TaskAttachmentViewerState extends State<TaskAttachmentViewer> {
                 fit: BoxFit.contain,
               ),
             ),
+    );
+  }
+}
+
+bool _isImage(Map<String, dynamic> a) =>
+    a['inline_url'] is String && '${a['mime'] ?? ''}'.startsWith('image/');
+
+/// Monday's image lightbox (Adeline 11-24): centred over the board, full
+/// screen on a phone; zoom, previous/next across the task's images,
+/// Download, Esc or the close button.
+Future<void> showTaskImageLightbox(
+  BuildContext context,
+  ApiClient api,
+  List<Map<String, dynamic>> images,
+  int start,
+) => showDialog<void>(
+  context: context,
+  builder: (_) => TaskImageLightbox(api: api, images: images, start: start),
+);
+
+class TaskImageLightbox extends StatefulWidget {
+  const TaskImageLightbox({
+    super.key,
+    required this.api,
+    required this.images,
+    this.start = 0,
+  });
+
+  final ApiClient api;
+  final List<Map<String, dynamic>> images;
+  final int start;
+
+  @override
+  State<TaskImageLightbox> createState() => _TaskImageLightboxState();
+}
+
+class _TaskImageLightboxState extends State<TaskImageLightbox> {
+  late int _at = widget.start;
+  final _bytes = <int, Uint8List?>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load(_at);
+  }
+
+  void _load(int i) {
+    if (_bytes.containsKey(i)) return;
+    _bytes[i] = null;
+    _fetch(widget.api, '${widget.images[i]['inline_url']}').then((res) {
+      if (mounted && res.bytes != null) {
+        setState(() => _bytes[i] = Uint8List.fromList(res.bytes!));
+      }
+    });
+  }
+
+  void _go(int d) {
+    final n = _at + d;
+    if (n < 0 || n >= widget.images.length) return;
+    setState(() => _at = n);
+    _load(n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.images[_at];
+    final bytes = _bytes[_at];
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    final many = widget.images.length > 1;
+    final scheme = Theme.of(context).colorScheme;
+    final ink = scheme.onInverseSurface;
+    final body = Column(
+      children: [
+        Row(
+          children: [
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                '${a['name']}${many ? '  ·  ${_at + 1} of ${widget.images.length}' : ''}',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: ink, fontSize: 15),
+              ),
+            ),
+            IconButton(
+              key: const Key('lightbox-download'),
+              tooltip: 'Download',
+              color: ink,
+              onPressed: bytes == null
+                  ? null
+                  : () => Files.download('${a['name']}', bytes),
+              icon: const Icon(Icons.download_outlined),
+            ),
+            IconButton(
+              key: const Key('lightbox-close'),
+              tooltip: 'Close',
+              color: ink,
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              if (many && !phone)
+                IconButton(
+                  key: const Key('lightbox-previous'),
+                  color: ink,
+                  iconSize: 36,
+                  onPressed: _at > 0 ? () => _go(-1) : null,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+              Expanded(
+                child: GestureDetector(
+                  onHorizontalDragEnd: phone && many
+                      ? (d) => _go((d.primaryVelocity ?? 0) < 0 ? 1 : -1)
+                      : null,
+                  child: bytes == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : InteractiveViewer(
+                          key: ValueKey('lightbox-image-${a['id']}'),
+                          maxScale: 8,
+                          child: Center(
+                            child: Image.memory(bytes, fit: BoxFit.contain),
+                          ),
+                        ),
+                ),
+              ),
+              if (many && !phone)
+                IconButton(
+                  key: const Key('lightbox-next'),
+                  color: ink,
+                  iconSize: 36,
+                  onPressed: _at < widget.images.length - 1
+                      ? () => _go(1)
+                      : null,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _go(-1),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () => _go(1),
+      },
+      child: Focus(
+        autofocus: true,
+        child: phone
+            ? Dialog.fullscreen(
+                backgroundColor: scheme.inverseSurface,
+                child: SafeArea(child: body),
+              )
+            : Dialog(
+                key: const Key('task-image-lightbox'),
+                backgroundColor: scheme.inverseSurface,
+                insetPadding: const EdgeInsets.all(40),
+                child: body,
+              ),
+      ),
     );
   }
 }
