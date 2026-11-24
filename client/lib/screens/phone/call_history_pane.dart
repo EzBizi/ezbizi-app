@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
+import '../../core/soft_keyboard.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
@@ -187,10 +188,11 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
+    final header = <Widget>[
+      // Typing on a phone the heading and the filter chips fold, so the
+      // search keeps the calls in view (mobile review 11-24).
+      FoldWhileTyping(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
           child: Row(
             children: [
@@ -206,20 +208,22 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ],
           ),
         ),
-        // Its own row under the heading: this column is about 210 wide
-        // beside the pad, too narrow to share a line with the title.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: SizedBox(
-            child: ListSearch(
-              key: const ValueKey('comm-call-history-search'),
-              hint: 'Search name or number',
-              onChanged: _search,
-            ),
+      ),
+      // Its own row under the heading: this column is about 210 wide
+      // beside the pad, too narrow to share a line with the title.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: SizedBox(
+          child: ListSearch(
+            key: const ValueKey('comm-call-history-search'),
+            hint: 'Search name or number',
+            onChanged: _search,
           ),
         ),
-        if (missed > 0 || voicemail > 0)
-          Padding(
+      ),
+      if (missed > 0 || voicemail > 0)
+        FoldWhileTyping(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -232,36 +236,66 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ),
             ),
           ),
-        Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(_error!, style: theme.textTheme.bodySmall),
-                )
-              : _rows.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    _query.trim().isNotEmpty
-                        ? 'Nothing matches "${_query.trim()}".'
-                        : 'No calls yet. Ones you make and take show up here.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : shown.isEmpty && _query.trim().isNotEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    'Nothing matches "${_query.trim()}".',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : _list(theme, shown),
         ),
-      ],
+      Divider(height: 1, color: EzBiziTheme.edge(context)),
+    ];
+    final Widget body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(_error!, style: theme.textTheme.bodySmall),
+          )
+        : _rows.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              _query.trim().isNotEmpty
+                  ? 'Nothing matches "${_query.trim()}".'
+                  : 'No calls yet. Ones you make and take show up here.',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        : shown.isEmpty && _query.trim().isNotEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              'Nothing matches "${_query.trim()}".',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        : _list(theme, shown);
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Keyboard added back, so focusing the search never flips this.
+        final view = View.of(context);
+        final room =
+            box.maxHeight + view.viewInsets.bottom / view.devicePixelRatio;
+        if (room >= 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ...header,
+              Expanded(child: body),
+            ],
+          );
+        }
+        // Short (an iPhone Duo's cover screen): the heading, search and chips
+        // scroll away with the calls instead of leaving them no room (they
+        // overflowed by 3 px there).
+        return NestedScrollView(
+          headerSliverBuilder: (context, _) => [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: header,
+              ),
+            ),
+          ],
+          body: body,
+        );
+      },
     );
   }
 
