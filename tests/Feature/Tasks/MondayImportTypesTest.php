@@ -3,13 +3,17 @@
 namespace Tests\Feature\Tasks;
 
 use App\Http\Controllers\Api\TasksController;
+use App\Models\AuditEvent;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardFolder;
+use App\Models\TaskBoardView;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskStatus;
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -192,7 +196,7 @@ class MondayImportTypesTest extends TestCase
         $this->assertSame([['Open Tasks', '#579bfc'], ['Completed Tasks', '#037f4c']], $groups,
             'Monday\'s groups in Monday\'s order and colours; the empty starter groups Monday does not have are gone');
 
-        $views = fn () => $this->inTenant($this->tenant['org'], fn () => \App\Models\TaskBoardView::query()->where('board_id', $board->id)->whereNull('user_id')
+        $views = fn () => $this->inTenant($this->tenant['org'], fn () => TaskBoardView::query()->where('board_id', $board->id)->whereNull('user_id')
             ->orderBy('position')->get()->map(fn ($v) => [$v->name, $v->config['layout']])->all());
         $this->assertSame([['Table', 'table'], ['Kanban', 'kanban'], ['Table 2', 'table']], $views(),
             'Monday\'s named views, shared on the board, with their layout; a repeated name is numbered');
@@ -228,6 +232,24 @@ class MondayImportTypesTest extends TestCase
     }
 
     /** Jose 11-13 (via desk): each board in the same folder, with Monday's folder colours. */
+    /** Desk 11-24: Jose's Activity held 300k sync writes as his clicks. The sync logs as itself. */
+    public function test_a_sync_is_logged_as_monday_sync_never_as_the_connections_user(): void
+    {
+        $this->importOld([]);
+        $this->connect();
+        $from = AuditEvent::query()->withoutGlobalScopes()->max('id');
+        $this->monday['boards'] = ['100' => $this->board('2026-11-13T10:30:00Z')];
+        $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
+
+        $rows = AuditEvent::query()->withoutGlobalScopes()->where('id', '>', $from)->where('action', 'like', 'task.%')->get();
+        $this->assertNotEmpty($rows, 'the sync changed the task');
+        $this->assertSame([], $rows->where('actor_id', $this->jose->id)->pluck('action')->all());
+        $this->assertSame(['Monday sync'], $rows->pluck('actor_label')->unique()->values()->all());
+
+        // Outside the sync, Jose's own click is his again.
+        $this->assertSame('Jose Luis Demasi <jose@ezbizi.test>', app(AuditLogger::class)->log('task.updated', actor: $this->jose)?->actor_label);
+    }
+
     public function test_the_board_lands_in_mondays_folder_with_its_colours_and_every_sync_follows_monday(): void
     {
         $this->importOld([]);
@@ -241,7 +263,7 @@ class MondayImportTypesTest extends TestCase
         $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
 
         $this->inTenant($this->tenant['org'], function () {
-            $folders = \App\Models\TaskBoardFolder::query()->get();
+            $folders = TaskBoardFolder::query()->get();
             $this->assertCount(2, $folders, 'made once');
             $root = $folders->firstWhere('name', 'A1 Chimney');
             $leaf = $folders->firstWhere('name', 'Marketing');
@@ -255,7 +277,7 @@ class MondayImportTypesTest extends TestCase
         });
         $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
         $this->inTenant($this->tenant['org'], fn () => $this->assertSame(
-            \App\Models\TaskBoardFolder::query()->where('name', 'Marketing')->value('id'),
+            TaskBoardFolder::query()->where('name', 'Marketing')->value('id'),
             TaskBoard::query()->where('external_ref', 'monday:100')->value('folder_id')));
 
         // Out of every folder on Monday: out of every folder here.
@@ -302,7 +324,7 @@ class MondayImportTypesTest extends TestCase
         $this->importOld([]);
         $this->connect();
         $this->monday['boards'] = ['100' => $this->board('2026-11-12T10:00:00Z')];
-        $this->inTenant($this->tenant['org'], fn () => \App\Models\Task::query()->where('external_ref', 'monday:11')
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')
             ->update(['status_id' => TaskStatus::query()->where('name', 'Stuck')->value('id')]));
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
         $status = fn () => $this->inTenant($this->tenant['org'], fn () => Task::query()->with('statusRow')->where('external_ref', 'monday:11')->sole()->statusRow->name);

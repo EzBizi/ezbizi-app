@@ -19,6 +19,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Tasks\ColumnConverter;
@@ -154,7 +155,9 @@ final class MondayImport
         DB::beginTransaction();
         try {
             // What Monday already has is never written back to it (MondayOutbox).
-            MondayOutbox::suppress(fn () => $this->tenant->run($org, function () use ($data, $as) {
+            // Desk 11-24: Jose's Activity held 300k sync writes as his clicks. The sync is
+            // logged as "Monday sync"; a task Monday's creator made, as that creator.
+            MondayOutbox::suppress(fn () => app(AuditLogger::class)->actingAs(null, 'Monday sync', fn () => $this->tenant->run($org, function () use ($data, $as) {
                 $this->people = User::query()->get()->keyBy(fn (User $u) => mb_strtolower($u->email))->all();
                 $actor = $as instanceof User ? $as : ($this->person($as)
                     ?? throw new \RuntimeException('--as must be the email of a user in this organization.'));
@@ -181,7 +184,7 @@ final class MondayImport
                         }
                     }
                 }
-            }));
+            })));
             if (! $this->dry && ($this->retitled !== [] || $this->blankStatus !== [])) {
                 // Outside the suppression: the cleaned titles, and the status we gave an item Monday
                 // left blank (Monday showed an empty cell, we "Not started"), go back as live rows.
@@ -429,7 +432,12 @@ final class MondayImport
             ? $this->reuse($existing, $board, $parent, $input, $as)
             // On the sync, made by the Monday item's creator when they have an account here, else by
             // nobody (Monday), never by the connection's own user (desk 11-19).
-            : $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $this->refresh ? $this->person($item['creator_email'] ?? null) : $as);
+            : (function () use ($board, $input, $parent, $item, $as) {
+                $creator = $this->refresh ? $this->person($item['creator_email'] ?? null) : $as;
+                $make = fn () => $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $creator);
+
+                return $this->refresh && $creator !== null ? app(AuditLogger::class)->actingAs($creator, 'Monday sync', $make) : $make();
+            })();
 
         $created = isset($item['created_at']) ? CarbonImmutable::parse($item['created_at']) : null;
         $task->forceFill(array_filter([

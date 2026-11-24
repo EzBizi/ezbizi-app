@@ -45,6 +45,30 @@ class TaskBoardFoldersTest extends TestCase
         $this->assertNull($row['folder_id']);
     }
 
+    /** Jose 11-24 (Adeline): a folder shows only on the way to a board you can open. */
+    public function test_a_reader_sees_only_the_folders_that_lead_to_a_board_they_can_open(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $maker = $this->userWithRole($tenant, 'Maker', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
+        $reader = $this->userWithRole($tenant, 'Reader', ['tasks.view']);
+        $api = fn () => $this->signedInAs($maker);
+        $folder = fn (string $name, ?string $parent = null) => $api()->postJson('/api/v1/task-board-folders', ['name' => $name, 'parent_id' => $parent])->assertCreated()->json('data.id');
+        $a1 = $folder('A1 Chimney');
+        $field = $folder('Field Management', $a1);
+        $pm = $folder('Project Management', $field);
+        $marketing = $folder('Marketing', $a1);
+        $folder('Office Management');
+        $open = $api()->postJson('/api/v1/task-boards', ['name' => 'Ohio PM', 'visibility' => 'main', 'franchise_id' => $tenant['franchise']->id])->assertCreated()->json('data.id');
+        $private = $api()->postJson('/api/v1/task-boards', ['name' => 'Ads', 'visibility' => 'private', 'franchise_id' => $tenant['franchise']->id])->assertCreated()->json('data.id');
+        $api()->patchJson("/api/v1/task-boards/{$open}", ['folder_id' => $pm])->assertOk();
+        $api()->patchJson("/api/v1/task-boards/{$private}", ['folder_id' => $marketing])->assertOk();
+
+        $names = fn ($user) => collect($this->signedInAs($user)->getJson('/api/v1/task-board-folders')->assertOk()->json('data'))->pluck('name')->sort()->values()->all();
+        $this->assertSame(['A1 Chimney', 'Field Management', 'Project Management'], $names($reader));
+        // Whoever arranges the list sees every folder, empty ones too.
+        $this->assertCount(5, $names($maker));
+    }
+
     public function test_another_organizations_folder_is_not_found(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -95,5 +119,4 @@ class TaskBoardFoldersTest extends TestCase
         // A rename still answers with the board.
         $this->assertArrayHasKey('groups', $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['name' => 'Partners 2'])->assertOk()->json('data'));
     }
-
 }
