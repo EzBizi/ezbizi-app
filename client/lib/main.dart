@@ -71,6 +71,7 @@ import 'widgets/quick_search.dart';
 import 'widgets/incoming_call_bar.dart';
 import 'widgets/incoming_call_popup.dart';
 import 'core/phone_call_service.dart';
+import 'core/soft_keyboard.dart';
 import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
@@ -1200,7 +1201,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _shell(BuildContext context) {
     final me = widget.session.me!;
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = _wideShell(context);
 
     // Labels beside icons, unless this person has collapsed it or prefers the
     // stacked "blocks" shape. Stored, so it survives a reload — a sidebar that
@@ -2330,7 +2331,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         if (!_typing) PhoneAppBanner(session: widget.session),
         _HiddenWhileTyping(
-          typing: _typing && MediaQuery.sizeOf(context).width < 900,
+          typing: _typing && !_wideShell(context),
           child: ListenableBuilder(
             listenable: Listenable.merge([toolbar, action]),
             builder: (context, _) => ModulePageHeader(
@@ -4050,6 +4051,16 @@ class _ClockInElsewhereState extends State<_ClockInElsewhere> {
 /// Folds [child] away while the phone keyboard is up, unless the focus is in
 /// it (a header search being typed into stays). Its state is kept, so a typed
 /// search survives the fold.
+/// The desktop shape (sidebar, no bottom bar) from 900 wide, except on a
+/// phone turned sideways: 923x411 got the desktop sidebar, whose bottom rows
+/// left the module list -54 px, so nothing could be opened but by search
+/// (Android emulator, mobile review 11-24). A touch device under 560 tall keeps
+/// the phone shape; a tablet in landscape is taller and stays desktop.
+bool _wideShell(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width >= 900 && !(hasSoftKeyboard() && size.height < 560);
+}
+
 class _HiddenWhileTyping extends StatefulWidget {
   const _HiddenWhileTyping({required this.typing, required this.child});
 
