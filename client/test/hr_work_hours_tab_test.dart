@@ -1273,6 +1273,27 @@ void main() {
   // Mobile review 11-24 (iPhone 17): two requests pushed the week 21 px past
   // the bottom, and beside its buttons each request's text had ~80 px. On a
   // phone the buttons go under the text and the card scrolls inside a cap.
+  // Mobile review 11-24: on an iPhone Duo's cover screen (466x678, ~400 for
+  // the module) the search and filters left the people no room and the
+  // column overflowed by 20 px. On a phone they scroll with the list.
+  testWidgets('a short phone pane scrolls the search with the people', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(466, 110),
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => _week(
+        people: [
+          for (var i = 0; i < 12; i++) _person(id: 'u-$i', name: 'Person $i'),
+        ],
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('waiting requests fit a phone, buttons under the text', (
     tester,
   ) async {
