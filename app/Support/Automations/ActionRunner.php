@@ -3963,7 +3963,15 @@ class ActionRunner
 
         try {
             if (! app(TaskBoards::class)->canEdit($actor, $board)) {
-                return ['type' => $type, 'ok' => false, 'detail' => 'The person who made this rule cannot change that task board.'];
+                // Which gate refused, and on which board (health sweep 11-24: 3 refusals that would not reproduce).
+                $tb = app(TaskBoards::class);
+                $why = match (true) {
+                    ! $actor->hasPermission('tasks.edit') => 'no tasks.edit',
+                    ! $tb->canView($actor, $board) => 'cannot see the board',
+                    default => 'no write reach from view '.$request->header('X-EzBizi-View'),
+                };
+
+                return ['type' => $type, 'ok' => false, 'detail' => "The person who made this rule cannot change that task board ({$board->name}, {$board->getKey()}: {$why})."];
             }
 
             return ['type' => $type, 'ok' => true, 'detail' => $write($actor)];
