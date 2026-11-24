@@ -110,7 +110,11 @@ COMMIT=$(git rev-parse --short HEAD)
 # costs the reproducibility guarantee above nothing: the artefact is still
 # pinned to a commit that fully determines it. A change under client/, app/ or
 # any other shipping path still stops the build.
-DIRTY=$(git status --porcelain --untracked-files=no -- . ':(exclude)docs')
+#
+# Compared by content (git diff), not by `git status`: flutter pub get rewrites the
+# plugin registrants byte-for-byte identical, and under core.autocrlf status kept
+# calling them modified, so macOS refused 0.0.0628 and 0.0.0629 (desk, 2026-11-24).
+DIRTY=$(git diff --name-status HEAD -- . ':(exclude)docs')
 
 if [ -n "$DIRTY" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
