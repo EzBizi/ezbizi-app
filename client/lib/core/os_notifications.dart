@@ -1,3 +1,4 @@
+import 'app_window.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -221,7 +222,8 @@ class OsNotifications {
     String? payload,
   }) async {
     shownForTest?.add(title);
-    if (!_permitted) return;
+    // One toast per event: only the first window speaks (AppWindow).
+    if (!_permitted || AppWindow.secondary) return;
 
     try {
       await _plugin.show(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -130,6 +131,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-inspection-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('inspection', tab: tab.$1, label: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$1, tab.$2)],
             selected: selected,
             onSelected: (tab) => setState(() => _tab = tab),

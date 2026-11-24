@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/address.dart';
+import 'core/app_window.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deep_links.dart';
@@ -57,6 +58,7 @@ import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
 import 'widgets/tab_help.dart';
+import 'widgets/open_in_window.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
@@ -93,7 +95,9 @@ Future<void> main() async {
   BrokenWidgetCard.install();
 
   // A paired camera-bridge PC streams on its site key, signed in or not.
-  unawaited(startCameraBridge());
+  // Once per machine: never from a second window (AppWindow).
+  if (!AppWindow.secondary) unawaited(startCameraBridge());
+  AppWindow.watchFirst();
 
   runApp(const EzBiziApp());
 }
@@ -163,14 +167,8 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Never closes the app under a live call (Jose, 2026-10-09).
     // ...and only installs on its own once a person who takes calls here has
     // set Do Not Disturb (Jose, 2026-10-09).
-    DesktopUpdater.instance.guardCalls(
-      PhoneCallService.current,
-      () => PhoneCallService.current.busy,
-      availableForCalls: () =>
-          PhoneCallService.current.presenceHasLine &&
-          PhoneCallService.current.presence != 'dnd',
-    );
-    DesktopUpdater.instance.start();
+    // The first window updates; a second one would race it for the installer.
+    if (!AppWindow.secondary) _startUpdater();
     _session.addListener(_tellUpdaterWhoIsHere);
     _staffSession.addListener(_tellUpdaterWhoIsHere);
 
@@ -187,6 +185,17 @@ class _EzBiziAppState extends State<EzBiziApp> {
     } else {
       _staffSession.restore();
     }
+  }
+
+  void _startUpdater() {
+    DesktopUpdater.instance.guardCalls(
+      PhoneCallService.current,
+      () => PhoneCallService.current.busy,
+      availableForCalls: () =>
+          PhoneCallService.current.presenceHasLine &&
+          PhoneCallService.current.presence != 'dnd',
+    );
+    DesktopUpdater.instance.start();
   }
 
   @override
@@ -393,7 +402,10 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // The lock is the server's answer, never a permission read here
       // (design 2026-09-08 §3.9). Phones never lock, whatever it says.
       if (_session.me!.timeClock.lock && ClockWindow.canLock) {
-        return LockScreen(api: _api, session: _session);
+        // One lock screen: a second window points at the first.
+        return AppWindow.secondary
+            ? _ClockInElsewhere(session: _session)
+            : LockScreen(api: _api, session: _session);
       }
 
       return HomeShell(api: _api, session: _session, address: _address);
@@ -482,7 +494,7 @@ class _HomeShellState extends State<HomeShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
-  late final ShiftReminderController _reminder;
+  ShiftReminderController? _reminder;
   Timer? _clockPoll;
 
   /// Access changed elsewhere (an inbox granted, a role edited) reaches an
@@ -531,7 +543,7 @@ class _HomeShellState extends State<HomeShell> {
   /// class's own doc comment that the keep-alive fires unconditionally once
   /// this exists. Assigning it here forces that construction to happen
   /// exactly once, unconditionally, the moment the shell mounts.
-  late final MonitoringHeartbeat _heartbeat;
+  MonitoringHeartbeat? _heartbeat;
 
   /// This device's own periodic screen captures
   /// (2026-08-31-monitoring-screenshots). Same lifecycle as [_heartbeat] and
@@ -609,62 +621,10 @@ class _HomeShellState extends State<HomeShell> {
     // told, so it omits the `screenshot` capability from its beat.
     final exempt = widget.session.me?.screenMonitoringExempt ?? false;
 
-    _heartbeat = MonitoringHeartbeat(
-      widget.api,
-      screenMonitoringExempt: exempt,
-    );
-
-    // RGB lighting a manager sets in Monitoring, and the hardware inventory
-    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
-    startLighting(widget.api);
-
-    // The availability icon, given a minute hand.
-    //
-    // Do Not Disturb set on the web now reaches the desktop's SERVER state
-    // immediately, and the desktop's ICON found out only when something else
-    // made it look — which in practice meant changing tabs. Jose: "the status
-    // now syncs across devices, which is good, but only displays the change
-    // once you change tabs."
-    //
-    // I had claimed the app coming forward would cover it. It does not, and
-    // his report is what showed that: two windows side by side never leave
-    // the screen, so `AppLifecycleState.resumed` never fires and the hook
-    // watching for it can only wait. That claim is corrected where I made it.
-    //
-    // A minute is the wrong answer for a phone ringing and the right one for
-    // an icon: what it prevents is somebody reading a stale dot for the rest
-    // of the afternoon. Anything that must be immediate — a call starting or
-    // ending — already notifies in the same frame.
-    _heartbeat.onBeat = () {
-      PhoneCallService.current.presenceMayHaveChanged();
-      // A phone account that just got its first line is picked up within a
-      // minute, without a reload (Jose, 2026-11-12).
-      unawaited(PhoneCallService.current.syncAccounts());
-    };
-    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
-    // So no computer asks somebody who has the phone app to install it.
-    markPhoneAppUsed(widget.session);
-    if (!exempt) {
-      // The capture service tells the heartbeat how each attempt went, and
-      // the beat carries it to the server — otherwise a device that cannot
-      // capture at all is indistinguishable from one that has not tried yet.
-      _screenshots = ScreenshotService(
-        widget.api,
-        onOutcome: _heartbeat.reportCapture,
-      );
-      _liveView = LiveViewService(widget.api);
-      _remoteControl = RemoteControlService(widget.api);
-      _fileAccess = FileAccessService(widget.api);
-    }
-
-    _reminder = ShiftReminderController(
-      api: widget.api,
-      session: widget.session,
-      context: () => context,
-    );
-    _reminder.sync();
-    widget.session.addListener(_reminder.sync);
-    _stopClockListening = () => widget.session.removeListener(_reminder.sync);
+    // A second window (AppWindow) shows screens and nothing else: the
+    // heartbeat, monitoring, the shift reminder and the softphone run once,
+    // in the first window, or calls would ring and beats count twice.
+    if (!AppWindow.secondary) _startMachineServices(exempt);
 
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
@@ -701,15 +661,21 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    _followScope();
-    widget.session.addListener(_followScope);
+    if (!AppWindow.secondary) {
+      _followScope();
+      widget.session.addListener(_followScope);
+    }
 
     _apply(widget.address?.path);
+    // A second window names what it opened on from the first frame.
+    if (_selected case final opened? when AppWindow.secondary) {
+      _titleWindow(opened);
+    }
     // The day-before email's "Open Booked vs available" link carries its day
     // in the query, which the address bar's path drops (UI queue 147).
     // Leads opens one lead through its constructor (see [_screenFor]); every
     // other module takes the link from [DeepLinks].
-    if (DeepLinks.fromUri(Uri.base) case final link?) {
+    if (DeepLinks.fromUri(AppWindow.start ?? Uri.base) case final link?) {
       if (link.module == 'leads') {
         _leadsOpen = link.id;
       } else {
@@ -789,13 +755,74 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(phone.restart(widget.api));
   }
 
+  /// What one machine runs once: see [initState].
+  void _startMachineServices(bool exempt) {
+    _heartbeat = MonitoringHeartbeat(
+      widget.api,
+      screenMonitoringExempt: exempt,
+    );
+
+    // RGB lighting a manager sets in Monitoring, and the hardware inventory
+    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
+    startLighting(widget.api);
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat!.onBeat = () {
+      PhoneCallService.current.presenceMayHaveChanged();
+      // A phone account that just got its first line is picked up within a
+      // minute, without a reload (Jose, 2026-11-12).
+      unawaited(PhoneCallService.current.syncAccounts());
+    };
+    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
+    // So no computer asks somebody who has the phone app to install it.
+    markPhoneAppUsed(widget.session);
+    if (!exempt) {
+      // The capture service tells the heartbeat how each attempt went, and
+      // the beat carries it to the server — otherwise a device that cannot
+      // capture at all is indistinguishable from one that has not tried yet.
+      _screenshots = ScreenshotService(
+        widget.api,
+        onOutcome: _heartbeat!.reportCapture,
+      );
+      _liveView = LiveViewService(widget.api);
+      _remoteControl = RemoteControlService(widget.api);
+      _fileAccess = FileAccessService(widget.api);
+    }
+
+    _reminder = ShiftReminderController(
+      api: widget.api,
+      session: widget.session,
+      context: () => context,
+    );
+    final reminder = _reminder!;
+    reminder.sync();
+    widget.session.addListener(reminder.sync);
+    _stopClockListening = () => widget.session.removeListener(reminder.sync);
+  }
+
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_quickSearchKey);
     Callouts.ready = false;
     _stopListening?.call();
     DeepLinks.module.removeListener(_openRequestedModule);
-    _heartbeat.dispose();
+    _heartbeat?.dispose();
     stopLighting();
     _fieldTracker?.dispose();
     // Null for an exempt session, where they were never constructed.
@@ -804,17 +831,17 @@ class _HomeShellState extends State<HomeShell> {
     _remoteControl?.dispose();
     _fileAccess?.dispose();
 
-    widget.session.removeListener(_followScope);
+    if (!AppWindow.secondary) widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
-    PhoneCallService.current.stop();
+    if (!AppWindow.secondary) PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
     _accessPoll?.cancel();
     _accessOnResume?.dispose();
     _stopClockListening?.call();
-    _reminder.dispose();
+    _reminder?.dispose();
 
     super.dispose();
   }
@@ -960,7 +987,8 @@ class _HomeShellState extends State<HomeShell> {
     _rail = rail;
     _selected = id;
     widget.address?.push(_pathFor(rail, id));
-    unawaited(_heartbeat.enter(id));
+    unawaited(_heartbeat?.enter(id) ?? Future.value());
+    _titleWindow(id);
   });
 
   /// Another screen sending someone here ([OpenDestination]): read the id the
@@ -985,7 +1013,18 @@ class _HomeShellState extends State<HomeShell> {
       _apply(Address.pathOf(id));
     });
     widget.address?.push(_pathFor(_rail, _selected));
-    if (_selected case final shown?) unawaited(_heartbeat.enter(shown));
+    if (_selected case final shown?) {
+      unawaited(_heartbeat?.enter(shown) ?? Future.value());
+      _titleWindow(shown);
+    }
+  }
+
+  /// A second window says what it shows, so two EzBizis tell apart in the
+  /// taskbar and Alt-Tab.
+  void _titleWindow(String id) {
+    if (!AppWindow.secondary) return;
+    final label = widget.session.me?.module(id)?.label ?? id;
+    unawaited(AppWindow.setTitle('EzBizi — $label'));
   }
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -2434,14 +2473,17 @@ class _HomeShellState extends State<HomeShell> {
         bottom: false,
         child: Builder(
           builder: (context) {
-            Widget tile(Destination d, _Rail rail) => ListTile(
-              leading: Icon(d.icon),
-              title: Text(d.label),
-              selected: _rail == rail && _selected == d.id,
-              onTap: () {
-                Navigator.of(context).pop();
-                _show(rail, d.id);
-              },
+            Widget tile(Destination d, _Rail rail) => OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: ListTile(
+                leading: Icon(d.icon),
+                title: Text(d.label),
+                selected: _rail == rail && _selected == d.id,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _show(rail, d.id);
+                },
+              ),
             );
 
             final header = Padding(
@@ -3691,8 +3733,15 @@ Widget _rail(
     destinations: destinations
         .map(
           (d) => NavigationRailDestination(
-            icon: Icon(d.icon),
-            label: _railLabel(context, d.label, query),
+            // Right-click: "Open in new window" (AppWindow).
+            icon: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: Icon(d.icon),
+            ),
+            label: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: _railLabel(context, d.label, query),
+            ),
           ),
         )
         .toList(),
@@ -3841,3 +3890,61 @@ String barLabel(String id, String label) =>
       'customer_experience': 'Experience',
     }[id] ??
     (label.length <= 10 ? label : label.split(' ').first);
+
+/// A second window while the clock is locked (AppWindow): one lock screen,
+/// in the first window. This one says where to go and opens again on its own
+/// once the clock is in.
+class _ClockInElsewhere extends StatefulWidget {
+  const _ClockInElsewhere({required this.session});
+
+  final Session session;
+
+  @override
+  State<_ClockInElsewhere> createState() => _ClockInElsewhereState();
+}
+
+class _ClockInElsewhereState extends State<_ClockInElsewhere> {
+  late final Timer _poll = Timer.periodic(
+    const Duration(seconds: 15),
+    (_) => widget.session.refresh(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _poll;
+  }
+
+  @override
+  void dispose() {
+    _poll.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    key: const ValueKey('clock-in-elsewhere'),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_clock_outlined, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Clock in from your main EzBizi window.',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'This window opens again by itself once you are clocked in.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}

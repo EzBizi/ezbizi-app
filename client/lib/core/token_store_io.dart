@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -50,6 +51,10 @@ Future<void> init() async {
   } catch (_) {
     _cache = {};
   }
+  // A second window (app_window.dart) is handed the first one's session,
+  // which may be on no disk. Memory only: nothing here is written back.
+  final handed = Platform.environment['EZBIZI_TOKEN'];
+  if (handed != null && handed.isNotEmpty) _cache['ezbizi.token'] = handed;
 }
 
 String? readItem(String key) => _cache[key];

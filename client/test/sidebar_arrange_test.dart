@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/app_window.dart';
 import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/widgets/module_page_header.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -27,6 +29,31 @@ import 'package:http/testing.dart';
 /// why `tapping a row below a divider opens that row` is the load-bearing test
 /// here rather than one more case.
 void main() {
+  // Jose 2026-11-24: right-click a module, "Open in new window", for two
+  // EzBizis side by side (AppWindow).
+  testWidgets('right-click on a module opens it in a new window', (
+    tester,
+  ) async {
+    _wide(tester);
+    final opened = <String>[];
+    AppWindow.opener = (path) async => opened.add(path);
+    addTearDown(() => AppWindow.opener = (_) async {});
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'customers', 'jobs'],
+      order: ['dashboard', 'customers', 'jobs'],
+    );
+
+    await tester.tap(_inSidebar('Jobs'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open in new window'));
+    await tester.pumpAndSettle();
+
+    expect(opened, ['/jobs']);
+    // The right-click did not also switch this window to Jobs.
+    expect(_open('Jobs'), findsNothing);
+  });
+
   testWidgets('tapping a row below a divider opens THAT row', (tester) async {
     _wide(tester);
 
