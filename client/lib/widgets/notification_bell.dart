@@ -482,6 +482,34 @@ class _NotificationBellState extends State<NotificationBell>
     );
   }
 
+  /// One row: `read`, `unread` or `delete`, then the list re-read.
+  Future<void> _rowAction(String id, String action) async {
+    final record = ((_items.where((i) => i['id']?.toString() == id).firstOrNull?['meta']
+            as Map?)?['record']) as Map?;
+    final response = switch (action) {
+      'delete' => await widget.api.delete('/notifications/$id'),
+      'like' => await widget.api.post('/tasks/${record?['id']}/updates/${record?['update']}/like', {}),
+      _ => await widget.api.post('/notifications/$id/$action', {}),
+    };
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response.message)));
+    }
+    await _refresh();
+  }
+
+  /// "Delete all" asks once more in place (no dialogs in this app).
+  bool _confirmDeleteAll = false;
+
+  Future<void> _deleteAll() async {
+    final response = await widget.api.delete('/notifications');
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response.message)));
+    }
+    await _refresh();
+  }
+
   Future<void> _markAllRead() async {
     final response = await widget.api.post('/notifications/read-all', {});
 
@@ -549,6 +577,7 @@ class _NotificationBellState extends State<NotificationBell>
     if (!mounted) return;
 
     _settingsOpen = false;
+    _confirmDeleteAll = false;
     await showSidePanel<void>(
       context,
       // StatefulBuilder, because a panel's page is built ONCE by the route and
@@ -596,6 +625,23 @@ class _NotificationBellState extends State<NotificationBell>
                         if (context.mounted) repaint(() {});
                       },
                       child: const Text('Mark all read'),
+                    ),
+                  if (_items.isNotEmpty)
+                    TextButton(
+                      key: const Key('notifications-delete-all'),
+                      style: _confirmDeleteAll
+                          ? TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error)
+                          : null,
+                      onPressed: () async {
+                        if (!_confirmDeleteAll) {
+                          repaint(() => _confirmDeleteAll = true);
+                          return;
+                        }
+                        _confirmDeleteAll = false;
+                        await _deleteAll();
+                        if (context.mounted) repaint(() {});
+                      },
+                      child: Text(_confirmDeleteAll ? 'Delete all — sure?' : 'Delete all'),
                     ),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -714,7 +760,23 @@ class _NotificationBellState extends State<NotificationBell>
                             formats: widget.formats ?? DisplayFormats.fallback,
                           );
 
-                          return ListTile(
+                          return Dismissible(
+                            key: ValueKey('notification-swipe-${n['id']}'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              color: scheme.errorContainer,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Icon(Icons.delete_outline, color: scheme.onErrorContainer),
+                            ),
+                            onDismissed: (_) async {
+                              // Out of the list at once: a dismissed row
+                              // still in the tree is an assertion.
+                              repaint(() => _items.removeWhere((i) => i['id'] == n['id']));
+                              await _rowAction(n['id'].toString(), 'delete');
+                              if (context.mounted) repaint(() {});
+                            },
+                            child: ListTile(
                             key: ValueKey('notification-row-${n['id']}'),
                             dense: true,
                             contentPadding: const EdgeInsets.symmetric(
@@ -776,7 +838,10 @@ class _NotificationBellState extends State<NotificationBell>
                             subtitle: n['body'] != null
                                 ? Text(n['body'] as String)
                                 : null,
-                            trailing: Column(
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                            Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
@@ -795,6 +860,30 @@ class _NotificationBellState extends State<NotificationBell>
                                   const SizedBox(height: 4),
                                   const Tag('Rule'),
                                 ],
+                              ],
+                            ),
+                                // Monday parity (desk, 2026-11-24): per-row
+                                // read/unread and delete; a swipe also deletes.
+                                PopupMenuButton<String>(
+                                  key: ValueKey('notification-menu-${n['id']}'),
+                                  tooltip: 'More',
+                                  icon: const Icon(Icons.more_vert, size: 18),
+                                  onSelected: (action) async {
+                                    await _rowAction(n['id'].toString(), action);
+                                    if (context.mounted) repaint(() {});
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: unread ? 'read' : 'unread',
+                                      child: Text(unread ? 'Mark as read' : 'Mark as unread'),
+                                    ),
+                                    // Like, where the notification is about
+                                    // an update (Task Board's like route).
+                                    if (((n['meta'] as Map?)?['record'] as Map?)?['update'] != null)
+                                      const PopupMenuItem(value: 'like', child: Text('Like')),
+                                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                  ],
+                                ),
                               ],
                             ),
                             onTap: () async {
@@ -856,7 +945,7 @@ class _NotificationBellState extends State<NotificationBell>
                               // page is cached by the route.
                               repaint(() {});
                             },
-                          );
+                          ));
                         },
                       ),
                   ],

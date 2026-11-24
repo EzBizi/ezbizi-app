@@ -3716,6 +3716,9 @@ Route::prefix('v1')
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
+        Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
+        Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);
+        Route::delete('notifications', [NotificationsController::class, 'destroyAll']);
 
         // Alerts: one person to chosen colleagues (Communication ▸ Alerts).
         // Gated in the controller on phone.alerts.view, the tab's own key.
