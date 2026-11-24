@@ -30,7 +30,7 @@ use Throwable;
  */
 final class ClientMessages
 {
-    public const KINDS = ['project_link', 'scheduled', 'day_before', 'complete'];
+    public const KINDS = ['project_link', 'scheduled', 'day_before', 'complete', 'three_day_before', 'crew_day_before'];
 
     public function __construct(
         private readonly PhoneTexts $texts,
@@ -65,6 +65,17 @@ final class ClientMessages
             return null;
         }
         $body = $this->fill($job, $text);
+        if ($kind === 'crew_day_before') {
+            // The crew's work order, the day before (Jose's PM flow, 2026-11-23).
+            if (($why = $this->toCrew($job, $body)) !== null) {
+                $claim->delete();
+                $this->note($job, "Work order not sent to the crew: {$why}");
+
+                return $why;
+            }
+
+            return null;
+        }
         try {
             $to = (string) ($job->customer?->phone ?? '');
             $line = $this->schedule->line($job);
@@ -79,9 +90,6 @@ final class ClientMessages
             return $e->getMessage();
         }
         $this->note($job, 'Text to client: '.$body);
-        if ($kind === 'scheduled') {
-            $this->toCrew($job);
-        }
 
         return null;
     }
@@ -91,34 +99,74 @@ final class ClientMessages
      * Management's repair-team list): a user gets an in-app notification, a
      * phone-only contractor a link to the PDF that lapses in 7 days.
      */
-    private function toCrew(Job $job): void
+    private function toCrew(Job $job, string $body): ?string
     {
-        $tag = collect($job->tags ?? [])->first(fn ($t) => preg_match('/^(REPAIR TEAM|CONTRACTOR)/i', (string) $t));
+        // Any repair-team or contractor tag, as the board reads them ("KENNI REPAIR TEAM" too).
+        $tag = collect($job->tags ?? [])->first(fn ($t) => ProjectBoardController::isRepairTeam((string) $t));
         if ($tag === null) {
-            return;
+            return 'No repair team or contractor on the job.';
         }
         $team = collect((array) $this->settings->get('project_board.repair_tags', $job->franchise?->company ?? $job->organization))
             ->first(fn ($e) => is_array($e) && strcasecmp((string) ($e['name'] ?? ''), (string) $tag) === 0);
         $when = $job->scheduled_for?->format('D M j, g:i A') ?? 'the scheduled date';
-        $link = ProjectBoardController::workOrderLink($job);
         if (filled($team['user_id'] ?? null) && ($user = User::query()->find($team['user_id'])) !== null) {
-            $this->notify->dispatch(title: "Work order: {$job->number} on {$when}", body: $job->customer?->name, subject: $job, onlyTo: $user);
+            $this->notify->dispatch(title: "Work order: {$job->number} on {$when}", body: $body, subject: $job, onlyTo: $user);
         } elseif (filled($team['phone'] ?? null) && ($line = $this->schedule->line($job)) !== null) {
             try {
-                $this->texts->send($line, (string) $team['phone'], "Work order for {$job->number} on {$when}: {$link}", automated: true);
+                $this->texts->send($line, (string) $team['phone'], $body, automated: true);
             } catch (Throwable $e) {
                 $this->note($job, 'Work order not texted to the crew: '.$e->getMessage());
 
-                return;
+                return $e->getMessage();
             }
+        } else {
+            return "{$tag} has no user or phone in the repair team list.";
         }
-        $this->note($job, "Work order sent to {$tag}.");
+        $this->note($job, "Work order sent to {$tag}: {$body}");
+
+        return null;
+    }
+
+    /**
+     * Jose's PM flow (2026-11-23): 3 days before the job, when parts were
+     * ordered and are not received, the project manager is asked to confirm
+     * them. Once per job; the PM who readied it, else Project Management's
+     * people who reach the job.
+     */
+    public function partsCheck(Job $job): void
+    {
+        $open = \App\Models\JobPart::query()->where('job_id', $job->id)->where('kind', '!=', 'stock')->whereNull('received_at')->pluck('item');
+        if ($open->isEmpty()) {
+            return;
+        }
+        try {
+            ProjectBoardMessage::query()->create(['job_id' => $job->id, 'kind' => 'pm_parts_check']);
+        } catch (UniqueConstraintViolationException) {
+            return;
+        }
+        $pm = User::query()->find(((array) $job->schedule_proposal)['by'] ?? null);
+        $people = $pm ? collect([$pm]) : User::query()->where('is_active', true)->get()
+            ->filter(fn (User $u) => $u->hasPermission('project_board.view')
+                && in_array($job->franchise_id, \App\Support\Scoping\ViewScope::forUser($u)->franchiseIds(), true));
+        foreach ($people as $person) {
+            $this->notify->dispatch(title: "Confirm parts are in for {$job->number}", body: 'Scheduled in 3 days; not received yet: '.$open->implode(', '),
+                subject: $job, onlyTo: $person, urgent: true);
+        }
     }
 
     /** {client_first}, {company}, {date}, {link} in the company's wording. */
     public function fill(Job $job, string $text): string
     {
+        $pm = User::query()->find(((array) $job->schedule_proposal)['by'] ?? null);
+        $due = (int) (\App\Support\Jobs\JobMoney::of([$job->id])[$job->id]['due'] ?? 0);
+
         return strtr($text, [
+            // The project manager: who sent it to Ready to schedule; else the branch line.
+            '{pm_name}' => $pm?->name ?? 'your project manager',
+            '{pm_phone}' => (string) ($pm?->phone ?: $this->schedule->line($job)?->e164 ?? ''),
+            '{job}' => (string) $job->number,
+            '{balance}' => '$'.number_format($due / 100, 2),
+            '{work_order}' => ProjectBoardController::workOrderLink($job),
             '{client_first}' => trim(strtok((string) $job->customer?->name, ' ') ?: 'there'),
             '{company}' => (string) ($job->franchise?->company?->name ?? $job->franchise?->name ?? ''),
             '{date}' => $job->scheduled_for?->format('l, F j \a\t g:i A') ?? '',
