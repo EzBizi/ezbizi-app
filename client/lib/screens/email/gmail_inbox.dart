@@ -398,7 +398,12 @@ class _GmailInboxState extends State<GmailInbox> {
     _loadList();
   }
 
+  /// The open mail given the whole pane from a split layout ("Open full");
+  /// closing it returns to the split (Lucas Snyder 11-24: "too compact").
+  bool _readerFull = false;
+
   void _closeReader() {
+    _readerFull = false;
     _openRow = null;
     _fromId = null;
     _open = null;
@@ -1422,7 +1427,9 @@ class _GmailInboxState extends State<GmailInbox> {
     final open = _openRow != null;
     // Side by side that does not fit opens the mail over the whole pane, with
     // back — not a half-height reader below (Jose 11-03).
-    final pane = _pane == ReadingPane.right && width < _rightPaneNeeds
+    final pane =
+        (_pane == ReadingPane.right && width < _rightPaneNeeds) ||
+            (_readerFull && open)
         ? ReadingPane.off
         : _pane;
 
@@ -1460,9 +1467,11 @@ class _GmailInboxState extends State<GmailInbox> {
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // The mail gets two thirds: an even split left two lines of
+                  // a message under its header (Lucas Snyder 11-24).
                   Expanded(child: _list(context)),
                   const Divider(height: 1),
-                  Expanded(child: _reader(context, back: false)),
+                  Expanded(flex: 2, child: _reader(context, back: false)),
                 ],
               )
             : _list(context),
@@ -1625,6 +1634,13 @@ class _GmailInboxState extends State<GmailInbox> {
                     tooltip: 'Back to the messages',
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => setState(_closeReader),
+                  )
+                else
+                  IconButton(
+                    key: const ValueKey('email-open-full'),
+                    tooltip: 'Open full',
+                    icon: const Icon(Icons.open_in_full),
+                    onPressed: () => setState(() => _readerFull = true),
                   ),
                 IconButton(
                   tooltip: 'Archive',
