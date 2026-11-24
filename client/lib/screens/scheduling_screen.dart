@@ -54,6 +54,15 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
 
   void _takeLink() {
     final link = DeepLinks.take('scheduling');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      final at = _tabs.indexWhere((t) => t.$1 == link!.id);
+      if (at >= 0) {
+        _tab = at;
+        _shown.add(at);
+      }
+      return;
+    }
     if (link?.type != 'booked_vs_available') return;
     final at = _tabs.indexWhere((t) => t.$1 == 'rescheduling');
     if (at < 0) return;

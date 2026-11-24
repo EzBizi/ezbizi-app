@@ -500,6 +500,7 @@ class Me {
     this.profileMissing = const [],
     this.viewAsAvailable = false,
     this.viewingAs,
+    this.mobileBar,
   });
 
   final String id;
@@ -555,6 +556,11 @@ class Me {
   /// being shown as right now, or null.
   final bool viewAsAvailable;
   final ViewingAs? viewingAs;
+
+  /// This person's role's phone bottom bar (design 208): up to four slots,
+  /// a module or one of its tabs, already filtered to what they can reach.
+  /// Null when the role has not chosen; the shell's default fills the rest.
+  final List<MobileBarSlot>? mobileBar;
 
   /// The organization has made a second factor mandatory (§6
   /// `security.require_two_factor`) and this account has not set one up.
@@ -940,6 +946,7 @@ class Me {
     profileMissing: profileMissing,
     viewAsAvailable: viewAsAvailable,
     viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
   /// A copy with the punch-clock chrome replaced after a successful POST.
@@ -969,6 +976,7 @@ class Me {
     profileMissing: profileMissing,
     viewAsAvailable: viewAsAvailable,
     viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
@@ -1132,10 +1140,30 @@ class Me {
     timeClock: TimeClockStatus.fromJson(json['time_clock']),
     viewAsAvailable: json['view_as_available'] == true,
     viewingAs: ViewingAs.from(json['viewing_as']),
+    mobileBar: json['mobile_bar'] is List
+        ? [
+            for (final m in json['mobile_bar'] as List)
+              if (m is Map && m['module'] is String)
+                MobileBarSlot(
+                  '${m['module']}',
+                  m['tab'] is String ? m['tab'] as String : null,
+                  '${m['label'] ?? ''}',
+                ),
+          ]
+        : null,
   );
 }
 
 /// `/me.viewing_as`: the role or person the app is being shown as.
+/// One slot of the phone's bottom bar: a module, or one of its tabs.
+class MobileBarSlot {
+  const MobileBarSlot(this.module, this.tab, this.label);
+
+  final String module;
+  final String? tab;
+  final String label;
+}
+
 class ViewingAs {
   const ViewingAs({required this.kind, required this.label, this.expiresAt});
 

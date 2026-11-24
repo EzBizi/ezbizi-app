@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
@@ -35,7 +36,28 @@ class _InspectionScreenState extends State<InspectionScreen> {
   void initState() {
     super.initState();
     _tab = 0;
+    _takeTab();
+    DeepLinks.pending.addListener(_tabArrived);
   }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_tabArrived);
+    super.dispose();
+  }
+
+  /// A phone bottom-bar slot (design 208): these tabs are known by their
+  /// words, so the slot's label finds it.
+  void _takeTab() {
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'inspection' && l.type == 'tab') {
+      DeepLinks.take('inspection');
+      final at = _tabs.indexWhere((t) => t.$1 == l.label);
+      if (at >= 0) _tab = at;
+    }
+  }
+
+  void _tabArrived() => setState(_takeTab);
 
   /// Owner's order, filtered by TWO rules that are not the same rule.
   ///

@@ -42,6 +42,12 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   @override
   void initState() {
     super.initState();
+    // A phone bottom-bar slot (design 208).
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'work_hours' && l.type == 'tab') {
+      _tab = DeepLinks.take('work_hours')!.id;
+      _shown.add(_tab);
+    }
     // A Daily approval reminder tapped before this screen existed.
     final waiting = DeepLinks.pending.value;
     if (waiting?.module == 'work_hours' && waiting?.type == approvalLinkType) {
@@ -69,6 +75,14 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   void _toLinkedTab() {
     final link = DeepLinks.pending.value;
     if (link?.module != 'work_hours') return;
+    if (link?.type == 'tab') {
+      final tab = DeepLinks.take('work_hours')!.id;
+      setState(() {
+        _tab = tab;
+        _shown.add(tab);
+      });
+      return;
+    }
     final tab = switch (link?.type) {
       approvalLinkType => 'approval',
       ptoRequestLinkType => 'pto',

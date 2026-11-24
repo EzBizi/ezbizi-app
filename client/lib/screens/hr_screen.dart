@@ -258,6 +258,12 @@ class _HrScreenState extends State<HrScreen> {
   void _takeLink() {
     final link = DeepLinks.take('hr');
     if (link == null) return;
+    // A phone bottom-bar slot (design 208).
+    if (link.type == 'tab') {
+      _tab = link.id;
+      _shown.add(link.id);
+      return;
+    }
     if (link.type == 'person') {
       _recordsLink = link;
       _tab = 'records';

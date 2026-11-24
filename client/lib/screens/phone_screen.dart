@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
@@ -34,6 +35,29 @@ class _PhoneScreenState extends State<PhoneScreen> {
   /// A tab nobody has opened must not fetch; a tab they have opened must keep
   /// its State when they glance at another one. Same Offstage stack as HR.
   final Set<String> _shown = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _takeTab();
+    DeepLinks.pending.addListener(_tabArrived);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_tabArrived);
+    super.dispose();
+  }
+
+  /// A phone bottom-bar slot (design 208) naming one of these tabs.
+  void _takeTab() {
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'phone' && l.type == 'tab') {
+      _tab = DeepLinks.take('phone')!.id;
+    }
+  }
+
+  void _tabArrived() => setState(_takeTab);
 
   /// Every tab, keyed as the registry declares them (`phone.<key>.view`).
   late final List<(String, String, IconData, Widget Function())> _declared = [

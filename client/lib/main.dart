@@ -2300,13 +2300,23 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _bottomBar(List<Destination> destinations) {
     final byId = {for (final d in destinations) d.id: d};
-    final slots = <Destination>[for (final id in _barFirst) ?byId[id]];
-    for (final d in destinations) {
+    // The role's own slots first (design 208, Jose 2026-11-23: "different
+    // for every role"), a module or one of its tabs; then the default fills
+    // whatever is left.
+    final slots = <(Destination, String?, String)>[
+      for (final m in widget.session.me?.mobileBar ?? const <MobileBarSlot>[])
+        if (byId[m.module] case final d?)
+          (d, m.tab, m.tab == null ? barLabel(d.id, d.label) : m.label),
+    ].take(4).toList();
+    for (final id in [..._barFirst, for (final d in destinations) d.id]) {
       if (slots.length >= 4) break;
-      if (!slots.contains(d)) slots.add(d);
+      final d = byId[id];
+      if (d != null && !slots.any((s) => s.$1 == d && s.$2 == null)) {
+        slots.add((d, null, barLabel(d.id, d.label)));
+      }
     }
     final at = _rail == _Rail.modules
-        ? slots.indexWhere((d) => d.id == _selected)
+        ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
     // One line under each icon at any width and text size (Jose,
     // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
@@ -2321,9 +2331,20 @@ class _HomeShellState extends State<HomeShell> {
           message: tip,
           child: InkWell(
             key: key,
-            onTap: () => i == slots.length
-                ? _scaffoldKey.currentState?.openDrawer()
-                : _show(_Rail.modules, slots[i].id),
+            onTap: () {
+              if (i == slots.length) {
+                _scaffoldKey.currentState?.openDrawer();
+                return;
+              }
+              final (d, tab, label) = slots[i];
+              // A tab slot: the module takes the link and opens on that tab.
+              if (tab != null) {
+                DeepLinks.open(
+                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+                );
+              }
+              _show(_Rail.modules, d.id);
+            },
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -2368,8 +2389,14 @@ class _HomeShellState extends State<HomeShell> {
           height: 64,
           child: Row(
             children: [
-              for (final (i, d) in slots.indexed)
-                slot(i, d.icon, barLabel(d.id, d.label), d.label, null),
+              for (final (i, (d, tab, label)) in slots.indexed)
+                slot(
+                  i,
+                  d.icon,
+                  label,
+                  tab == null ? d.label : '${d.label} › $label',
+                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
+                ),
               slot(
                 slots.length,
                 Icons.menu,
