@@ -95,7 +95,7 @@ void main() {
       'screens/roles_screen.dart': 1,
       'screens/settings/integration_provider_screen.dart': 1,
       'screens/task_board_columns.dart': 1,
-      'screens/task_board_screen.dart': 7,
+      'screens/task_board_screen.dart': 8, // + the update reply box
       'screens/task_board_sidebar.dart': 1,
       'screens/web/widgets_tab.dart': 1,
       // A reply, note or reason, after tapping Reply / Note / Deny.
