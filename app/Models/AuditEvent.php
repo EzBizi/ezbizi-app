@@ -97,7 +97,7 @@ class AuditEvent extends Model implements HoldsPersonalData
                  * log exists to hold, and the label was only ever the convenience
                  * of not having to join.
                  */
-                Erasure::erase('Removed account')),
+                Erasure::erase('Former staff')),
             new PersonalDataEntry('target_label', PersonalDataEntry::IDENTITY,
                 'What was acted ON, by name — which for a user or customer is a person.',
                 Erasure::erase('Removed record')),

@@ -90,7 +90,7 @@ class User extends Authenticatable implements HoldsPersonalData
     /** An erased account's stand-in name (see personalDataHeld), or no name at all. */
     public static function isErasedName(?string $name): bool
     {
-        return $name === null || trim($name) === '' || $name === 'Removed account';
+        return $name === null || trim($name) === '' || in_array($name, ['Former staff', 'Removed account'], true);
     }
 
     public static function personalDataHeld(): array
@@ -105,7 +105,7 @@ class User extends Authenticatable implements HoldsPersonalData
                  * audit trail beside it still shows their actions, since §5
                  * requires those to stay attributed.
                  */
-                Erasure::erase('Removed account')),
+                Erasure::erase('Former staff')),
             new PersonalDataEntry('first_name, middle_name, last_name',
                 PersonalDataEntry::IDENTITY,
                 'The parts the display name is composed from, stored separately because '

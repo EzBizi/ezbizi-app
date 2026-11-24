@@ -86,6 +86,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 60 | **Labels: Monday weight + exact Monday colours** (Chaim 01a20e86-4c93, auto-approved) | Task Board | ROUTED | Sent 11-24 |
 | 61 | **Updates panel = Monday: Updates/Files/Activity Log tabs, likes, seen-count, per-update replies, Read more** (Chaim 01a20e86-ff37, auto-approved) | Task Board | ROUTED | Sent 11-24 |
 | 62 | **Monday UI gap review build list** (Jose 11-24 "click everything ... make sure we have all its capabilities"): docs/agents/monday-ui-gap-review-2026-11-24.md, 117 gaps, 63-step list; P1: board activity log, export to Excel, update feed, My Work, status label editor; then P2s | Task Board (+ Notifications for per-row actions) | IN PROGRESS | P1 all built: activity log 26757454b, Excel export 51aea7bb9, update feed e4c309432, My Work 5f54c184d, label editor aa9f08f48 (merged cdc4d996f, ships 0636). Next: Updates leftovers, Bookmarked + Scheduled, then P2s |
+| 63 | **Calendar view shows the jobs like Monday** (Jose 11-24 staff recording: EzBizi calendar empty, Monday calendar shows the scheduled jobs): mirror each board's Monday calendar date column, add a date-column picker, explain an empty calendar | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 

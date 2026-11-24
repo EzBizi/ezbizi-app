@@ -3332,7 +3332,7 @@ class _DeletePanelState extends State<_DeletePanel> {
             'personal data is erased in every module, and their email and '
             'phone become free for a new account. Jobs, invoices, payroll '
             'totals and the audit log stay, with their name replaced by '
-            '"Removed account".',
+            '"Former staff".',
           ),
           const SizedBox(height: 16),
           if (_error != null) ...[

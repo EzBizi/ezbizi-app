@@ -76,7 +76,7 @@ class AutomationEvent extends Model implements HoldsPersonalData
             new PersonalDataEntry('actor_label', PersonalDataEntry::IDENTITY,
                 'The name and email of the employee whose action raised the event, as the '
                 .'audit log records it.',
-                Erasure::erase('Removed account')),
+                Erasure::erase('Former staff')),
             new PersonalDataEntry('payload.after.contact_name, payload.after.reviewer_name',
                 PersonalDataEntry::IDENTITY,
                 'The name an enquirer gave, or a Google reviewer\'s public name.',
