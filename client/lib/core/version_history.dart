@@ -17,6 +17,7 @@ class VersionHistory {
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
       'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
       'Task Board: label text is slightly bigger, matching Monday',
+      "What's been built: each version shows the time it went live, in your own time zone",
       'Task Board: Activity Log for the whole board, with filters by time, group, column and person',
       'Task Board: Export to Excel for a board, a group or the selected tasks',
       'Task Board: an Updates feed of every board in one list, with mentions, unread only and mark all as read',
