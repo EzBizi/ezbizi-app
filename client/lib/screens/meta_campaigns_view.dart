@@ -6,6 +6,7 @@ import '../core/numbers.dart';
 import '../widgets/ad_change_confirm.dart';
 import '../widgets/side_panel.dart';
 import 'ad_campaigns_shell.dart';
+import '../core/soft_keyboard.dart';
 
 /// Meta campaigns, ad sets and ads: what they spent, what came back, and the
 /// switch and budget that control them (Jose, 2026-11-04: "we need to be able
@@ -520,7 +521,7 @@ class _BudgetPanelState extends State<_BudgetPanel> {
           TextField(
             key: const ValueKey('meta-budget-amount'),
             controller: _amount,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               prefixText: r'$ ',

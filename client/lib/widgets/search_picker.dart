@@ -30,6 +30,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'side_panel.dart';
+import '../core/soft_keyboard.dart';
 
 /// One choosable thing.
 class SearchOption<T> {
@@ -427,7 +428,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: autofocusOnOpen,
                   decoration: InputDecoration(
                     isDense: true,
                     prefixIcon: const Icon(Icons.search, size: 18),
@@ -651,7 +652,7 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: autofocusOnOpen,
                   decoration: const InputDecoration(
                     isDense: true,
                     prefixIcon: Icon(Icons.search, size: 18),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/soft_keyboard.dart';
 
 /// A person picker's menu body (Jose 11-24): a search box on top, focused,
 /// filtering the names as you type, instead of a long list from "Nobody".
@@ -62,7 +63,7 @@ class _PeopleSearchListState extends State<PeopleSearchList> {
             child: TextField(
               key: ValueKey('${widget.keyPrefix}-search'),
               controller: _q,
-              autofocus: true,
+              autofocus: autofocusOnOpen,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 isDense: true,

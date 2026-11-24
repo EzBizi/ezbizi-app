@@ -306,7 +306,10 @@ class _FormPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return ColoredBox(
       color: Theme.of(context).colorScheme.surface,
-      child: Center(
+      // SafeArea: with the keyboard up the form scrolls, and on an iPhone the
+      // wordmark slid under the Dynamic Island (mobile review #5).
+      child: SafeArea(
+        child: Center(
         child: SingleChildScrollView(
           // 40 on a 360px phone leaves 280px of usable width, which is
           // narrower than the sign-in row needs. Tighten it when the screen is.
@@ -333,6 +336,7 @@ class _FormPanel extends StatelessWidget {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

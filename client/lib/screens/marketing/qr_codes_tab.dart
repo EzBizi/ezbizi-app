@@ -14,6 +14,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'qr_stats.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Marketing › QR Codes (UI queue 55; Jose, relayed by Marketing: "Go ahead
 /// with ur recommendations" — desktop 1, phone 4).
@@ -823,7 +824,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
           TextField(
             key: ValueKey('qr-destination:${code.id}'),
             controller: _destination,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             keyboardType: TextInputType.url,
             decoration: InputDecoration(
               isDense: true,

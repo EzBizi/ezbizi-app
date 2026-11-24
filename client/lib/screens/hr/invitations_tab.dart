@@ -21,6 +21,7 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'invite_links_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Every invitation and where it got to (HR plan, "Invitations").
 ///
@@ -1048,7 +1049,7 @@ class _InvitePanelState extends State<_InvitePanel> {
         children: [
           TextField(
             controller: _email,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             enabled: !_busy,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(

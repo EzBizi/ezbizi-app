@@ -21,6 +21,7 @@ import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/user_avatar.dart';
 import 'task_board_person_card.dart';
+import '../core/soft_keyboard.dart';
 
 /// A board's own columns (UI queue 84; Jose: "i should be able to make custom
 /// columns ... with options wether they are text based, numerical, status,
@@ -3345,7 +3346,7 @@ class _TaskPickCellState extends State<TaskPickCell> {
             child: TextField(
               key: ValueKey('task-pick-search-${widget.column.id}'),
               controller: _search,
-              autofocus: true,
+              autofocus: autofocusOnOpen,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 isDense: true,

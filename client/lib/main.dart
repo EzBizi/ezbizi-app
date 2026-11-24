@@ -489,7 +489,21 @@ enum _Rail { modules, pinned, staff, profile }
 const Key shellSidebarGroup = Key('shell-traversal-sidebar');
 const Key shellPageGroup = Key('shell-traversal-page');
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  /// The on-screen keyboard is up. Jose 11-24: "when the keyboard is on, you
+  /// can barely see stuff" (Leads > conversation: one message line visible).
+  /// On a phone it folds the chrome away: the company row, the state strip
+  /// and the page title. Set only when it flips, not on every frame of the
+  /// keyboard's slide.
+  bool _typing = false;
+
+  @override
+  void didChangeMetrics() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final up = views.isNotEmpty && views.first.viewInsets.bottom > 0;
+    if (up != _typing && mounted) setState(() => _typing = up);
+  }
+
   /// For Android's Back, which closes the drawer before anything else.
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -598,6 +612,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_quickSearchKey);
 
     // One-time tips: what this person already dismissed, and where a new
@@ -818,6 +833,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_quickSearchKey);
     Callouts.ready = false;
     _stopListening?.call();
@@ -1370,6 +1386,8 @@ class _HomeShellState extends State<HomeShell> {
     IssueReporter.module = shownId;
     IssueReporter.route = Address.pathOf(shownId);
 
+    // A phone with the keyboard up keeps only the toolbar and "Viewing as".
+    final folded = !wide && _typing;
     final barStates = _BarStates(
       // A state is not a control, and states already have a home here:
       // `_timeClockNotice` is described in this file as sitting "as a
@@ -1380,12 +1398,12 @@ class _HomeShellState extends State<HomeShell> {
       // showing, the actions row runs off the right edge -- these two
       // are conditional, so the worst case is worse than any screenshot
       // of a healthy account.
-      twoFactor: !wide && me.twoFactorEnrolmentRequired,
-      readOnly: !wide && me.organization.isReadOnly,
+      twoFactor: !wide && !folded && me.twoFactorEnrolmentRequired,
+      readOnly: !wide && !folded && me.organization.isReadOnly,
       // The third state this strip's own comment anticipated. It
       // scrolls rather than wraps, so it does not push every screen
       // down a row on a phone.
-      emailConfirmation: !wide && me.emailConfirmationRequired,
+      emailConfirmation: !wide && !folded && me.emailConfirmationRequired,
       onTwoFactor: _showProfile,
       onEmailConfirmation: _resendConfirmation,
       // "View as" (design 205): on every screen, desktop and phone.
@@ -1399,7 +1417,7 @@ class _HomeShellState extends State<HomeShell> {
       // The company picker on its own row on a phone (live 0.0.0597 at 375:
       // between the hamburger and the icons it got ~20 px and drew an
       // empty box). Only when there is somewhere else to stand.
-      scope: !wide && ScopeSwitcher.hasChoices(me)
+      scope: !wide && !folded && ScopeSwitcher.hasChoices(me)
           ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
           : null,
     );
@@ -2304,29 +2322,33 @@ class _HomeShellState extends State<HomeShell> {
       children: [
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
-        PhoneAppBanner(session: widget.session),
-        ListenableBuilder(
-          listenable: Listenable.merge([toolbar, action]),
-          builder: (context, _) => ModulePageHeader(
-            actions: [?action.value],
-            title: destination.label,
-            subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
-            // UI queue 81: the walkthrough and the how-to video, as A1 Tools
-            // had them, each only where the tab has one.
-            beside: TabHelpButtons(
-              module: destination.id,
-              label: destination.label,
-              api: widget.api,
-              session: widget.session,
+        if (!_typing) PhoneAppBanner(session: widget.session),
+        _HiddenWhileTyping(
+          typing: _typing && MediaQuery.sizeOf(context).width < 900,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([toolbar, action]),
+            builder: (context, _) => ModulePageHeader(
+              actions: [?action.value],
+              title: destination.label,
+              subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+              // UI queue 81: the walkthrough and the how-to video, as A1 Tools
+              // had them, each only where the tab has one.
+              beside: TabHelpButtons(
+                module: destination.id,
+                label: destination.label,
+                api: widget.api,
+                session: widget.session,
+              ),
+              toolbar: toolbar.value,
             ),
-            toolbar: toolbar.value,
           ),
         ),
-        TourOffer(
-          module: destination.id,
-          label: destination.label,
-          session: widget.session,
-        ),
+        if (!_typing)
+          TourOffer(
+            module: destination.id,
+            label: destination.label,
+            session: widget.session,
+          ),
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
@@ -3945,6 +3967,51 @@ class _ClockInElsewhereState extends State<_ClockInElsewhere> {
           ],
         ),
       ),
+    ),
+  );
+}
+
+/// Folds [child] away while the phone keyboard is up, unless the focus is in
+/// it (a header search being typed into stays). Its state is kept, so a typed
+/// search survives the fold.
+class _HiddenWhileTyping extends StatefulWidget {
+  const _HiddenWhileTyping({required this.typing, required this.child});
+
+  final bool typing;
+  final Widget child;
+
+  @override
+  State<_HiddenWhileTyping> createState() => _HiddenWhileTypingState();
+}
+
+class _HiddenWhileTypingState extends State<_HiddenWhileTyping> {
+  final _focus = FocusNode(
+    debugLabel: 'Hidden while typing',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_changed);
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _focus,
+    child: Visibility(
+      visible: !widget.typing || _focus.hasFocus,
+      maintainState: true,
+      child: widget.child,
     ),
   );
 }

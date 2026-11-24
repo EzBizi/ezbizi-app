@@ -5,6 +5,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The oldest client build each platform may still talk to.
 ///
@@ -424,7 +425,7 @@ class _EditPanelState extends State<_EditPanel> {
         children: [
           TextField(
             controller: _minimum,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Oldest allowed version',
               // The empty case spelled out, because it is the recovery path and

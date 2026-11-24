@@ -22,6 +22,7 @@ import '../../widgets/tag.dart';
 import 'camera_view.dart';
 import 'dashcam_events_panel.dart';
 import 'note_card.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Camera Monitoring — the tile grid of connected cameras (spec §"Sub-project
 /// 3"), the last of the three Monitoring sub-tabs to get a real screen.
@@ -949,7 +950,7 @@ class _AddCameraPanelState extends State<_AddCameraPanel> {
           TextField(
             key: const Key('camera-add-label-field'),
             controller: _labelController,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Label'),
           ),
           const SizedBox(height: 14),
