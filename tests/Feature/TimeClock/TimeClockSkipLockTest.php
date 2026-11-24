@@ -76,6 +76,28 @@ class TimeClockSkipLockTest extends TestCase
         $this->assertTrue($this->clock($person)['lock']);
     }
 
+    /** Jose, 2026-11-24: an Administrator's skip "should not be saved or even recorded". It still holds for the day. */
+    public function test_an_administrators_skip_works_all_day_and_writes_no_audit_row(): void
+    {
+        $locked = $this->person([]);
+        $admin = $this->inTenant($locked->organization, function () use ($locked) {
+            $admin = User::query()->where('organization_id', $locked->organization_id)->whereKeyNot($locked->id)->firstOrFail();
+            $admin->forceFill(['work_schedule' => $locked->work_schedule])->save();
+            $this->assertTrue($admin->fresh()->isAdministrator());
+
+            return $admin->fresh();
+        });
+        $this->assertTrue($this->clock($admin)['lock']);
+
+        $this->signedInAs($admin)->postJson('/api/v1/time-clock/skip-lock')->assertOk()->assertJsonPath('data.time_clock.lock', false);
+        $this->assertSame(0, AuditEvent::query()->withoutGlobalScopes()->where('action', 'time_clock.lock_skipped')->count());
+
+        Carbon::setTestNow(Carbon::parse('2026-09-09 03:30:00', 'UTC'));   // 23:30 local, same day
+        $this->assertFalse($this->clock($admin)['lock']);
+        Carbon::setTestNow(Carbon::parse('2026-09-09 12:00:00', 'UTC'));   // next day
+        $this->assertTrue($this->clock($admin)['lock']);
+    }
+
     public function test_without_the_permission_it_is_refused_and_still_locks(): void
     {
         $person = $this->person(['time_clock.lock_screen']);
