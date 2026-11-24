@@ -2261,6 +2261,16 @@ class ActionRunner
         $to = trim((string) $this->contactFromStored(
             trim((string) ($action['to'] ?? '')), $event, 'phone', $subject,
         ));
+        // Stored as typed ("860.329.1234"): normalised to E.164 here, and a
+        // number that is still not one is skipped with a sentence, not sent to
+        // Twilio to fail (health sweep 11-24).
+        if ($to !== '') {
+            $to = (string) \App\Models\Lead::e164($to);
+            if (preg_match('/^\+[1-9]\d{7,14}$/', $to) !== 1) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => "\"{$to}\" is not a complete phone number, so nothing was sent. Fix it on the record."];
+            }
+        }
         // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
         // sending {{...}} out as braces: a missed-call text that cannot name the
         // number that called is the rule Jose has been running for two weeks.

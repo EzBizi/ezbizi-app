@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0632', date: '24 Nov 2026', items: [
+      'Automations: a text to a number saved like 860.329.1234 now goes out; a number that is incomplete shows "not a complete phone number" in the run log instead of failing',
+    ]),
     VersionRelease(version: '0.0.0631', date: '24 Nov 2026', items: [
       'Task Board: Updates sit right after the task name',
       'Task Board: a job title shows the client name (and the tech after the number), e.g. "Marianne Baab · Artem"',
