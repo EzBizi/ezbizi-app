@@ -1420,16 +1420,39 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     }
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return true;
+    final digits = RegExp(r'^[\d\s\-()#.]+$').hasMatch(q)
+        ? q.replaceAll(RegExp(r'\D'), '')
+        : '';
     return [
-      t['title'],
-      ..._ownerNames(t),
-      (t['created_by'] as Map?)?['type'] == 'automation'
-          ? 'EzBizi'
-          : (t['created_by'] as Map?)?['label'],
-      _statusLabel(_board!, _statusOf(t)),
-      (t['about'] as Map?)?['label'],
-    ].any((v) => v is String && v.toLowerCase().contains(q));
+          t['title'],
+          ..._ownerNames(t),
+          (t['created_by'] as Map?)?['type'] == 'automation'
+              ? 'EzBizi'
+              : (t['created_by'] as Map?)?['label'],
+          _statusLabel(_board!, _statusOf(t)),
+          (t['about'] as Map?)?['label'],
+          // Natalie 11-24 (01a20df2): every column, as the board shows it.
+          for (final f in _filterFields.values)
+            if (f.key != 'status' && f.key != 'owner') ..._searchText(f, t),
+        ].any((v) => v is String && v.toLowerCase().contains(q)) ||
+        // "600025660" finds "600-025-660" and the reverse.
+        (digits.length >= 3 && _digitsOf(t).contains(digits));
   }
+
+  /// A column's value as words: option ids as their labels, lists flat.
+  Iterable<String> _searchText(FilterField f, _Json t) sync* {
+    final v = f.read(t);
+    for (final x in v is List ? v : [v]) {
+      if (x == null || x is Map) continue;
+      final s = '$x';
+      yield f.options.where((o) => o.$1 == s).firstOrNull?.$2 ?? s;
+    }
+  }
+
+  String _digitsOf(_Json t) => [
+    t['title'],
+    for (final f in _filterFields.values) ..._searchText(f, t),
+  ].join(' ').replaceAll(RegExp(r'\D'), '');
 
   Color _groupColour(BuildContext context, _Json group) =>
       ColourField.parse(group['colour'] as String? ?? '') ??
@@ -2833,8 +2856,38 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Widget _search() => ListSearch(
     key: const Key('tasks-search'),
     hint: 'Find a task',
-    onChanged: (v) => setState(() => _query = v),
+    onChanged: (v) {
+      setState(() => _query = v);
+      _findOnServer(v);
+    },
   );
+
+  /// The board holds a page per group, so a search also asks the server for
+  /// matches it has not loaded (done tasks, deep pages) and adds them.
+  Future<void> _findOnServer(String q) async {
+    final board = _board;
+    if (board == null || q.trim().length < 2) return;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted || _query != q || !identical(_board, board)) return;
+    final res = await widget.api.get('/task-boards/${board['id']}/search', {
+      'q': q.trim(),
+    });
+    if (!mounted || _query != q || !identical(_board, board) || !res.ok) {
+      return;
+    }
+    final have = {for (final t in _tasks) t['id']};
+    final found = [
+      for (final t in (res.body['data'] as List).cast<_Json>())
+        if (!have.contains(t['id'])) _adopt(board, t),
+    ];
+    if (found.isEmpty) return;
+    setState(
+      () => _board = {
+        ...board,
+        'tasks': [..._tasks, ...found],
+      },
+    );
+  }
 
   Widget _toolbar(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
