@@ -641,6 +641,8 @@ class _BoardTreeState extends State<BoardTree> {
               if (widget.docked)
                 IconButton(
                   key: const Key('tasks-boards-collapse'),
+                  // Compact, so a narrow sidebar's search keeps its words (Chevel 11-24).
+                  visualDensity: VisualDensity.compact,
                   tooltip: 'Hide boards',
                   icon: const Icon(Icons.keyboard_double_arrow_left, size: 18),
                   onPressed: () => _collapse(true),

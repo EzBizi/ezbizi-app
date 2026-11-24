@@ -580,9 +580,8 @@ class _TagChips extends StatelessWidget {
               child: Text(
                 o.label,
                 maxLines: 1,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                // Chaim 11-24: Monday's regular weight on every label.
+                style: theme.textTheme.bodySmall,
               ),
             ),
         ],
@@ -833,11 +832,7 @@ class ColumnCell extends StatelessWidget {
                   picked?.label ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: labelInk(fill),
-                  ),
+                  style: TextStyle(fontSize: 13, color: labelInk(fill)),
                 ),
               ),
             ),
@@ -881,9 +876,7 @@ class ColumnCell extends StatelessWidget {
                   picked?.label ?? '—',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: theme.textTheme.bodySmall,
                 ),
               ),
             ),
@@ -2984,11 +2977,7 @@ class LabelBlocks extends StatelessWidget {
               l.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: labelInk(fill),
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: labelInk(fill), fontSize: 13),
             ),
           ),
         ),
