@@ -83,6 +83,8 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 57 | **Task title field shows the whole title** (Natalie 01a20e61) | Task Board | ROUTED | Sent 11-24 |
 | 58 | **Status save does nothing (duplicate "Done")** (Natalie 01a20e4b) | Task Board | ROUTED | Sent 11-24 |
 | 59 | **Opening Updates marks them read** (Adeline 01a20e7f): unread badge stays after opening; must clear per viewer, at once, everywhere | Task Board | ROUTED | Sent 11-24 |
+| 60 | **Labels: Monday weight + exact Monday colours** (Chaim 01a20e86-4c93, auto-approved) | Task Board | ROUTED | Sent 11-24 |
+| 61 | **Updates panel = Monday: Updates/Files/Activity Log tabs, likes, seen-count, per-update replies, Read more** (Chaim 01a20e86-ff37, auto-approved) | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
