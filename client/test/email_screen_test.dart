@@ -189,6 +189,8 @@ void main() {
   // side by side is the reading-pane setting.
   testWidgets('at 1400px opening a message replaces the list; Esc and back '
       'return to it', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     final list = find.byKey(const ValueKey('tour-email-list'));
@@ -218,6 +220,7 @@ void main() {
     expect(list, findsOneWidget);
     expect(find.byType(MessageBody), findsOneWidget);
     expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   // ── "Seen by", and the setting that decides whether it exists ────
