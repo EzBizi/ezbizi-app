@@ -798,6 +798,8 @@ class TaskWriter
             $ids = collect([$task->created_by_user_id])
                 ->merge($task->owners()->pluck('user_id'))
                 ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
+                // Monday's bell: whoever follows the update this one replies to.
+                ->merge($update->parent_update_id ? (array) (TaskUpdate::query()->find($update->parent_update_id)?->followers ?? []) : [])
                 ->filter()->unique()->diff([...$skip, $update->user_id])->all();
             $who = $update->user()->value('name') ?? 'Monday';
             $told = 0;

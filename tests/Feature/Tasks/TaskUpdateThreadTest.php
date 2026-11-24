@@ -63,4 +63,24 @@ class TaskUpdateThreadTest extends TestCase
         $this->signedInAs($tenant['admin'])->postJson('/api/v1/task-updates/read-all')->assertOk();
         $this->assertCount(0, $feed('?unread=1')->json('data'));
     }
+
+    /** Chaim 11-24 (Monday's update card): the bell follows replies, and checklist lines tick. */
+    public function test_following_an_update_rings_on_its_replies_and_a_checklist_line_ticks(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
+        $tech = $this->userWithRole($tenant, 'Tech', ['tasks.view', 'tasks.edit']);
+        $watcher = $this->userWithRole($tenant, 'Watcher', ['tasks.view', 'tasks.edit']);
+        $api = fn ($u) => $this->signedInAs($u);
+        $task = $api($tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Liner'])->assertCreated()->json('data.id');
+        $top = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => "Steps\n☐ Order the liner\n☐ Book the crew"])->assertCreated()->json('data.id');
+
+        $this->assertTrue($api($watcher)->postJson("/api/v1/tasks/{$task}/updates/{$top}/follow")->assertOk()->json('data.following'));
+        $api($tech)->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Ordered', 'parent_id' => $top])->assertCreated();
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, \App\Models\Notification::query()->where('user_id', $watcher->id)->where('kind', 'task.reply')->count()));
+
+        $body = $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 1])->assertOk()->json('data.body');
+        $this->assertSame("Steps\n☑ Order the liner\n☐ Book the crew", $body);
+        $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 0])->assertStatus(422);
+    }
 }

@@ -6700,14 +6700,7 @@ class _TaskPanelState extends State<_TaskPanel> {
                 const SizedBox(height: 2),
                 // Selectable, to copy as is (Merav via Jose 11-19).
                 if ('${u['body'] ?? ''}'.isNotEmpty)
-                  _clamped(
-                    u,
-                    linkedText(
-                      context,
-                      '${u['body']}',
-                      key: ValueKey('task-update-body-${u['id']}'),
-                    ),
-                  ),
+                  _clamped(u, _withChecklist(context, u)),
                 TaskAttachments(
                   api: widget.api,
                   attachments: [
@@ -6788,7 +6781,10 @@ class _TaskPanelState extends State<_TaskPanel> {
     final seen = (u['seen'] as num? ?? 0).toInt();
     return Padding(
       padding: const EdgeInsets.only(left: 40, bottom: 8),
-      child: Row(
+      // A Wrap: a narrow docked panel takes Like, Reply, the bell and the seen count on two lines.
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
         children: [
           TextButton.icon(
             key: ValueKey('task-update-like-${u['id']}'),
@@ -6811,7 +6807,21 @@ class _TaskPanelState extends State<_TaskPanel> {
               icon: const Icon(Icons.reply, size: 16),
               label: const Text('Reply'),
             ),
-          const Spacer(),
+          if (!reply)
+            IconButton(
+              key: ValueKey('task-update-follow-${u['id']}'),
+              tooltip: u['following'] == true
+                  ? 'Following its replies. Stop'
+                  : 'Tell me of its replies',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                u['following'] == true
+                    ? Icons.notifications_active
+                    : Icons.notifications_none,
+                size: 18,
+              ),
+              onPressed: () => _follow(u),
+            ),
           if (seen > 0)
             Tooltip(
               message: 'Seen by $seen',
@@ -6929,6 +6939,9 @@ class _TaskPanelState extends State<_TaskPanel> {
     for (final u in updates.reversed)
       for (final a in (u['attachments'] as List? ?? const []))
         if (a is Map) a.cast<String, dynamic>(),
+    // The file columns' files too (Chaim 11-24).
+    for (final a in (_task?['column_files'] as List? ?? const []))
+      if (a is Map) a.cast<String, dynamic>(),
   ];
 
   /// The task's changes, newest first (Monday's Activity Log).
@@ -6965,6 +6978,161 @@ class _TaskPanelState extends State<_TaskPanel> {
       ],
     );
   }
+
+  /// An update's words, its checklist lines ("☐ " or "☑ ") as boxes that
+  /// tick for whoever may work the task (Monday's update checklist).
+  Widget _withChecklist(BuildContext context, _Json u) {
+    final body = '${u['body']}';
+    final lines = body.split('\n');
+    if (!lines.any((l) => l.startsWith('☐ ') || l.startsWith('☑ '))) {
+      return linkedText(
+        context,
+        body,
+        key: ValueKey('task-update-body-${u['id']}'),
+      );
+    }
+    final out = <Widget>[];
+    final prose = <String>[];
+    void flush() {
+      if (prose.isEmpty) return;
+      out.add(linkedText(context, prose.join('\n')));
+      prose.clear();
+    }
+
+    for (final (i, l) in lines.indexed) {
+      if (l.startsWith('☐ ') || l.startsWith('☑ ')) {
+        flush();
+        out.add(
+          CheckboxListTile(
+            key: ValueKey('task-update-check-${u['id']}-$i'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: l.startsWith('☑'),
+            onChanged: _canEdit ? (_) => _check(u, i) : null,
+            title: Text(l.substring(2)),
+          ),
+        );
+      } else {
+        prose.add(l);
+      }
+    }
+    flush();
+    return Column(
+      key: ValueKey('task-update-body-${u['id']}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: out,
+    );
+  }
+
+  void _replaceUpdate(_Json updated) => setState(() {
+    _task = {
+      ..._task!,
+      'updates': [
+        for (final x in (_task!['updates'] as List? ?? const []).cast<_Json>())
+          if (x['id'] == updated['id']) {...x, ...updated} else x,
+      ],
+    };
+  });
+
+  Future<void> _check(_Json u, int line) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/check',
+      {'line': line},
+    );
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _postError = res.reason);
+    _replaceUpdate((res.body['data'] as Map).cast<String, dynamic>());
+  }
+
+  Future<void> _follow(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/follow',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    _replaceUpdate({
+      'id': u['id'],
+      'following': (res.body['data'] as Map)['following'],
+    });
+  }
+
+  /// Inserts [text] at the composer's caret, or wraps the selection in
+  /// [text] and [after] (bold).
+  void _insert(String text, [String after = '']) {
+    final v = _update.value;
+    final sel = v.selection.isValid
+        ? v.selection
+        : TextSelection.collapsed(offset: v.text.length);
+    final picked = v.text.substring(sel.start, sel.end);
+    _update.value = TextEditingValue(
+      text: v.text.replaceRange(sel.start, sel.end, '$text$picked$after'),
+      selection: TextSelection.collapsed(
+        offset: sel.start + text.length + picked.length,
+      ),
+    );
+  }
+
+  static const _emoji = [
+    '👍',
+    '🙏',
+    '✅',
+    '🔥',
+    '😀',
+    '😂',
+    '❤️',
+    '👀',
+    '🎉',
+    '⚠️',
+    '📅',
+    '📞',
+  ];
+
+  Widget _composerTools() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      IconButton(
+        key: const Key('task-update-tool-mention'),
+        tooltip: 'Mention someone',
+        icon: const Icon(Icons.alternate_email, size: 18),
+        onPressed: () => _insert('@'),
+      ),
+      IconButton(
+        key: const Key('task-update-tool-checklist'),
+        tooltip: 'Add a checklist item',
+        icon: const Icon(Icons.checklist, size: 18),
+        onPressed: () => _insert(
+          _update.text.isEmpty || _update.text.endsWith('\n') ? '☐ ' : '\n☐ ',
+        ),
+      ),
+      IconButton(
+        key: const Key('task-update-tool-bold'),
+        tooltip: 'Bold',
+        icon: const Icon(Icons.format_bold, size: 18),
+        onPressed: () => _insert('**', '**'),
+      ),
+      MenuAnchor(
+        menuChildren: [
+          Wrap(
+            children: [
+              for (final e in _emoji)
+                IconButton(
+                  key: ValueKey('task-update-emoji-$e'),
+                  onPressed: () => _insert(e),
+                  icon: Text(e, style: const TextStyle(fontSize: 18)),
+                ),
+            ],
+          ),
+        ],
+        builder: (context, menu, _) => IconButton(
+          key: const Key('task-update-tool-emoji'),
+          tooltip: 'Emoji',
+          icon: const Icon(Icons.emoji_emotions_outlined, size: 18),
+          onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        ),
+      ),
+    ],
+  );
 
   Future<void> _post() async {
     final body = _update.text.trim();
@@ -7596,6 +7764,8 @@ class _TaskPanelState extends State<_TaskPanel> {
                 spacing: 8,
                 runSpacing: 6,
                 children: [
+                  // Monday's composer tools (Chaim 11-24): @, a checklist line, bold, emoji.
+                  _composerTools(),
                   TextButton.icon(
                     key: const Key('task-update-attach'),
                     onPressed: _posting || _files.length >= taskUpdateMaxFiles
@@ -7874,8 +8044,9 @@ class _RowShadeState extends State<_RowShade> {
 /// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
 @visibleForTesting
 Widget linkedText(BuildContext context, String body, {Key? key}) {
+  // Links, bare addresses, and **bold** (the composer's Bold, Chaim 11-24).
   final link = RegExp(
-    r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)',
+    r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)|\*\*([^*\n]+)\*\*',
   );
   final style = TextStyle(
     color: Theme.of(context).colorScheme.primary,
@@ -7885,6 +8056,16 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
   var at = 0;
   for (final m in link.allMatches(body)) {
     spans.add(TextSpan(text: body.substring(at, m.start)));
+    if (m.group(4) case final bold?) {
+      spans.add(
+        TextSpan(
+          text: bold,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+      at = m.end;
+      continue;
+    }
     final url = m.group(2) ?? m.group(3)!;
     spans.add(
       TextSpan(

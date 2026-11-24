@@ -24,6 +24,7 @@ use App\Support\Files\UploadLimits;
 use App\Support\Notes\NoteActivity;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
@@ -99,8 +100,14 @@ class TasksController extends Controller
             $seen[(string) $u->id] = $reads->filter(fn ($at, $who) => (string) $who !== (string) $u->user_id && $u->created_at !== null && $at >= $u->created_at)->keys()->all();
         }
 
+        // Chaim 11-24: the Files tab lists the file columns' files too.
+        $fileIds = $task->values->filter(fn ($v) => $v->column?->type === 'files')
+            ->flatMap(fn ($v) => (array) (json_decode((string) $v->value_text, true) ?: []))->filter()->unique()->values();
+        $columnFiles = $fileIds->isEmpty() ? collect() : Attachment::query()->whereKey($fileIds)->get();
+
         return self::present($task, $reveal) + [
             'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u, $seen))->all() : [],
+            'column_files' => $reveal ? $columnFiles->map(fn (Attachment $a) => self::presentAttachment($a))->values()->all() : [],
         ];
     }
 
@@ -123,6 +130,7 @@ class TasksController extends Controller
             'likes' => count($likes),
             'liked' => ($me = request()->user()) !== null && in_array((string) $me->id, $likes, true),
             'seen' => count($seen[(string) $u->id] ?? []),
+            'following' => $me !== null && in_array((string) $me->id, array_values((array) ($u->followers ?? [])), true),
             // A reply threaded under its update needs no "↳ " mark of its own.
             'body' => $u->parent_update_id !== null ? (string) preg_replace('/^↳ /u', '', (string) SensitiveTasks::open($u->body)) : (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
@@ -131,19 +139,22 @@ class TasksController extends Controller
             // Row 43: its author edits; its author or an Administrator deletes.
             'can_edit' => $me !== null && $u->user_id === $me->id,
             'can_delete' => $me !== null && ($u->user_id === $me->id || $me->isAdministrator()),
-            'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
-                $url = url("/api/v1/attachments/{$a->id}");
+            'attachments' => $u->attachments->sortBy('created_at')->values()->map(fn (Attachment $a) => self::presentAttachment($a))->all(),
+        ];
+    }
 
-                return [
-                    'id' => $a->id,
-                    'name' => $a->realName(),
-                    'mime' => $a->mime,
-                    'size' => (int) $a->size_bytes,
-                    'url' => $url,
-                    'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                    'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                ];
-            })->all(),
+    public static function presentAttachment(Attachment $a): array
+    {
+        $url = url("/api/v1/attachments/{$a->id}");
+
+        return [
+            'id' => $a->id,
+            'name' => $a->realName(),
+            'mime' => $a->mime,
+            'size' => (int) $a->size_bytes,
+            'url' => $url,
+            'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
+            'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
         ];
     }
 
@@ -475,6 +486,39 @@ class TasksController extends Controller
         $this->writer->deleteComment($update, $request->user());
 
         return response()->noContent();
+    }
+
+    /** POST tasks/{task}/updates/{update}/follow: be told of its replies, or stop (Monday's bell). */
+    public function followUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->followers ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['followers' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['following' => in_array($me, $who, true)]]);
+    }
+
+    /**
+     * POST tasks/{task}/updates/{update}/check {line}: tick or untick the
+     * checklist item on that line of the update (Monday's update checklist:
+     * lines starting with a box). Anyone who may work the task may tick.
+     */
+    public function checkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('update', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $line = (int) $request->validate(['line' => ['required', 'integer', 'min:0', 'max:500']])['line'];
+        $lines = explode("\n", (string) SensitiveTasks::open($update->body));
+        abort_unless(isset($lines[$line]) && preg_match('/^(☐|☑) /u', $lines[$line]), 422, 'That line is not a checklist item.');
+        $lines[$line] = (str_starts_with($lines[$line], '☐') ? '☑' : '☐').mb_substr($lines[$line], 1);
+        $body = implode("\n", $lines);
+        $update->forceFill(['body' => $task->sensitive ? SensitiveTasks::seal($body) : $body])->saveQuietly();
+        app(MondayOutbox::class)->record($task, ['update_edit'], $update);
+
+        return response()->json(['data' => self::presentUpdate($update->fresh()->load(['user:id,name', 'attachments']))]);
     }
 
     /** POST tasks/{task}/updates/{update}/like: like it, or take the like back (Monday's thumbs up). */
