@@ -98,9 +98,12 @@ final class MondayWriter
         return (string) ($data['create_subitem']['id'] ?? throw new RuntimeException('Monday made no subitem.'));
     }
 
-    public function createUpdate(string $itemId, string $body): string
+    public function createUpdate(string $itemId, string $body, ?string $parentId = null): string
     {
-        $data = $this->mutate('mutation($i:ID!,$b:String!){ create_update(item_id:$i, body:$b) { id } }', ['i' => $itemId, 'b' => $body]);
+        // A reply goes under its update on Monday too (Chaim 11-24).
+        $data = $parentId === null
+            ? $this->mutate('mutation($i:ID!,$b:String!){ create_update(item_id:$i, body:$b) { id } }', ['i' => $itemId, 'b' => $body])
+            : $this->mutate('mutation($i:ID!,$b:String!,$p:ID!){ create_update(item_id:$i, body:$b, parent_id:$p) { id } }', ['i' => $itemId, 'b' => $body, 'p' => $parentId]);
 
         return (string) ($data['create_update']['id'] ?? throw new RuntimeException('Monday made no update.'));
     }

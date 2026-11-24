@@ -39,6 +39,7 @@ void main() {
 
   String? textValue;
   int unread = 0;
+  List<dynamic> thread = const [];
 
   ApiClient fakeServer() {
     log = [];
@@ -185,6 +186,11 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/like')) {
+          return json({
+            'data': {'likes': 1, 'liked': true},
+          });
+        }
         if (path == '/task-boards/b-1/search') {
           // Natalie 11-24: a task the board has not loaded.
           return json({
@@ -213,7 +219,7 @@ void main() {
         }
         if (path == '/tasks/t1') {
           return json({
-            'data': {...task, 'updates': <dynamic>[]},
+            'data': {...task, 'updates': thread},
           });
         }
         if (path == '/tasks/t1/reminders' && request.method == 'GET') {
@@ -641,6 +647,69 @@ void main() {
       find.byKey(const ValueKey('task-unread-t1')),
     );
     expect(badge.isLabelVisible, isFalse);
+  });
+
+  testWidgets('Chaim 11-24: replies sit under their update, a long one reads '
+      'more, Like counts, and Files lists the thread files', (tester) async {
+    Map<String, dynamic> u(String id, String body, {String? parent}) => {
+      'id': id,
+      'parent_id': parent,
+      'body': body,
+      'author': {'id': 'u-2', 'name': 'Shoval Ohayon'},
+      'created_at': '2026-11-20T10:00:00Z',
+      'likes': 0,
+      'liked': false,
+      'seen': 3,
+      'attachments': id == 'u1'
+          ? [
+              {
+                'id': 'a1',
+                'name': 'quote.pdf',
+                'mime': 'application/pdf',
+                'size': 10,
+                'url': 'https://x.test/a1',
+              },
+            ]
+          : const [],
+    };
+    thread = [
+      u('u1', List.filled(9, 'A long line of the update').join('\n')),
+      u('r1', 'Thanks', parent: 'u1'),
+    ];
+    addTearDown(() => thread = const []);
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('task-update-more-u1')), findsOneWidget);
+    expect(find.text('Read more'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-update-seen-u1')), findsOneWidget);
+    // The reply is drawn after its update, indented.
+    final top = tester.getTopLeft(
+      find.byKey(const ValueKey('task-update-body-u1')),
+    );
+    final reply = tester.getTopLeft(
+      find.byKey(const ValueKey('task-update-body-r1')),
+    );
+    expect(reply.dy, greaterThan(top.dy));
+    expect(reply.dx, greaterThan(top.dx));
+    expect(
+      find.byKey(const ValueKey('task-update-reply-r1')),
+      findsNothing,
+      reason: 'one level of replies',
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('task-update-like-u1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('task-update-like-u1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Like · 1'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('task-thread-files')));
+    await tester.tap(find.byKey(const ValueKey('task-thread-files')));
+    await tester.pumpAndSettle();
+    expect(find.text('Files · 1'), findsOneWidget);
+    expect(find.textContaining('quote.pdf'), findsWidgets);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('a group header counts the tasks it shows: a search that hides '
