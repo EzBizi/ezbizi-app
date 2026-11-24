@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\Notification;
 use App\Models\TaskBoard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -77,10 +78,38 @@ class TaskUpdateThreadTest extends TestCase
 
         $this->assertTrue($api($watcher)->postJson("/api/v1/tasks/{$task}/updates/{$top}/follow")->assertOk()->json('data.following'));
         $api($tech)->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Ordered', 'parent_id' => $top])->assertCreated();
-        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, \App\Models\Notification::query()->where('user_id', $watcher->id)->where('kind', 'task.reply')->count()));
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, Notification::query()->where('user_id', $watcher->id)->where('kind', 'task.reply')->count()));
 
         $body = $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 1])->assertOk()->json('data.body');
         $this->assertSame("Steps\n☑ Order the liner\n☐ Book the crew", $body);
         $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 0])->assertStatus(422);
+    }
+
+    /** Monday's feed tabs (gap review): Bookmarked, and a Scheduled update unseen until its time. */
+    public function test_a_bookmark_lists_under_bookmarked_and_a_scheduled_update_posts_at_its_time(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
+        $tech = $this->userWithRole($tenant, 'Tech', ['tasks.view', 'tasks.edit']);
+        $api = fn ($u) => $this->signedInAs($u);
+        $task = $api($tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Liner'])->assertCreated()->json('data.id');
+        $now = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Booked'])->assertCreated()->json('data.id');
+
+        $this->assertTrue($api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$now}/bookmark")->assertOk()->json('data.bookmarked'));
+        $this->assertSame([$now], collect($api($tech)->getJson('/api/v1/task-updates?filter=bookmarked')->json('data'))->pluck('id')->all());
+
+        $later = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@crew tomorrow at 8', 'mentions' => [$tech->id], 'post_at' => now()->addHour()->toIso8601String()])
+            ->assertCreated()->json('data');
+        $this->assertNotNull($later['scheduled_for']);
+        $this->assertSame([$later['id']], collect($api($tenant['admin'])->getJson('/api/v1/task-updates?filter=scheduled')->json('data'))->pluck('id')->all());
+        $this->assertNotContains($later['id'], collect($api($tech)->getJson("/api/v1/tasks/{$task}")->json('data.updates'))->pluck('id')->all(), 'nobody sees it before its time');
+        $mentioned = fn () => $this->inTenant($tenant['org'], fn () => Notification::query()->where('user_id', $tech->id)->where('kind', 'task.mentioned')->count());
+        $this->assertSame(0, $mentioned());
+
+        $this->travel(61)->minutes();
+        $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 1')->assertSuccessful();
+        $this->assertContains($later['id'], collect($api($tech)->getJson("/api/v1/tasks/{$task}")->json('data.updates'))->pluck('id')->all());
+        $this->assertSame(1, $mentioned());
+        $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 0')->assertSuccessful();
     }
 }

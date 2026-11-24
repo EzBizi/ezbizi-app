@@ -29,6 +29,7 @@ use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
 use App\Support\Tasks\TaskWriter;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -131,6 +132,8 @@ class TasksController extends Controller
             'liked' => ($me = request()->user()) !== null && in_array((string) $me->id, $likes, true),
             'seen' => count($seen[(string) $u->id] ?? []),
             'following' => $me !== null && in_array((string) $me->id, array_values((array) ($u->followers ?? [])), true),
+            'bookmarked' => $me !== null && in_array((string) $me->id, array_values((array) ($u->bookmarks ?? [])), true),
+            'scheduled_for' => $u->scheduled_for?->toIso8601String(),
             // A reply threaded under its update needs no "↳ " mark of its own.
             'body' => $u->parent_update_id !== null ? (string) preg_replace('/^↳ /u', '', (string) SensitiveTasks::open($u->body)) : (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
@@ -488,6 +491,19 @@ class TasksController extends Controller
         return response()->noContent();
     }
 
+    /** POST tasks/{task}/updates/{update}/bookmark: save it to find again, or unsave (Monday's Bookmarked). */
+    public function bookmarkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->bookmarks ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['bookmarks' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['bookmarked' => in_array($me, $who, true)]]);
+    }
+
     /** POST tasks/{task}/updates/{update}/follow: be told of its replies, or stop (Monday's bell). */
     public function followUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
     {
@@ -555,6 +571,8 @@ class TasksController extends Controller
             'mentions' => ['sometimes', 'array', 'max:50'],
             'mentions.*' => ['uuid'],
             'parent_id' => ['sometimes', 'nullable', 'uuid'],
+            // Monday's scheduled update: posted at this time, not before.
+            'post_at' => ['sometimes', 'nullable', 'date', 'after:now'],
         ], [
             'body.required_without' => 'Write something or attach a file.',
             'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
@@ -570,11 +588,14 @@ class TasksController extends Controller
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
             // A mention on a sensitive task says only that there is something to read.
             app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
-            $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
-                $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
+            // A scheduled update names its people now and tells them when it posts.
+            $mentions = ! empty($input['post_at']) ? array_values($input['mentions'] ?? [])
+                : app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
+                    $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
             // A reply hangs under a top update of this same task.
             $parent = empty($input['parent_id']) ? null : TaskUpdate::query()->where('task_id', $task->id)->whereNull('parent_update_id')->findOrFail($input['parent_id']);
-            $update = $this->writer->comment($task, $request->user(), $body, $mentions, $parent);
+            $update = $this->writer->comment($task, $request->user(), $body, $mentions, $parent,
+                empty($input['post_at']) ? null : CarbonImmutable::parse($input['post_at']));
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
             }
@@ -661,7 +682,7 @@ class TasksController extends Controller
     public function feed(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'filter' => ['sometimes', 'in:all,mentions'],
+            'filter' => ['sometimes', 'in:all,mentions,bookmarked,scheduled'],
             'unread' => ['sometimes', 'boolean'],
             'board_id' => ['sometimes', 'nullable', 'uuid'],
             'before' => ['sometimes', 'nullable', 'date'],
@@ -674,6 +695,11 @@ class TasksController extends Controller
             ->whereNull('tasks.deleted_at')
             ->when(SensitiveTasks::machineReader($me), fn ($q) => $q->where('tasks.sensitive', false))
             ->when(($input['filter'] ?? 'all') === 'mentions', fn ($q) => $q->whereJsonContains('task_updates.mentions', (string) $me->id))
+            ->when(($input['filter'] ?? 'all') === 'bookmarked', fn ($q) => $q->whereJsonContains('task_updates.bookmarks', (string) $me->id))
+            // Scheduled: my own, not posted yet; every other tab: only what is posted.
+            ->when(($input['filter'] ?? 'all') === 'scheduled',
+                fn ($q) => $q->where('task_updates.user_id', $me->id)->where('task_updates.scheduled_for', '>', now()),
+                fn ($q) => $q->where('task_updates.created_at', '<=', now()))
             ->when($request->boolean('unread'), fn ($q) => $q->where('task_updates.user_id', '!=', $me->id)
                 ->whereRaw('task_updates.created_at > COALESCE((SELECT r.last_read_at FROM note_reads r WHERE r.subject_type = ? AND r.subject_id = task_updates.task_id AND r.user_id = ?), ?)', ['task', $me->id, '1970-01-01']));
         $counts = (clone $base)->selectRaw('tasks.board_id as b, COUNT(*) as c')->groupBy('tasks.board_id')->pluck('c', 'b');

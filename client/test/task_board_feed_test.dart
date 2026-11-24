@@ -40,6 +40,9 @@ void main() {
               ],
             },
           },
+          _ when path.endsWith('/bookmark') => {
+            'data': {'bookmarked': true},
+          },
           _ when path.endsWith('/like') => {
             'data': {'likes': 1, 'liked': true},
           },
@@ -87,6 +90,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('feed-like-u1')));
     await tester.pumpAndSettle();
     expect(find.text('Like · 1'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('feed-bookmark-u1')));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.bookmark), findsOneWidget);
+    for (final tab in ['bookmarked', 'scheduled']) {
+      await tester.tap(find.byKey(ValueKey('feed-$tab')));
+      await tester.pumpAndSettle();
+      expect(asked.last.$3['filter'], tab);
+    }
     await tester.tap(find.byKey(const ValueKey('feed-open-u1')));
     expect(opened, 't1');
   });

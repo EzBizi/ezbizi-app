@@ -124,7 +124,8 @@ class Task extends Model implements HoldsPersonalData
 
     public function updates(): HasMany
     {
-        return $this->hasMany(TaskUpdate::class)->latest();
+        // A scheduled update (gap review: Monday's Scheduled) is not there until its time.
+        return $this->hasMany(TaskUpdate::class)->where(fn ($q) => $q->whereNull('task_updates.scheduled_for')->orWhere('task_updates.scheduled_for', '<=', now()))->latest();
     }
 
     /** The record this task is about, or null. */

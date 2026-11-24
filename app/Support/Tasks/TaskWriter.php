@@ -614,9 +614,12 @@ class TaskWriter
         });
     }
 
-    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null): TaskUpdate
+    /** [$at]: a time to post it (Monday's scheduled update); until then nobody sees or hears of it. */
+    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null, ?\DateTimeInterface $at = null): TaskUpdate
     {
-        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent) {
+        $later = $at !== null && $at > now();
+
+        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent, $later, $at) {
             $update = TaskUpdate::query()->create([
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
@@ -625,6 +628,12 @@ class TaskWriter
                 'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
             ]);
+            if ($later) {
+                $update->forceFill(['scheduled_for' => $at, 'created_at' => $at, 'updated_at' => $at])->saveQuietly();
+                $this->audit->log('task.update_scheduled', $task, actor: $author);
+
+                return $update;
+            }
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);

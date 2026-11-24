@@ -1143,6 +1143,7 @@ Route::prefix('v1')
         Route::delete('tasks/{task}/updates/{update}', [TasksController::class, 'destroyUpdate']);
         Route::post('tasks/{task}/updates/{update}/like', [TasksController::class, 'likeUpdate']);
         Route::post('tasks/{task}/updates/{update}/follow', [TasksController::class, 'followUpdate']);
+        Route::post('tasks/{task}/updates/{update}/bookmark', [TasksController::class, 'bookmarkUpdate']);
         Route::post('tasks/{task}/updates/{update}/check', [TasksController::class, 'checkUpdate']);
         Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
         Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);

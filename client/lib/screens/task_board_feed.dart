@@ -96,6 +96,15 @@ class _UpdatesFeedPanelState extends State<UpdatesFeedPanel> {
     });
   }
 
+  Future<void> _bookmark(Map<String, dynamic> u) async {
+    final res = await widget.api.post(
+      '/tasks/${u['task_id']}/updates/${u['id']}/bookmark',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    setState(() => u['bookmarked'] = (res.body['data'] as Map)['bookmarked']);
+  }
+
   Future<void> _send(Map<String, dynamic> u) async {
     final body = _reply.text.trim();
     if (body.isEmpty) return;
@@ -139,6 +148,8 @@ class _UpdatesFeedPanelState extends State<UpdatesFeedPanel> {
               for (final (key, label) in const [
                 ('all', 'All updates'),
                 ('mentions', 'Mentions'),
+                ('bookmarked', 'Bookmarked'),
+                ('scheduled', 'Scheduled'),
               ])
                 ChoiceChip(
                   key: ValueKey('feed-$key'),
@@ -265,6 +276,19 @@ class _UpdatesFeedPanelState extends State<UpdatesFeedPanel> {
                                   ? 'Like · ${u['likes']}'
                                   : 'Like',
                             ),
+                          ),
+                          IconButton(
+                            key: ValueKey('feed-bookmark-${u['id']}'),
+                            tooltip: u['bookmarked'] == true
+                                ? 'Bookmarked'
+                                : 'Bookmark',
+                            icon: Icon(
+                              u['bookmarked'] == true
+                                  ? Icons.bookmark
+                                  : Icons.bookmark_border,
+                              size: 18,
+                            ),
+                            onPressed: () => _bookmark(u),
                           ),
                           TextButton.icon(
                             key: ValueKey('feed-reply-${u['id']}'),

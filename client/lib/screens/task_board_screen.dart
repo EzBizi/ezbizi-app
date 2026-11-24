@@ -6807,6 +6807,16 @@ class _TaskPanelState extends State<_TaskPanel> {
               icon: const Icon(Icons.reply, size: 16),
               label: const Text('Reply'),
             ),
+          IconButton(
+            key: ValueKey('task-update-bookmark-${u['id']}'),
+            tooltip: u['bookmarked'] == true ? 'Bookmarked' : 'Bookmark',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              u['bookmarked'] == true ? Icons.bookmark : Icons.bookmark_border,
+              size: 18,
+            ),
+            onPressed: () => _bookmark(u),
+          ),
           if (!reply)
             IconButton(
               key: ValueKey('task-update-follow-${u['id']}'),
@@ -7043,6 +7053,55 @@ class _TaskPanelState extends State<_TaskPanel> {
     if (!mounted) return;
     if (!res.ok) return setState(() => _postError = res.reason);
     _replaceUpdate((res.body['data'] as Map).cast<String, dynamic>());
+  }
+
+  Future<void> _bookmark(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/bookmark',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    _replaceUpdate({
+      'id': u['id'],
+      'bookmarked': (res.body['data'] as Map)['bookmarked'],
+    });
+  }
+
+  /// Monday's scheduled update: the day and time it posts.
+  Future<void> _schedule() async {
+    if (_update.text.trim().isEmpty) return;
+    final now = DateTime.now();
+    final day = await showDatePicker(
+      context: context,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      initialDate: now,
+    );
+    if (day == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+    final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    final body = _update.text.trim();
+    final mentions = _mentions.ids(body);
+    final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
+      'body': body,
+      'post_at': at.toUtc().toIso8601String(),
+      if (mentions.isNotEmpty) 'mentions': mentions,
+    });
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _postError = res.reason);
+    _update.clear();
+    _mentions.clear();
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Scheduled for ${formatStamp(at.toUtc().toIso8601String(), '', formats: widget.formats)}',
+        ),
+      ),
+    );
   }
 
   Future<void> _follow(_Json u) async {
@@ -7773,6 +7832,12 @@ class _TaskPanelState extends State<_TaskPanel> {
                         : _attach,
                     icon: const Icon(Icons.attach_file, size: 18),
                     label: const Text('Attach'),
+                  ),
+                  TextButton.icon(
+                    key: const Key('task-update-schedule'),
+                    onPressed: _posting || _files.isNotEmpty ? null : _schedule,
+                    icon: const Icon(Icons.schedule_send_outlined, size: 18),
+                    label: const Text('Schedule'),
                   ),
                   FilledButton(
                     key: const Key('task-update-post'),
