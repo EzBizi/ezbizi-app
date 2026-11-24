@@ -3931,6 +3931,39 @@ No sentence moves.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
 the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
 
-## Pending for the next website-daily reply (desk, 2026-11-23)
+## 2026-11-23: 0.0.0624-0.0.0627 live, and `/privacy/` did not mention before-and-after photos on tenant websites
 
-- New public no-login pages since 0623: `/join?link=...` (HR invite links: self-signup into a chosen role and place; ships 0626) and Review QR `/r/<code>` (the same smiley/sad review page, now also reached by a technician QR code tied to that technician; live 0624). Neither collects anything beyond the existing invite and review-feedback flows.
+Production web is 0.0.0627 at `593d1a696` (release `20261123233554`); `/download/windows.json` reads 0.0.0627 at
+`593d1a696`; 0628 cutting. Before the edit no WP page was modified since the 11-20 privacy edit and all 10 live pages
+contained their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies in `~/ezb-wp-bak-20261123/` on the websites
+box; read back equal; purged bare + www; live on both):
+- 0624 adds `GET v1/web/plugin/before-after` (site token) and `/image/{attachment}` (signed, 24h): approved inspection
+  before/after pairs shown by the plugin's `[ezbizi_before_after]` widget on the tenant's own site, with service,
+  city and state (no name, address or job number), 1600px re-encoded JPEGs (EXIF dropped). Approval needs
+  inspection.edit + report reach and a tick "Confirm the photos show no faces and no house numbers"; withdraw removes.
+  **The visitor's browser loads the images from EzBizi**, so the page's "If an organization switches both off ... the
+  plugin sends us nothing about anybody's visitors" no longer covered every case. New paragraph *Before-and-after
+  photos* under Enquiries from your websites; that closing sentence now reads "switches the chat and the form off
+  and shows no before-and-after photos". Approved pairs on prod: 0 (the sentence describes the product, as 11-19/20).
+  **Triggers:** the feed adding the street, customer name or job number; images proxied through the WP site (then the
+  IP clause goes); approval no longer required.
+- Last updated / `dateModified` → 2026-11-23.
+
+No sentence moves for: `/join?link=` invite links (creates an ordinary invitation; `/delete-account/`'s "If you were
+invited by an employer" holds; no page describes signup or "one at a time"); technician Review QR (same `/r/` page,
+scan credited to the technician, no customer); Google review reply explaining removed/eKomi reviews; **View as**
+(platform staff with `development.view_as`, every request audit-logged with the real actor, credentials/keys/
+deletion refused; no page makes a claim about EzBizi staff access either way — if one is ever written, it must
+mention this). No new host, scope, processor, publisher or `app/Support/Social` change (desk + `git diff`).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-23, ~23:45 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-23-desk-reply.md`):
+0624-0627 live, none rolled back (0624, 0625 re-cut after failed gates). Training 59/83/12. `phone_ring_groups` 6;
+numbers resolving to a group 6 of 15. **Scheduled Jobs now excludes soft-deleted jobs: Triplex Group 80, 0 elsewhere**
+— the 785 of 11-19..21 counted deleted jobs and is not comparable; 80 is the new baseline, still one tenant, so the
+scheduling row stays unwritten. LSA leads 55,898 all with `remote_id`. No new publisher class. invite_links 0,
+technician review codes 2, view_as_sessions 1.
