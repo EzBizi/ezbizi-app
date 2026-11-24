@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Everywhere: people whose accounts were removed now read Former staff, and reports group them in one row',
       'Theme: the button switches between light and dark only; Match my device is gone',
       'Suggestions: attached screenshots show large and keep their shape',
       'Sidebar: when folded, More is just the arrow; Task Board group titles are a lighter tint',
