@@ -492,15 +492,22 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     );
     if (_requests.isEmpty) return week;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Requests(
-          requests: _requests,
-          onDecide: (request, verb) => _decide(context, request, verb),
-        ),
-        Expanded(child: week),
-      ],
+    // At most ~45% of the pane, scrolling inside: on a phone two requests
+    // pushed the week 21 px past the bottom (mobile review 11-24).
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: box.maxHeight * 0.45),
+            child: _Requests(
+              requests: _requests,
+              onDecide: (request, verb) => _decide(context, request, verb),
+            ),
+          ),
+          Expanded(child: week),
+        ],
+      ),
     );
   }
 
@@ -2212,7 +2219,7 @@ class _Requests extends StatelessWidget {
     return Card(
       key: const Key('correction-requests'),
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2223,56 +2230,63 @@ class _Requests extends StatelessWidget {
             ),
             for (final r in requests) ...[
               const Divider(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          (r['user'] as Map?)?['name']?.toString() ?? '',
-                          style: theme.textTheme.labelLarge,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_was')}: '
-                          '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_asks')}: '
-                          '${_span(r['clocked_in'], r['clocked_out'])}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          r['reason']?.toString() ?? '',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => onDecide(r, 'deny'),
-                        child: Text(UiStrings.t('time_clock.decline')),
-                      ),
-                      FilledButton(
-                        onPressed: () => onDecide(r, 'approve'),
-                        child: Text(UiStrings.t('time_clock.approve')),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              // On a phone the buttons go under the request: beside it they
+              // left the text ~80 px and it wrapped word by word.
+              if (MediaQuery.sizeOf(context).width < 520) ...[
+                _info(theme, r),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: _buttons(r),
+                ),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _info(theme, r)),
+                    const SizedBox(width: 8),
+                    _buttons(r),
+                  ],
+                ),
             ],
           ],
         ),
       ),
     );
   }
+
+  Widget _info(ThemeData theme, Map<String, dynamic> r) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        (r['user'] as Map?)?['name']?.toString() ?? '',
+        style: theme.textTheme.labelLarge,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_was')}: '
+        '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
+        style: theme.textTheme.bodySmall,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_asks')}: '
+        '${_span(r['clocked_in'], r['clocked_out'])}',
+        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      Text(r['reason']?.toString() ?? '', style: theme.textTheme.bodySmall),
+    ],
+  );
+
+  Widget _buttons(Map<String, dynamic> r) => Wrap(
+    spacing: 8,
+    children: [
+      OutlinedButton(
+        onPressed: () => onDecide(r, 'deny'),
+        child: Text(UiStrings.t('time_clock.decline')),
+      ),
+      FilledButton(
+        onPressed: () => onDecide(r, 'approve'),
+        child: Text(UiStrings.t('time_clock.approve')),
+      ),
+    ],
+  );
 }
