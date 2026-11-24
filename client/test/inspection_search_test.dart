@@ -149,7 +149,10 @@ Future<_Harness> _pump(WidgetTester tester, Size size) async {
         return http.Response(_hits, 200, headers: _json);
       }
       if (path.endsWith('/inspections/startable')) {
-        harness.startable.add(request.url.queryParameters);
+        // The tab's on-open check (no client yet) is not a start; skip it.
+        if (request.url.queryParameters.isNotEmpty) {
+          harness.startable.add(request.url.queryParameters);
+        }
         return http.Response(_picker, 200, headers: _json);
       }
       if (path.endsWith('/inspections/runs') && request.method == 'POST') {

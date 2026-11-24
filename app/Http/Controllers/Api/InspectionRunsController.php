@@ -10,6 +10,7 @@ use App\Models\Job;
 use App\Models\Service;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Inspection\BeforeAfter;
 use App\Support\Inspection\BoundAnswers;
 use App\Support\Inspection\FieldType;
 use App\Support\Inspection\InspectionAccess;
@@ -157,7 +158,7 @@ class InspectionRunsController extends Controller
                 ->keyBy('inspection_definition_id');
 
         $message = $offered->isEmpty()
-            ? 'This organization has not offered any inspections to this role yet.'
+            ? 'No inspection is granted to your role. Ask an admin to tick one under Roles & permissions › Inspection › Named inspections.'
             : null;
 
         return response()->json([
@@ -412,7 +413,7 @@ class InspectionRunsController extends Controller
             $this->audit->log('inspection.submitted', $report);
 
             // Before/After pills on the job's photo tab.
-            \App\Support\Inspection\BeforeAfter::label($report);
+            BeforeAfter::label($report);
 
             return $report;
         });
