@@ -6102,15 +6102,101 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     }
   }
 
-  Widget _calendarView({required bool phone}) => TaskBoardCalendar(
-    tasks: _shownTasks,
-    canEdit: _canEdit,
-    formats: _formats,
-    compact: phone,
-    colourOf: _planColour,
-    onOpen: _openTask,
-    onMoveDate: (t, day) => _patchTask(t, {'due_on': day}),
-  );
+  /// The columns a calendar can plot: Due, and every date or timeline column.
+  List<_Json> get _calendarColumns => [
+    {'id': 'due', 'title': 'Due', 'type': 'date'},
+    for (final c in (_board?['columns'] as List? ?? const []).whereType<Map>())
+      if (c['type'] == 'date' || c['type'] == 'timeline')
+        {...c.cast<String, dynamic>(), 'title': c['name'] ?? c['title']},
+  ];
+
+  String get _calendarKey =>
+      'task_board_calendar_${widget.session.me?.id ?? ''}_${_board?['id']}';
+
+  /// The person's pick for this board, else Monday's habit: a Schedule date,
+  /// then a column called Date, then Due.
+  _Json get _calendarColumn {
+    final cols = _calendarColumns;
+    final picked = store.readItem(_calendarKey);
+    _Json? find(bool Function(_Json) test) =>
+        cols.skip(1).where(test).firstOrNull;
+    return cols.where((c) => c['id'] == picked).firstOrNull ??
+        find(
+          (c) => RegExp(
+            r'^schedul',
+            caseSensitive: false,
+          ).hasMatch('${c['title']}'),
+        ) ??
+        find((c) => '${c['title']}'.toLowerCase() == 'date') ??
+        cols.first;
+  }
+
+  Widget _calendarView({required bool phone}) {
+    final col = _calendarColumn;
+    final id = col['id'] as String;
+    final timeline = col['type'] == 'timeline';
+    return TaskBoardCalendar(
+      key: ValueKey('calendar-$id'),
+      tasks: _shownTasks,
+      canEdit: _canEdit,
+      formats: _formats,
+      compact: phone,
+      colourOf: _planColour,
+      onOpen: _openTask,
+      columnLabel: '${col['title']}',
+      daysOf: (t) {
+        if (id == 'due') return [?planDay(t['due_on'])];
+        final v = (t['values'] as Map?)?[id];
+        if (!timeline) return [?planDay(v)];
+        if (v is! Map) return const [];
+        final from = planDay(v['from']), to = planDay(v['to']) ?? from;
+        if (from == null || to == null || to.isBefore(from)) return const [];
+        return [
+          for (
+            var d = from;
+            !d.isAfter(to);
+            d = DateTime(d.year, d.month, d.day + 1)
+          )
+            d,
+        ];
+      },
+      header: DropdownMenu<String>(
+        key: const Key('plan-calendar-column'),
+        label: const Text('Date column'),
+        initialSelection: id,
+        dropdownMenuEntries: [
+          for (final c in _calendarColumns)
+            DropdownMenuEntry(value: c['id'] as String, label: '${c['title']}'),
+        ],
+        onSelected: (v) {
+          if (v == null) return;
+          store.writeItem(_calendarKey, v, persist: true);
+          setState(() {});
+        },
+      ),
+      onMoveDate: (t, day) {
+        if (id == 'due') return _patchTask(t, {'due_on': day});
+        if (!timeline) {
+          return _patchTask(t, {
+            'values': {id: day},
+          });
+        }
+        // A span keeps its length, moved to start on the day.
+        final v = (t['values'] as Map?)?[id];
+        final from = v is Map ? planDay(v['from']) : null;
+        final to = v is Map ? planDay(v['to']) : null;
+        final start = planDay(day)!;
+        final end = from != null && to != null
+            ? start.add(to.difference(from))
+            : start;
+        return _patchTask(t, {
+          'values': {
+            id: {'from': day, 'to': formatCalendarDay(end)},
+          },
+        });
+      },
+    );
+  }
 
   Widget _timelineView({required bool phone}) {
     final column = (_board!['columns'] as List? ?? const [])

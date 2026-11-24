@@ -71,7 +71,20 @@ class TaskBoardCalendar extends StatefulWidget {
     required this.onMoveDate,
     required this.formats,
     this.compact = false,
+    this.daysOf,
+    this.header,
+    this.columnLabel = 'Due',
   });
+
+  /// The days a task sits on: its date column's day, or every day of a
+  /// timeline's span. Due by default.
+  final List<DateTime> Function(PlanTask)? daysOf;
+
+  /// The date-column picker, over the calendar (staff 11-24).
+  final Widget? header;
+
+  /// The plotted column's name, said when nothing has a date in it.
+  final String columnLabel;
 
   final DisplayFormats formats;
   final List<PlanTask> tasks;
@@ -93,16 +106,20 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
   Map<DateTime, List<PlanTask>> get _byDay {
     final out = <DateTime, List<PlanTask>>{};
     for (final t in widget.tasks) {
-      final d = planDay(t['due_on']);
-      if (d != null) (out[d] ??= []).add(t);
+      for (final d in _days(t)) {
+        (out[d] ??= []).add(t);
+      }
     }
     return out;
   }
 
   List<PlanTask> get _undated => [
     for (final t in widget.tasks)
-      if (planDay(t['due_on']) == null) t,
+      if (_days(t).isEmpty) t,
   ];
+
+  List<DateTime> _days(PlanTask t) =>
+      widget.daysOf?.call(t) ?? [?planDay(t['due_on'])];
 
   /// The task whose "Move date" field is open on a phone, and its field.
   String? _moving;
@@ -115,8 +132,34 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      widget.compact ? _agenda(context) : _grid(context);
+  Widget build(BuildContext context) {
+    final body = widget.compact ? _agenda(context) : _grid(context);
+    final none = widget.tasks.isNotEmpty && _byDay.isEmpty;
+    if (widget.header == null && !none) return body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ?widget.header,
+              // Never silently blank (staff 11-24).
+              if (none)
+                Text(
+                  'No task has a ${widget.columnLabel} date. Pick another date column.',
+                  key: const Key('plan-calendar-none'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ),
+        ),
+        Expanded(child: body),
+      ],
+    );
+  }
 
   Widget _agenda(BuildContext context) {
     final theme = Theme.of(context);
@@ -189,7 +232,9 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
             key: ValueKey('plan-move-${t['id']}'),
             onPressed: () => setState(() {
               _moving = _moving == t['id'] ? null : t['id'] as String;
-              _movingDay.text = '${t['due_on'] ?? ''}';
+              _movingDay.text = _days(t).isEmpty
+                  ? ''
+                  : formatCalendarDay(_days(t).first);
             }),
             child: const Text('Move date'),
           )
@@ -227,7 +272,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
         key: ValueKey('plan-day-${formatCalendarDay(d)}'),
         onWillAcceptWithDetails: (_) => widget.canEdit,
         onAcceptWithDetails: (det) {
-          if (planDay(det.data['due_on']) != d) {
+          if (!_days(det.data).contains(d)) {
             widget.onMoveDate(det.data, formatCalendarDay(d));
           }
         },
