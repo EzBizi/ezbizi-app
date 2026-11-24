@@ -3700,6 +3700,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final virtual = group['virtual'] == true;
     final id = virtual ? null : group['id'] as String?;
     final fold = group['id'] as String?;
+    final fill = EzBiziTheme.groupTitleFill(context, colour);
+    final ink = EzBiziTheme.inkOn(fill);
 
     final header = _groupDropTarget(
       id,
@@ -3707,86 +3709,103 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _dropOn(
         id,
         null,
-        InkWell(
-          key: ValueKey('task-group-$fold'),
-          onTap: () =>
-              setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              children: [
-                // The name and count take the row; the menu sits at its end.
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Drag the header onto another to reorder (row 15, Jose 11-19).
-                      if (_canEdit && id != null)
-                        Draggable<_GroupDrag>(
-                          key: ValueKey('group-drag-$id'),
-                          data: _GroupDrag(id),
-                          // Every group folds to its header while one moves,
-                          // so the whole board fits; what was open opens
-                          // again after (design 200, 4; Jose 11-20).
-                          onDragStarted: _foldAllForDrag,
-                          onDragEnd: (_) => _unfoldAfterDrag(),
-                          feedback: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Text('${group['name']}'),
+        DecoratedBox(
+          key: ValueKey('task-group-head-$fold'),
+          // Gallery 210 (Jose 11-24, option 3): the row tinted in the group's
+          // colour, a 4 px rule in it, the words in whichever ink reads.
+          decoration: BoxDecoration(
+            color: fill,
+            border: Border(bottom: BorderSide(color: colour, width: 4)),
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(color: ink),
+            child: InkWell(
+              key: ValueKey('task-group-$fold'),
+              onTap: () => setState(
+                () => folded ? _folded.remove(fold) : _folded.add(fold),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    // The name and count take the row; the menu sits at its end.
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Drag the header onto another to reorder (row 15, Jose 11-19).
+                          if (_canEdit && id != null)
+                            Draggable<_GroupDrag>(
+                              key: ValueKey('group-drag-$id'),
+                              data: _GroupDrag(id),
+                              // Every group folds to its header while one moves,
+                              // so the whole board fits; what was open opens
+                              // again after (design 200, 4; Jose 11-20).
+                              onDragStarted: _foldAllForDrag,
+                              onDragEnd: (_) => _unfoldAfterDrag(),
+                              feedback: Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text('${group['name']}'),
+                                ),
+                              ),
+                              child: const MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: Icon(Icons.drag_indicator, size: 18),
+                              ),
+                            ),
+                          Icon(
+                            folded ? Icons.chevron_right : Icons.expand_more,
+                            color: ink,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          if (id != null && _naming == id)
+                            _groupNameField(id)
+                          else
+                            Flexible(
+                              child: Text(
+                                '${group['name']}',
+                                key: ValueKey('task-group-title-$fold'),
+                                // A phone wraps a long name to two lines (phone 6).
+                                maxLines: cards ? 2 : 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: ink,
+                                  fontSize: cards ? 18 : 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          Text(
+                            // What is shown (Jose 11-20: CT › Company Info said
+                            // "5 tasks" with a filter hiding all five); the
+                            // server's whole count only while nothing is hidden.
+                            switch (shown.length < all.length
+                                ? shown.length
+                                : (_totalsOf(id)?['count'] as num?)?.toInt() ??
+                                      all.length) {
+                              1 => '1 task',
+                              final n => '$n tasks',
+                            },
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: ink,
                             ),
                           ),
-                          child: const MouseRegion(
-                            cursor: SystemMouseCursors.grab,
-                            child: Icon(Icons.drag_indicator, size: 18),
-                          ),
-                        ),
-                      Icon(
-                        folded ? Icons.chevron_right : Icons.expand_more,
-                        color: colour,
-                        size: 20,
+                          // Beside the name, Monday's place: at the row's end it sat
+                          // past the screen's edge on a wide board (QA 11-16).
+                          if (_canEdit && id != null) ...[
+                            const SizedBox(width: 4),
+                            _groupMenu(group, all.length),
+                          ],
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      if (id != null && _naming == id)
-                        _groupNameField(id)
-                      else
-                        Flexible(
-                          child: Text(
-                            '${group['name']}',
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: colour,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      Text(
-                        // What is shown (Jose 11-20: CT › Company Info said
-                        // "5 tasks" with a filter hiding all five); the
-                        // server's whole count only while nothing is hidden.
-                        switch (shown.length < all.length
-                            ? shown.length
-                            : (_totalsOf(id)?['count'] as num?)?.toInt() ??
-                                  all.length) {
-                          1 => '1 task',
-                          final n => '$n tasks',
-                        },
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      // Beside the name, Monday's place: at the row's end it sat
-                      // past the screen's edge on a wide board (QA 11-16).
-                      if (_canEdit && id != null) ...[
-                        const SizedBox(width: 4),
-                        _groupMenu(group, all.length),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -6009,24 +6028,35 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Row(
-                children: [
-                  _statusDot(context, status),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      '${status.name} · ${tasks.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+            // Gallery 210: the status colour's tint, its 4 px rule, 16 px.
+            Builder(
+              builder: (context) {
+                final colour = _statusColours(context, status).fill;
+                final fill = EzBiziTheme.groupTitleFill(context, colour);
+                final ink = EzBiziTheme.inkOn(fill);
+                return Container(
+                  key: ValueKey('kanban-head-${status.id}'),
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                    border: Border(bottom: BorderSide(color: colour, width: 4)),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Text(
+                    '${status.name} · ${tasks.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
             Expanded(
               child: ListView(

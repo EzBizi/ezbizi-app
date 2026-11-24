@@ -321,7 +321,7 @@ class TaskBoardSettingsController extends Controller
         $taken = $board->statuses()->get()
             ->contains(fn (TaskStatus $s) => $s->id !== $except && mb_strtolower($s->name) === mb_strtolower($name));
         if ($taken) {
-            throw ValidationException::withMessages(['name' => 'This board already has a status with that name.']);
+            throw ValidationException::withMessages(['name' => "There is already a status called {$name} on this board."]);
         }
     }
 
