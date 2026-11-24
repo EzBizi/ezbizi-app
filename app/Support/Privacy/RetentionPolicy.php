@@ -75,7 +75,7 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 58 tables this governs today are `a1leads_review_events`
+     * The 59 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `a1leads_reviews` (updated_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
@@ -95,8 +95,8 @@ final class RetentionPolicy
      * `scheduling_helper_bookings` (date), `scheduling_reschedule_offers` (created_at),
      * `staff_messages` (created_at), `task_reminders` (created_at),
      * `vehicle_positions` (recorded_at), `whatsapp_contacts` (updated_at), `whatsapp_pending_reports` (created_at),
-     * `whatsapp_report_batches` (created_at), `whatsapp_messages` (created_at) and
-     * `workiz_calls` (called_at). It said
+     * `whatsapp_report_batches` (created_at), `whatsapp_messages` (created_at),
+     * `workiz_calls` (called_at), `zip_reports` (created_at). It said
      * four before Phone added call and SMS rows with the same three-month
      * window as business audit (spec §11), and seven before colleagues could
      * message each other — that one is two years rather than three months,

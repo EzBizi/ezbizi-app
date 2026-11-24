@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/theme.dart';
+import '../screens/scheduling/zip_reports.dart';
 
 /// A window picked on the [AvailabilityGrid]: its day and times ("HH:MM").
 typedef PickedWindow = ({String date, String start, String end});
@@ -153,6 +154,14 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        if (zipIn(widget.zip) case final zip?)
+          ReportWrongZipButton(
+            api: widget.api,
+            zip: zip,
+            areaId: '${data['area_id']}',
+            areaName: '${data['area_name']}',
+            compact: true,
+          ),
         IconButton(
           key: const ValueKey('grid-earlier'),
           tooltip: 'Earlier days',
