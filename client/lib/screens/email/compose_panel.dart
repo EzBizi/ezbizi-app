@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Starting a conversation — as the INBOX, and saying so before anything leaves.
 ///
@@ -245,7 +246,7 @@ class ComposePanelState extends State<ComposePanel> {
           TextField(
             controller: _to,
             enabled: !_busy,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             keyboardType: TextInputType.emailAddress,
             decoration: InputDecoration(
               labelText: 'To',

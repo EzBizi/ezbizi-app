@@ -11,6 +11,7 @@ import '../../widgets/franchise_field.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import 'area_delete_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Capacity settings — the area rail, the pattern overview, and one area's grid.
 ///
@@ -1227,7 +1228,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         TextField(
           key: const Key('scheduling-area-name'),
           controller: _formName,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submitForm(),
           decoration: const InputDecoration(

@@ -44,6 +44,7 @@ import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
 import 'task_board_reminders.dart';
 import 'task_board_sensitive.dart';
+import '../core/soft_keyboard.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -5262,7 +5263,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           child: TextField(
             key: const Key('column-add-search'),
             controller: _columnSearch,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               isDense: true,

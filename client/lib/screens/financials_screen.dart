@@ -18,6 +18,7 @@ import 'financials/financial_results.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
 import 'financials/invoices_tab.dart';
+import '../core/soft_keyboard.dart';
 
 /// Financials — the Airtable replacement (Jose, 2026-10-14).
 ///
@@ -1301,7 +1302,7 @@ class _NewBasePanelState extends State<_NewBasePanel> {
             ),
           TextField(
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Base name'),
           ),
           const SizedBox(height: 12),

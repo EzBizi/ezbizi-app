@@ -31,6 +31,7 @@ import 'jobs/job_detail_panel.dart';
 import 'jobs/job_notes.dart';
 import 'phone/call_tab.dart';
 import 'jobs/job_lines_tab.dart' show pickJobTechnician;
+import '../core/soft_keyboard.dart';
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
 /// unscheduled to complete, each with a Franchise filter (All by default),
@@ -952,7 +953,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               TextField(
                 key: const Key('project-board-cost-field'),
                 controller: cost,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),

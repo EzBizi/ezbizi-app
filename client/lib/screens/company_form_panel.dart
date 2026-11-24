@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../widgets/address_fields.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../core/soft_keyboard.dart';
 
 /// Everything a company needs to exist (plan §3, §5.2).
 ///
@@ -244,7 +245,7 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
           ],
 
           _label(context, 'Name'),
-          _field(_name, autofocus: true),
+          _field(_name, autofocus: autofocusOnOpen),
 
           if (!_editing) ...[
             const SizedBox(height: 22),
