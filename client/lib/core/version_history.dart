@@ -17,6 +17,8 @@ class VersionHistory {
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
       'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
       'Task Board: label text is slightly bigger, matching Monday',
+      'Project Management: the Technician column shows the technician by name, never Removed account',
+      'Project Management › Inbox: a client who replied STOP shows Opted out and the reply box closes; the filter chips fit on a phone',
       'Notifications: each one can be marked read or unread, liked or deleted (swipe on a phone), and there is Delete all',
       'Windows and web: right-click a module or tab for Open in new window, to keep two EzBizi screens side by side; the tray menu has New window',
     ]),
