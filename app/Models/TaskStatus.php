@@ -18,11 +18,11 @@ class TaskStatus extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'board_id', 'key', 'name', 'colour', 'position', 'is_done'];
+    protected $fillable = ['organization_id', 'board_id', 'key', 'name', 'colour', 'position', 'is_done', 'is_default', 'retired'];
 
     protected function casts(): array
     {
-        return ['position' => 'integer', 'is_done' => 'boolean'];
+        return ['position' => 'integer', 'is_done' => 'boolean', 'is_default' => 'boolean', 'retired' => 'boolean'];
     }
 
     public static function retention(): RetentionPolicy

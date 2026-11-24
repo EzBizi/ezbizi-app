@@ -884,7 +884,8 @@ class IntegrationConnection {
     'workiz' ||
     'workiz_web' ||
     'ringcentral' ||
-    'quickbooks' => 'reporting',
+    'quickbooks' ||
+    'plaid' => 'reporting',
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' || 'telegram' => 'messaging',

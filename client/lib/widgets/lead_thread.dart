@@ -33,6 +33,7 @@ import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
 import 'user_avatar.dart';
+import '../core/soft_keyboard.dart';
 
 /// The reply box's one-line height, which Send, Suggest and the emoji
 /// button share.
@@ -880,8 +881,12 @@ class _LeadThreadState extends State<LeadThread> {
           ),
         ],
       ),
+      // Typing, the status, Book and details row folds away (mobile review
+      // 11-24: with it, two messages showed above the keyboard).
+      if (!keyboardUp(context)) ...[
       const SizedBox(height: 4),
       Row(
+        key: const ValueKey('phone-bar-moves'),
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (widget.onStatusChanged != null)
@@ -904,6 +909,7 @@ class _LeadThreadState extends State<LeadThread> {
           ),
         ],
       ),
+      ],
     ],
   );
 
@@ -1663,7 +1669,7 @@ class _LeadThreadState extends State<LeadThread> {
               // (design 171) keeps one bar, its details behind the bar's ...
               // and never open while the keyboard is up.
               final folded = narrow
-                  ? !_showDetails || MediaQuery.viewInsetsOf(context).bottom > 0
+                  ? !_showDetails || keyboardUp(context)
                   : short
                   ? !_showDetails
                   : _collapsed && !_editingNote;

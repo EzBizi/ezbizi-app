@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import 'mail_data.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Forwarding a message from the inbox it is in (design 137).
 ///
@@ -118,7 +119,7 @@ class _ForwardPanelState extends State<ForwardPanel> {
             key: const ValueKey('email-forward-to'),
             controller: _to,
             enabled: !_busy,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
               labelText: 'To',

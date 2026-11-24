@@ -4,9 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Franchise;
 use App\Models\Job;
-use App\Support\Jobs\EarnedStatuses;
-use App\Support\Jobs\ProjectCosts;
 use App\Models\Organization;
+use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
@@ -14,8 +13,9 @@ use App\Models\TaskGroup;
 use App\Models\User;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
+use App\Support\Jobs\EarnedStatuses;
 use App\Support\Jobs\JobAddress;
-use App\Models\Task;
+use App\Support\Jobs\ProjectCosts;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\People\NameMatch;
 use App\Support\Settings\SettingsResolver;
@@ -150,7 +150,9 @@ class FlagWorkizJobs extends Command
         $task = $tasks->create($board, array_filter([
             'title' => self::shortTitle($title),
             // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
-            'group_id' => $group ? self::groupOn($board, $group)->id : null,
+            // Desk 11-24: never one Monday's people deleted (Eve, NW's "Overbooked"): then the board's usual place.
+            'group_id' => $group && ! in_array(mb_strtolower($group), (array) ($board->builtin_columns['_monday_deleted_groups'] ?? []), true)
+                ? self::groupOn($board, $group)->id : null,
             // Who booked it, also when they have no EzBizi account (Jose 11-18).
             'values' => $values ?: null,
             'about_type' => $job ? 'job' : null,

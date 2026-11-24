@@ -147,6 +147,17 @@ class DeepLinks {
         id: segments[1],
       );
     }
+    // /hr?tab=records: one of a module's tabs, as "Open in new window" opens
+    // it (AppWindow.pathFor), taken the way a bottom-bar slot's link is.
+    final tab = uri.queryParameters['tab'];
+    if (segments.length == 1 && tab != null && tab.isNotEmpty) {
+      return DeepLink(
+        module: segments[0],
+        type: 'tab',
+        id: tab,
+        label: uri.queryParameters['label'],
+      );
+    }
     if (segments.length != 2 ||
         segments[0] != 'scheduling' ||
         segments[1] != 'overbooking') {

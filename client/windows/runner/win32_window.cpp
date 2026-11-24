@@ -16,7 +16,9 @@ constexpr UINT kTrayIconId = 1;
 
 // Menu command ids for the right-click menu.
 constexpr UINT kTrayCommandOpen = Win32Window::kCommandShowFromTray;
-constexpr UINT kTrayCommandQuit = 1002;
+constexpr UINT kTrayCommandQuit = Win32Window::kCommandQuit;
+constexpr UINT kTrayCommandNewWindow = 1003;
+
 
 /// Sent to every top-level window when Explorer restarts.
 ///
@@ -69,6 +71,11 @@ const wchar_t* const kPlacementKey = L"Software\\EzBizi";
 const wchar_t* const kPlacementValue = L"WindowPlacement";
 
 void SaveWindowPlacement(HWND window) {
+  // The first window's size is the one remembered; a second one is sized and
+  // snapped for the moment.
+  if (Win32Window::IsSecondWindow()) {
+    return;
+  }
   if (window == nullptr || !IsWindowVisible(window) || IsIconic(window)) {
     return;
   }
@@ -252,10 +259,17 @@ bool Win32Window::Create(const std::wstring& title,
   return OnCreate();
 }
 
+// static
+bool Win32Window::IsSecondWindow() {
+  static const bool second =
+      ::GetEnvironmentVariableW(L"EZBIZI_WINDOW", nullptr, 0) > 0;
+  return second;
+}
+
 bool Win32Window::Show() {
   WINDOWPLACEMENT placement = {};
   placement.length = sizeof(placement);
-  if (LoadWindowPlacement(&placement)) {
+  if (!IsSecondWindow() && LoadWindowPlacement(&placement)) {
     // Never reopen minimized: a person who closed a minimized app expects a
     // window, not a taskbar button. Maximized is kept; anything else is normal.
     placement.showCmd = placement.showCmd == SW_SHOWMAXIMIZED
@@ -327,7 +341,9 @@ Win32Window::MessageHandler(HWND hwnd,
        * invisible window costs nothing and closes that hole.
        */
       SaveWindowPlacement(window_handle_);
-      if (!really_quitting_ && IsWindowVisible(window_handle_)) {
+      // A second window has no tray to hide in: its X closes it.
+      if (!really_quitting_ && !IsSecondWindow() &&
+          IsWindowVisible(window_handle_)) {
         AddTrayIcon();
         ShowWindow(window_handle_, SW_HIDE);
 
@@ -377,6 +393,10 @@ Win32Window::MessageHandler(HWND hwnd,
 
         case kTrayCommandQuit:
           RequestQuit();
+          return 0;
+
+        case kTrayCommandNewWindow:
+          OnNewWindowRequested();
           return 0;
       }
       break;
@@ -428,7 +448,8 @@ Win32Window::MessageHandler(HWND hwnd,
 }
 
 void Win32Window::AddTrayIcon() {
-  if (tray_added_ || !window_handle_) {
+  // One icon per person: the first window's.
+  if (tray_added_ || !window_handle_ || IsSecondWindow()) {
     return;
   }
 
@@ -544,6 +565,7 @@ void Win32Window::ShowTrayMenu() {
   }
 
   AppendMenu(menu, MF_STRING, kTrayCommandOpen, L"Open EzBizi");
+  AppendMenu(menu, MF_STRING, kTrayCommandNewWindow, L"New window");
   AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenu(menu, MF_STRING, kTrayCommandQuit, L"Quit EzBizi");
 

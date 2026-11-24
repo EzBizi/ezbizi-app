@@ -6,6 +6,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\NoteRead;
 use App\Models\Task;
+use App\Models\TaskBoard;
 use App\Models\User;
 use App\Support\Notifications\NotificationDispatcher;
 use Illuminate\Database\Eloquent\Model;
@@ -49,7 +50,7 @@ class NoteActivity
         $users = User::query()->where('is_active', true)->orderBy('name')->get();
         // Monday parity (suggestion 01a20914, 11-23): anyone can be tagged on a
         // main (not private) task board; TasksController adds them to the board first.
-        if ($record instanceof \App\Models\Task && $record->board && $record->board->kind !== \App\Models\TaskBoard::KIND_USER && ! $record->board->isPrivate()) {
+        if ($record instanceof Task && $record->board && $record->board->kind !== TaskBoard::KIND_USER && ! $record->board->isPrivate()) {
             return $users->reject(fn (User $u) => in_array($u->id, (array) ($record->board->builtin_columns['_removed'] ?? []), true))->values();
         }
 
@@ -115,6 +116,8 @@ class NoteActivity
                 ->where('r.subject_type', $type)->where('r.user_id', $userId))
             ->whereIn("n.$foreignKey", $ids)
             ->where('n.user_id', '!=', $userId)
+            // Not yet posted (a scheduled task update): not unread yet either.
+            ->where('n.created_at', '<=', now())
             ->whereRaw('n.created_at > COALESCE(r.last_read_at, ?)', [self::COUNTS_FROM])
             ->groupBy("n.$foreignKey")
             ->selectRaw("n.$foreignKey as id, COUNT(*) as c")

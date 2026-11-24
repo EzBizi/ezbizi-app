@@ -711,7 +711,7 @@ class ReviewsController extends Controller
                 'id'         => $review->job->id,
                 'number'     => $review->job->number,
                 'starts_at'  => $review->job->scheduled_for?->toIso8601String(),
-                'tech'       => $review->job->performedBy?->name,
+                'tech'       => Job::technicianNames([$review->job->id])[$review->job->id] ?? null,
                 'workiz_url' => null,
             ],
             'reported_at'   => $review->reported_at?->toIso8601String(),

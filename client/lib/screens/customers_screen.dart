@@ -25,6 +25,7 @@ import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 import 'customers/customer_detail_panel.dart';
 import 'customers/customer_tags.dart';
+import '../core/soft_keyboard.dart';
 
 /// Customers (plan §5.2).
 ///
@@ -1359,7 +1360,7 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
           TextField(
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name'),
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             enabled: !_busy,
           ),
           const SizedBox(height: 12),

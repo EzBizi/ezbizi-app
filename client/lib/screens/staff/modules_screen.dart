@@ -4,6 +4,7 @@ import '../../core/staff_session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Global module availability — the platform-wide gate (plan §2.1, layer 3).
 ///
@@ -176,7 +177,7 @@ class _ModulesScreenState extends State<ModulesScreen> {
             children: [
               TextField(
                 controller: controller,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 minLines: 2,
                 maxLines: 4,
                 decoration: const InputDecoration(

@@ -367,6 +367,29 @@ class NotificationsTest extends TestCase
         $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'), 'after the window it notifies again');
     }
 
+    public function test_a_person_marks_unread_deletes_one_and_deletes_all_of_their_own(): void
+    {
+        // Monday parity (desk, 2026-11-24): per-row unread/delete, Delete all.
+        $send = fn (string $t) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $t, onlyTo: $this->org['admin'], source: 'system',
+        ));
+        $send('One');
+        $send('Two');
+        $send('Three');
+        $ids = $this->inTenant(fn () => Notification::query()->orderBy('title')->pluck('id', 'title'));
+
+        $api = $this->as($this->org['admin']);
+        $api->postJson("/api/v1/notifications/{$ids['One']}/read")->assertOk();
+        $api->postJson("/api/v1/notifications/{$ids['One']}/unread")->assertOk();
+        $this->assertNull($this->inTenant(fn () => Notification::query()->find($ids['One'])->read_at));
+
+        $api->deleteJson("/api/v1/notifications/{$ids['Two']}")->assertOk();
+        $this->assertSame(2, $this->inTenant(fn () => Notification::query()->count()), 'only that row went');
+
+        $api->deleteJson('/api/v1/notifications')->assertOk()->assertJsonPath('data.deleted', 2);
+        $this->assertSame(0, $this->inTenant(fn () => Notification::query()->count()));
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

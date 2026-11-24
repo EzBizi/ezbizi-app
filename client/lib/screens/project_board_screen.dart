@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/job_money.dart';
@@ -31,6 +32,7 @@ import 'jobs/job_detail_panel.dart';
 import 'jobs/job_notes.dart';
 import 'phone/call_tab.dart';
 import 'jobs/job_lines_tab.dart' show pickJobTechnician;
+import '../core/soft_keyboard.dart';
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
 /// unscheduled to complete, each with a Franchise filter (All by default),
@@ -363,7 +365,14 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     );
   }
 
-  bool _fills(BuildContext context) => MediaQuery.sizeOf(context).height >= 600;
+  /// The room this screen is given, keyboard added back so focusing the
+  /// search never flips the layout (set by [build]).
+  double _room = double.infinity;
+
+  /// By the room the board gets, not the screen: an iPhone Duo's cover screen
+  /// is 678 tall but leaves the board ~430, and the table ran 81 px past the
+  /// bottom (mobile review 11-24).
+  bool _fills(BuildContext context) => _room >= 560;
 
   Widget _fill(Widget Function(double height) table) => _fills(context)
       ? Expanded(
@@ -952,7 +961,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               TextField(
                 key: const Key('project-board-cost-field'),
                 controller: cost,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -1374,7 +1383,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final view = View.of(context);
+      _room = box.maxHeight + view.viewInsets.bottom / view.devicePixelRatio;
+      return _board(context);
+    },
+  );
+
+  Widget _board(BuildContext context) {
     final theme = Theme.of(context);
     final rows = _rows;
     final shown = _shown;
@@ -1404,6 +1421,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: TabBarLike(
             key: const Key('project-board-tabs'),
+            windowPaths: [
+              for (final (key, _, _) in shown)
+                AppWindow.pathFor('project_board', tab: key),
+            ],
             labels: [
               for (final (key, name, icon) in shown)
                 (_counts[key] is int ? '$name · ${_counts[key]}' : name, icon),
@@ -1558,7 +1579,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                           )
                         : null,
                   ),
-                  if (_totals case final t?) _totalsStrip(t),
+                  // Typing on a phone the totals fold: with them the table
+                  // ran 35 px past the bottom (mobile review 11-24).
+                  if (_totals case final t?)
+                    FoldWhileTyping(child: _totalsStrip(t)),
                   _fill(
                     (height) => ListTable(
                       key: ValueKey('project-board-table:$_tab'),
@@ -3904,16 +3928,16 @@ class _ProjectInboxState extends State<_ProjectInbox> {
           ),
         ),
         const SizedBox(height: 8),
-        // As Leads (design 162): one row of compact chips that scrolls
-        // sideways, never a second line (Shoval, 2026-11-18).
-        SingleChildScrollView(
+        // Compact chips that wrap inside the list's width, never clipped
+        // (Jose, 2026-11-24: "this is also overflowing").
+        Padding(
           key: const Key('project-inbox-filters'),
-          scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              for (final (i, (key, label, icon)) in _inboxFilters.indexed) ...[
-                if (i > 0) const SizedBox(width: 6),
+              for (final (key, label, icon) in _inboxFilters) ...[
                 FilterChip(
                   key: ValueKey('project-inbox-filter-$key'),
                   avatar: Icon(icon, size: 16, color: theme.colorScheme.primary),
@@ -4038,7 +4062,16 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      if (waiting || replied) ...[
+                      // The client replied STOP (Jose, 2026-11-24).
+                      if (t['opted_out'] == true) ...[
+                        StatusPill(
+                          'Opted out',
+                          key: ValueKey('project-inbox-optout-${t['job_id']}'),
+                          tone: Tone.bad,
+                          dense: true,
+                        ),
+                        const SizedBox(width: 6),
+                      ] else if (waiting || replied) ...[
                         StatusPill(
                           waiting ? 'Awaiting reply' : 'Replied',
                           key: ValueKey('project-inbox-state-${t['job_id']}'),
@@ -4298,8 +4331,27 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     );
   }
 
-  /// Pinned under the thread; Enter adds a line, the button sends.
-  Widget _composer(ThemeData theme) => Container(
+  /// Pinned under the thread; Enter adds a line, the button sends. Closed
+  /// when the client replied STOP (Jose, 2026-11-24), until a START.
+  Widget _composer(ThemeData theme) => switch (_job?['opted_out']) {
+    final String stop => Container(
+      key: const Key('project-inbox-closed'),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(Icons.block, size: 18, color: theme.colorScheme.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(stop, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    ),
+    _ => _openComposer(theme),
+  };
+
+  Widget _openComposer(ThemeData theme) => Container(
     decoration: BoxDecoration(
       border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
     ),
