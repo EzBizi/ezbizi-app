@@ -3904,16 +3904,16 @@ class _ProjectInboxState extends State<_ProjectInbox> {
           ),
         ),
         const SizedBox(height: 8),
-        // As Leads (design 162): one row of compact chips that scrolls
-        // sideways, never a second line (Shoval, 2026-11-18).
-        SingleChildScrollView(
+        // Compact chips that wrap inside the list's width, never clipped
+        // (Jose, 2026-11-24: "this is also overflowing").
+        Padding(
           key: const Key('project-inbox-filters'),
-          scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              for (final (i, (key, label, icon)) in _inboxFilters.indexed) ...[
-                if (i > 0) const SizedBox(width: 6),
+              for (final (key, label, icon) in _inboxFilters) ...[
                 FilterChip(
                   key: ValueKey('project-inbox-filter-$key'),
                   avatar: Icon(icon, size: 16, color: theme.colorScheme.primary),
@@ -4038,7 +4038,16 @@ class _ProjectInboxState extends State<_ProjectInbox> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      if (waiting || replied) ...[
+                      // The client replied STOP (Jose, 2026-11-24).
+                      if (t['opted_out'] == true) ...[
+                        StatusPill(
+                          'Opted out',
+                          key: ValueKey('project-inbox-optout-${t['job_id']}'),
+                          tone: Tone.bad,
+                          dense: true,
+                        ),
+                        const SizedBox(width: 6),
+                      ] else if (waiting || replied) ...[
                         StatusPill(
                           waiting ? 'Awaiting reply' : 'Replied',
                           key: ValueKey('project-inbox-state-${t['job_id']}'),
@@ -4298,8 +4307,27 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     );
   }
 
-  /// Pinned under the thread; Enter adds a line, the button sends.
-  Widget _composer(ThemeData theme) => Container(
+  /// Pinned under the thread; Enter adds a line, the button sends. Closed
+  /// when the client replied STOP (Jose, 2026-11-24), until a START.
+  Widget _composer(ThemeData theme) => switch (_job?['opted_out']) {
+    final String stop => Container(
+      key: const Key('project-inbox-closed'),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(Icons.block, size: 18, color: theme.colorScheme.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(stop, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    ),
+    _ => _openComposer(theme),
+  };
+
+  Widget _openComposer(ThemeData theme) => Container(
     decoration: BoxDecoration(
       border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
     ),
