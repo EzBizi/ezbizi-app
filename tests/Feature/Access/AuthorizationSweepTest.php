@@ -109,6 +109,11 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/inspections/{inspection_definition} b' => 'status 200, body carries the record',
         // By design (desk ruling 2026-11-17)
         'GET api/v1/inspections/{inspection_definition}/cover b' => 'status 200',
+        // By design (desk ruling 2026-11-23): roles belong to the whole organization, and
+        // anybody with roles.view already reads every role's grants through GET roles; the
+        // mobile-bar options are derived from those grants, so a sibling-company viewer
+        // learns nothing GET roles does not already show them. Writes stay org-level only.
+        'GET api/v1/roles/{role}/mobile-bar/options b' => 'status 200',
         // By design (desk ruling 2026-11-17)
         'PATCH api/v1/ai-assistance/parts/{part} b' => 'status 200, body carries the record',
         // By design (desk ruling 2026-11-17)
