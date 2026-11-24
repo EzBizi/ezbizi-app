@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Comments: a Facebook or X account that cannot load says why in one plain line, and the other accounts keep loading',
       'Automations: alerts, task updates and task changes an automation makes now say EzBizi AI and the rule name, not the person who made the rule',
       'Email: on phones, tablets and small windows an email opens full screen with Back; on short desktop windows the reading pane sits beside the list',
       'Work Hours: correction requests fit on a phone screen',
