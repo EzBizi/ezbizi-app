@@ -1437,11 +1437,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // a phone the state strip and the company picker's row).
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
-          kToolbarHeight + barStates.preferredSize.height,
+          (folded ? 0 : kToolbarHeight) + barStates.preferredSize.height,
         ),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
           builder: (context) => AppBar(
+            // Typing on a phone the toolbar folds too (mobile review 11-24):
+            // menu, clock, calls, search and bell are not used mid-sentence,
+            // and 56 px is two more lines of a conversation. AppBar clips its
+            // toolbar, so at height 0 nothing in it draws or takes a tap.
+            toolbarHeight: folded ? 0 : null,
             // A rule under the top bar.
             //
             // The bar and the rail were both plain surface, so on a light theme

@@ -23,6 +23,7 @@ import 'mail_data.dart';
 import 'message_list.dart';
 import 'message_view.dart';
 import 'reply_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Where the open conversation sits beside the list (design 137 option 1).
 enum ReadingPane { right, below, off }
@@ -1825,13 +1826,16 @@ class _GmailInboxState extends State<GmailInbox> {
         Positioned(
           right: 16,
           bottom: 16,
-          child: _composeControl(
-            (onPressed) => FloatingActionButton.extended(
-              key: const ValueKey('email-compose-fab'),
-              heroTag: null,
-              onPressed: onPressed,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Compose'),
+          // Typing a search, it stops covering the list.
+          child: FoldWhileTyping(
+            child: _composeControl(
+              (onPressed) => FloatingActionButton.extended(
+                key: const ValueKey('email-compose-fab'),
+                heroTag: null,
+                onPressed: onPressed,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Compose'),
+              ),
             ),
           ),
         ),
