@@ -32,6 +32,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
@@ -2381,96 +2382,46 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final at = _rail == _Rail.modules
         ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
-    // One line under each icon at any width and text size (Jose,
-    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
-    // label to one line, so the bar is drawn here: a short word, scaled
-    // down to fit its slot rather than wrapped.
-    final scheme = Theme.of(context).colorScheme;
-    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
-      final on = i == at;
-      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
-      return Expanded(
-        child: Tooltip(
-          message: tip,
-          child: InkWell(
-            key: key,
-            onTap: () {
-              if (i == slots.length) {
-                _scaffoldKey.currentState?.openDrawer();
-                return;
-              }
-              final (d, tab, label) = slots[i];
-              // A tab slot: the module takes the link and opens on that tab.
-              if (tab != null) {
-                DeepLinks.open(
-                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
-                );
-              }
-              _show(_Rail.modules, d.id);
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 56,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: on ? scheme.secondaryContainer : null,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(icon, color: ink, size: 22),
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: ink,
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
+    // One shared bar with the Roles editor's preview (Jose 2026-11-24:
+    // "you can't tell stuff apart"): equal slots, readable labels, and a
+    // tab slot with its own icon.
+    return PhoneBottomBar(
       key: const Key('phone-bottom-bar'),
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              for (final (i, (d, tab, label)) in slots.indexed)
-                slot(
-                  i,
-                  d.icon,
-                  label,
-                  tab == null ? d.label : '${d.label} › $label',
-                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
-                ),
-              slot(
-                slots.length,
-                Icons.menu,
-                'More',
-                'More',
-                const Key('phone-bottom-more'),
+      selected: at,
+      items: [
+        for (final (d, tab, label) in slots)
+          () {
+            final (icon, badge) = slotIcon(d.icon, tab);
+            return PhoneBarItem(
+              icon: icon,
+              badge: badge,
+              label: label,
+              tooltip: tab == null ? d.label : '${d.label} › $label',
+              key: ValueKey(
+                'phone-bottom-${d.id}${tab == null ? '' : '-$tab'}',
               ),
-            ],
-          ),
+            );
+          }(),
+        const PhoneBarItem(
+          icon: Icons.menu,
+          label: 'More',
+          key: Key('phone-bottom-more'),
         ),
-      ),
+      ],
+      onTap: (i) {
+        if (i == slots.length) {
+          _scaffoldKey.currentState?.openDrawer();
+          return;
+        }
+        final (d, tab, label) = slots[i];
+        // A tab slot: the module takes the link and opens on that tab.
+        if (tab != null) {
+          DeepLinks.open(
+            DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+          );
+        }
+        _show(_Rail.modules, d.id);
+      },
     );
   }
 
