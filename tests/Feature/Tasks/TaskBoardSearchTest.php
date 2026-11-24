@@ -53,5 +53,9 @@ class TaskBoardSearchTest extends TestCase
         $this->assertNotContains('Removed account', $names->all());
         $this->assertContains('Artem Maliuk · artem1@example.test', $names->all());
         $this->assertContains('Artem Maliuk · artem2@example.test', $names->all());
+
+        // Adeline 11-24: "Chris" finds Kristopher; the start of the email is a word to find them by.
+        $row = collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$board->id}")->json('data.assignable'))->firstWhere('id', $a->id);
+        $this->assertStringContainsString('artem1', (string) $row['also']);
     }
 }

@@ -1481,6 +1481,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Map<String, String> _peopleNow() {
     final assignable = _board?['assignable'];
     if (assignable is List) {
+      for (final p in assignable.whereType<Map>()) {
+        if (p['also'] is String) {
+          PeopleSearchList.aliases['${p['id']}'] = p['also'] as String;
+        }
+      }
       // Faces without a photo are not asked for one.
       UserAvatar.knownPhotos({
         for (final p in assignable.whereType<Map>())
