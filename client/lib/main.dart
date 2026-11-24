@@ -633,6 +633,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       Callouts.seen.value.toList(),
     );
 
+    // No "match my device" any more (Jose 11-24): whoever is still on it, or
+    // never chose, keeps what their device shows now. After the frame, since
+    // a preference write rebuilds the app above this shell.
+    final theme = widget.session.me;
+    if (theme != null && !theme.themeChosen && !AppWindow.secondary) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.session.setPreference('appearance.theme', theme.theme);
+        }
+      });
+    }
+
     // SECURITY exemption: the Lead Developer's own device still beats (online)
     // and reports specs, but never captures, live-views or is remote-driven —
     // so the heartbeat starts unconditionally while the three capture services
@@ -1603,9 +1615,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // second setting. Two places that both claim to control the theme and
               // disagree is worse than one place that is hard to find.
               //
-              // Cycles system -> light -> dark rather than toggling two states: the
-              // default is "match my device", and a two-way switch would silently
-              // throw that away the first time anybody touched it.
+              // Two states, light and dark (Jose 11-24: "get rid of the middle
+              // matching your device mode"). A mixed theme flips by its page.
               // Desktop only, by Jose's word (2026-09-10): "we can get rid of
               // the light-dark mode switcher and have it only managed via your
               // account on mobile". It was always a shortcut to the account
@@ -1613,29 +1624,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // path and never a capability -- which is the only reason it is
               // safe to drop rather than relocate.
               if (wide)
-                IconButton(
-                  tooltip: switch (me.theme) {
-                    'light' => 'Light — switch to dark',
-                    'dark' => 'Dark — match my device',
-                    _ => 'Matching your device — switch to light',
+                Builder(
+                  builder: (context) {
+                    final light =
+                        EzBiziTheme.modeFor(me.theme) == ThemeMode.light;
+                    return IconButton(
+                      tooltip: light
+                          ? 'Light — switch to dark'
+                          : 'Dark — switch to light',
+                      icon: Icon(
+                        light
+                            ? Icons.wb_sunny_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
+                      onPressed: () => widget.session.setPreference(
+                        'appearance.theme',
+                        light ? 'dark' : 'light',
+                      ),
+                    );
                   },
-                  icon: Icon(switch (me.theme) {
-                    'light' => Icons.wb_sunny_outlined,
-                    'dark' => Icons.dark_mode_outlined,
-                    // Not brightness_auto: that glyph is a sun with an A, and
-                    // it sits next to the two-factor shield that also carries
-                    // an A. Contrast is the half-and-half circle — light and
-                    // dark in one mark, no letter.
-                    _ => Icons.contrast,
-                  }),
-                  onPressed: () => widget.session.setPreference(
-                    'appearance.theme',
-                    switch (me.theme) {
-                      'system' => 'light',
-                      'light' => 'dark',
-                      _ => 'system',
-                    },
-                  ),
                 ),
               // "View as" a role or person (design 205): developers who are
               // Administrators; lit while on, so it can be switched or left.
@@ -3314,7 +3321,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                         // cut-off list as modules MISSING). Drawn over the
                         // list it covered a module name (desktop review
                         // 2026-11-13, Top 6).
-                        _MoreBelow(controller: _railScroll),
+                        _MoreBelow(controller: _railScroll, compact: !expanded),
                       ],
                     ),
             ),
@@ -3871,9 +3878,13 @@ class Destination {
 /// A fade and a "More" chevron over the bottom of a scrolling list, shown only
 /// while there is still something below the fold. Tapping it scrolls down.
 class _MoreBelow extends StatefulWidget {
-  const _MoreBelow({required this.controller});
+  const _MoreBelow({required this.controller, this.compact = false});
 
   final ScrollController controller;
+
+  /// The collapsed rail: the chevron alone, centred under the icons (Jose
+  /// 11-24: "it should just show the arrow"); "More" is its tooltip.
+  final bool compact;
 
   @override
   State<_MoreBelow> createState() => _MoreBelowState();
@@ -3909,6 +3920,13 @@ class _MoreBelowState extends State<_MoreBelow> {
         // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
         final bg = scheme.surfaceContainerLow;
 
+        void toEnd() => controller.animateTo(
+          controller.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+        final arrow = Icon(Icons.expand_more, size: 18, color: scheme.primary);
+
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -3920,16 +3938,19 @@ class _MoreBelowState extends State<_MoreBelow> {
           child: Padding(
             padding: const EdgeInsets.only(top: 16),
             child: Center(
-              child: TextButton.icon(
-                key: const Key('sidebar-more-below'),
-                onPressed: () => controller.animateTo(
-                  controller.position.maxScrollExtent,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                ),
-                icon: Icon(Icons.expand_more, size: 18, color: scheme.primary),
-                label: const Text('More'),
-              ),
+              child: widget.compact
+                  ? IconButton(
+                      key: const Key('sidebar-more-below'),
+                      tooltip: 'More',
+                      onPressed: toEnd,
+                      icon: arrow,
+                    )
+                  : TextButton.icon(
+                      key: const Key('sidebar-more-below'),
+                      onPressed: toEnd,
+                      icon: arrow,
+                      label: const Text('More'),
+                    ),
             ),
           ),
         );

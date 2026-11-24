@@ -70,8 +70,9 @@ class PreferenceRegistry
                  * would eventually find the pair in a state that means nothing.
                  */
                 'options' => ['system', 'light', 'dark', 'mixed_dark_nav', 'mixed_light_nav'],
-                'help' => '"Match my device" follows whatever your phone or computer is set to. '
-                    .'Mixed keeps the sidebar and the page in opposite themes.',
+                // 'system' stays valid for older apps; the app no longer offers
+                // it and saves the device's theme in its place (Jose 11-24).
+                'help' => 'Light or dark. Mixed keeps the sidebar and the page in opposite themes.',
             ],
 
             /*
