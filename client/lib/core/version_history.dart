@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Task Board: folding the sidebars no longer leaves a grey band; the toolbar keeps Invite and the menu',
+      'Light and dark mode switch instantly, without the slow fade on big boards',
       'Task Board: a line under every row again, in light and dark',
       'Task Board: images open in a viewer in the middle of the screen, with zoom and next/previous; downloads keep their file type',
       'Task Board: the Updates column shows the red unread count or the total, never both; the group colour strip runs the full height of the group',

@@ -206,6 +206,9 @@ class _EzBiziAppState extends State<EzBiziApp> {
       debugShowCheckedModeBanner: false,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
+      // No cross-fade: every frame of the 200 ms lerp rebuilt each board
+      // cell on its own, ~12 full rebuilds on a big Task Board (Jose 11-24).
+      themeAnimationDuration: Duration.zero,
       /*
        * The signed-in person's choice (§2.1 category 6), falling back to the
        * device before anyone has signed in — there is nobody to have a
