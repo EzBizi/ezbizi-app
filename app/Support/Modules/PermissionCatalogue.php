@@ -478,16 +478,27 @@ class PermissionCatalogue
      * documents at length: validating the list somebody SENT while storing a
      * different, larger one is how the last hole in this file happened.
      *
+     * [$stored] is what the role held before this save. A key it already held
+     * is not refused over a requirement it did not meet then (roles audit,
+     * 2026-11-24): a requirement declared later must not lock a role out of
+     * every edit. It blocks only a newly added tick, the same tolerance the
+     * controller gives a stored key it no longer knows.
+     *
      * @param  string[]  $keys
+     * @param  string[]  $stored
      *
      * @throws ValidationException
      */
-    public function assertRequirementsMet(array $keys): void
+    public function assertRequirementsMet(array $keys, array $stored = []): void
     {
         $granted = $this->withImpliedView($keys);
         $missing = [];
 
         foreach ($granted as $key) {
+            if (in_array($key, $stored, true)) {
+                continue;
+            }
+
             $module = $this->registry->get($this->moduleOf($key));
 
             if ($module === null) {

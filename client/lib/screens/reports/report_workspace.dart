@@ -269,7 +269,12 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
             onChanged: (v) => setState(() => _query = v),
           ),
         ),
-        ...group('Tables', ReportWorkspace.tables),
+        // Meta ad spend is the Meta report's numbers, read on its grant
+        // (roles audit 2026-11-24); without it the entry only refused.
+        ...group('Tables', [
+          for (final t in ReportWorkspace.tables)
+            if (t.key != 'meta' || (_me?.can('reports.meta.view') ?? false)) t,
+        ]),
         ...group('Daily texts', ReportWorkspace.texts),
       ],
     );

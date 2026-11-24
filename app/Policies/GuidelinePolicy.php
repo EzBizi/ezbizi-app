@@ -19,7 +19,8 @@ class GuidelinePolicy
 {
     public function viewAny(User $user): Response
     {
-        return $user->hasPermission('guidelines.guidelines.view')
+        // Settings lists them too (roles audit 2026-11-24).
+        return $user->hasPermission('guidelines.guidelines.view') || $user->hasPermission('guidelines.settings.view')
             ? Response::allow()
             : Refusal::permission('see the assistant\'s answers');
     }

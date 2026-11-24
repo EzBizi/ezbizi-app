@@ -46,8 +46,10 @@ class SocialConnectionsController extends Controller
     {
         $user = $request->user();
 
+        // Newsletter › Settings reads its Mailchimp status here (roles audit
+        // 2026-11-24): a Newsletter-only role got a refusal instead.
         abort_unless(
-            $user->hasPermission('marketing.view'),
+            $user->hasPermission('marketing.view') || $user->hasPermission('newsletter.settings.view'),
             Status::HTTP_FORBIDDEN,
             Refusal::permission('open Marketing')->message(),
         );

@@ -859,17 +859,44 @@ class _RolePageState extends State<_RolePage> {
   /// neighbour learned that the hard way: splitting keys on the dot and
   /// upper-casing the front produced headings like "NUMBERING" that nobody
   /// wrote. A key we cannot find is worth showing as the key.
-  String _labelForKey(String key) {
+  ///
+  /// A key in another module carries that module's name ("Customer
+  /// Experience › Open"), because "Open" alone says nothing about where to
+  /// tick (roles audit 2026-11-24).
+  String _labelForKey(String key, {String? from}) {
     for (final module in widget.catalogue.modules) {
       for (final action in module.actions) {
-        if (action.key == key) return action.label;
+        if (action.key == key) {
+          return module.key == from
+              ? action.label
+              : '${module.label} › ${action.label}';
+        }
       }
     }
     return key;
   }
 
-  String _requirementNames(PermissionAction action) =>
-      action.requires.map(_labelForKey).join(' and ');
+  static String _moduleOfKey(String key) => key.split('.').first;
+
+  String _requirementNames(PermissionAction action) => action.requires
+      .map((key) => _labelForKey(key, from: _moduleOfKey(action.key)))
+      .join(' and ');
+
+  /// The requirements of [action] this role does not hold, by name.
+  List<String> _unmetNames(PermissionAction action, Set<String> held) => [
+    for (final key in action.requires)
+      if (!held.contains(key))
+        _labelForKey(key, from: _moduleOfKey(action.key)),
+  ];
+
+  /// Why a ticked grant will not take effect, in the words of the screen:
+  /// "Won't show: also tick Customer Experience › Open". Null when it will.
+  String? _unmetSentence(PermissionAction action) {
+    final missing = _unmetNames(action, _held);
+    if (!_held.contains(action.key) || missing.isEmpty) return null;
+    return "${action.tab ? "Won't show" : "Won't work"}: also tick "
+        '${missing.join(' and ')}';
+  }
 
   /// Whether this action is ticked while something it needs is not.
   bool _requirementUnmet(PermissionAction action) =>
@@ -943,7 +970,8 @@ class _RolePageState extends State<_RolePage> {
 
     final names = _requirementNames(action);
     return Text(
-      unmet ? 'Needs $names — not ticked' : 'Needs $names',
+      unmet ? _unmetSentence(action)! : 'Needs $names',
+      key: ValueKey('requirement:${action.key}'),
       style: theme.textTheme.bodySmall?.copyWith(
         color: unmet
             ? theme.colorScheme.error
@@ -1070,6 +1098,27 @@ class _RolePageState extends State<_RolePage> {
 
       _inboxes.add(inbox.id);
 
+      final viewKey = module.viewKey;
+      if (viewKey != null) _held.add(viewKey);
+    });
+  }
+
+  /// What "Select all" ticks: every tab and action this person may hand out,
+  /// not the passive ones (being monitored is not a thing somebody opens).
+  List<String> _selectable(PermissionModule module) => [
+    for (final action in module.actions)
+      if (!action.passive && action.grantable) action.key,
+  ];
+
+  void _selectAll(PermissionModule module, bool on) {
+    if (!on) {
+      // The same rules as unticking Open, refusals included.
+      _toggleModule(module);
+      return;
+    }
+    setState(() {
+      _blocked = null;
+      _held.addAll(_selectable(module));
       final viewKey = module.viewKey;
       if (viewKey != null) _held.add(viewKey);
     });
@@ -1243,7 +1292,9 @@ class _RolePageState extends State<_RolePage> {
       _query.isEmpty || module.label.toLowerCase().contains(_query);
 
   bool _actionMatches(PermissionAction action) =>
-      action.label.toLowerCase().contains(_query);
+      action.label.toLowerCase().contains(_query) ||
+      (action.within?.toLowerCase().contains(_query) ?? false) ||
+      (action.description?.toLowerCase().contains(_query) ?? false);
 
   bool _inboxMatches(InboxOption inbox) =>
       inbox.heading.toLowerCase().contains(_query) ||
@@ -1392,8 +1443,11 @@ class _RolePageState extends State<_RolePage> {
                 style: theme.textTheme.bodyMedium,
               ),
             )
-          else
+          else ...[
             _grid(theme),
+            const SizedBox(height: 16),
+            _whatTheySee(theme),
+          ],
 
           const SizedBox(height: 24),
           _whoTheyCanInvite(theme),
@@ -1456,7 +1510,7 @@ class _RolePageState extends State<_RolePage> {
       width: narrow ? double.infinity : 220,
       child: ListSearch(
         key: const ValueKey('role-search'),
-        hint: 'Find a permission',
+        hint: 'Find a module or tab',
         onChanged: (value) =>
             setState(() => _query = value.trim().toLowerCase()),
       ),
@@ -1889,10 +1943,31 @@ class _RolePageState extends State<_RolePage> {
     // other eleven; searching for "Customers" shows all of them.
     final everything = _labelMatches(module);
     bool shown(PermissionAction action) => everything || _actionMatches(action);
+    final all = _selectable(module);
+    final allHeld = all.isNotEmpty && all.every(_held.contains);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Everything in one module at once (roles audit 2026-11-24): HR alone
+        // is eighteen boxes.
+        if (all.length > 1)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: ValueKey('select-all:${module.key}'),
+              onPressed: live ? () => _selectAll(module, !allHeld) : null,
+              icon: Icon(
+                allHeld ? Icons.remove_done : Icons.done_all,
+                size: 18,
+              ),
+              label: Text(
+                allHeld
+                    ? 'Clear all in ${module.label}'
+                    : 'Select all in ${module.label}',
+              ),
+            ),
+          ),
         // One width decision for every row, taken from the space the rows
         // actually have rather than from the window: layout 2 rides the
         // requirement on the label, layout 6 puts it underneath, and the two
@@ -2017,6 +2092,105 @@ class _RolePageState extends State<_RolePage> {
     }
 
     return rows;
+  }
+
+  /// "What this role sees" (roles audit 2026-11-24): the modules and tabs the
+  /// ticks will actually open, as edited, and each tick that will not take
+  /// effect with what it is waiting for. The answer to "I ticked it and it
+  /// isn't there", before the save rather than after it.
+  Widget _whatTheySee(ThemeData theme) {
+    final small = theme.textTheme.bodySmall;
+    final lines = <Widget>[];
+
+    for (final module in widget.catalogue.modules) {
+      final viewKey = module.viewKey;
+      if (viewKey == null || !_held.contains(viewKey) || !module.available) {
+        continue;
+      }
+      final tabs = module.actions.where((a) => a.tab).toList();
+      final opens = [
+        for (final tab in tabs)
+          if (_held.contains(tab.key) && _unmetNames(tab, _held).isEmpty)
+            tab.label,
+      ];
+      final waiting = [
+        for (final action in module.actions)
+          if (_unmetSentence(action) case final why?) '${action.label} — $why',
+      ];
+      final what = tabs.isEmpty
+          ? 'opens'
+          : opens.isEmpty
+          ? 'opens, with no tab ticked'
+          : opens.join(', ');
+
+      lines.add(
+        Padding(
+          key: ValueKey('sees:${module.key}'),
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: module.parent == null
+                          ? module.label
+                          : '${_moduleLabel(module.parent!)} › ${module.label}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    TextSpan(text: ': $what'),
+                  ],
+                ),
+                style: theme.textTheme.bodyMedium,
+              ),
+              for (final line in waiting)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 2),
+                  child: Text(
+                    line,
+                    style: small?.copyWith(color: theme.colorScheme.error),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('role-sees'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('What this role sees', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 2),
+          Text(
+            'The modules and tabs these ticks open, as they stand now.',
+            style: small,
+          ),
+          if (lines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Nothing yet: no module is ticked.', style: small),
+            )
+          else
+            ...lines,
+        ],
+      ),
+    );
+  }
+
+  String _moduleLabel(String key) {
+    for (final module in widget.catalogue.modules) {
+      if (module.key == key) return module.label;
+    }
+    return key;
   }
 
   /// "Who has it": a few faces and names, and "+N" for the rest.

@@ -25,7 +25,10 @@ class OwnershipController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        abort_unless($request->user()->hasPermission('hr.view'), 403, Refusal::permission('see the ownership chart')->message());
+        // Company › Ownership and Processes draw this chart on their own tab
+        // grants (roles audit 2026-11-24); HR still reads it as before.
+        abort_unless(collect(['hr.view', 'company.ownership.view', 'company.processes.view'])
+            ->contains(fn (string $key) => $request->user()->hasPermission($key)), 403, Refusal::permission('see the ownership chart')->message());
 
         $people = User::query()->where('is_active', true)
             ->with(['role:id,name', 'assignments.assignedCompany:id,name', 'assignments.assignedFranchise:id,name'])
