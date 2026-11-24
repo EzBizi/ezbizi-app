@@ -182,6 +182,37 @@ void main() {
   /// clock, which put the close button somewhere that cannot be tapped. The
   /// panel has no other way out on a phone — Escape needs a keyboard and the
   /// scrim is off the side — so the app had to be force-quit.
+  // Mobile review 11-24: a panel is a dialog route, so nothing resized it for
+  // the keyboard, and Book a job's buttons sat under it on a phone.
+  testWidgets('the footer stays above the keyboard', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(
+      tester,
+      SidePanel(
+        title: 'Book a job',
+        actions: [
+          FilledButton(onPressed: () {}, child: const Text('Book job')),
+        ],
+        child: const TextField(),
+      ),
+      viewPadding: const EdgeInsets.only(top: 47, bottom: 34),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(find.text('Book job')).bottom,
+      lessThanOrEqualTo(844 - 336),
+      reason: 'The buttons of the panel are under the keyboard.',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the close button clears the status bar on a notched phone', (
     tester,
   ) async {
