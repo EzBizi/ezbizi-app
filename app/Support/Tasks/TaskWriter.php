@@ -83,6 +83,8 @@ class TaskWriter
             };
 
             $status = $this->resolveStatus($board, $input)
+                // The board's chosen default label (gap review P1), else Not started.
+                ?? $board->statuses()->where('is_default', true)->first()
                 ?? $board->statuses()->where('key', Task::STATUS_NOT_STARTED)->first()
                 ?? $board->statuses()->first();
 

@@ -80,4 +80,23 @@ class TaskBoardActivityTest extends TestCase
         $this->assertSame(['Today', 'Later', 'No date'], $titles);
         $this->assertContains('Done one', collect($api()->getJson('/api/v1/my-work?done=1')->json('data'))->pluck('title')->all());
     }
+
+    /** Monday's status label editor (gap review P1): a default label, and retired ones. */
+    public function test_a_new_task_starts_on_the_default_label_and_the_default_cannot_be_retired(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
+        $api = fn () => $this->signedInAs($tenant['admin']);
+        $statuses = collect($api()->getJson("/api/v1/task-boards/{$board->id}")->json('data.statuses'));
+        $working = $statuses->firstWhere('name', 'Working on it')['id'];
+        $stuck = $statuses->firstWhere('name', 'Stuck')['id'];
+
+        $api()->patchJson("/api/v1/task-boards/{$board->id}/statuses/{$working}", ['is_default' => true])->assertOk()->assertJsonPath('data.is_default', true);
+        $task = $api()->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'New'])->assertCreated()->json('data');
+        $this->assertSame($working, $task['status_id']);
+
+        $api()->patchJson("/api/v1/task-boards/{$board->id}/statuses/{$working}", ['retired' => true])->assertStatus(422);
+        $api()->patchJson("/api/v1/task-boards/{$board->id}/statuses/{$stuck}", ['retired' => true])->assertOk()->assertJsonPath('data.retired', true);
+        $this->assertSame(1, collect($api()->getJson("/api/v1/task-boards/{$board->id}")->json('data.statuses'))->where('is_default', true)->count());
+    }
 }

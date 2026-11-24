@@ -2424,6 +2424,17 @@ class _StatusesPanelState extends State<StatusesPanel> {
 
   Timer? _typing;
 
+  /// A row dropped at [to]: the new order, each moved label's position saved.
+  Future<void> _reorder(int from, int to) async {
+    if (to > from) to--;
+    final rows = [..._rows];
+    rows.insert(to, rows.removeAt(from));
+    setState(() => _rows = rows);
+    for (final (i, r) in rows.indexed) {
+      if (r['position'] != i) await _patch(r, {'position': i});
+    }
+  }
+
   void _rename(Map<String, dynamic> s, String v) {
     _typing?.cancel();
     if (v.trim().isNotEmpty && v.trim() != s['name']) {
@@ -2483,106 +2494,172 @@ class _StatusesPanelState extends State<StatusesPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final s in _rows) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  SwatchButton(
-                    key: ValueKey('status-colour-${s['id']}'),
-                    colour: '${s['colour'] ?? swatches.last}',
-                    onPicked: (hex) => _patch(s, {'colour': hex}),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      key: ValueKey('status-name-${s['id']}'),
-                      controller: _name(s),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      // Natalie 11-24: a name typed and left (a click on
-                      // Done, anywhere) saves too, not only on Enter.
-                      onSubmitted: (v) => _rename(s, v),
-                      onChanged: (v) {
-                        _typing?.cancel();
-                        _typing = Timer(
-                          const Duration(milliseconds: 700),
-                          () => _rename(s, v),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: 'Counts as done',
-                    child: FilterChip(
-                      key: ValueKey('status-done-${s['id']}'),
-                      showCheckmark: false,
-                      label: const Text('Done'),
-                      selected: s['is_done'] == true,
-                      onSelected: (v) => _patch(s, {'is_done': v}),
-                    ),
-                  ),
-                  IconButton(
-                    key: ValueKey('status-delete-${s['id']}'),
-                    tooltip: 'Delete',
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    onPressed: _rows.length <= 1
-                        ? null
-                        : () => setState(() {
-                            _deleting = '${s['id']}';
-                            _moveTo = null;
-                          }),
-                  ),
-                ],
-              ),
-            ),
-            if (_deleting == '${s['id']}')
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
+          // Gap review P1 (Monday's label editor): drag to reorder, a default
+          // label new tasks start on, and retired labels kept off the pickers.
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: _reorder,
+            children: [
+              for (final (i, s) in _rows.indexed)
+                Column(
+                  key: ValueKey('status-row-${s['id']}'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Tasks in "${s['name']}" move to:', style: muted),
-                    const SizedBox(height: 6),
-                    SearchPickerField<String>(
-                      key: const Key('status-move-to'),
-                      value: _moveTo,
-                      isDense: true,
-                      hint: 'Choose a status',
-                      options: [
-                        for (final o in _rows)
-                          if (o['id'] != s['id'])
-                            SearchOption(
-                              value: '${o['id']}',
-                              label: '${o['name']}',
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: const MouseRegion(
+                              cursor: SystemMouseCursors.grab,
+                              child: Icon(Icons.drag_indicator, size: 18),
                             ),
-                      ],
-                      onChanged: (v) => setState(() => _moveTo = v),
+                          ),
+                          const SizedBox(width: 4),
+                          SwatchButton(
+                            key: ValueKey('status-colour-${s['id']}'),
+                            colour: '${s['colour'] ?? swatches.last}',
+                            onPicked: (hex) => _patch(s, {'colour': hex}),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey('status-name-${s['id']}'),
+                              controller: _name(s),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              // Natalie 11-24: a name typed and left (a click on
+                              // Done, anywhere) saves too, not only on Enter.
+                              onSubmitted: (v) => _rename(s, v),
+                              onChanged: (v) {
+                                _typing?.cancel();
+                                _typing = Timer(
+                                  const Duration(milliseconds: 700),
+                                  () => _rename(s, v),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Counts as done',
+                            child: FilterChip(
+                              key: ValueKey('status-done-${s['id']}'),
+                              showCheckmark: false,
+                              label: const Text('Done'),
+                              selected: s['is_done'] == true,
+                              onSelected: (v) => _patch(s, {'is_done': v}),
+                            ),
+                          ),
+                          IconButton(
+                            key: ValueKey('status-default-${s['id']}'),
+                            tooltip: s['is_default'] == true
+                                ? 'New tasks start here'
+                                : 'Make this the default',
+                            icon: Icon(
+                              s['is_default'] == true
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              size: 18,
+                            ),
+                            onPressed: s['is_default'] == true
+                                ? null
+                                : () async {
+                                    await _patch(s, {'is_default': true});
+                                    setState(() {
+                                      for (final r in _rows) {
+                                        r['is_default'] = r['id'] == s['id'];
+                                      }
+                                    });
+                                  },
+                          ),
+                          IconButton(
+                            key: ValueKey('status-retired-${s['id']}'),
+                            tooltip: s['retired'] == true
+                                ? 'Retired: kept on its tasks, out of the pickers. Bring back'
+                                : 'Retire',
+                            icon: Icon(
+                              s['retired'] == true
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              size: 18,
+                            ),
+                            onPressed: s['is_default'] == true
+                                ? null
+                                : () => _patch(s, {
+                                    'retired': s['retired'] != true,
+                                  }),
+                          ),
+                          IconButton(
+                            key: ValueKey('status-delete-${s['id']}'),
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            onPressed: _rows.length <= 1
+                                ? null
+                                : () => setState(() {
+                                    _deleting = '${s['id']}';
+                                    _moveTo = null;
+                                  }),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => setState(() => _deleting = null),
-                          child: const Text('Keep it'),
+                    if (_deleting == '${s['id']}')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Tasks in "${s['name']}" move to:',
+                              style: muted,
+                            ),
+                            const SizedBox(height: 6),
+                            SearchPickerField<String>(
+                              key: const Key('status-move-to'),
+                              value: _moveTo,
+                              isDense: true,
+                              hint: 'Choose a status',
+                              options: [
+                                for (final o in _rows)
+                                  if (o['id'] != s['id'])
+                                    SearchOption(
+                                      value: '${o['id']}',
+                                      label: '${o['name']}',
+                                    ),
+                              ],
+                              onChanged: (v) => setState(() => _moveTo = v),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () =>
+                                      setState(() => _deleting = null),
+                                  child: const Text('Keep it'),
+                                ),
+                                FilledButton(
+                                  key: const Key('status-delete-confirm'),
+                                  onPressed: _moveTo == null
+                                      ? null
+                                      : () => _delete('${s['id']}'),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        FilledButton(
-                          key: const Key('status-delete-confirm'),
-                          onPressed: _moveTo == null
-                              ? null
-                              : () => _delete('${s['id']}'),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
-              ),
-          ],
+            ],
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(

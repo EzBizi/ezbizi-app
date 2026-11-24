@@ -116,7 +116,13 @@ Widget _avatar(
 /// One of a board's statuses. Each board has its own (UI queue 84), sent as
 /// `{id, name, colour, is_done}`; the fixed four came as `{key, label}` and
 /// still read here, coloured by [_tone].
-typedef _Status = ({String id, String name, Color? colour, bool done});
+typedef _Status = ({
+  String id,
+  String name,
+  Color? colour,
+  bool done,
+  bool retired,
+});
 
 /// Parsed once per statuses list: every row asks for them (freeze 11-16).
 final _statusMemo = Expando<List<_Status>>('statuses');
@@ -137,6 +143,8 @@ List<_Status> _parseStatuses(List raw) => [
           : null,
       done:
           s['is_done'] == true || (s['is_done'] == null && s['key'] == 'done'),
+      // Gap review P1: kept on its tasks, out of the pickers.
+      retired: s['retired'] == true,
     ),
 ];
 
@@ -5667,11 +5675,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             keyPrefix: 'task-status-${t['id']}',
             labels: [
               for (final s in _statuses(_board))
-                (
-                  id: s.id,
-                  label: s.name,
-                  colour: _statusColours(context, s).fill,
-                ),
+                if (!s.retired || s.id == _statusOf(t))
+                  (
+                    id: s.id,
+                    label: s.name,
+                    colour: _statusColours(context, s).fill,
+                  ),
             ],
             current: _statusOf(t),
             onPick: (id) {
@@ -7159,14 +7168,15 @@ class _TaskPanelState extends State<_TaskPanel> {
     return MenuAnchor(
       menuChildren: [
         for (final s in _statuses(widget.board))
-          MenuItemButton(
-            key: ValueKey('task-panel-status-${s.id}'),
-            leadingIcon: _statusDot(context, s),
-            onPressed: _statusOf(task) == s.id
-                ? null
-                : () => _patch(_statusBody(widget.board, s.id, task)),
-            child: Text(s.name),
-          ),
+          if (!s.retired || s.id == _statusOf(task))
+            MenuItemButton(
+              key: ValueKey('task-panel-status-${s.id}'),
+              leadingIcon: _statusDot(context, s),
+              onPressed: _statusOf(task) == s.id
+                  ? null
+                  : () => _patch(_statusBody(widget.board, s.id, task)),
+              child: Text(s.name),
+            ),
       ],
       // A box like every other field, the status's colour inside it.
       builder: (context, menu, _) => PanelFieldBox(

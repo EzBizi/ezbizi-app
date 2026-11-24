@@ -650,6 +650,27 @@ void main() {
     expect(saved.single, endsWith('.xlsx'));
   });
 
+  testWidgets('gap review P1: the label editor sets the default and retires '
+      'a label', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-statuses')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('status-row-s-wait')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('status-default-s-wait')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1/statuses/s-wait', {
+      'is_default': true,
+    });
+    final retire = find.byKey(const ValueKey('status-retired-s-wait'));
+    expect(
+      tester.widget<IconButton>(retire).onPressed,
+      isNull,
+      reason: 'the default stays',
+    );
+  });
+
   testWidgets('a group is added at the foot of the board and renamed from '
       'its heading', (tester) async {
     await pump(tester);
