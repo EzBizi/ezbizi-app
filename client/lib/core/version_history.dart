@@ -22,6 +22,7 @@ class VersionHistory {
       'Task Board: an Updates feed of every board in one list, with mentions, unread only and mark all as read',
       'Task Board: My Work lists your open tasks on every board by Past dates, Today, This week, Next week and Later',
       'Task Board: status labels can be reordered, given a default for new tasks, and retired',
+      'Task Board: updates can carry a checklist, be followed with the bell, bookmarked, or scheduled to post later; the composer has bold, checklist, emoji and @ tools',
       'Phones: opening a picker or form no longer pops up the keyboard; tap the field to type',
       'Phones: while typing, the company picker, page title and banners fold away so the screen stays readable',
       'Project Management: the Technician column shows the technician by name, never Removed account',
