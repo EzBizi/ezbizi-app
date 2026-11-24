@@ -125,7 +125,7 @@ final class TaskRecordFill
             return $job;
         }
         // A Workiz number: the cell, or "Job #300894261 - Katelyn Banks" in the title.
-        $serial = $cell('Workiz Job ID') ?: (preg_match('/\bJob\s*#\s*(\d{6,})/i', (string) $task->title, $m) === 1 ? $m[1] : '');
+        $serial = $cell('Workiz Job ID') ?: (preg_match('/\bJob\s*#\s*(\d{6,})|^\s*(\d{6,})\b/i', (string) $task->title, $m) === 1 ? ($m[1] ?: $m[2]) : ''); // or "600025660 Albert" (Ohio PM, row 37)
         if ($serial !== '' && ($id = \App\Models\WorkizJob::query()->where('serial_id', $serial)->orWhere('remote_id', $serial)->value('job_id')) && ($job = Job::query()->withoutGlobalScopes()->find($id))) {
             return $job;
         }

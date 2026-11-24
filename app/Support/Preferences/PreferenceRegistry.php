@@ -150,7 +150,19 @@ class PreferenceRegistry
                 'label' => 'Reports › Jobs tab',
                 'type' => 'enum',
                 'default' => 'overview',
-                'options' => ['overview', 'cancelled', 'pending'],
+                'options' => ['overview', 'cancelled', 'pending', 'estimates'],
+            ],
+            'reports.office_tab' => [
+                'label' => 'Reports › Office tab',
+                'type' => 'enum',
+                'default' => 'tasks',
+                'options' => ['tasks', 'complaints', 'dispatch', 'accounting', 'recruiting'],
+            ],
+            'reports.techs_tab' => [
+                'label' => 'Reports › Technicians tab',
+                'type' => 'enum',
+                'default' => 'techs',
+                'options' => ['techs', 'tech_checks'],
             ],
 
             'notifications.companies' => [

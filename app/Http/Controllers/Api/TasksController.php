@@ -107,6 +107,10 @@ class TasksController extends Controller
             'body' => (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
+            'edited_at' => $u->edited_at?->toIso8601String(),
+            // Row 43: its author edits; its author or an Administrator deletes.
+            'can_edit' => ($me = request()->user()) !== null && $u->user_id === $me->id,
+            'can_delete' => $me !== null && ($u->user_id === $me->id || $me->isAdministrator()),
             'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
                 $url = url("/api/v1/attachments/{$a->id}");
 
@@ -430,6 +434,29 @@ class TasksController extends Controller
         return ['id' => $t->id, 'title' => $t->title, 'sensitive' => (bool) $t->sensitive, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
     }
 
+    /** PATCH tasks/{task}/updates/{update}: its author corrects it, as on Monday (row 43, Sheryl). */
+    public function editUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        abort_unless($update->user_id === $request->user()->id, 403, 'Only the person who wrote an update can edit it.');
+        $body = trim((string) $request->validate(['body' => ['required', 'string', 'max:5000']])['body']);
+        $this->writer->editComment($update, $body, $request->user());
+
+        return response()->json(['data' => self::presentUpdate($update->fresh()->load(['user:id,name', 'attachments']))]);
+    }
+
+    /** DELETE tasks/{task}/updates/{update}: its author, or an Administrator. */
+    public function destroyUpdate(Request $request, Task $task, TaskUpdate $update): Response
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        abort_unless($update->user_id === $request->user()->id || $request->user()->isAdministrator(), 403, 'Only the person who wrote an update, or an Administrator, can delete it.');
+        $this->writer->deleteComment($update, $request->user());
+
+        return response()->noContent();
+    }
+
     public function storeUpdate(Request $request, Task $task): JsonResponse
     {
         $this->authorize('update', $task);
@@ -464,6 +491,7 @@ class TasksController extends Controller
 
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
             // A mention on a sensitive task says only that there is something to read.
+            app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
             $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
                 $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
             $update = $this->writer->comment($task, $request->user(), $body, $mentions);

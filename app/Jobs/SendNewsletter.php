@@ -128,7 +128,7 @@ final class SendNewsletter implements ShouldQueue
         }
 
         $footer = NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*'];
-        $html = $renderer->document(NewsletterSections::expand((array) ($newsletter->blocks ?? [])), $newsletter->html_override,
+        $html = $renderer->document(NewsletterSections::expand((array) ($newsletter->blocks ?? [])), $newsletter->designHtml(),
             $newsletter->preheader, $footer, $newsletter->brand);
 
         try {

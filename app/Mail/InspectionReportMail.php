@@ -52,11 +52,16 @@ class InspectionReportMail extends Mailable implements ShouldQueue
      * @param  string  $note  a covering line the rule's author wrote, may be empty
      */
     public function __construct(
-        private readonly InspectionReport $report,
+        InspectionReport $report,
         private readonly string $companyName,
         string $pdf,
         private readonly string $note = '',
     ) {
+        // Scalars, not the model: the queue worker restores a model with no
+        // tenant in context, and the customer read refused the first real send.
+        $this->customerName = $report->customer?->name;
+        $this->definitionName = (string) $report->definition_name;
+        $this->submittedOn = $report->submitted_at?->format('Y-m-d');
         // Base64 because the queue JSON-encodes this object: raw PDF bytes are
         // not UTF-8 and the dispatch threw "Malformed UTF-8" on the first real send.
         $this->pdf = base64_encode($pdf);
@@ -64,10 +69,16 @@ class InspectionReportMail extends Mailable implements ShouldQueue
 
     private readonly string $pdf;
 
+    private readonly ?string $customerName;
+
+    private readonly string $definitionName;
+
+    private readonly ?string $submittedOn;
+
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: sprintf('%s — your %s', $this->companyName, $this->report->definition_name),
+            subject: sprintf('%s — your %s', $this->companyName, $this->definitionName),
         );
     }
 
@@ -81,11 +92,11 @@ class InspectionReportMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         $lines = [
-            sprintf('<p>Hello %s,</p>', e($this->report->customer?->name ?? 'there')),
+            sprintf('<p>Hello %s,</p>', e($this->customerName ?? 'there')),
             sprintf(
                 '<p>Your %s has been completed by %s. It is attached to this message '
                 .'as a PDF.</p>',
-                e($this->report->definition_name),
+                e($this->definitionName),
                 e($this->companyName),
             ),
         ];
@@ -118,8 +129,8 @@ class InspectionReportMail extends Mailable implements ShouldQueue
      */
     private function filename(): string
     {
-        $stem = preg_replace('/[^A-Za-z0-9]+/', '-', $this->report->definition_name ?? 'inspection');
+        $stem = preg_replace('/[^A-Za-z0-9]+/', '-', $this->definitionName ?: 'inspection');
 
-        return trim((string) $stem, '-').'-'.$this->report->submitted_at?->format('Y-m-d').'.pdf';
+        return trim((string) $stem, '-').'-'.$this->submittedOn.'.pdf';
     }
 }

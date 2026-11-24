@@ -613,11 +613,10 @@ final class MondayImport
         // and the cleaned title goes back to Monday after the import.
         $title = trim((string) $item['name']);
         $about = [];
-        if (($job = JobTitle::split($title)) !== null) {
-            $found = JobTitle::job($job['number']);
+        if (($job = JobTitle::split($title)) !== null && (($found = JobTitle::job($job['number'])) !== null || empty($job['loose']))) {
             $column = $this->column($board, $job['ezbizi'] ? TaskWriter::EZBIZI_JOB_COLUMN : TaskWriter::WORKIZ_JOB_COLUMN, 'text');
             $values[$column->id] = $job['number'];
-            $title = $job['rest'] !== '' ? $job['rest'] : ($found?->customer?->name ?? $title);
+            $title = JobTitle::clean($job, $found, $title);
             if ($found !== null) {
                 $about = ['about_type' => 'job', 'about_id' => $found->id];
             }
@@ -757,32 +756,49 @@ final class MondayImport
     private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null): void
     {
         $files = $u['files'] ?? [];
-        $existing = TaskUpdate::query()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
-        if ($existing !== null) {
-            $this->counts['updates already there']++;
-            $this->files($existing, $files, $as, true);
-
-            return;
-        }
-        $body = trim((string) ($u['body'] ?? ''));
-        if ($body === '' && $files === []) {
-            return;
-        }
+        $existing = TaskUpdate::query()->withTrashed()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
+        $body = trim((string) preg_replace('/\n\n— from EzBizi.*$/su', '', trim((string) ($u['body'] ?? ''))));
         $author = $this->person($u['author_email'] ?? null);
         if ($author === null && ! empty($u['author_email'])) {
             $who = ! empty($u['author_name']) && $u['author_name'] !== 'Deleted member' ? $u['author_name'] : $u['author_email'];
             $body = $who.' (on Monday): '.$body;
         }
+        if ($existing !== null) {
+            $this->counts['updates already there']++;
+            $this->files($existing, $files, $as, true);
+            // Edited on Monday (row 43): its text comes here, marked Edited unless only a link's form changed.
+            $now = $body === '' ? '' : ($reply ? '↳ ' : '').$body;
+            $had = (string) SensitiveTasks::open($existing->body);
+            if ($this->refresh && ! $existing->trashed() && $now !== '' && $now !== $had) {
+                $plain = fn (string $s) => (string) preg_replace('/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/', '$1', $s);
+                $sensitive = (bool) Task::query()->withTrashed()->whereKey($existing->task_id)->value('sensitive');
+                $existing->forceFill(['body' => $sensitive ? SensitiveTasks::seal($now) : $now]
+                    + ($plain($now) !== $plain($had) ? ['edited_at' => now()] : []))->saveQuietly();
+                $this->counts['updates edited on Monday'] = ($this->counts['updates edited on Monday'] ?? 0) + 1;
+            }
+
+            return;
+        }
+        if ($body === '' && $files === []) {
+            return;
+        }
+        $mentioned = array_values(array_unique(array_filter(array_map(fn ($e) => $this->person($e)?->id, (array) ($u['mention_emails'] ?? [])))));
         $update = TaskUpdate::query()->create([
             'organization_id' => $task->organization_id,
             'task_id' => $task->id,
             'user_id' => $author?->id,
             'body' => $body === '' ? '' : ($reply ? '↳ ' : '').$body,
+            'mentions' => $mentioned ?: null,
         ]);
         $at = isset($u['created_at']) ? CarbonImmutable::parse($u['created_at']) : null;
         $update->forceFill(array_filter(['external_ref' => $ref, 'created_at' => $at, 'updated_at' => $at]))->saveQuietly();
         $this->counts['updates']++;
         $this->files($update, $files, $author ?? $as, false);
+        // A tech's update on Monday rings the task's followers here too; the first import and old history do not.
+        if (! $this->writer->quiet && ($at === null || $at->greaterThan(now()->subDay()))) {
+            DB::afterCommit(fn () => TaskWriter::tellMentioned($update, $mentioned));
+            DB::afterCommit(fn () => TaskWriter::tellFollowers($update, $mentioned));
+        }
     }
 
     /**
@@ -1007,13 +1023,19 @@ final class MondayImport
      * The board in Monday's folder (Jose 11-13: each board in the same folder
      * with the same colour): the folder chain is found by name under its
      * parent, or made with Monday's colour; a folder without a colour takes
-     * Monday's. A board somebody here already put in a folder stays there.
+     * Monday's. Every sync moves the board to Monday's folder (desk 11-23).
      *
      * @param  list<array{name: string, colour: ?string}>|null  $path  root first; null: the export does not say
      */
     private function folder(TaskBoard $board, ?array $path): void
     {
-        if ($path === null || $path === [] || $board->folder_id !== null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+        // Every sync follows Monday's folder (desk 11-23, full parity): a stale one cannot stay.
+        if ($path === null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+            return;
+        }
+        if ($path === []) {
+            $board->folder_id === null || $board->forceFill(['folder_id' => null])->saveQuietly();
+
             return;
         }
         $parent = null;
@@ -1032,7 +1054,9 @@ final class MondayImport
             }
             $parent = $found;
         }
-        $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
+        if ($board->folder_id !== $parent->id) {
+            $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
+        }
     }
 
     /**

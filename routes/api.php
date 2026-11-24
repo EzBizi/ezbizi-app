@@ -57,12 +57,14 @@ use App\Http\Controllers\Api\HelpVideosController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
+use App\Http\Controllers\Api\HrInviteLinksController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\HrPersonDetailsController;
 use App\Http\Controllers\Api\InboxController;
 use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
+use App\Http\Controllers\Api\BeforeAfterController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
@@ -81,6 +83,7 @@ use App\Http\Controllers\Api\InventorySummaryController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
+use App\Http\Controllers\Api\InviteLinkJoinController;
 use App\Http\Controllers\Api\InvoicePaymentsController;
 use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\JobBookingController;
@@ -432,6 +435,13 @@ Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(functi
     Route::post('accept', [InvitationAcceptanceController::class, 'accept']);
 });
 
+// An invite link's public side: what it is for, and making an account through it
+// (Jose, 2026-11-23). Same limiter, same body-not-URL token rule as above.
+Route::prefix('v1/invite-links')->middleware('throttle:invitation')->group(function () {
+    Route::post('lookup', [InviteLinkJoinController::class, 'show']);
+    Route::post('join', [InviteLinkJoinController::class, 'join']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Finishing a Google sign-in — public, because a browser redirect has no token
@@ -703,6 +713,11 @@ Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
 
+Route::get('v1/web/plugin/before-after', [WebPluginController::class, 'beforeAfter'])
+    ->middleware('throttle:web-plugin');
+Route::get('v1/web/plugin/before-after/image/{attachment}', [WebPluginController::class, 'beforeAfterImage'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->name('web.plugin.before-after.image');
 Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'serviceAccount'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.service-account');
@@ -995,10 +1010,15 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
+    ->middleware(['auth:sanctum', \App\Http\Middleware\ApplyViewAs::class, 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        // View as (Jose, 2026-11-23): developers only; ApplyViewAs does the swap.
+        Route::get('view-as/options', [\App\Http\Controllers\Api\ViewAsController::class, 'options']);
+        Route::post('view-as', [\App\Http\Controllers\Api\ViewAsController::class, 'store']);
+        Route::delete('view-as', [\App\Http\Controllers\Api\ViewAsController::class, 'destroy']);
 
         /*
          * Suggestions — the one module with no permission behind it.
@@ -1047,6 +1067,7 @@ Route::prefix('v1')
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::patch('project-board/jobs/{job}/cost', [ProjectBoardController::class, 'cost']);
+        Route::patch('project-board/jobs/{job}/project-costs', [ProjectBoardController::class, 'projectCostsUpdate']);
         Route::get('project-board/tech-expenses', [ProjectBoardController::class, 'techExpenses']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
@@ -1112,6 +1133,8 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::patch('tasks/{task}/updates/{update}', [TasksController::class, 'editUpdate']);
+        Route::delete('tasks/{task}/updates/{update}', [TasksController::class, 'destroyUpdate']);
         Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
         Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
         Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
@@ -1216,6 +1239,7 @@ Route::prefix('v1')
         Route::post('ekomi/{connection}/test', [EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', ReviewLinkReportController::class);
+        Route::post('customer-experience/review-qr', \App\Http\Controllers\Api\ReviewQrController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         // Working a review as a case (UI queue 101, 2026-10-16): reviews.manage.
         Route::patch('reviews/{review}', [ReviewsController::class, 'update']);
@@ -1766,6 +1790,23 @@ Route::prefix('v1')
             ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
         Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
             ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
+        // Estimates from both stores, texted and answered derived (Shoval, 2026-11-18).
+        Route::get('reports/estimates', [\App\Http\Controllers\Api\EstimatesReportController::class, 'show'])->middleware('permission:reports.estimates.view');
+        // Per owner: open, done in the dates, overdue, days to done (Shoval's list via Task Board, 2026-11-20).
+        Route::get('reports/tasks', [\App\Http\Controllers\Api\TasksReportController::class, 'show'])->middleware('permission:reports.tasks.view');
+        // Complaints against the business's contact and solve hours (Shoval, 2026-11-18).
+        Route::get('reports/complaints', [\App\Http\Controllers\Api\ComplaintsReportController::class, 'show'])->middleware('permission:reports.complaints.view');
+        // Per dispatcher: leads, messages answered, minutes to the first reply (Shoval, 2026-11-18).
+        Route::get('reports/dispatch', [\App\Http\Controllers\Api\DispatchReportController::class, 'show'])->middleware('permission:reports.dispatch.view');
+        // The money that does not add up, one row per problem (Shoval, 2026-11-18).
+        Route::get('reports/accounting', [\App\Http\Controllers\Api\AccountingReportController::class, 'show'])->middleware('permission:reports.accounting.view');
+        // Per position on HR's recruiting records (Shoval, 2026-11-18).
+        Route::get('reports/recruiting', [\App\Http\Controllers\Api\RecruitingReportController::class, 'show'])->middleware('permission:reports.recruiting.view');
+        // Per technician: the four checks, and the Tech report (Shoval, 2026-11-18).
+        Route::get('reports/tech-checks', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'checks')->middleware('permission:reports.tech_checks.view');
+        Route::get('reports/technicians', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'report')->middleware('permission:reports.techs.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
@@ -2147,6 +2188,7 @@ Route::prefix('v1')
         // somebody adds one it must already be above it.
         Route::get('roles/catalogue', [RolesController::class, 'catalogue']);
         Route::get('roles', [RolesController::class, 'index']);
+        Route::get('roles/{role}/mobile-bar/options', [RolesController::class, 'mobileBarOptions']);
         Route::post('roles', [RolesController::class, 'store']);
         Route::patch('roles/{role}', [RolesController::class, 'update']);
         Route::delete('roles/{role}', [RolesController::class, 'destroy']);
@@ -2427,6 +2469,11 @@ Route::prefix('v1')
             // one without somebody adding it deliberately.
             Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
             Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
+            // Shareable invite links (Jose, 2026-11-23).
+            Route::get('hr/invite-links', [HrInviteLinksController::class, 'index']);
+            Route::post('hr/invite-links', [HrInviteLinksController::class, 'store']);
+            Route::patch('hr/invite-links/{link}', [HrInviteLinksController::class, 'update']);
+            Route::delete('hr/invite-links/{link}', [HrInviteLinksController::class, 'destroy']);
         });
 
         // The Contracts tab — the template designer, and the schema every other
@@ -2620,6 +2667,7 @@ Route::prefix('v1')
             Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
             Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
             Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            Route::post('newsletters/{newsletter}/editable-copy', [NewslettersController::class, 'editableCopy']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
             // A starter's picture copied from the company's own website (SSRF-guarded).
@@ -3025,6 +3073,12 @@ Route::prefix('v1')
             ->middleware('permission:inspection.reports.view');
         // Before `{inspection_report}` would otherwise be happy to bind `pdf`,
         // the same way `catalogue` sits ahead of `{inspection_definition}`.
+        Route::get('inspections/reports/{inspection_report}/before-after', [BeforeAfterController::class, 'index'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'approve'])
+            ->middleware('permission:inspection.edit');
+        Route::delete('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'withdraw'])
+            ->middleware('permission:inspection.edit');
         Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf'])
             ->middleware('permission:inspection.reports.view');
         Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show'])
@@ -3718,268 +3772,7 @@ Route::prefix('v1')
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
-        Route::get('me', function (Request $request) {
-            $user = $request->user();
-
-            // Resolved once and used twice, below: the client is told where it
-            // is standing AND what that place's settings say, and the two must
-            // describe the same place or the dates on screen belong to a scope
-            // the top bar is not naming.
-            $view = ViewScope::forUser($user);
-
-            // Asked twice below — for the keys and for the modules — and both
-            // answers have to come from the same reading of the platform flags.
-            $catalogue = app(PermissionCatalogue::class);
-
-            $data = [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => ['id' => $user->role?->id, 'name' => $user->role?->name],
-
-                /*
-                     * WHAT this person may do, and WHICH modules exist for them
-                     * (§4). Both come from PermissionCatalogue, which derives
-                     * them from the module registry — so a module added next
-                     * year appears here without this file being touched.
-                     *
-                     * `permissions` is the exact set `User::hasPermission()`
-                     * would answer true for, key by key. Anything looser and the
-                     * client draws a control the server then refuses.
-                     *
-                     * For an Administrator it is the full catalogue, NOT a
-                     * wildcard: a client that special-cases a role name is the
-                     * same bug this endpoint's own server side had, where
-                     * identity was the English word "Administrator" and a rename
-                     * silently revoked everything.
-                     *
-                     * `modules` carries the two gates separately —
-                     * `available` is EzBizi's (§13 entitlement), `reachable` is
-                     * this organization's own decision about this role. A screen
-                     * can then say "your plan does not include this" rather than
-                     * quietly omitting a destination and leaving somebody
-                     * looking for a menu item that was described to them on the
-                     * phone.
-                     */
-                'permissions' => $catalogue->heldBy($user),
-                'modules' => $catalogue->modulesFor($user),
-
-                // Whether there is a photo to fetch, so the top bar can ask
-                // for one only when there is one. `/me/profile` already
-                // carried this, but the top bar reads THIS payload — so
-                // without it the bar either requests an avatar for everybody
-                // who has none, or never requests one at all. It was the
-                // latter, and the picture only ever appeared on the profile
-                // screen that had just uploaded it.
-                'has_avatar' => $user->avatar_path !== null,
-                // What the profile still lacks, so the top bar can pulse
-                // the picture until it is complete (Jose, 2026-09-30, from
-                // A1 Tools). Keys, never values. User::PROFILE_FIELDS.
-                'profile_missing' => $user->profileMissing(),
-                // Carried here as well as on their own endpoint, so the app
-                // can paint the right theme on the first frame instead of
-                // flashing the wrong one while a second request lands.
-                //
-                // This used to be wrapped in
-                // OrganizationCanvasController::cleanedInto, because the
-                // structure canvas was a per-user preference and this was
-                // one of the doors it left through. It is an organization
-                // setting now — it rides on GET /companies with the tree it
-                // describes, and it is cleaned there — and the old key is
-                // stripped from every user by the migration that retired
-                // it, so there is nothing here left to clean.
-                'preferences' => array_merge(
-                    app(PreferenceRegistry::class)->defaults(),
-                    $user->preferences ?? [],
-                ),
-                // Whether this person is also platform staff (§4.2, revised).
-                // The client renders the Development section from this, so it
-                // cannot appear for somebody with no staff account behind them.
-                'development' => (function () use ($user) {
-                    $staff = PlatformStaffLink::staffFor($user->getKey());
-
-                    return $staff === null ? null : [
-                        'tier' => $staff->tier,
-                        'staff_name' => $staff->name,
-                        'focused_at' => (string) config('ezbizi.hosts.staff'),
-                    ];
-                })(),
-                // The organization requires a second factor and this account
-                // has none (§6). Carried here as well as on the login body
-                // because a page refresh restores the session from a stored
-                // token and never sees a login body — without it the app
-                // would come back with every screen quietly answering 403
-                // and nothing on screen saying why.
-                'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
-
-                // The unfinished onboarding this person is the SUBJECT of:
-                // the client draws "Your paperwork" from it (session.dart
-                // onboardingId). Without it a new starter whose role has no
-                // HR tab had no way to reach their own form.
-                // `held`: everything else is closed until the paperwork
-                // is approved (User::awaitingOnboardingApproval).
-                'onboarding' => ($open = Onboarding::query()
-                    ->where('user_id', $user->id)
-                    ->whereIn('status', Onboarding::OPEN)
-                    ->latest()
-                    ->first(['id', 'status'])) === null ? null : [
-                        'id' => $open->id,
-                        'status' => $open->status,
-                        'held' => $user->awaitingOnboardingApproval(),
-                    ],
-
-                // This address has not been confirmed, so RequireVerifiedEmail
-                // refuses every write (TODO #22). Carried here for exactly the
-                // reason two_factor_enrolment_required above is: a refresh
-                // restores the session from a stored token and never sees a
-                // login body, so without it the app returns with every save
-                // answering 403 and nothing on screen saying why.
-                //
-                // A boolean rather than the timestamp, following has_avatar:
-                // the client's question is whether to show the banner, and a
-                // date would make it derive that itself in a second place.
-                //
-                // Staff are never gated - the middleware exempts anything that
-                // is not a User - so this is false for them and the banner
-                // cannot appear on a staff session that could not act on it.
-                'email_confirmation_required' => $user->email_verified_at === null,
-
-                // SECURITY exemption (Monitoring): the Lead Developer's own
-                // device is never screen-captured, live-viewed or
-                // remote-controlled. The desktop agent reads this to skip
-                // constructing its capture services and to omit the
-                // `screenshot` capability from its heartbeat — the server
-                // strips it regardless, this just stops the agent declaring
-                // it. Keyed on the shared email between this org user and an
-                // active lead-developer staff account; see
-                // ScreenMonitoringExemption.
-                'screen_monitoring_exempt' => ScreenMonitoringExemption::isExempt($user),
-
-                // Clock in chrome on the first frame (design §8). The top-bar
-                // button reads this rather than a second round trip.
-                'time_clock' => app(TimeClock::class)->payload($user),
-
-                // What the change-password form should ASK for: the platform
-                // floor, or this organization's own minimum where that is
-                // higher (§6). The client used to state a constant it kept
-                // in Dart, which was right until an administrator raised the
-                // setting and then told everybody the wrong number.
-                //
-                // Signup and password-reset cannot be told this — neither has
-                // a session, and reset has no organization until the token is
-                // examined server-side — so those two screens still state the
-                // platform floor and the server corrects them. See
-                // client/lib/core/password_policy.dart.
-                'password_min_length' => PasswordPolicy::minLengthFor(
-                    $user->organization,
-                ),
-                'organization' => [
-                    'id' => $user->organization->id,
-                    'name' => $user->organization->name,
-                    'address' => $user->organization->address,
-                    'address_line1' => $user->organization->address_line1,
-                    'address_line2' => $user->organization->address_line2,
-                    'city' => $user->organization->city,
-                    'state' => $user->organization->state,
-                    'postal_code' => $user->organization->postal_code,
-                    'franchise_label' => $user->organization->franchise_label,
-                    'is_read_only' => $user->organization->isReadOnly(),
-                    // Whether the organization view is offered: only to
-                    // somebody assigned at organization level (2026-10-16).
-                    'can_view' => $user->canActOnOrganization($user->organization),
-                ],
-                // Reach, so the client knows which franchises to offer —
-                // rather than showing all and failing on save (§4).
-                // The companies behind those franchises. §6 allows settings
-                // at company level and the client had no way to select one,
-                // so a whole tier of the cascade was configured through the
-                // API or not at all.
-                'companies' => $user->reachableFranchises()
-                    ->pluck('company')
-                    ->filter()
-                    ->unique('id')
-                    ->values()
-                    // The parent comes too. Without it the client can only
-                    // draw companies as one flat row, which renders a Sub
-                    // Company as a sibling of the company it belongs to —
-                    // and there is no way to tell from the screen that it
-                    // inherits from that company rather than from the
-                    // organization.
-                    ->pipe(function ($companies) {
-                        // Off under a parent that is off too: that parent
-                        // is not in this list when it has no branches of
-                        // its own, so the client could not tell.
-                        $off = Company::query()->whereKey($companies->pluck('id'))
-                            ->switchedOff()->pluck('id')->all();
-
-                        return $companies->map(fn ($c) => [
-                            'id' => $c->id,
-                            'name' => $c->name,
-                            'parent_company_id' => $c->parent_company_id,
-                            'has_logo' => $c->logo_path !== null,
-                            // Switched off: kept in reach so a record still
-                            // reads its name, offered nowhere (Jose,
-                            // 2026-10-15 and 11-10).
-                            'is_active' => ! in_array($c->id, $off, true),
-                        ]);
-                    })
-                    ->all(),
-
-                // The RESOLVED scope, not the stored string. A preference
-                // that has stopped being valid — a franchise removed, an
-                // assignment narrowed — must not come back as the client's
-                // idea of where it is.
-                'scope' => $view->toArray(),
-
-                // How this scope writes a date and a clock (§6).
-                //
-                // Here rather than on the settings endpoint because every
-                // screen needs them and only one screen calls /settings.
-                // /me is already fetched on launch and again on every scope
-                // change — Session.setScope() refetches it, precisely
-                // because `scope` above is resolved server-side — so the
-                // formats arrive with the view they belong to and change
-                // when it does, with nothing extra to keep in step.
-                //
-                // The client formats FROM these instead of from the
-                // browser's locale. That is the whole point: an owner who
-                // sets 24h must get 24h on a machine set to US English,
-                // and until this existed there was no resolved setting on
-                // the client at all for any screen to read.
-                'display' => app(DisplaySettings::class)
-                    ->forScope($view->settingsScope()),
-
-                ...app(UiCatalogue::class)->forUser($user),
-
-                'franchises' => $user->reachableFranchises()->map(fn ($f) => [
-                    'id' => $f->id,
-                    'name' => $f->name,
-                    'company_id' => $f->company_id,
-                    'is_active' => $f->is_active,
-                ])->values(),
-            ];
-
-            // What this person may reach, as one value. An open client asks
-            // /me every minute and on resume, and redraws the screen when this
-            // moves (Jose, 2026-11-10: a granted inbox showed only after a
-            // reload). Inboxes are named by grant, because a second inbox
-            // changes no permission key.
-            $data['access_version'] = sha1(json_encode([
-                $data['role'],
-                $data['permissions'],
-                $data['modules'],
-                $data['companies'],
-                $data['franchises'],
-                MailboxGrant::query()
-                    ->where('user_id', $user->id)
-                    ->when($user->role_id, fn ($q) => $q->orWhere('role_id', $user->role_id))
-                    ->orderBy('mailbox_id')
-                    ->pluck('mailbox_id')
-                    ->all(),
-            ]));
-
-            return response()->json(['data' => $data]);
-        });
+        Route::get('me', [\App\Http\Controllers\Api\MeController::class, 'show']);
     });
 
 /*

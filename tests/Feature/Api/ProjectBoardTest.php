@@ -198,7 +198,7 @@ class ProjectBoardTest extends TestCase
         $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=jonathon')->json('data'), 'id'));
         $this->assertSame([], $api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=nobody-here')->json('data'));
         $this->assertSame(now()->subDays(5)->format('Y-m-d').' 11:48', $row['payment_date']);
-        $this->assertContains($row['status_days'], [4, 5]);
+        $this->assertContains($row['status_days'], [5, 6], 'day 1 is the day it entered');
         $this->assertSame(1, $row['attachments']);
         $this->assertSame(['Service Area', 'Repair Team / Contractor', 'a note'], $row['ready_missing']);
 
@@ -344,7 +344,7 @@ class ProjectBoardTest extends TestCase
         $api = $this->signedInAs($alpha['admin']);
 
         $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()
-            ->assertJsonPath('meta.status_days', ['warn' => 3, 'bad' => 7])->json('data.0');
+            ->assertJsonPath('meta.status_days', ['warn' => 2, 'bad' => 3])->json('data.0');
         $this->assertSame(['DEPOSIT RECEIVED'], $row['tags'], 'the repair tag has its own column');
         $this->assertSame('CONTRACTOR', $row['repair_team']);
 
@@ -365,6 +365,54 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['Technician'], $row['ready_missing']);
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'CONTRACTOR: OMER'])->assertStatus(422);
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI CREW'])->assertOk();
+    }
+
+    /** Jose, 2026-11-23: Status Time is days in the CURRENT stage; a move to another tab restarts it at day 1. */
+    public function test_status_time_restarts_when_the_job_changes_stage(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->whereKey($id)->update(['created_at' => now()->subDays(9)]);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $this->assertSame(10, $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.status_days'), 'first seen: from creation');
+
+        $this->inTenant($alpha['org'], fn () => Job::query()->whereKey($id)->update(['tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE']]));
+        $this->assertSame(1, $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->json('data.0.status_days'), 'a new stage is day 1');
+        $this->travel(2)->days();
+        $this->assertSame(3, $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->json('data.0.status_days'));
+    }
+
+    /** Jose with Shoval, 2026-11-23: a Project job completes only with Parts and Labor costs in. */
+    public function test_a_project_job_cannot_complete_without_parts_and_labor_costs(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$id, $done, $plain] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            app(\App\Support\Settings\SettingsResolver::class)->set('project_board.team_rates', $alpha['org'],
+                ['alone_per_day_minor' => 30000, 'with_helper_per_day_minor' => 45000]);
+            app(\App\Support\Settings\SettingsResolver::class)->set('jobs.earned_statuses', $alpha['org'],
+                [collect(Job::allowedStatuses($alpha['franchise']))->last()]);
+
+            return [$this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['Project']),
+                \App\Support\Jobs\EarnedStatuses::for($alpha['franchise'])[0],
+                $this->job($alpha['franchise'], 'J-2', 'Submitted', null, [])];
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $costs = "/api/v1/project-board/jobs/{$id}/project-costs";
+
+        $api->patchJson("/api/v1/jobs/{$id}", ['status' => $done])->assertUnprocessable()
+            ->assertJsonPath('errors.status.0', 'A Project job needs its Parts cost and Labor cost before it is complete. Add them in Project Management.');
+        $api->patchJson("/api/v1/jobs/{$plain}", ['status' => $done])->assertOk();
+
+        $api->patchJson($costs, ['parts_cost_minor' => 12000, 'labor_kind' => 'team', 'labor_helper' => true])->assertUnprocessable();
+        $res = $api->patchJson($costs, ['parts_cost_minor' => 12000, 'labor_kind' => 'team', 'labor_days' => 2, 'labor_helper' => true])->assertOk();
+        $this->assertSame([12000, 90000, []], [$res->json('data.parts_cost'), $res->json('data.labor_cost'), $res->json('data.project_missing')]);
+        $api->patchJson($costs, ['parts_cost_minor' => 0, 'labor_kind' => 'contractor', 'labor_price_minor' => 150000])
+            ->assertOk()->assertJsonPath('data.labor_cost', 150000);
+        $api->patchJson("/api/v1/jobs/{$id}", ['status' => $done])->assertOk();
     }
 
     /** Desk, 2026-11-20, Monday's PM boards: Job Cost, Production job, Total Cost = cost + 10% of the amount. */
@@ -755,6 +803,85 @@ class ProjectBoardTest extends TestCase
         $link = \App\Http\Controllers\Api\ProjectBoardController::workOrderLink(Job::query()->withoutGlobalScopes()->find($new));
         $this->assertStringStartsWith('%PDF', $this->get($link)->assertOk()->getContent());
         $this->get(strtok($link, '?'))->assertForbidden();
+    }
+
+    /** Desk, 2026-11-23: while crew_day_before is off the crew still gets the work order at scheduling; once on, only the day before. */
+    public function test_the_crew_gets_the_work_order_at_scheduling_until_the_day_before_text_is_on(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-23 09:00:00');
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $crew = fn () => collect($twilio->calls)->where('method', 'sendMessage')->filter(fn ($c) => $c['args'][2] === '+15125550199')->count();
+        $make = function (string $num, bool $dayBefore) use ($alpha) {
+            return $this->inTenant($alpha['org'], function () use ($alpha, $num, $dayBefore) {
+                if (! \App\Models\PhoneNumber::query()->exists()) {
+                    $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+                    \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+                }
+                $set = app(\App\Support\Settings\SettingsResolver::class);
+                $set->set('project_board.repair_tags', $alpha['org'], [['name' => 'KENNI REPAIR TEAM', 'phone' => '+15125550199']]);
+                $since = now()->subDay()->toIso8601String();
+                $set->set('project_board.client_messages', $alpha['org'], ['scheduled' => ['on' => true, 'since' => $since, 'text' => 'Set for {date}.']]
+                    + ($dayBefore ? ['crew_day_before' => ['on' => true, 'since' => $since, 'text' => '{job} tomorrow.']] : []));
+                $id = $this->job($alpha['franchise'], $num, 'Submitted', '2026-11-30 09:00:00', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+                Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101'])->save();
+
+                return $id;
+            });
+        };
+
+        $make('J-1', false);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before off: at scheduling, as before');
+
+        $make('J-2', true);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before on: not at scheduling');
+    }
+
+    /** Jose's PM flow, 2026-11-23: client reminder 3 days out, PM asked to confirm open parts, crew work order the day before with the balance. */
+    public function test_three_days_out_the_client_and_pm_are_reminded_and_the_crew_gets_the_work_order_the_day_before(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-23 09:00:00');
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->map(fn ($c) => [$c['args'][2], explode("
+
+", $c['args'][3])[0]])->values()->all();
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', '2026-11-26 09:00:00', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+            Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101', 'name' => 'Lena Park'])->save();
+            \App\Models\JobPart::create(['organization_id' => $alpha['org']->id, 'job_id' => $id, 'kind' => 'order', 'item' => 'Damper', 'quantity' => 1, 'position' => 0, 'ordered_at' => now()]);
+            $set = app(\App\Support\Settings\SettingsResolver::class);
+            $set->set('project_board.repair_tags', $alpha['org'], [['name' => 'KENNI REPAIR TEAM', 'phone' => '+15125550199']]);
+            $set->set('project_board.client_messages', $alpha['org'], [
+                'three_day_before' => ['on' => true, 'since' => now()->subDay()->toIso8601String(), 'text' => 'Hi {client_first}, see you {date}. Call {pm_name}.'],
+                'crew_day_before' => ['on' => true, 'since' => now()->subDay()->toIso8601String(), 'text' => '{job} tomorrow: {work_order} Balance {balance}.'],
+            ]);
+
+            return $id;
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame([['+15125550101', 'Hi Lena, see you Thursday, November 26 at 9:00 AM. Call your project manager.']], $sends(), 'once, to the client only');
+        $this->inTenant($alpha['org'], fn () => $this->assertSame(1, \App\Models\Notification::query()
+            ->where('user_id', $alpha['admin']->id)->where('title', 'Confirm parts are in for J-1')->count()));
+
+        $this->travel(2)->days();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        [$to, $body] = $sends()[1];
+        $this->assertSame('+15125550199', $to);
+        $this->assertMatchesRegularExpression('#^J-1 tomorrow: https?://\S+ Balance \$0\.00\.$#', $body);
+        $this->assertCount(2, $sends());
     }
 
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */

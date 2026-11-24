@@ -8,6 +8,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:ezbizi_client/widgets/range_calendar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -241,7 +242,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Video retake').first);
+    final open = find.byKey(const ValueKey('task-open-t1'));
+    if (open.evaluate().isNotEmpty) {
+      await tester.ensureVisible(open);
+      await tester.pumpAndSettle();
+      await tester.tap(open);
+    } else {
+      await tester.tap(find.text('Video retake').first); // a phone card
+    }
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('task-panel-title')), findsOneWidget);
   }
@@ -438,6 +446,120 @@ void main() {
     await settle(tester);
     expect(find.byKey(const Key('task-dock')), findsNothing);
     expect(shadeBorder(tester), isNull);
+  });
+
+  testWidgets('the Updates cell opens the thread alone; the row opens the '
+      'whole form (Jose 11-23)', (tester) async {
+    for (final width in [1700.0, 1000.0]) {
+      await pump(tester, width: width);
+      if (width > 1100) {
+        await tester.tap(find.byTooltip('Close Lakeview'));
+      } else {
+        Navigator.of(tester.element(title())).pop();
+      }
+      await settle(tester);
+      final cell = find.byKey(const ValueKey('task-updates-cell-t1'));
+      // At 1000 px the column is scrolled off to the right: its tap, direct.
+      if (width > 1100) {
+        await tester.ensureVisible(cell);
+        await tester.tap(cell);
+      } else {
+        tester.widget<InkWell>(cell).onTap!();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('task-panel-updates-only')), findsOneWidget);
+      expect(find.text('Post update'), findsOneWidget);
+      expect(title(), findsNothing, reason: 'no form fields ($width)');
+      expect(find.byKey(const Key('task-activity')), findsNothing);
+    }
+  });
+
+  testWidgets('Updates sits right after the name, before every other '
+      'column (Jose 11-23)', (tester) async {
+    await pump(tester);
+    final name = tester.getRect(find.byKey(const ValueKey('task-open-t1')));
+    final updates = tester.getRect(
+      find.byKey(const ValueKey('task-updates-cell-t1')),
+    );
+    final status = tester.getRect(find.byKey(const ValueKey('task-status-t1')));
+    expect(updates.left, greaterThan(name.right));
+    expect(updates.left, lessThan(status.left), reason: 'before Status');
+  });
+
+  testWidgets('every row has the Monday grey rule above it (Jose 11-23, '
+      'row 37)', (tester) async {
+    await pump(tester);
+    final box = tester.widget<DecoratedBox>(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('task-t1')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final top = ((box.decoration as BoxDecoration).border! as Border).top;
+    expect(top.color, const Color(0xFFD0D4E4));
+  });
+
+  testWidgets('clicking the name edits it in place; Enter saves, Esc '
+      'cancels (row 40, Chaim)', (tester) async {
+    await pump(tester, width: 1700);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    final name = find.byKey(const ValueKey('task-name-t1'));
+    await tester.tap(name);
+    await tester.pump();
+    final field = find.byKey(const ValueKey('task-rename-t1'));
+    expect(field, findsOneWidget);
+    expect(find.byTooltip('Close Lakeview'), findsNothing, reason: 'no panel');
+
+    await tester.enterText(field, 'Gutter guard');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(field, findsNothing);
+    expect(log.where((e) => e.$1 == 'PATCH'), isEmpty, reason: 'Esc');
+
+    await tester.tap(name);
+    await tester.pump();
+    await tester.enterText(field, 'Gutter guard');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(
+      log.where((e) => e.$1 == 'PATCH' && e.$2 == '/tasks/t1').map((e) => e.$3),
+      [
+        {'title': 'Gutter guard'},
+      ],
+    );
+  });
+
+  testWidgets('the board and its panel are in Figtree, the Monday font '
+      '(row 42)', (tester) async {
+    await pump(tester);
+    for (final k in ['task-name-t1', 'task-panel-title']) {
+      final at = tester.element(find.byKey(Key(k)).first);
+      expect(
+        Theme.of(at).textTheme.bodyMedium?.fontFamily,
+        'Figtree',
+        reason: k,
+      );
+    }
+  });
+
+  testWidgets('a cancelled drag leaves the row at full colour (Jose 11-23, '
+      'row 39)', (tester) async {
+    await pump(tester);
+    final handle = find.byKey(const ValueKey('task-drag-t1'));
+    await tester.ensureVisible(handle);
+    final g = await tester.startGesture(tester.getCenter(handle));
+    await g.moveBy(const Offset(0, 30));
+    await tester.pump(const Duration(milliseconds: 50));
+    await g.moveBy(const Offset(0, -30)); // back over its own place
+    await tester.pump();
+    final shade = find.byKey(const ValueKey('task-shade-t1'));
+    expect((tester.widget(shade) as dynamic).ghost, isTrue, reason: 'lifted');
+    await g.up();
+    await tester.pumpAndSettle();
+    expect((tester.widget(shade) as dynamic).ghost, isFalse);
   });
 
   testWidgets('design 200: under 1100 px the panel still opens over the '

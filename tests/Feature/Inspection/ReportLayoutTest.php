@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Inspection;
 
+use App\Models\Customer;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionDefinitionVersion;
 use App\Models\InspectionReport;
+use App\Models\WebLocation;
 use App\Support\Inspection\ReportDocument;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -41,7 +45,7 @@ class ReportLayoutTest extends TestCase
             'name' => 'System',
             'fields' => [
                 ['key' => 'system_type', 'label' => 'System type', 'type' => 'text',
-                 'print' => 'ignore'],
+                    'print' => 'ignore'],
                 ['key' => 'crown', 'label' => 'Crown', 'type' => 'text'],
             ],
         ]], ['system_type' => 'masonry', 'crown' => 'Cracked']);
@@ -64,12 +68,12 @@ class ReportLayoutTest extends TestCase
             'name' => 'Crown',
             'fields' => [
                 ['key' => 'crown', 'label' => 'Chimney crown condition', 'type' => 'choice',
-                 'print' => 'root',
-                 'options' => [
-                     ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
-                     ['value' => 'not-ok', 'label' => 'Does not meet standards',
-                      'variant' => 'fail'],
-                 ]],
+                    'print' => 'root',
+                    'options' => [
+                        ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
+                        ['value' => 'not-ok', 'label' => 'Does not meet standards',
+                            'variant' => 'fail'],
+                    ]],
             ],
         ]], ['crown' => 'not-ok']);
 
@@ -93,10 +97,10 @@ class ReportLayoutTest extends TestCase
         $html = $this->render([[
             'fields' => [
                 ['key' => 'crown', 'label' => 'Crown', 'type' => 'choice', 'print' => 'root',
-                 'options' => [
-                     ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
-                     ['value' => 'not-ok', 'label' => 'Does not', 'variant' => 'fail'],
-                 ]],
+                    'options' => [
+                        ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
+                        ['value' => 'not-ok', 'label' => 'Does not', 'variant' => 'fail'],
+                    ]],
             ],
         ]], ['crown' => 'not-ok']);
 
@@ -105,10 +109,10 @@ class ReportLayoutTest extends TestCase
         $passing = $this->render([[
             'fields' => [
                 ['key' => 'crown', 'label' => 'Crown', 'type' => 'choice', 'print' => 'root',
-                 'options' => [
-                     ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
-                     ['value' => 'not-ok', 'label' => 'Does not', 'variant' => 'fail'],
-                 ]],
+                    'options' => [
+                        ['value' => 'ok', 'label' => 'Meets standards', 'variant' => 'pass'],
+                        ['value' => 'not-ok', 'label' => 'Does not', 'variant' => 'fail'],
+                    ]],
             ],
         ]], ['crown' => 'ok']);
 
@@ -127,20 +131,40 @@ class ReportLayoutTest extends TestCase
         $screens = [[
             'fields' => [
                 ['key' => 'a', 'label' => 'A', 'type' => 'choice', 'print' => 'root',
-                 'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
-                               ['value' => 'no', 'label' => 'No', 'variant' => 'fail']]],
+                    'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
+                        ['value' => 'no', 'label' => 'No', 'variant' => 'fail']]],
                 ['key' => 'b', 'label' => 'B', 'type' => 'choice', 'print' => 'root',
-                 'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
-                               ['value' => 'no', 'label' => 'No', 'variant' => 'fail']]],
+                    'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
+                        ['value' => 'no', 'label' => 'No', 'variant' => 'fail']]],
                 ['key' => 'c', 'label' => 'C', 'type' => 'choice', 'print' => 'root',
-                 'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
-                               ['value' => 'na', 'label' => 'N/A', 'variant' => 'not_applicable']]],
+                    'options' => [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
+                        ['value' => 'na', 'label' => 'N/A', 'variant' => 'not_applicable']]],
             ],
         ]];
 
         $html = $this->render($screens, ['a' => 'no', 'b' => 'ok', 'c' => 'na']);
 
         $this->assertStringContainsString('1 of 3', $html);
+    }
+
+    /** The app reads the same PASS/FAIL/N/A the PDF prints; a multi-choice takes its worst pick. */
+    public function test_findings_give_the_app_each_badge_the_pdf_prints(): void
+    {
+        $options = [['value' => 'ok', 'label' => 'OK', 'variant' => 'pass'],
+            ['value' => 'no', 'label' => 'No', 'variant' => 'fail'],
+            ['value' => 'na', 'label' => 'N/A', 'variant' => 'not_applicable']];
+        $screens = [['fields' => [
+            ['key' => 'a', 'type' => 'choice', 'options' => $options],
+            ['key' => 'b', 'type' => 'choice', 'options' => $options],
+            ['key' => 'c', 'type' => 'choice', 'options' => $options],
+            ['key' => 't', 'type' => 'text'],
+        ]]];
+
+        $this->assertSame([
+            'a' => ['label' => 'OK, No', 'variant' => 'fail'],
+            'b' => ['label' => 'OK', 'variant' => 'pass'],
+            'c' => ['label' => 'N/A', 'variant' => 'not_applicable'],
+        ], app(ReportDocument::class)->findings($screens, ['a' => ['ok', 'no'], 'b' => 'ok', 'c' => 'na', 't' => 'x']));
     }
 
     /** With no findings at all there is nothing to summarise, and no empty banner. */
@@ -261,7 +285,7 @@ class ReportLayoutTest extends TestCase
     {
         $this->beforeRender = function (array $tenant) {
             foreach ([['Elsewhere', '(111) 111-1111', 'far@example.test', 0], ['Miami', '(305) 555-0100', 'miami@example.test', 5]] as [$city, $phone, $email, $sort]) {
-                \App\Models\WebLocation::query()->forceCreate([
+                WebLocation::query()->forceCreate([
                     'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
                     'name' => "A1 {$city}", 'city' => $city, 'phone' => $phone, 'email' => $email, 'sort_order' => $sort,
                 ]);
@@ -274,6 +298,15 @@ class ReportLayoutTest extends TestCase
         $this->assertStringNotContainsString('(111) 111-1111', $html);
     }
 
+    public function test_one_shared_terms_text_names_each_reports_own_company(): void
+    {
+        $html = $this->render([['fields' => [['key' => 't', 'type' => 'alert', 'title' => 'Terms and conditions', 'body' => "Provided by {{company_name}}.\nSecond line."]]]], []);
+
+        $this->assertStringContainsString('Provided by Alpha', $html);
+        $this->assertStringNotContainsString('{{company_name}}', $html);
+        $this->assertStringContainsString('<br', $html);
+    }
+
     private ?\Closure $beforeRender = null;
 
     /** @param list<array<string, mixed>> $screens */
@@ -282,7 +315,7 @@ class ReportLayoutTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
 
         return $this->inTenant($tenant['org'], function () use ($tenant, $screens, $answers) {
-            $customer = \App\Models\Customer::create([
+            $customer = Customer::create([
                 'owning_franchise_id' => $tenant['franchise']->id,
                 'number' => 'C-'.bin2hex(random_bytes(3)),
                 'name' => '14 Maple',
@@ -293,13 +326,13 @@ class ReportLayoutTest extends TestCase
                 ($this->beforeRender)($tenant);
             }
 
-            $definition = \App\Models\InspectionDefinition::create([
+            $definition = InspectionDefinition::create([
                 'name' => 'Level 1',
                 'created_by' => $tenant['admin']->id,
                 'screens' => $screens,
             ]);
 
-            $version = \App\Models\InspectionDefinitionVersion::create([
+            $version = InspectionDefinitionVersion::create([
                 'inspection_definition_id' => $definition->id,
                 'version' => 1,
                 'layout_preset' => 'step_strip',

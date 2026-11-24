@@ -38,6 +38,20 @@ class OrganizationWritesNeedTheOrganizationViewTest extends TestCase
         $this->signedInAs($t['admin'])->patchJson("/api/v1/roles/{$target->id}", ['name' => 'Renamed'])->assertOk();
     }
 
+    public function test_an_administrator_standing_in_a_company_view_still_changes_a_role(): void
+    {
+        // Jose 2026-11-20: refused in the A-1 Chimney view, allowed in the
+        // organization view, for the same Administrator. A role is the same
+        // record from every view; authority, not the switcher, decides.
+        $t = $this->provisionTenant('Alpha');
+        $target = $this->inTenant($t['org'], fn () => Role::create(['organization_id' => $t['org']->id, 'name' => 'Dispatch']));
+
+        $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', 'company:'.$t['company']->id)
+            ->patchJson("/api/v1/roles/{$target->id}", ['name' => 'Renamed'])->assertOk();
+
+        $this->assertSame('Renamed', $this->inTenant($t['org'], fn () => Role::find($target->id)?->name));
+    }
+
     public function test_a_branch_user_reaches_only_rules_for_their_branch(): void
     {
         $t = $this->provisionTenant('Alpha');

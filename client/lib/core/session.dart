@@ -193,6 +193,23 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Start "View as" (design 205): [body] is {role_id, scope_type, scope_id}
+  /// or {user_id}. Null on success, else the server's sentence.
+  Future<String?> startViewAs(Map<String, dynamic> body) async {
+    final response = await _api.post('/view-as', body);
+    if (!response.ok) return response.reason;
+    await refresh();
+    return null;
+  }
+
+  /// End "View as" and come back as yourself.
+  Future<String?> stopViewAs() async {
+    final response = await _api.delete('/view-as');
+    if (!response.ok) return response.reason;
+    await refresh();
+    return null;
+  }
+
   /// The token "keep me signed in" put in the keychain, or null when the
   /// person did not tick it (or nobody is signed in).
   String? _keptToken;
@@ -481,6 +498,9 @@ class Me {
     this.timeClock = TimeClockStatus.absent,
     this.phoneIncomingPopup = true,
     this.profileMissing = const [],
+    this.viewAsAvailable = false,
+    this.viewingAs,
+    this.mobileBar,
   });
 
   final String id;
@@ -530,6 +550,17 @@ class Me {
   /// Development section in the sidebar — so the section cannot appear for
   /// somebody with no staff account behind them, whatever the client believes.
   final DevelopmentAccess? development;
+
+  /// "View as" (design 205): may this person open it (an Administrator with
+  /// a platform-staff link and `development.view_as`), and who the app is
+  /// being shown as right now, or null.
+  final bool viewAsAvailable;
+  final ViewingAs? viewingAs;
+
+  /// This person's role's phone bottom bar (design 208): up to four slots,
+  /// a module or one of its tabs, already filtered to what they can reach.
+  /// Null when the role has not chosen; the shell's default fills the rest.
+  final List<MobileBarSlot>? mobileBar;
 
   /// The organization has made a second factor mandatory (§6
   /// `security.require_two_factor`) and this account has not set one up.
@@ -913,6 +944,9 @@ class Me {
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
+    viewAsAvailable: viewAsAvailable,
+    viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
   /// A copy with the punch-clock chrome replaced after a successful POST.
@@ -940,6 +974,9 @@ class Me {
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
+    viewAsAvailable: viewAsAvailable,
+    viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
@@ -1101,7 +1138,49 @@ class Me {
         (json['display'] as Map<String, dynamic>?)?['phone.incoming_popup'] !=
         false,
     timeClock: TimeClockStatus.fromJson(json['time_clock']),
+    viewAsAvailable: json['view_as_available'] == true,
+    viewingAs: ViewingAs.from(json['viewing_as']),
+    mobileBar: json['mobile_bar'] is List
+        ? [
+            for (final m in json['mobile_bar'] as List)
+              if (m is Map && m['module'] is String)
+                MobileBarSlot(
+                  '${m['module']}',
+                  m['tab'] is String ? m['tab'] as String : null,
+                  '${m['label'] ?? ''}',
+                ),
+          ]
+        : null,
   );
+}
+
+/// `/me.viewing_as`: the role or person the app is being shown as.
+/// One slot of the phone's bottom bar: a module, or one of its tabs.
+class MobileBarSlot {
+  const MobileBarSlot(this.module, this.tab, this.label);
+
+  final String module;
+  final String? tab;
+  final String label;
+}
+
+class ViewingAs {
+  const ViewingAs({required this.kind, required this.label, this.expiresAt});
+
+  /// 'role' or 'person'.
+  final String kind;
+
+  /// "Nick Frias" or "Local Manager at Texas".
+  final String label;
+  final DateTime? expiresAt;
+
+  static ViewingAs? from(dynamic json) => json is Map
+      ? ViewingAs(
+          kind: '${json['kind'] ?? 'person'}',
+          label: '${json['label'] ?? ''}',
+          expiresAt: DateTime.tryParse('${json['expires_at'] ?? ''}'),
+        )
+      : null;
 }
 
 /// `/me`'s `time_clock` block — whether the chrome draws Clock in / Clock out.

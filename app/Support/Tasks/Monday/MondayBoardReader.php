@@ -119,7 +119,7 @@ final class MondayBoardReader
      *
      * @return list<array{name: string, colour: ?string}>
      */
-    public function folderPath(?string $folderId): array
+    public function folderPath(?string $folderId): ?array
     {
         if ($folderId === null || $folderId === '') {
             return [];
@@ -132,6 +132,9 @@ final class MondayBoardReader
                 $this->folders[(string) $f['id']] = ['name' => (string) $f['name'], 'colour' => self::FOLDER_COLOURS[(string) ($f['color'] ?? '')] ?? null,
                     'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null];
             }
+        }
+        if (! isset($this->folders[$folderId])) {
+            return null; // a folder the listing did not return: unknown, so nothing moves
         }
         $path = [];
         for ($id = $folderId; $id !== null && isset($this->folders[$id]) && count($path) < 10; $id = $this->folders[$id]['parent']) {
@@ -533,8 +536,8 @@ final class MondayBoardReader
         if (! isset($this->columns[$boardId])) {
             $this->board($boardId);
         }
-        $updates = 'updates(limit:100) { id text_body created_at creator { id email name } '.self::ASSET.' replies { id text_body created_at creator { id email name } '.self::ASSET.' } }';
-        $item = 'id name state created_at updated_at group { id title } creator { id email name } '.self::CV.' '.$updates
+        $updates = 'updates(limit:100) { id body text_body created_at creator { id email name } '.self::ASSET.' replies { id body text_body created_at creator { id email name } '.self::ASSET.' } }';
+        $item = 'id name state created_at updated_at board { id } group { id title } creator { id email name } '.self::CV.' '.$updates
             .' subitems { id name created_at updated_at creator { id email name } board { id } '.self::CV.' '.$updates.' }';
 
         $out = [];
@@ -543,6 +546,12 @@ final class MondayBoardReader
             $subBoards = array_values(array_unique(array_filter(array_map(fn ($s) => $s['board']['id'] ?? null, array_merge(...array_map(fn ($r) => $r['subitems'] ?? [], $rows ?: [[]]))))));
             $this->subitemColumns($subBoards);
             foreach ($rows as $row) {
+                // Moved to another board on Monday since it was listed here: that board's sync
+                // takes it. Read here, it filed the item under its new board's group on this
+                // board (desk 11-23: GA got CT's "Tech Field Manager -Elissa").
+                if (isset($row['board']['id']) && (string) $row['board']['id'] !== $boardId) {
+                    continue;
+                }
                 $group = (string) ($row['group']['title'] ?? 'Open Tasks');
                 $converted = $this->convert($boardId, $row, $this->columns[$boardId], $group);
                 $converted['state'] = $row['state'] ?? 'active'; // archived/deleted on Monday: archived here (desk 11-18)
@@ -814,13 +823,43 @@ final class MondayBoardReader
         return $out;
     }
 
+    /**
+     * An update's text with its links kept as [name](url) (row 38, Merav: the
+     * balance reports are OneDrive links; text_body drops the href). No link:
+     * Monday's text_body, as before.
+     */
+    /** @return list<string> the Monday user ids an update @mentions */
+    public static function mentionIds(array $u): array
+    {
+        preg_match_all('/data-mention-type="User"[^>]*data-mention-id="(\d+)"|data-mention-id="(\d+)"[^>]*data-mention-type="User"/', (string) ($u['body'] ?? ''), $m, PREG_SET_ORDER);
+
+        return array_values(array_unique(array_map(fn ($x) => $x[1] !== '' ? $x[1] : $x[2], $m)));
+    }
+
+    public static function bodyOf(array $u): string
+    {
+        // A @mention is a name, not a link (its href is the person's Monday profile).
+        $html = (string) preg_replace('/<a\b[^>]*data-mention-type="[^"]*"[^>]*>(.*?)<\/a>/is', '$1', (string) ($u['body'] ?? ''));
+        if (! str_contains($html, '<a ')) {
+            return trim((string) ($u['text_body'] ?? ''));
+        }
+        $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
+            fn ($m) => '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
+        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html));
+        $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
+
+        return trim((string) preg_replace("/[ \t]*\n[ \t]*/", "\n", (string) preg_replace("/\n{3,}/", "\n\n", $text)));
+    }
+
     private function updates(array $updates): array
     {
         $file = fn (array $a) => ['monday_id' => (string) $a['id'], 'name' => (string) $a['name'], 'ext' => mb_strtolower((string) ($a['file_extension'] ?? '')),
             'size' => (int) ($a['file_size'] ?? 0), 'url' => $a['public_url'] ?? null];
         $entry = fn (array $u) => [
             'monday_id' => (string) $u['id'], 'author_email' => $u['creator']['email'] ?? null, 'author_name' => $u['creator']['name'] ?? null,
-            'created_at' => $u['created_at'] ?? null, 'body' => trim((string) ($u['text_body'] ?? '')), 'files' => array_map($file, $u['assets'] ?? []),
+            'created_at' => $u['created_at'] ?? null, 'body' => self::bodyOf($u), 'files' => array_map($file, $u['assets'] ?? []),
+            // Who it @mentions, by email (Dieuve 11-23: "when tagged i should receive a notification").
+            'mention_emails' => array_values(array_filter(array_map(fn ($id) => $this->users[$id]['email'] ?? null, self::mentionIds($u)))),
         ];
         usort($updates, fn ($a, $b) => strcmp((string) $a['created_at'], (string) $b['created_at']));
 

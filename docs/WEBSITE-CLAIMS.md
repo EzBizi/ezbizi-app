@@ -3856,3 +3856,114 @@ LIVE pages after the edits ok - 4 terms, none present. Stores: Play `200`; Apple
 to a group 6 (total not given). Jobs with `scheduled_for` and no `workiz_jobs` row: **784** (74 on 11-13; orgs not
 split). LSA leads 55,184, all with a `remote_id`. No new publisher class. The scheduling row stays inverted and
 unwritten: ask for the count per organization before a homepage sentence.
+
+## 2026-11-20: 0.0.0612-0.0.0620 live, and `/privacy/` named neither job applicants nor staff certifications
+
+Production web is 0.0.0620 at `3f99b84c5`; `/download/windows.json` reads 0.0.0620 at `3f99b84c5`. 0615-0617 never
+deployed (folded into 0618); 0621 (`43a211f00`) in its gate. Before the edit no WP page was modified since the 11-19
+edits (pages 5 and 8) and all 10 live pages contained their WP post_content (method of 11-15). www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies of every page in `~/ezb-wp-bak-20261120/`
+on the websites box; read back equal apart from trailing newlines; live on bare and www):
+- `9dfa1e434` (0618) adds `applicants` (name, phone, email, position, source, stage, notes; optional `lead_id`) and
+  `applicant_interviews` (outcome, notes). Applicants are neither customers nor staff, and the page named only
+  "your customers, your staff". "What your organization enters" now lists "people who apply to work for the
+  organization and their interviews" and the personal-data clause names "your job applicants". 0 rows on prod; the
+  sentence describes what the product holds, as the payroll line of 11-19 did.
+- `b8a197b15` (0618) adds `person_certifications` (name, issuer, number, issued, expires). The staff-records list now
+  names "the certifications a person holds (with the issuer, number and expiry date)".
+- Last updated / `dateModified` → 2026-11-20.
+
+**QuickBooks, deliberately not on `/privacy/`'s list.** `ad3c7cf1e` ships `QuickBooksOAuth` (Intuit, scope
+`com.intuit.quickbooks.accounting`, read-only expenses into Financials › Markets; hosts `*.intuit.com`). Desk: 0
+`social_connections` rows, `services.quickbooks.client_id` unset on prod, so nobody can connect. It is an account a
+tenant connects, covered by "any business account EzBizi reads from or updates at your instruction"; Intuit is not
+a processor of ours. **Trigger:** if EzBizi ever pushes anything to QuickBooks (invoices, payments), that is a write
+and a `forbidden-terms` question (`invoic`, `bill`), not a privacy line. AppAsk now answers market money questions
+from those figures through the existing xAI staff Q&A item ("any records the person may see").
+
+No sentence moves for: rating badge (aggregate count and average, 13,583 / 4.9 on A-1 sites; no person data),
+AI dispatcher (existing xAI path), complaint triage/board mirror (no AI call; Monday covered by "updates at your
+instruction"), QR centre image, Google review totals (existing GBP read), task reminders, PM job cost, Reports.
+Every new route sits in the authenticated group (desk). `app/Support/Social` gained only the QuickBooks reader.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-20, ~00:05 UTC 11-21), recorded as given** (`docs/agents/done/website-daily-2026-11-20-desk-reply.md`):
+0612-0614, 0618-0620 live, nothing rolled back. Training 58/82/12, `phone_ring_groups` 6 (6 numbers), Scheduled
+Jobs 785, LSA leads 55,428 all with `remote_id`, no new publisher class. Applicants 0, recruiting_spend 0.
+
+## 2026-11-21: 0.0.0621-0.0.0623 live, nothing on the site went false
+
+Production web is 0.0.0623 at `194e4c29c`; `/download/windows.json` reads 0.0.0623 at `194e4c29c`. No WP page modified
+since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their WP
+post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`3f99b84c5..194e4c29c` is 18 files: Workiz job-file reads and rate-limit retries (existing processor and host), Reports
+"Not checked"/"photos not read", and plugin 1.26.34 (A-1 sites' aggregateRating JSON-LD follows the live review
+numbers). No new host, route, scope, publisher or `app/Support/Social` change. No sentence moves.
+**The desk's "pages hard-coding 13,583" note is about the A-1 tenant sites, not ezbizi.com**: no live ezbizi.com page
+carries a review count; the homepage's only `4.9` is an SVG star path.
+
+**Gate trap, Git-Bash:** looping `grep -qiF` over the terms core-dumped on every call, and the loop still printed
+`ok - 4 terms, none present` because a crashed grep is not a hit. Run the gate in Python (fails closed on a short
+page). A gate that prints its pass line when its matcher crashes is the fail-open shape the block above forbids.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-21, ~00:00 UTC 11-22), recorded as given** (`docs/agents/done/website-daily-2026-11-21-desk-reply.md`):
+0621-0623 live, none folded or rolled back. Training 58/82/12, `phone_ring_groups` 6, numbers resolving to a group 6
+**of 15** (the first total since 11-15's 11 of 13 — the Communication card's forbidden phrasings hold more firmly).
+Scheduled Jobs 785, **all in Triplex Group, 0 in any other org** — the per-org split 11-19 asked for: one tenant, so
+the scheduling row stays unwritten on the homepage. LSA leads 55,429 all with `remote_id`. No new publisher class.
+
+## 2026-11-22: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0623 at `194e4c29c`; main has only docs commits since. No WP page
+modified since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their
+WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+Desk not asked: production has not moved since the 11-21 reply (measured ~00:00 UTC 11-22), so its counts stand.
+No sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+## 2026-11-23: 0.0.0624-0.0.0627 live, and `/privacy/` did not mention before-and-after photos on tenant websites
+
+Production web is 0.0.0627 at `593d1a696` (release `20261123233554`); `/download/windows.json` reads 0.0.0627 at
+`593d1a696`; 0628 cutting. Before the edit no WP page was modified since the 11-20 privacy edit and all 10 live pages
+contained their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies in `~/ezb-wp-bak-20261123/` on the websites
+box; read back equal; purged bare + www; live on both):
+- 0624 adds `GET v1/web/plugin/before-after` (site token) and `/image/{attachment}` (signed, 24h): approved inspection
+  before/after pairs shown by the plugin's `[ezbizi_before_after]` widget on the tenant's own site, with service,
+  city and state (no name, address or job number), 1600px re-encoded JPEGs (EXIF dropped). Approval needs
+  inspection.edit + report reach and a tick "Confirm the photos show no faces and no house numbers"; withdraw removes.
+  **The visitor's browser loads the images from EzBizi**, so the page's "If an organization switches both off ... the
+  plugin sends us nothing about anybody's visitors" no longer covered every case. New paragraph *Before-and-after
+  photos* under Enquiries from your websites; that closing sentence now reads "switches the chat and the form off
+  and shows no before-and-after photos". Approved pairs on prod: 0 (the sentence describes the product, as 11-19/20).
+  **Triggers:** the feed adding the street, customer name or job number; images proxied through the WP site (then the
+  IP clause goes); approval no longer required.
+- Last updated / `dateModified` → 2026-11-23.
+
+No sentence moves for: `/join?link=` invite links (creates an ordinary invitation; `/delete-account/`'s "If you were
+invited by an employer" holds; no page describes signup or "one at a time"); technician Review QR (same `/r/` page,
+scan credited to the technician, no customer); Google review reply explaining removed/eKomi reviews; **View as**
+(platform staff with `development.view_as`, every request audit-logged with the real actor, credentials/keys/
+deletion refused; no page makes a claim about EzBizi staff access either way — if one is ever written, it must
+mention this). No new host, scope, processor, publisher or `app/Support/Social` change (desk + `git diff`).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-23, ~23:45 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-23-desk-reply.md`):
+0624-0627 live, none rolled back (0624, 0625 re-cut after failed gates). Training 59/83/12. `phone_ring_groups` 6;
+numbers resolving to a group 6 of 15. **Scheduled Jobs now excludes soft-deleted jobs: Triplex Group 80, 0 elsewhere**
+— the 785 of 11-19..21 counted deleted jobs and is not comparable; 80 is the new baseline, still one tenant, so the
+scheduling row stays unwritten. LSA leads 55,898 all with `remote_id`. No new publisher class. invite_links 0,
+technician review codes 2, view_as_sessions 1.

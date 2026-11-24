@@ -1009,6 +1009,15 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Per sub-tab: statuses (any of), tags (all of, or any of), and whether the job has a date. No statuses lists nothing.',
             ),
+            // A repair team's day rate, alone or with a helper (Jose with Shoval,
+            // 2026-11-23): a Project job's labor is rate x days.
+            new SettingDefinition(
+                key: 'project_board.team_rates', label: 'Project Management: repair team day rates',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['alone_per_day_minor' => null, 'with_helper_per_day_minor' => null],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'In cents. A Project job worked by a repair team costs this per day.',
+            ),
             new SettingDefinition(
                 key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',
                 type: SettingDefinition::TYPE_JSON,
@@ -1047,6 +1056,8 @@ class SettingRegistry
                     ['key' => 'job_cost', 'label' => 'Job Cost', 'visible' => true, 'as_label' => false],
                     ['key' => 'production', 'label' => 'Production Job', 'visible' => true, 'as_label' => false],
                     ['key' => 'total_cost', 'label' => 'Total Cost', 'visible' => true, 'as_label' => false],
+                    // Jose with Shoval, 2026-11-23: a Project job's Parts and Labor costs.
+                    ['key' => 'project_costs', 'label' => 'Project Costs', 'visible' => true, 'as_label' => false],
                     ['key' => 'created', 'label' => 'Sale Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'scheduled', 'label' => 'Schedule Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
@@ -1066,10 +1077,14 @@ class SettingRegistry
                 key: 'project_board.client_messages', label: 'Project Management: texts to the client',
                 type: SettingDefinition::TYPE_JSON,
                 default: [
-                    'project_link' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, thank you for choosing {company}. Your project is underway, and you can see where it stands any time here: {link}'],
+                    'project_link' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, thank you for choosing {company}. Your project is underway, and your project manager is {pm_name} ({pm_phone}). You can see where it stands any time here: {link}'],
                     'scheduled' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, your project with {company} is scheduled for {date}. See it here: {link}'],
                     'day_before' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, happy to remind you about your appointment tomorrow, {date}, to complete your project. Our repair crews are booked 7 to 14 days ahead, so moving it may take 1 to 2 weeks.'],
                     'complete' => ['on' => false, 'since' => null, 'text' => 'Thank you for your business, {client_first}. It was a pleasure working on your project with {company}.'],
+                    // Jose's PM flow (2026-11-23): a reminder 3 days ahead, and the
+                    // crew's work order the day before with the balance to collect.
+                    'three_day_before' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, a reminder that your project with {company} is scheduled for {date}, 3 days from now. Questions? Call {pm_name} at {pm_phone}.'],
+                    'crew_day_before' => ['on' => false, 'since' => null, 'text' => 'Work order for {job} tomorrow, {date}: {work_order}. Parts, tech and project details are inside. Balance due {balance}: collect it before leaving the job site.'],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Each text to the client, its switch and its wording. Replies land in Project Management > Inbox.',
@@ -1131,7 +1146,8 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'project_board.status_days', label: 'Project Management: Status Time colours',
                 type: SettingDefinition::TYPE_JSON,
-                default: ['warn' => 3, 'bad' => 7],
+                // Jose, 2026-11-23: 1 day green, 2 yellow, 3 and above red.
+                default: ['warn' => 2, 'bad' => 3],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Green below the first number of days, yellow from it, red from the second.',
             ),

@@ -89,7 +89,10 @@ class TaskBoards
                 default => [TaskBoard::KIND_USER, 'owner_user_id'],
             };
 
-            $board = TaskBoard::query()->firstOrCreate(
+            // A board named to stand for this place (A-1's is Monday's "A1 - Operatrion",
+            // Jose 11-19/11-23: one board, not two) holds its key: writers land there.
+            $board = TaskBoard::query()->where('auto_key', $kind.':'.$owner->getKey())->where('kind', '!=', $kind)->first()
+                ?? TaskBoard::query()->firstOrCreate(
                 ['kind' => $kind, $column => $owner->getKey()],
                 [
                     'organization_id' => $owner->organization_id,
@@ -181,8 +184,8 @@ class TaskBoards
         }
 
         return TaskBoardMember::query()->where('board_id', $board->getKey())
-            ->where('user_id', $user->getKey())->value('role')
-            ?? ($this->implicitUserIds($board)?->where('user_id', $user->getKey())->exists()
+            ->where('user_id', $user->ownRowsKey())->value('role')
+            ?? ($this->implicitUserIds($board)?->where('user_id', $user->ownRowsKey())->exists()
                 ? TaskBoardMember::MEMBER : null);
     }
 
@@ -282,7 +285,7 @@ class TaskBoards
     /** Ids of boards the person is a member, owner or viewer of. */
     private function membershipIds(User $user)
     {
-        return TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id');
+        return TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id');
     }
 
     /**
@@ -352,19 +355,42 @@ class TaskBoards
         )->unique('id')->sortBy('name')->values();
     }
 
+    /**
+     * Monday parity: tagging somebody in an update on a shared board makes
+     * them a member (a subscriber there), so they can open what they were
+     * tagged on. Never on a personal or private board (only its owner invites
+     * there, as on Monday; desk 11-23), never somebody an
+     * admin took off this board.
+     *
+     * @param  list<string>  $ids
+     */
+    public function addMentioned(TaskBoard $board, array $ids): void
+    {
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate() || $ids === []) {
+            return;
+        }
+        $skip = [...$board->members()->pluck('user_id')->all(), ...(array) ($board->builtin_columns['_removed'] ?? [])];
+        foreach (User::query()->whereIn('id', array_diff($ids, $skip))->where('is_active', true)->get() as $user) {
+            if (! $this->canView($user, $board)) {
+                TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id,
+                    'user_id' => $user->id, 'role' => TaskBoardMember::MEMBER]);
+            }
+        }
+    }
+
     /** @return Builder<TaskBoard> */
     public function visibleTo(User $user): Builder
     {
         // My personal board, and any board I have been added to (of any kind,
         // even a place my reach does not cover).
         $mine = fn (Builder $q) => $q->where(fn (Builder $o) => $o->where('kind', TaskBoard::KIND_USER)
-            ->where('owner_user_id', $user->getKey()))
+            ->where('owner_user_id', $user->ownRowsKey()))
             ->orWhereIn('id', $this->membershipIds($user))
             // Implicit members: assigned at exactly the board's company or franchise.
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)
-                ->whereIn('company_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
+                ->whereIn('company_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
-                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
+                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
 
         if (! $user->hasPermission('tasks.view')) {
             return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
@@ -375,8 +401,9 @@ class TaskBoards
 
         return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
             ->where($mine)
-            // tasks.view_all: everybody's personal board.
-            ->when($all, fn (Builder $e) => $e->orWhere('kind', TaskBoard::KIND_USER))
+            // tasks.view_all: everybody's personal board, but not a removed account's (desk 11-23).
+            ->when($all, fn (Builder $e) => $e->orWhere(fn (Builder $u) => $u->where('kind', TaskBoard::KIND_USER)
+                ->whereNotIn('owner_user_id', User::query()->removed()->select('id'))))
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $companyIds))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds))
             // A custom board: its place is in view (or it is organization-level),
@@ -387,7 +414,7 @@ class TaskBoards
                     ->orWhere(fn (Builder $o) => $o->whereNull('company_id')->whereNull('franchise_id')))
                 ->when(! $all, fn (Builder $v) => $v->where(fn (Builder $m) => $m
                     ->where('visibility', TaskBoard::MAIN)
-                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id'))))));
+                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id'))))));
     }
 
     public function canView(User $user, TaskBoard $board): bool

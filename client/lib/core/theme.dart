@@ -48,6 +48,14 @@ class EzBiziTheme {
   static const paperInk = Color(0xFF111111);
   static const paperMuted = Color(0xFF555555);
 
+  /// Gold, silver and bronze for a leaderboard's top three (design 204),
+  /// white numbers on each, the same in both modes.
+  static const medals = [
+    Color(0xFFB8901F),
+    Color(0xFF8E979F),
+    Color(0xFFA5672F),
+  ];
+
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 
@@ -97,6 +105,12 @@ class EzBiziTheme {
       Theme.of(context).brightness == Brightness.dark
       ? const Color(0xFF252D35)
       : const Color(0xFFEDF2F7);
+
+  /// The Task Board's rule between rows, Monday's grey (Jose 11-23, row 37).
+  static Color boardRowLine(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF4B4E69)
+      : const Color(0xFFD0D4E4);
 
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.

@@ -57,6 +57,78 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  // Jose 11-23 (design 203): the app reads like the PDF. Findings are cards
+  // with a badge and the code; steering and unasked questions are not shown.
+  testWidgets('a finding reads like the PDF: badge, words, code, result', (
+    tester,
+  ) async {
+    await _pump(tester, list: _hit(), show: _findings);
+
+    expect(
+      find.text(
+        'Inspection result: Fail · 1 of 2 items did not meet standards',
+      ),
+      findsOneWidget,
+    );
+    final crown = find.byKey(const ValueKey('inspection-finding-crown'));
+    expect(crown, findsOneWidget);
+    expect(
+      find.descendant(of: crown, matching: find.text('FAIL')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: crown,
+        matching: find.text('Cracked, water entering'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('inspection-citation-crown')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Caps shall be sloped'), findsOneWidget);
+    // Revealed by the failing option, under the finding.
+    expect(
+      find.descendant(of: crown, matching: find.text('Crown rebuild')),
+      findsOneWidget,
+    );
+    expect(find.text('1,250.00'), findsWidgets);
+    // print: ignore and a screen whose condition failed are not on the report.
+    expect(find.text('System type'), findsNothing);
+    expect(find.text('Wood stove'), findsNothing);
+    expect(find.text('TYPE B VENTS'), findsNothing);
+    // Divider and alert print as furniture, the plain answer in the grid.
+    expect(find.text('Outside'), findsOneWidget);
+    expect(find.textContaining('Look from the roof'), findsOneWidget);
+    expect(find.text('Dana Reyes'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('inspection-report-summary')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without findings in the payload there is no verdict', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      list: _hit(),
+      show: _findings.replaceFirst('"findings":', '"findings_old":'),
+    );
+
+    expect(
+      find.byKey(const ValueKey('inspection-finding-crown')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Inspection result'), findsNothing);
+    expect(find.text('FAIL'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('inspection-report-summary')),
+      findsNothing,
+    );
+  });
+
   // Phone audit 2026-11-04, Section 3 #1: a report imported from A1 carries a
   // numeric id and photo answers as one string or a keyed object, and a bare
   // `as List?` crashed the whole tab to a grey box.
@@ -191,6 +263,44 @@ const _show = '''
         "name": "Roof",
         "fields": [{"key": "crown", "label": "Crown", "type": "text"}]
       }
+    ]
+  }
+}
+''';
+
+const _findings = '''
+{
+  "data": {
+    "id": "rep-1",
+    "definition_name": "Level 1",
+    "customer_name": "Marta Ruiz",
+    "submitted_at": "2026-08-18T14:00:00Z",
+    "answers": {"system": "masonry", "client": "Dana Reyes", "crown": "bad",
+      "work": [{"name": "Crown rebuild", "qty": 1, "unit_price_minor": 125000}],
+      "liner": "ok"},
+    "findings": {"system": {"label": "masonry", "variant": "neutral"},
+      "crown": {"label": "Cracked, water entering", "variant": "fail"},
+      "liner": {"label": "Intact", "variant": "pass"}},
+    "screens": [
+      {"name": "The system", "fields": [
+        {"key": "system", "label": "System type", "type": "choice", "print": "ignore",
+         "options": ["masonry", "prefab"]},
+        {"key": "client", "label": "Client", "type": "text"},
+        {"key": "div", "label": "Outside", "type": "divider"},
+        {"key": "tip", "type": "alert", "title": "Tip", "body": "Look from the roof"},
+        {"key": "crown", "label": "Chimney crown", "type": "choice", "print": "root",
+         "code": {"title": "R1003.9.1", "body": "Caps shall be sloped to shed water."},
+         "options": [
+           {"value": "good", "label": "Sound", "variant": "pass"},
+           {"value": "bad", "label": "Cracked, water entering", "variant": "fail",
+            "fields": [{"key": "work", "label": "Recommended work", "type": "services"}]}]},
+        {"key": "liner", "label": "Flue liner", "type": "choice", "print": "root",
+         "options": [{"value": "ok", "label": "Intact", "variant": "pass"}]},
+        {"key": "stove", "label": "Wood stove", "type": "text",
+         "visible_if": {"op": "eq", "field": "system", "value": "prefab"}}
+      ]},
+      {"name": "Type B vents", "visible_if": {"op": "eq", "field": "system", "value": "prefab"},
+       "fields": [{"key": "vent", "label": "Vent", "type": "text"}]}
     ]
   }
 }

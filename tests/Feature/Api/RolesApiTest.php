@@ -133,6 +133,30 @@ class RolesApiTest extends TestCase
         $this->assertContains('audit', $keys);
     }
 
+    public function test_an_unknown_permission_is_refused_by_name_not_dropped(): void
+    {
+        // Desk, 2026-11-23: `reviews.reply` came back 200 and was ignored.
+        $alpha = $this->provisionTenant('Alpha');
+        $role = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'Desk', 'permissions' => ['customers.view']])
+            ->assertCreated()->json('data');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$role['id']}", ['permissions' => ['customers.view', 'reviews.reply']])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions')
+            ->assertJsonFragment(['permissions' => ['These are not permissions EzBizi has, so nothing was saved: reviews.reply.']]);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'Other', 'permissions' => ['nope.view']])
+            ->assertUnprocessable();
+
+        // Nothing was saved, and a real key still saves (control).
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$role['id']}", ['permissions' => ['customers.view', 'jobs.view']])
+            ->assertOk();
+    }
+
     public function test_no_shipped_module_declares_a_requirement_by_accident(): void
     {
         // The mechanism stays and the client renders it, so nothing stops a

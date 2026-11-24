@@ -57,7 +57,13 @@ class FullWindowFlagsTest extends TestCase
             $this->assertSame([$title], Notification::query()->where('user_id', $booker->id)->pluck('title')->all());
             $this->assertSame([$title], Notification::query()->where('user_id', $manager->id)->pluck('title')->all());
             $this->assertSame(0, Notification::query()->where('user_id', $bystander->id)->count());
+            // Desk 11-23: the booker owns the flag task, so their one bell is "Assigned to me" and opens the task.
+            $this->assertSame(['task.assigned'], Notification::query()->where('user_id', $booker->id)->pluck('kind')->all());
+            $this->assertSame(\App\Models\Task::class, Notification::query()->where('user_id', $booker->id)->value('subject_type'));
+            $this->assertSame([null], Notification::query()->where('user_id', $manager->id)->pluck('kind')->all(), 'the manager keeps the job alert');
         });
+        // The past backfill lists a flag task once, already read, and finds this one already there.
+        $this->artisan('ezbizi:tasks-flag-assigned-rows')->expectsOutputToContain('rows: 0')->assertSuccessful();
 
         // Desk, 2026-11-17: a move into a full window alerts too, once per move.
         // An old job first seen (the nightly resync) only sets its baseline.

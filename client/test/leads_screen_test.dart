@@ -217,6 +217,35 @@ void main() {
   /// refresh must leave it alone: a thread that swaps itself out every twenty
   /// seconds while somebody is reading it would be a worse bug than the one
   /// this fixes, and it would look like the feature working.
+  // Design 206: the open iPhone Duo (669 wide) gets the list and the thread
+  // side by side; folding to the outer screen keeps that lead open.
+  testWidgets('the open Duo shows list and thread; folding keeps the lead', (
+    tester,
+  ) async {
+    final leads = [
+      _lead('lead-1', 'Marcus Bell'),
+      _lead('lead-2', 'Priya Raman'),
+    ];
+    await _pump(
+      tester,
+      leads: leads,
+      connections: _connected,
+      size: const Size(669, 951),
+    );
+
+    expect(find.byKey(const ValueKey('source-rail')), findsNothing);
+    await tester.tap(find.text('Priya Raman').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadThread), findsOneWidget);
+    expect(find.text('Priya Raman'), findsNWidgets(2));
+
+    tester.view.physicalSize = const Size(466, 678);
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadThread), findsOneWidget);
+    expect(find.text('Marcus Bell'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a refresh leaves the open thread where it was', (tester) async {
     final leads = [
       _lead('lead-1', 'Marcus Bell'),

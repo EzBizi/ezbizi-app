@@ -50,6 +50,12 @@ class _FieldScreenState extends State<FieldScreen> {
 
   void _open() {
     final link = DeepLinks.take('field');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      _tab = link!.id;
+      _shown.add(_tab);
+      return;
+    }
     if (link?.type != 'field_alert' || !_may('field.dashboard.view')) return;
     _alertId = link!.id;
     _tab = 'dashboard';

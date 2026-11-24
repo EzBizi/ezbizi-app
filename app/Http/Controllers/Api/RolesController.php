@@ -10,6 +10,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Inspection\InspectionGrantAccess;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Phone\PhoneNumberAccess;
+use App\Support\Roles\MobileBar;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,7 @@ class RolesController extends Controller
         private readonly InboxAccess $inboxes,
         private readonly InspectionGrantAccess $inspections,
         private readonly PhoneNumberAccess $phoneNumbers,
+        private readonly MobileBar $mobileBar,
     ) {}
 
     /**
@@ -122,6 +124,7 @@ class RolesController extends Controller
                 // for "any role reaching no further than theirs".
                 'invitable_roles'  => $role->invitable_role_ids,
                 'hidden_on_leads'  => (bool) $role->hidden_on_leads,
+                'mobile_bar'       => $role->mobile_bar,
 
                 // Administrator holds everything implicitly and owns no rows, so
                 // reporting its stored (empty) set would draw an editor with
@@ -187,6 +190,27 @@ class RolesController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/roles/{role}/mobile-bar/options
+     *
+     * What the phone bottom-bar editor may offer this role: ROLES_TAB modules
+     * available to the organization that the role holds `.view` on, each with
+     * only the tabs it holds (tabs: [] when none). See MobileBar.
+     */
+    public function mobileBarOptions(Request $request, Role $role): JsonResponse
+    {
+        $this->authorize('viewAny', Role::class);
+
+        abort_unless($role->organization_id === $request->user()->organization_id, 404);
+
+        return response()->json(['data' => [
+            'modules' => $this->mobileBar->options(
+                $this->catalogue->keysGrantedBy($role),
+                $role->organization,
+            ),
+        ]]);
+    }
+
     /** POST /api/v1/roles */
     public function store(Request $request): JsonResponse
     {
@@ -225,7 +249,16 @@ class RolesController extends Controller
             $this->phoneNumbers->assertReachable($role, $phoneNumbers);
             $lines = $this->phoneNumbers->sync($role, $phoneNumbers);
 
+            // Against the REQUESTED permissions: the role being created is what
+            // has to be able to open every slot.
+            $bar = null;
+            if (($input['mobile_bar'] ?? null) !== null) {
+                $bar = $this->mobileBar->validated($input['mobile_bar'], $requested, $actor->organization);
+                $role->forceFill(['mobile_bar' => $bar])->save();
+            }
+
             $this->audit->log('role.created', $role, metadata: [
+                'mobile_bar' => $bar,
                 'permissions' => $changed['added'],
                 'inboxes' => $mail['added'],
                 'inspections' => $offered['added'],
@@ -285,6 +318,27 @@ class RolesController extends Controller
                 // role was edited, it is what it gained.
                 if ($changed['added'] !== [] || $changed['removed'] !== []) {
                     $this->audit->log('role.permissions_changed', $role, changes: $changed);
+                }
+            }
+
+            // After the permissions, so a request that changes both is checked
+            // against the role as it will be. Keys from keysGrantedBy: what the
+            // role stores AND the platform has not switched off (§13), which is
+            // what a holder can actually open.
+            if (array_key_exists('mobile_bar', $input)) {
+                $wantedBar = $input['mobile_bar'] === null ? null : $this->mobileBar->validated(
+                    $input['mobile_bar'],
+                    $this->catalogue->keysGrantedBy($role->fresh()),
+                    $role->organization,
+                );
+
+                $beforeBar = $role->mobile_bar;
+                $role->forceFill(['mobile_bar' => $wantedBar])->save();
+
+                // == not ===: MySQL JSON stores keys in its own order.
+                if ($beforeBar != $wantedBar) {
+                    $this->audit->log('role.mobile_bar_changed', $role,
+                        changes: ['before' => $beforeBar, 'after' => $wantedBar]);
                 }
             }
 
@@ -483,7 +537,7 @@ class RolesController extends Controller
             $unique->ignore($ignoring->getKey());
         }
 
-        return $request->validate([
+        $validated = $request->validate([
             'name' => [$required ? 'required' : 'sometimes', 'string', 'max:60', $unique],
 
             // Present-but-empty is a real instruction — "this role should hold
@@ -513,7 +567,35 @@ class RolesController extends Controller
 
             // Whether its holders are left off "X is viewing this lead".
             'hidden_on_leads' => ['sometimes', 'boolean'],
+
+            // Phone bottom-bar slots, [{module, tab|null}], or null to reset to
+            // the client's default. What may be on it is checked in MobileBar.
+            'mobile_bar' => ['sometimes', 'nullable', 'array'],
         ]);
+
+        /*
+         * A key the software does not declare is refused by name, not dropped
+         * (desk, 2026-11-23: `reviews.reply` came back 200 and was silently
+         * ignored, which reads as success to a script or an MCP client). A key
+         * this role already stores is tolerated, so an editor echoing back a
+         * retired key it was shown cannot lock the role.
+         */
+        if (isset($validated['permissions'])) {
+            $unknown = array_values(array_diff(
+                $validated['permissions'],
+                $this->catalogue->keys(),
+                $ignoring?->permissionKeys() ?? [],
+            ));
+
+            if ($unknown !== []) {
+                throw ValidationException::withMessages(['permissions' => sprintf(
+                    'These are not permissions EzBizi has, so nothing was saved: %s.',
+                    implode(', ', $unknown),
+                )]);
+            }
+        }
+
+        return $validated;
     }
 
     private function present(Role $role): array
@@ -528,6 +610,7 @@ class RolesController extends Controller
             'phone_numbers'    => $this->phoneNumbers->heldBy($role),
             'invitable_roles'  => $role->invitable_role_ids,
             'hidden_on_leads'  => (bool) $role->hidden_on_leads,
+            'mobile_bar'       => $role->mobile_bar,
         ];
     }
 }

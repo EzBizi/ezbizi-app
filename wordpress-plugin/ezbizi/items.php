@@ -186,6 +186,14 @@ function ezbizi_before_after_shortcode($atts) {
     $pairs = array_values(array_filter(ezbizi_items('before_after', isset($p['category']) ? $p['category'] : ''), function ($i) {
         return ezbizi_row($i, 'image_url') !== '' && ezbizi_row($i, 'image2_url') !== '';
     }));
+    // Inspection pairs approved in EzBizi come first (newest approval first), mapped to the item shape.
+    foreach (array_reverse(ezbizi_before_after_feed(12)) as $f) {
+        if (! empty($f['before']['url']) && ! empty($f['after']['url'])) {
+            $where = implode(', ', array_filter(array(isset($f['city']) ? $f['city'] : '', isset($f['state']) ? $f['state'] : '')));
+            array_unshift($pairs, array('image_url' => $f['before']['url'], 'image2_url' => $f['after']['url'],
+                'title' => ! empty($f['label']) ? $f['label'] : (isset($f['service']) ? $f['service'] : ''), 'body' => $where));
+        }
+    }
 
     if ($pairs === array()) {
         return '';

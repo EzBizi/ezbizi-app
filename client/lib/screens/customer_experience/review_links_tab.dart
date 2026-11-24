@@ -35,6 +35,7 @@ const _labels = {
   'google': 'Google',
   'submitted': 'Complaint',
   'reviewed': 'Reviewed',
+  'qr': 'QR scans',
 };
 
 class _ReviewLinksTabState extends State<ReviewLinksTab> {
@@ -42,6 +43,7 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
   // Opens on today (Jose, 2026-10-20: "review links should default to today").
   late DateSpan _span = DateSpan.single(_today);
   bool _byPerson = false;
+  bool _allRanked = false;
   Map<String, dynamic>? _data;
   String? _error;
   int _request = 0;
@@ -142,6 +144,7 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
           _funnel(context, data['totals'] as Map?, narrow),
           _reviewedDetail(context, data['reviewed'] as Map?),
           const SizedBox(height: 20),
+          _leaderboard(context, data['by_person'] as List?),
           Align(
             alignment: Alignment.centerLeft,
             child: SegmentedButton<bool>(
@@ -309,6 +312,111 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     );
   }
 
+  /// "Which technician got the most reviews" (Jose 2026-11-23, design 204):
+  /// people ranked by reviews written, then green faces, then QR scans, over
+  /// this tab's dates. Gold, silver and bronze for the top three.
+  Widget _leaderboard(BuildContext context, List? byPerson) {
+    final theme = Theme.of(context);
+    final ranked =
+        [
+          for (final r in byPerson ?? const [])
+            if (r is Map &&
+                r['name'] != null &&
+                (_n(r, 'reviewed') + _n(r, 'happy') + _n(r, 'qr')) > 0)
+              r,
+        ]..sort((a, b) {
+          for (final k in const ['reviewed', 'happy', 'qr', 'opened']) {
+            final d = _n(b, k) - _n(a, k);
+            if (d != 0) return d;
+          }
+          return '${a['name']}'.compareTo('${b['name']}');
+        });
+    if (ranked.isEmpty) return const SizedBox.shrink();
+    final shown = _allRanked ? ranked : ranked.take(10).toList();
+
+    Widget medal(int i) => Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: i < 3
+            ? EzBiziTheme.medals[i]
+            : theme.colorScheme.surfaceContainerHighest,
+      ),
+      child: Text(
+        '${i + 1}',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: i < 3 ? EzBiziTheme.paper : theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
+    return Padding(
+      key: const Key('review-links-leaderboard'),
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Technician leaderboard', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 2),
+          Text(
+            'Ranked by reviews written, then green faces, then QR scans.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ListTable(
+            columns: const [
+              ListColumn('#', flex: 1, namedWhenStacked: false),
+              ListColumn('Technician', flex: 4),
+              ListColumn('Reviewed', end: true),
+              ListColumn('Green', end: true),
+              ListColumn('Red', end: true),
+              ListColumn('QR scans', end: true),
+              ListColumn('Opened', end: true),
+            ],
+            rows: [
+              for (final (i, r) in shown.indexed)
+                [
+                  Align(alignment: Alignment.centerLeft, child: medal(i)),
+                  Text(
+                    '${r['name']}',
+                    key: ValueKey('review-links-rank-$i'),
+                    style: i < 3
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.bodyMedium,
+                  ),
+                  for (final k in const [
+                    'reviewed',
+                    'happy',
+                    'sad',
+                    'qr',
+                    'opened',
+                  ])
+                    Text('${_n(r, k)}'),
+                ],
+            ],
+          ),
+          if (ranked.length > 10)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('review-links-leaderboard-all'),
+                onPressed: () => setState(() => _allRanked = !_allRanked),
+                child: Text(
+                  _allRanked ? 'Show the top 10' : 'Show all ${ranked.length}',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _rows(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -336,6 +444,7 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       'google',
       'submitted',
       'reviewed',
+      'qr',
     ];
     List<Widget> cells(Map r, String label, {bool total = false}) => [
       Text(

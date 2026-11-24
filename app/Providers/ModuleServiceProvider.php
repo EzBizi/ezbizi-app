@@ -432,6 +432,27 @@ class ModuleServiceProvider extends ServiceProvider
                 rolesGroup: ModuleDefinition::ROLES_SETTINGS,
                 sidebar: false,
             ),
+
+            /*
+             * Developer tools (Jose, 2026-11-23). `view_as` lets an
+             * Administrator who is also platform staff see and use the app as
+             * one role at one place, or as one person, to debug permissions
+             * (ViewAs). Nobody holds it by grant: Administrators hold every
+             * key, and the staff link is the real gate. Declared so the
+             * platform's availability switch can withdraw it.
+             */
+            new ModuleDefinition(
+                key: 'development',
+                label: 'Development',
+                actions: ['view', 'view_as'],
+                actionLabels: [
+                    'view_as' => 'View the app as a role or person (developers)',
+                ],
+                automationExemptBecause: 'A developer tool; nothing may start or stop it programmatically.',
+                auditActionPrefixes: ['view_as'],
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
+                sidebar: false,
+            ),
         ];
     }
 
@@ -1701,6 +1722,8 @@ class ModuleServiceProvider extends ServiceProvider
                      * builder.view). Jose chose the word "Testing", 2026-10-26.
                      */
                     new TabDefinition('testing', 'Testing', action: 'builder.view'),
+                    // Jose 11-23: Review QR here too, for technicians: New Inspection's grant, no new box.
+                    new TabDefinition('review_qr', 'Review QR', action: 'new.view'),
                 ],
                 actionRequires: ['new.view' => ['inspection.create'], 'builder.view' => ['inspection.edit']],
                 /*
@@ -4652,6 +4675,17 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
                     new TabDefinition('cancelled', 'Cancelled', within: 'Jobs'),
                     new TabDefinition('pending', 'Pending', within: 'Jobs'),
+                    // The rest of Shoval's operations reports (2026-11-18, design
+                    // 199), each its own grant, in three groups with no grant of
+                    // their own (server 3c06e5ea7).
+                    new TabDefinition('estimates', 'Estimates', within: 'Jobs'),
+                    new TabDefinition('tasks', 'Tasks', within: 'Office'),
+                    new TabDefinition('complaints', 'Complaints', within: 'Office'),
+                    new TabDefinition('dispatch', 'Dispatch', within: 'Office'),
+                    new TabDefinition('accounting', 'Accounting weekly', within: 'Office'),
+                    new TabDefinition('recruiting', 'Recruiting', within: 'Office'),
+                    new TabDefinition('techs', 'Tech report', within: 'Technicians'),
+                    new TabDefinition('tech_checks', 'AI checks', within: 'Technicians'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),

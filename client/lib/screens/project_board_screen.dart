@@ -82,7 +82,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   bool _canEditJobs = false;
 
   /// Status Time colours: yellow from [warn] days, red from [bad] (Settings).
-  ({int warn, int bad}) _days = (warn: 3, bad: 7);
+  ({int warn, int bad}) _days = (warn: 2, bad: 3);
 
   /// The columns the server can sort by, and the sort in force: per person,
   /// on every device (Jose, 2026-11-10: "clicking the column orders it").
@@ -172,6 +172,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// A part alert (late, or a reminder) opens the Dashboard (Jose, 2026-11-17).
   void _takeLink() {
     final link = DeepLinks.take('project_board');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      if (mounted) setState(() => _tab = link!.id);
+      return;
+    }
     if (link == null || link.type != 'job_part') return;
     if (mounted) setState(() => _tab = 'dashboard');
   }
@@ -264,8 +269,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _canEditJobs = meta['can_edit'] == true;
       final days = (meta['status_days'] as Map?) ?? const {};
       _days = (
-        warn: (days['warn'] as num?)?.toInt() ?? 3,
-        bad: (days['bad'] as num?)?.toInt() ?? 7,
+        warn: (days['warn'] as num?)?.toInt() ?? 2,
+        bad: (days['bad'] as num?)?.toInt() ?? 3,
       );
       _sortable = {
         for (final k in (meta['sortable'] as List?) ?? const []) '$k',
@@ -713,7 +718,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         );
       case 'status_days':
         if (value is! int) return const Text('—');
-        // Under 3 days green, 3 to 7 yellow, 7 and up red.
+        // Days in the current stage (Jose, 2026-11-23): 1 green, 2 yellow,
+        // 3 and up red, by the thresholds the server sends.
         return Align(
           alignment: Alignment.centerLeft,
           child: StatusPill(
@@ -741,6 +747,23 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         );
       case 'production':
         return Text(value == true ? 'Yes' : '—');
+      case 'project_costs':
+        // A Project job's Parts and Labor costs (Jose with Shoval, 2026-11-23):
+        // red until both are in, since it cannot be completed before.
+        if (row['project'] != true) return const Text('—');
+        final missing = [for (final m in (row['project_missing'] as List?) ?? const []) '$m'];
+        final money = '${row['currency'] ?? 'USD'}';
+        final pill = StatusPill(
+          missing.isEmpty
+              ? 'Parts ${formatMoney(row['parts_cost'] as int, currency: money)} · Labor ${formatMoney(row['labor_cost'] as int, currency: money)}'
+              : 'Missing ${missing.map((m) => m.split(' (').first).join(', ')}',
+          tone: missing.isEmpty ? Tone.ok : Tone.bad,
+        );
+        return InkWell(
+          key: ValueKey('project-board-project-costs:${row['id']}'),
+          onTap: _canEditJobs ? () => _editProjectCosts(row) : null,
+          child: Align(alignment: Alignment.centerLeft, child: pill),
+        );
       case 'payment_date':
         final at = value is String
             ? DateTime.tryParse(value.replaceFirst(' ', 'T'))
@@ -959,6 +982,131 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       'job_cost_minor': amount == null ? null : (amount * 100).round(),
       'production': production,
     });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+    }
+    if (r.ok) _load(quiet: true);
+  }
+
+  /// A Project job's Parts cost and Labor: a contractor's set price, or a
+  /// repair team's days, alone or with a helper, at the Settings day rate.
+  Future<void> _editProjectCosts(Map<String, dynamic> row) async {
+    String money(Object? minor) =>
+        minor is int ? (minor / 100).toStringAsFixed(2) : '';
+    int? minor(TextEditingController c) => switch (double.tryParse(
+      c.text.trim().replaceAll(r'$', ''),
+    )) {
+      final d? => (d * 100).round(),
+      null => null,
+    };
+    final parts = TextEditingController(text: money(row['parts_cost']));
+    final price = TextEditingController(text: money(row['labor_price']));
+    final days = TextEditingController(text: '${row['labor_days'] ?? ''}');
+    var kind = row['labor_kind'] as String?;
+    var helper = row['labor_helper'] == true;
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (context, set) => SidePanel(
+          title: 'Project costs',
+          subtitle: '${row['customer'] ?? ''}',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('project-board-project-costs-save'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const Key('project-board-parts-cost'),
+                controller: parts,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Parts cost',
+                  prefixText: r'$',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                key: const Key('project-board-labor-kind'),
+                emptySelectionAllowed: true,
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'contractor', label: Text('Contractor')),
+                  ButtonSegment(value: 'team', label: Text('Repair team')),
+                ],
+                selected: {?kind},
+                onSelectionChanged: (v) =>
+                    set(() => kind = v.isEmpty ? null : v.first),
+              ),
+              const SizedBox(height: 12),
+              if (kind == 'contractor')
+                TextField(
+                  key: const Key('project-board-labor-price'),
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Contractor price',
+                    prefixText: r'$',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              if (kind == 'team') ...[
+                TextField(
+                  key: const Key('project-board-labor-days'),
+                  controller: days,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Days',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                CheckboxListTile(
+                  key: const Key('project-board-labor-helper'),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('With a helper'),
+                  value: helper,
+                  onChanged: (v) => set(() => helper = v ?? false),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    final body = {
+      'parts_cost_minor': minor(parts),
+      'labor_kind': kind,
+      if (kind == 'contractor') 'labor_price_minor': minor(price),
+      if (kind == 'team') ...{
+        'labor_days': int.tryParse(days.text.trim()),
+        'labor_helper': helper,
+      },
+    };
+    parts.dispose();
+    price.dispose();
+    days.dispose();
+    if (saved != true || !mounted) return;
+    final r = await widget.api.patch(
+      '/project-board/jobs/${row['id']}/project-costs',
+      body,
+    );
     if (!mounted) return;
     if (!r.ok) {
       ScaffoldMessenger.of(
@@ -1638,8 +1786,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
             '$k',
         ]);
       final days = (byKey['project_board.status_days'] as Map?) ?? const {};
-      _warnDays.text = '${days['warn'] ?? 3}';
-      _badDays.text = '${days['bad'] ?? 7}';
+      _warnDays.text = '${days['warn'] ?? 2}';
+      _badDays.text = '${days['bad'] ?? 3}';
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
         _statuses[key] = [
@@ -2376,8 +2524,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {
             'project_board.status_days': {
-              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
-              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 2,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 3,
             },
           },
         ),
@@ -2602,7 +2750,15 @@ List<Map<String, dynamic>> _maps(Object? list) => [
     (m as Map).cast<String, dynamic>(),
 ];
 
-const _moneyKeys = {'paid', 'pending', 'total', 'job_cost', 'total_cost', 'production'};
+const _moneyKeys = {
+  'paid',
+  'pending',
+  'total',
+  'job_cost',
+  'total_cost',
+  'production',
+  'project_costs',
+};
 
 /// Jose's six sub-tabs (2026-11-06): the server's key, the label, the icon.
 const _tabs = [

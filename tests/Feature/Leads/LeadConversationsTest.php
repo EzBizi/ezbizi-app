@@ -582,6 +582,40 @@ class LeadConversationsTest extends TestCase
         $this->assertSame($ours->sole()->id, $sent['id']);
     }
 
+    /**
+     * Jose, 2026-11-23: LS texts ~4 minutes late. --messages reads only the
+     * conversations, every minute in its own lane; with that lane on, the
+     * full run leaves them to it.
+     */
+    public function test_the_messages_run_reads_only_conversations_and_the_full_run_leaves_them_to_it(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->fakeGoogle([$this->leadRow('111')], $this->threadRows('111'));
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $connection->id,
+            'source' => 'local_services', 'remote_id' => '111', 'lead_type' => 'MESSAGE', 'received_at' => now()->subDay(),
+        ]));
+        $asked = fn (string $from) => collect(Http::recorded())->filter(function ($pair) use ($from) {
+            $query = (string) (((array) $pair[0]->data())['query'] ?? '');
+
+            return $from === 'conversation'
+                ? str_contains($query, 'FROM local_services_lead_conversation')
+                : str_contains($query, 'FROM local_services_lead ') || str_contains($query, "FROM local_services_lead\n");
+        })->count();
+
+        config(['ezbizi.scheduler.leads_lane' => true]);
+        $this->artisan('ezbizi:sync-leads', ['--messages' => true])->assertSuccessful();
+        $this->assertSame(0, $asked('lead'), 'no lead list on the messages run');
+        $this->assertGreaterThan(0, $asked('conversation'));
+        $this->assertSame(3, $this->inTenant($t['org'], fn () => LeadConversation::query()->count()));
+
+        $before = $asked('conversation');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        $this->assertGreaterThan(0, $asked('lead'), 'the control: the full run reads leads');
+        $this->assertSame($before, $asked('conversation'), 'and leaves messages to the lane');
+    }
+
     public function test_a_call_lead_cannot_be_replied_to_and_nothing_is_sent(): void
     {
         $t = $this->provisionTenant('A1-Chimney');

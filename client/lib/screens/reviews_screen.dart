@@ -1412,7 +1412,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   String _who(Map<String, dynamic> review) =>
       (review['reviewer_name'] as String?)?.trim().isNotEmpty == true
       ? review['reviewer_name'] as String
-      : 'A Google user';
+      : (review['source'] ?? 'google') == 'google'
+      ? 'A Google user'
+      : 'An ${_sourceName(review['source'] as String)} customer';
+
+  String _sourceName(String source) =>
+      source == 'ekomi' ? 'eKomi' : source[0].toUpperCase() + source.substring(1);
 
   /// "Company · Branch" where the review is a branch's, so twenty "Main"s do
   /// not read the same; the company alone, or the Google location's name.
@@ -2270,6 +2275,13 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final reply = review['reply'] as Map<String, dynamic>?;
     final published = reply?['status'] == 'published';
     final postedAt = DateTime.tryParse('${reply?['published_at'] ?? ''}');
+    // What this person may do (Adeline, 2026-11-23: she pressed Post reply
+    // without the grant and thought it had gone). Writing a reply is Reviews'
+    // edit; posting it on Google is publish.
+    final canDraft = _can('reviews.edit');
+    final canPost = _can('reviews.publish');
+    // Removed from Google, from eKomi, or no connected profile: say why, offer nothing to post.
+    final blocked = published ? null : review['reply_blocked'] as String?;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2313,7 +2325,29 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               ),
             ),
           ),
-        if (!published) ...[
+        if (blocked != null)
+          Padding(
+            key: const ValueKey('review-reply-blocked'),
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(blocked, style: theme.textTheme.bodySmall),
+          ),
+        if (blocked == null && !published && !canDraft && !canPost)
+          Padding(
+            key: const ValueKey('review-reply-read-only'),
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              reply == null
+                  ? 'Not answered yet. Your role can read reviews but not '
+                        'reply; ask an administrator for Reviews › Edit and '
+                        'Publish.'
+                  : 'A reply is waiting, not posted on Google yet: '
+                        '${reply['body'] ?? ''} Your role can read reviews '
+                        'but not post replies; ask an administrator for '
+                        'Reviews › Publish.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        if (blocked == null && !published && (canDraft || canPost)) ...[
           if (_aiDraft != null && _draft.text == _aiDraft)
             const Padding(
               padding: EdgeInsets.only(bottom: 6),
@@ -2330,7 +2364,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'A draft is saved. Nobody outside sees it until you post it.',
+                canPost
+                    ? 'A draft is saved, not posted. Nobody outside sees it '
+                          'until you post it.'
+                    : 'A draft is saved, not posted. Your role cannot post '
+                          'replies on Google; someone with Reviews › Publish '
+                          'has to post it.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -2339,6 +2378,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           TextField(
             key: const ValueKey('review-reply-box'),
             controller: _draft,
+            readOnly: !canDraft,
             onChanged: (_) => setState(() {}),
             minLines: 3,
             maxLines: 6,
@@ -2359,22 +2399,23 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 key: ValueKey('review-ai-draft-${review['id']}'),
                 icon: const Icon(Icons.auto_awesome, size: 16),
                 label: const Text('Draft with AI'),
-                onPressed: _busy ? null : () => _suggest(review),
+                onPressed: _busy || !canDraft ? null : () => _suggest(review),
               ),
               TextButton(
                 key: const ValueKey('review-save-draft'),
-                onPressed: _busy || _draft.text.trim().isEmpty
+                onPressed: _busy || !canDraft || _draft.text.trim().isEmpty
                     ? null
                     : () => _saveDraft(review),
                 child: const Text('Save draft'),
               ),
-              FilledButton(
-                key: const ValueKey('review-post'),
-                onPressed: _busy || _draft.text.trim().isEmpty
-                    ? null
-                    : () => setState(() => _confirmingPublish = true),
-                child: const Text('Post reply'),
-              ),
+              if (canPost)
+                FilledButton(
+                  key: const ValueKey('review-post'),
+                  onPressed: _busy || _draft.text.trim().isEmpty
+                      ? null
+                      : () => setState(() => _confirmingPublish = true),
+                  child: const Text('Post reply'),
+                ),
             ],
           ),
           // The confirm is inline, not a dialog: the house rule.

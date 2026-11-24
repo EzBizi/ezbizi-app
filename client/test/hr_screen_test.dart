@@ -97,6 +97,18 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
+  testWidgets("an invite link's joined name opens that person's record", (
+    tester,
+  ) async {
+    final asked = <String>[];
+    DeepLinks.open(const DeepLink(module: 'hr', type: 'person', id: 'u-2'));
+    await _pump(tester, _handler(onRecord: asked.add));
+
+    expect(asked, contains('u-2'));
+    expect(find.byKey(RecordsTab.sectionsKey), findsOneWidget);
+    expect(DeepLinks.pending.value, isNull);
+  });
+
   testWidgets('a tapped onboarding notification opens that onboarding', (
     tester,
   ) async {

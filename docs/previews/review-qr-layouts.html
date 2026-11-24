@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review QR</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--ok:#1d7a3e;--okf:#dcf2e3;--bad:#a12a2a;--badf:#f9dede;--gold:#b8860b;--q:#f6f7f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd49b;--okf:#18321f;--bad:#f09a9a;--badf:#3a1a1a;--gold:#f0c46a;--q:#212831}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd49b;--okf:#18321f;--bad:#f09a9a;--badf:#3a1a1a;--gold:#f0c46a;--q:#212831}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:28px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tabs{display:flex;gap:16px;padding:10px 16px 0;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mut);flex-wrap:wrap}
+.tabs span{padding-bottom:8px}.tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.center{display:flex;flex-direction:column;align-items:center;padding:28px 16px;gap:12px}
+.field{width:min(460px,100%);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);font-size:14px;background:var(--card)}
+.field .mut{font-size:14px}
+.drop{width:min(460px,100%);border:1px solid var(--line);border-radius:10px;margin-top:-8px;overflow:hidden}
+.drop div{padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px}.drop div:first-child{border-top:0;background:var(--prif)}
+.drop small{color:var(--mut)}
+.btn{border-radius:20px;padding:8px 20px;font-weight:600;font-size:13px;display:inline-block}
+.fill{background:var(--pri);color:#fff}.out{border:1px solid var(--line);color:var(--pri)}
+.qr{width:200px;height:200px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;
+background-image:linear-gradient(90deg,#111 50%,transparent 0),linear-gradient(#111 50%,transparent 0);background-size:16px 16px;background-origin:content-box;background-clip:content-box}
+.mut{color:var(--mut);font-size:11.5px}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.seg{display:flex;border:1px solid var(--line);border-radius:18px;overflow:hidden}.seg span{padding:5px 14px;font-size:12.5px}.seg .on{background:var(--prif);color:var(--pri);font-weight:600}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+td{padding:8px 10px;border-bottom:1px solid var(--line)}td.n,th.n{text-align:right}
+.medal{display:inline-block;width:22px;height:22px;border-radius:11px;text-align:center;line-height:22px;font-weight:700;font-size:11px;color:#fff}
+.g1{background:#c9a227}.g2{background:#9aa3ab}.g3{background:#b0723a}.g0{background:var(--q);color:var(--mut)}
+.board{margin:12px 16px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.board h4{margin:0;padding:8px 12px;background:var(--q);font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.split{display:flex}.split>div{flex:1}
+.recent{width:320px;border-left:1px solid var(--line);padding:14px}
+.recent div{padding:7px 0;border-bottom:1px solid var(--line)}
+.phones{display:flex;flex-wrap:wrap;gap:24px}
+.phn{width:375px}.phn>h2{font-size:15px;margin:0 0 2px}.phn>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.scr{width:375px;height:700px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.ttl{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.ptabs{display:flex;gap:12px;padding:8px 12px 0;background:var(--card);border-bottom:1px solid var(--line);font-size:12px;color:var(--mut);overflow:hidden;white-space:nowrap}
+.ptabs span{padding-bottom:6px}.ptabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.body{flex:1;overflow:hidden;padding:12px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.scr .qr{width:300px;height:300px;background-size:20px 20px}
+</style></head><body>
+<h1>204 · Review QR (Customer Experience and Inspection) and a technician leaderboard in Review links</h1>
+<p class="lead">Jose, 11-23 (via the desk; backend from Customer Experience, ed182b56d). A technician on site types a ZIP, picks the client or types the job number, and taps <b>Generate</b>. A QR code comes up big enough for the customer to scan from the technician's phone. It opens that branch's smiley/sad review page, and every scan counts for the technician who made the code. The same screen is a sub-tab in Customer Experience (after Review links) and in Inspection (last). Review links gets a leaderboard showing which technician got the most reviews.</p>
+
+<div class="opt"><h2>1 · One centred field that understands all three <span class="rec">(recommended)</span></h2>
+<p>One field: "ZIP, client or job number". Five digits gives a "Use ZIP 44310" row. Anything else searches clients and jobs, and the matches drop down (a client with their address, a job with its number and client). Pick one, tap Generate, and the QR replaces the form, centred, with the branch's name under it. Then: <b>Download PNG</b> (for printing), <b>Copy link</b>, and <b>New code</b> to start over. One line says "Scans count for you. Valid until Nov 23, 2027."</p>
+<div class="win"><div class="tabs"><span>Reviews</span><span>Auto-replies</span><span>Review links</span><span class="on">Review QR</span><span>Reviews &amp; Complaints</span></div>
+<div class="split"><div class="center"><b style="font-size:16px">Make a review QR code</b><span class="mut">The customer scans it and lands on their branch's review page. Every scan counts for you.</span>
+<div class="field"><span class="mut">🔍 </span>dana</div>
+<div class="drop"><div>👤 <b>Dana Reyes</b><small>14 Elm St, Akron OH</small></div><div>🧰 <b>JOB-04926</b><small>Dana Reyes · Akron</small></div><div>👤 <b>Dana Whitfield</b><small>Columbus</small></div></div>
+<span class="btn fill">Generate</span></div>
+<div class="center" style="border-left:1px solid var(--line)"><span class="mut">After Generate:</span><div class="qr"></div><b>A-1 Chimney · Akron</b><span class="mut">Scans count for you · valid until Nov 23, 2027</span><div class="row"><span class="btn out">Download PNG</span><span class="btn out">Copy link</span><span class="btn out">New code</span></div></div></div></div></div>
+
+<div class="opt"><h2>2 · Pick the kind first: ZIP · Client · Job</h2>
+<p>A ZIP / Client / Job switch above the field, so the field knows what it's getting. Clearer, but it's one more tap, and Jose asked for one field.</p>
+<div class="win"><div class="center"><div class="seg"><span class="on">ZIP</span><span>Client</span><span>Job</span></div><div class="field">44310</div><span class="btn fill">Generate</span></div></div></div>
+
+<div class="opt"><h2>3 · Generate on the left, my recent codes on the right</h2>
+<p>Same field, plus a list of the branches you've already made codes for, each with its scans. Handy for the office, but most technicians will have one or two codes, so the list stays near-empty.</p>
+<div class="win"><div class="split"><div class="center"><div class="field"><span class="mut">ZIP, client or job number</span></div><span class="btn fill">Generate</span></div>
+<div class="recent"><b>My codes</b><div>A-1 Chimney · Akron <span class="mut">· 14 scans</span></div><div>A-1 Chimney · Columbus <span class="mut">· 3 scans</span></div></div></div></div></div>
+
+<div class="opt"><h2>Inspection placement</h2>
+<p>The same screen as Inspection's last sub-tab. Nothing is pre-filled (Inspection's choice).</p>
+<div class="win"><div class="tabs"><span>New Inspection</span><span>Generated Reports</span><span>Builder</span><span>Testing</span><span class="on">Review QR</span></div><div class="center"><div class="field"><span class="mut">ZIP, client or job number</span></div><span class="btn fill">Generate</span></div></div></div>
+
+<div class="opt"><h2>Leaderboard A · a ranked card above the Branch / Person table <span class="rec">(recommended)</span></h2>
+<p>A "Technician leaderboard" over the same dates as the rest of Review links. It's ranked by <b>reviews written</b> (Jose: "which technician got the most reviews"), then happy faces, then QR scans, with gold, silver and bronze for the top three. Columns are Reviews, Happy, Sad, QR scans and Opened. The top 10 show, with "Show all". The Person table also gains a QR column.</p>
+<div class="win"><div class="board"><h4>🏆 Technician leaderboard · this month</h4><table><tr><th>#</th><th>Technician</th><th class="n">Reviews</th><th class="n">Happy</th><th class="n">Sad</th><th class="n">QR scans</th><th class="n">Opened</th></tr>
+<tr><td><span class="medal g1">1</span></td><td><b>Sam Okafor</b></td><td class="n">14</td><td class="n">31</td><td class="n">2</td><td class="n">22</td><td class="n">48</td></tr>
+<tr><td><span class="medal g2">2</span></td><td><b>David Mizrahi</b></td><td class="n">11</td><td class="n">25</td><td class="n">1</td><td class="n">9</td><td class="n">40</td></tr>
+<tr><td><span class="medal g3">3</span></td><td><b>Tal Menahem</b></td><td class="n">8</td><td class="n">19</td><td class="n">3</td><td class="n">14</td><td class="n">30</td></tr>
+<tr><td><span class="medal g0">4</span></td><td>Yhav Zaid</td><td class="n">6</td><td class="n">12</td><td class="n">0</td><td class="n">4</td><td class="n">21</td></tr></table></div></div></div>
+
+<div class="opt"><h2>Leaderboard B · a third switch: Branch · Person · Leaderboard</h2>
+<p>The leaderboard takes the table's place when picked. Tidier, but nobody sees it unless they pick it.</p>
+<div class="win"><div style="padding:12px 16px"><div class="seg" style="display:inline-flex"><span>Branch</span><span>Person</span><span class="on">Leaderboard</span></div></div></div></div>
+
+<div class="phones">
+<div class="phn"><h2>4 · Phone: field, then a full-width QR <span class="rec">(recommended)</span></h2><p>A technician on site: one field and Generate. The QR then fills the width (300 px) so the customer can scan it off the screen, with Download, Copy and New code under it. The leaderboard on a phone is ranked cards (medal, name, reviews in big type, the rest named under it).</p>
+<div class="scr"><div class="ttl">Customer Experience</div><div class="ptabs"><span>Review links</span><span class="on">Review QR</span><span>Reviews &amp; Comp…</span></div><div class="body"><div class="qr"></div><b>A-1 Chimney · Akron</b><span class="mut">Scans count for you · valid until Nov 23, 2027</span><div class="row"><span class="btn out">Download</span><span class="btn out">Copy link</span><span class="btn out">New code</span></div></div></div></div>
+<div class="phn"><h2>5 · Phone: the ZIP / Client / Job switch</h2><p>Option 2 on a phone.</p>
+<div class="scr"><div class="ttl">Inspection</div><div class="ptabs"><span>Builder</span><span>Testing</span><span class="on">Review QR</span></div><div class="body"><div class="seg"><span class="on">ZIP</span><span>Client</span><span>Job</span></div><div class="field">44310</div><span class="btn fill">Generate</span></div></div></div>
+<div class="phn"><h2>6 · Phone: the QR as a full-screen card</h2><p>Generate opens the QR over everything, on a white screen with the brightness tip. Strongest for scanning, but it's one more screen to close.</p>
+<div class="scr" style="background:#fff;color:#111"><div class="body" style="justify-content:center"><div class="qr"></div><b>A-1 Chimney · Akron</b><span style="color:#555">Turn the screen toward the customer</span><span class="btn out">Done</span></div></div></div>
+</div>
+</body></html>

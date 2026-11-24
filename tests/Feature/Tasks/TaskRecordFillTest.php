@@ -98,6 +98,22 @@ class TaskRecordFillTest extends TestCase
         });
     }
 
+    /** Row 37 (Jose 11-23): Ohio PM names tasks "600025660 Albert"; the leading serial finds the job. */
+    public function test_a_title_starting_with_a_workiz_serial_finds_its_job(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $name = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 2]);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Debby Bloom', 'phone' => '(203) 555-0100']);
+            $job = Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
+            WorkizJob::create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'R1', 'serial_id' => 600025660, 'status' => 'x', 'payload' => [], 'synced_at' => now(), 'job_id' => $job->id]);
+            $task = app(TaskWriter::class)->create($board, ['title' => '600025660 Albert'], $t['admin']);
+
+            $this->assertSame($job->id, app(TaskRecordFill::class)->jobFor($task->load('board'))?->id);
+        });
+    }
+
     /** Desk, 11-19: the backfill's writes raised 3,333 events that held up missed calls. It raises none; the value still lands. */
     public function test_the_backfill_raises_no_automation_events(): void
     {

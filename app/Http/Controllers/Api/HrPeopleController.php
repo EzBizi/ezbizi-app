@@ -671,7 +671,7 @@ class HrPeopleController extends Controller
             $request->merge(['gender' => $typed]);
         }
 
-        $input = $request->validate([
+        $rules = [
             'role_id' => ['sometimes', 'required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
             'is_active' => ['sometimes', 'required', 'boolean'],
@@ -719,7 +719,18 @@ class HrPeopleController extends Controller
             // same reach rule: only a place the editor reaches themselves.
             'scope_type' => ['sometimes', 'required', Rule::in(ScopeReach::TYPES)],
             'scope_id' => ['required_with:scope_type', 'uuid'],
-        ]);
+        ];
+
+        // A key this endpoint does not know is refused, not dropped: a 200 over an
+        // unchanged record reads as success to a script (desk, 2026-11-23: "name").
+        // `email` stays the one deliberate exception: theirs, ignored here, the rest saved.
+        $unknown = array_diff(array_keys($request->all()), array_keys($rules), ['email']);
+        if ($unknown !== []) {
+            throw ValidationException::withMessages(['fields' => 'Not a field this record takes: '.implode(', ', $unknown)
+                .(in_array('name', $unknown, true) ? '. A name is first_name, middle_name and last_name.' : '.')]);
+        }
+
+        $input = $request->validate($rules);
 
         $startedOn = $input['started_on'] ?? null;
         unset($input['started_on']);
@@ -1021,7 +1032,7 @@ class HrPeopleController extends Controller
             // number and are not the same thing.
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
-                    'allowance', 'allowance_period', 'eligible_from', 'eligible',
+                    'allowance', 'allowance_period', 'eligible_from', 'usable_from', 'first_days', 'usable', 'eligible',
                     'total', 'used', 'left', 'carried', 'expired', 'resets_on',
                 ])->all()
                 : null,
@@ -1203,6 +1214,10 @@ class HrPeopleController extends Controller
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],
+                    // The first day they actually have a day to take (Jose, 2026-11-23).
+                    'usable_from' => $answer['usable_from'],
+                    'first_days' => $answer['first_days'],
+                    'usable' => $answer['usable'],
                     'eligible' => $answer['eligible'],
 
                     // Reserved and honest: nothing records a day off yet, so

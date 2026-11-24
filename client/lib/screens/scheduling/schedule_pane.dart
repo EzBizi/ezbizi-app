@@ -56,6 +56,9 @@ class _SchedulePaneState extends State<SchedulePane> {
 
   /// The job whose panel is open, by mirror row.
   String? _openJobId;
+
+  /// The phone agenda's technician chip; null is Everyone.
+  String? _phoneTech;
   bool _busy = false;
   String? _dispatchError;
   String? _assignMemberId;
@@ -429,7 +432,9 @@ class _SchedulePaneState extends State<SchedulePane> {
     );
   }
 
-  /// The board on a phone: each technician, then their jobs in time order.
+  /// The board on a phone (design 207 S1, after Workiz): a week strip to
+  /// pick the day, one chip per technician, then the day's jobs in time
+  /// order, each edged in its technician's colour.
   List<Widget> _phoneList(ThemeData theme, Map<String, dynamic> board) {
     final windows = (board['windows'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
@@ -449,59 +454,178 @@ class _SchedulePaneState extends State<SchedulePane> {
           '${_time(windows[w]['end_time'] as String)}';
     }
 
+    final index = {for (final (i, t) in techs.indexed) t['id']: i};
+    final names = {for (final t in techs) t['id']: '${t['name'] ?? ''}'};
+    Color colourOf(Object? id) => EzBiziTheme
+        .avatarPalette[(index[id] ?? 0) % EzBiziTheme.avatarPalette.length];
+    final shown = [
+      for (final c in cards)
+        if (_phoneTech == null || c['technician_id'] == _phoneTech) c,
+    ]..sort((a, b) {
+        final w = ((a['window'] as int?) ?? 99).compareTo(
+          (b['window'] as int?) ?? 99,
+        );
+        return w != 0
+            ? w
+            : '${a['time'] ?? ''}'.compareTo('${b['time'] ?? ''}');
+      });
+    final monday = _day.subtract(Duration(days: _day.weekday - 1));
+    final today = DateUtils.dateOnly(DateTime.now());
+
     return [
-      for (final t in techs) ...[
-        Padding(
-          key: ValueKey('schedule-phone-tech-${t['id']}'),
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: Row(
-            children: [
+      // The week, Monday first; the arrows move a week (Workiz's strip).
+      Padding(
+        key: const ValueKey('schedule-phone-week'),
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous week',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => _go(_day.subtract(const Duration(days: 7))),
+            ),
+            for (var i = 0; i < 7; i++)
               Expanded(
-                child: Text(
-                  t['name'] as String? ?? '',
-                  style: theme.textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
+                child: _weekDay(
+                  theme,
+                  DateUtils.addDaysToDate(monday, i),
+                  today: today,
                 ),
               ),
-              Text(
-                '${t['jobs']} ${t['jobs'] == 1 ? 'job' : 'jobs'}',
-                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            IconButton(
+              tooltip: 'Next week',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () => _go(_day.add(const Duration(days: 7))),
+            ),
+          ],
+        ),
+      ),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            for (final (id, label) in [
+              (null, 'Everyone'),
+              for (final t in techs) (t['id'] as String?, '${t['name'] ?? ''}'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  key: ValueKey('schedule-phone-tech-${id ?? 'all'}'),
+                  label: Text(label),
+                  avatar: id == null
+                      ? null
+                      : CircleAvatar(backgroundColor: colourOf(id), radius: 5),
+                  showCheckmark: false,
+                  selected: _phoneTech == id,
+                  onSelected: (_) => setState(() => _phoneTech = id),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      if (shown.isEmpty)
+        SizedBox(height: 120, child: _empty(theme, 'Nothing booked this day.')),
+      for (final c in shown)
+        Padding(
+          key: ValueKey('schedule-phone-job-${c['job_id'] ?? c['id']}'),
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 84,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        windowLabel(c['window']),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                      Text(
+                        names[c['technician_id']] ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: colourOf(c['technician_id']),
+                        width: 4,
+                      ),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: _jobCard(theme, c),
+                  ),
+                ),
               ),
             ],
           ),
         ),
-        for (final c in [
-          for (final c in cards)
-            if (c['technician_id'] == t['id']) c,
-        ]..sort(
-            (a, b) => ((a['window'] as int?) ?? -1).compareTo(
-              (b['window'] as int?) ?? -1,
-            ),
-          ))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    ];
+  }
+
+  /// One day in the week strip: its letter and date, filled when chosen.
+  Widget _weekDay(ThemeData theme, DateTime day, {required DateTime today}) {
+    final on = DateUtils.isSameDay(day, _day);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Material(
+        color: on ? scheme.primary : scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: DateUtils.isSameDay(day, today)
+                ? scheme.primary
+                : EzBiziTheme.edge(context),
+          ),
+        ),
+        child: InkWell(
+          key: ValueKey('schedule-phone-day-${day.day}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _go(day),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
               children: [
-                SizedBox(
-                  width: 96,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      windowLabel(c['window']),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: muted,
-                      ),
-                    ),
+                Text(
+                  shortWeekdays[day.weekday - 1].substring(0, 1),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: on ? scheme.onPrimary : scheme.onSurfaceVariant,
                   ),
                 ),
-                Expanded(child: _jobCard(theme, c)),
+                Text(
+                  '${day.day}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: on ? scheme.onPrimary : null,
+                  ),
+                ),
               ],
             ),
           ),
-        Divider(height: 13, color: EzBiziTheme.edge(context)),
-      ],
-    ];
+        ),
+      ),
+    );
   }
 
   Widget _unassignedPanel(

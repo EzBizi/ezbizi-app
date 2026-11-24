@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/staff_session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/login_screen.dart';
 import 'package:ezbizi_client/screens/signup_screen.dart';
 import 'package:ezbizi_client/screens/staff/modules_screen.dart';
 import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
@@ -65,9 +66,27 @@ void main() {
   // from the control plane, submittable half-filled, or silent about why the
   // server refused.
 
+  testWidgets(
+    'the sign-in screen does not offer Create an account (Jose 11-23)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(const EzBiziApp());
+      await tester.pump();
+
+      expect(find.text('Sign in'), findsWidgets);
+      expect(find.text('New to EzBizi?'), findsNothing);
+      expect(find.text('Create an account'), findsNothing);
+    },
+  );
+
   testWidgets('the sign-in screen leads to signup, and back again', (
     tester,
   ) async {
+    LoginScreen.showCreateAccount = true;
+    addTearDown(() => LoginScreen.showCreateAccount = false);
     tester.view.physicalSize = const Size(1440, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -539,10 +558,21 @@ void main() {
                 width: 220,
                 destinations: [
                   for (final name in const [
-                    'Dashboard', 'Human Resources', 'Customers',
-                    'Jobs', 'Scheduling', 'Inspection', 'Marketing',
-                    'Web Management', 'Phone', 'Fleet Management', 'Inventory',
-                    'Services', 'Email', 'Automations', 'Monitoring',
+                    'Dashboard',
+                    'Human Resources',
+                    'Customers',
+                    'Jobs',
+                    'Scheduling',
+                    'Inspection',
+                    'Marketing',
+                    'Web Management',
+                    'Phone',
+                    'Fleet Management',
+                    'Inventory',
+                    'Services',
+                    'Email',
+                    'Automations',
+                    'Monitoring',
                   ])
                     Destination(name, Icons.circle_outlined, const SizedBox()),
                 ],
@@ -613,10 +643,21 @@ void main() {
   /// The fifteen modules, in shell order.
   List<Destination> modules() => [
     for (final name in const [
-      'Dashboard', 'Human Resources', 'Customers',
-      'Jobs', 'Scheduling', 'Inspection', 'Marketing',
-      'Web Management', 'Phone', 'Fleet Management', 'Inventory',
-      'Services', 'Email', 'Automations', 'Monitoring',
+      'Dashboard',
+      'Human Resources',
+      'Customers',
+      'Jobs',
+      'Scheduling',
+      'Inspection',
+      'Marketing',
+      'Web Management',
+      'Phone',
+      'Fleet Management',
+      'Inventory',
+      'Services',
+      'Email',
+      'Automations',
+      'Monitoring',
     ])
       Destination(name, Icons.circle_outlined, const SizedBox()),
   ];
@@ -634,7 +675,11 @@ void main() {
             width: 220,
             destinations: modules(),
             pinned: [
-              Destination('Settings', Icons.settings_outlined, const SizedBox()),
+              Destination(
+                'Settings',
+                Icons.settings_outlined,
+                const SizedBox(),
+              ),
             ],
             staffOnly: const [],
             selectedIndex: 0,
@@ -705,7 +750,8 @@ void main() {
     expect(
       find.text('Settings'),
       findsOneWidget,
-      reason: 'the tail never filters -- it is where you go when the list did '
+      reason:
+          'the tail never filters -- it is where you go when the list did '
           'not have what you wanted',
     );
   });

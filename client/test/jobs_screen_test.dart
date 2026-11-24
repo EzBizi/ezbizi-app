@@ -499,6 +499,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Design 207 J1: Call (with the Phone grant) and Go under a phone card.
+    testWidgets('a phone card offers Call and Go; Call needs the Phone grant', (
+      tester,
+    ) async {
+      final job = {
+        ..._job(number: 'JOB-2001', title: 'Sweep'),
+        'customer': {
+          'id': 'cust-1',
+          'name': 'Dana Reyes',
+          'phone': '+13305550148',
+        },
+        'address': '41 Elm St, Akron OH 44310',
+      };
+      await _pump(
+        tester,
+        jobs: [job],
+        size: const Size(375, 800),
+        permissions: const ['jobs.view', 'phone.phone.view'],
+      );
+      expect(find.byKey(ValueKey('job-call-${job['id']}')), findsOneWidget);
+      expect(find.byKey(ValueKey('job-go-${job['id']}')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await _pump(
+        tester,
+        jobs: [job],
+        size: const Size(375, 800),
+        permissions: const ['jobs.view'],
+      );
+      expect(find.byKey(ValueKey('job-call-${job['id']}')), findsNothing);
+      expect(find.byKey(ValueKey('job-go-${job['id']}')), findsOneWidget);
+    });
+
     testWidgets('the filters send one value as both forms, several as a list', (
       tester,
     ) async {

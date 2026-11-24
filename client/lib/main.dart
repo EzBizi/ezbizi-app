@@ -36,10 +36,12 @@ import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
 import 'widgets/open_destination.dart';
 import 'widgets/side_panel.dart';
+import 'widgets/view_as_panel.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
+import 'screens/join_link_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
@@ -341,6 +343,20 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Above the signed-in branch, though: somebody who follows an invitation
     // while already signed in elsewhere means to join the place that invited
     // them, and one account belongs to one organization (§4).
+    final joinLink = _inviteHandled ? null : Deployment.joinLink();
+
+    if (joinLink != null) {
+      return JoinLinkScreen(
+        api: _api,
+        session: _session,
+        link: joinLink,
+        onDone: () {
+          Files.clearQuery();
+          setState(() => _inviteHandled = true);
+        },
+      );
+    }
+
     final invite = _inviteHandled ? null : Deployment.inviteToken();
 
     if (invite != null) {
@@ -989,6 +1005,18 @@ class _HomeShellState extends State<HomeShell> {
   /// POST /auth/verify/resend answers identically whether or not the address
   /// matched, so there is no success to read out of it -- only that it was
   /// accepted. The sentence below says what we DID, never that it arrived.
+  /// "View as" (design 205): the picker; Exit returns to yourself.
+  void _viewAs() =>
+      showViewAsPanel(context, api: widget.api, session: widget.session);
+
+  Future<void> _exitViewAs() async {
+    final error = await widget.session.stopViewAs();
+    if (!mounted || error == null) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(error)));
+  }
+
   Future<void> _resendConfirmation() async {
     final me = widget.session.me;
     if (me == null || _resendingConfirmation) return;
@@ -1314,6 +1342,14 @@ class _HomeShellState extends State<HomeShell> {
       emailConfirmation: !wide && me.emailConfirmationRequired,
       onTwoFactor: _showProfile,
       onEmailConfirmation: _resendConfirmation,
+      // "View as" (design 205): on every screen, desktop and phone.
+      viewing: me.viewingAs == null
+          ? null
+          : ViewingAsStrip(
+              label: me.viewingAs!.label,
+              onSwitch: _viewAs,
+              onExit: _exitViewAs,
+            ),
       // The company picker on its own row on a phone (live 0.0.0597 at 375:
       // between the hamburger and the icons it got ~20 px and drew an
       // empty box). Only when there is somewhere else to stand.
@@ -1537,6 +1573,20 @@ class _HomeShellState extends State<HomeShell> {
                       _ => 'system',
                     },
                   ),
+                ),
+              // "View as" a role or person (design 205): developers who are
+              // Administrators; lit while on, so it can be switched or left.
+              if (me.viewAsAvailable || me.viewingAs != null)
+                IconButton(
+                  key: const Key('shell-view-as'),
+                  tooltip: me.viewingAs == null
+                      ? 'View as a role or person'
+                      : 'Viewing as ${me.viewingAs!.label}',
+                  color: me.viewingAs == null
+                      ? null
+                      : ToneColours.of(context, Tone.caution).ink,
+                  icon: const Icon(Icons.switch_account_outlined),
+                  onPressed: _viewAs,
                 ),
               IconButton(
                 key: const Key('shell-quick-search'),
@@ -2034,7 +2084,8 @@ class _HomeShellState extends State<HomeShell> {
                         // And by what they may reach, so a grant made
                         // elsewhere remounts the page and its lists reload.
                         key: ValueKey(
-                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}',
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}'
+                          ':${me.viewingAs?.label}',
                         ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
@@ -2094,9 +2145,9 @@ class _HomeShellState extends State<HomeShell> {
        */
       // Mobile review 2026-11-13, P7 (preview §3 A): on a phone, four
       // modules one tap away at the bottom, and More opens the drawer.
-      bottomNavigationBar: MediaQuery.sizeOf(context).width < 600
-          ? _bottomBar(destinations)
-          : null,
+      // Design 206: also on the open iPhone Duo / an iPad mini, where the
+      // thumb is where it was folded; the sidebar takes over at 900.
+      bottomNavigationBar: wide ? null : _bottomBar(destinations),
       drawer: wide
           ? null
           : _navigationDrawer(
@@ -2249,13 +2300,23 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _bottomBar(List<Destination> destinations) {
     final byId = {for (final d in destinations) d.id: d};
-    final slots = <Destination>[for (final id in _barFirst) ?byId[id]];
-    for (final d in destinations) {
+    // The role's own slots first (design 208, Jose 2026-11-23: "different
+    // for every role"), a module or one of its tabs; then the default fills
+    // whatever is left.
+    final slots = <(Destination, String?, String)>[
+      for (final m in widget.session.me?.mobileBar ?? const <MobileBarSlot>[])
+        if (byId[m.module] case final d?)
+          (d, m.tab, m.tab == null ? barLabel(d.id, d.label) : m.label),
+    ].take(4).toList();
+    for (final id in [..._barFirst, for (final d in destinations) d.id]) {
       if (slots.length >= 4) break;
-      if (!slots.contains(d)) slots.add(d);
+      final d = byId[id];
+      if (d != null && !slots.any((s) => s.$1 == d && s.$2 == null)) {
+        slots.add((d, null, barLabel(d.id, d.label)));
+      }
     }
     final at = _rail == _Rail.modules
-        ? slots.indexWhere((d) => d.id == _selected)
+        ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
     // One line under each icon at any width and text size (Jose,
     // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
@@ -2270,9 +2331,20 @@ class _HomeShellState extends State<HomeShell> {
           message: tip,
           child: InkWell(
             key: key,
-            onTap: () => i == slots.length
-                ? _scaffoldKey.currentState?.openDrawer()
-                : _show(_Rail.modules, slots[i].id),
+            onTap: () {
+              if (i == slots.length) {
+                _scaffoldKey.currentState?.openDrawer();
+                return;
+              }
+              final (d, tab, label) = slots[i];
+              // A tab slot: the module takes the link and opens on that tab.
+              if (tab != null) {
+                DeepLinks.open(
+                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+                );
+              }
+              _show(_Rail.modules, d.id);
+            },
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -2317,8 +2389,14 @@ class _HomeShellState extends State<HomeShell> {
           height: 64,
           child: Row(
             children: [
-              for (final (i, d) in slots.indexed)
-                slot(i, d.icon, barLabel(d.id, d.label), d.label, null),
+              for (final (i, (d, tab, label)) in slots.indexed)
+                slot(
+                  i,
+                  d.icon,
+                  label,
+                  tab == null ? d.label : '${d.label} › $label',
+                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
+                ),
               slot(
                 slots.length,
                 Icons.menu,
@@ -2479,10 +2557,14 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     required this.onTwoFactor,
     required this.onEmailConfirmation,
     this.scope,
+    this.viewing,
   });
 
   /// The company picker's row on a phone, or null.
   final Widget? scope;
+
+  /// The "Viewing as" strip (design 205), or null.
+  final Widget? viewing;
 
   final bool twoFactor;
   final bool readOnly;
@@ -2493,8 +2575,11 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight((_any ? 49 : 1) + (scope == null ? 0 : 44));
+  Size get preferredSize => Size.fromHeight(
+    (_any ? 49 : 1) +
+        (scope == null ? 0 : 44) +
+        (viewing == null ? 0 : ViewingAsStrip.height),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2510,9 +2595,12 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
             ),
           );
     if (!_any) {
-      return row == null
+      return row == null && viewing == null
           ? rule
-          : Column(mainAxisSize: MainAxisSize.min, children: [row, rule]);
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [?viewing, ?row, rule],
+            );
     }
 
     final scheme = Theme.of(context).colorScheme;
@@ -2521,6 +2609,7 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?viewing,
         ?row,
         SizedBox(
           height: 48,

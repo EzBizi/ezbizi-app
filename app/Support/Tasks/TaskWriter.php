@@ -28,6 +28,8 @@ use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -532,7 +534,10 @@ class TaskWriter
             foreach ($ids as $i => $id) {
                 Task::query()->whereKey($id)->update(['position' => $i]);
             }
-            app(MondayOutbox::class)->record($task, ['group']);
+            // Into a Monday board for the first time: made there (desk 11-23, row 35's 3 tasks
+            // never reached Operatrion's Monday board). Already on Monday: moved there.
+            $task->setRelation('board', $board); // the outbox reads the board it is on now, not the one it left
+            app(MondayOutbox::class)->record($task, isset($fields['board_id']) && ! str_starts_with((string) $task->external_ref, 'monday:') ? ['create'] : ['group']);
             $this->checkRules($task);
 
             return $task->refresh();
@@ -606,8 +611,38 @@ class TaskWriter
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);
+            if (! $this->quiet) {
+                DB::afterCommit(fn () => self::tellFollowers($update, $mentions));
+            }
 
             return $update;
+        });
+    }
+
+    /** Its author changed it: the old text goes to the audit log, the new one to Monday (row 43). */
+    public function editComment(TaskUpdate $update, string $body, User $actor): void
+    {
+        DB::transaction(function () use ($update, $body, $actor) {
+            $task = Task::query()->findOrFail($update->task_id);
+            $old = (string) SensitiveTasks::open($update->body);
+            if ($old === $body) {
+                return;
+            }
+            $update->forceFill(['body' => $task->sensitive ? SensitiveTasks::seal($body) : $body, 'edited_at' => now()])->save();
+            $this->audit->log('task.update_edited', $task, ['body' => ['from' => $task->sensitive ? '(sensitive)' : $old, 'to' => $task->sensitive ? '(sensitive)' : $body]],
+                ['task_update_id' => $update->id], actor: $actor);
+            app(MondayOutbox::class)->record($task, ['update_edit'], $update);
+        });
+    }
+
+    public function deleteComment(TaskUpdate $update, User $actor): void
+    {
+        DB::transaction(function () use ($update, $actor) {
+            $task = Task::query()->findOrFail($update->task_id);
+            $this->audit->log('task.update_deleted', $task, ['body' => ['from' => $task->sensitive ? '(sensitive)' : (string) SensitiveTasks::open($update->body), 'to' => null]],
+                ['task_update_id' => $update->id], actor: $actor);
+            $update->delete();
+            app(MondayOutbox::class)->record($task, ['update_delete'], $update);
         });
     }
 
@@ -724,6 +759,77 @@ class TaskWriter
         if ($new !== [] && ! $this->quiet && ! $this->syncing) {
             DB::afterCommit(fn () => self::tellAssigned($task, $new));
         }
+    }
+
+    /**
+     * An update rings the bell of the task's followers, as Monday's item
+     * subscribers: its owners, its maker and whoever posted on it before
+     * (suggestion 01a20956, Jennine 11-23: techs' updates reached nobody).
+     * Not the author, not those already told by a mention, only who can see it.
+     *
+     * @param  string[]  $skip
+     */
+    public static function tellFollowers(TaskUpdate $update, array $skip = []): int
+    {
+        $org = Organization::query()->withoutGlobalScopes()->find($update->organization_id);
+
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($update, $skip) {
+            $task = Task::query()->with('board')->find($update->task_id);
+            if ($task === null) {
+                return 0;
+            }
+            $ids = collect([$task->created_by_user_id])
+                ->merge($task->owners()->pluck('user_id'))
+                ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
+                ->filter()->unique()->diff([...$skip, $update->user_id])->all();
+            $who = $update->user()->value('name') ?? 'Monday';
+            $told = 0;
+            foreach (User::query()->whereKey($ids)->where('is_active', true)->get() as $user) {
+                if (Gate::forUser($user)->check('view', $task)) {
+                    $told += app(NotificationDispatcher::class)->dispatch(
+                        title: $who.' posted on '.$task->title,
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        subject: $task, onlyTo: $user, kind: 'task.reply', source: 'tasks',
+                    );
+                }
+            }
+
+            return $told;
+        });
+    }
+
+    /**
+     * A @mention made on Monday rings here as one made here does: "Mentioned"
+     * (Dieuve 11-23). Only who can see the task, never the author.
+     *
+     * @param  string[]  $userIds
+     */
+    public static function tellMentioned(TaskUpdate $update, array $userIds): int
+    {
+        $org = Organization::query()->withoutGlobalScopes()->find($update->organization_id);
+        if ($org === null || $userIds === []) {
+            return 0;
+        }
+
+        return app(TenantContext::class)->run($org, function () use ($update, $userIds) {
+            $task = Task::query()->find($update->task_id);
+            if ($task === null) {
+                return 0;
+            }
+            $who = $update->user()->value('name') ?? 'Somebody on Monday';
+            $told = 0;
+            foreach (User::query()->whereKey(array_diff($userIds, [$update->user_id]))->where('is_active', true)->get() as $user) {
+                if (Gate::forUser($user)->check('view', $task)) {
+                    $told += app(NotificationDispatcher::class)->dispatch(
+                        title: $who.' mentioned you',
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        subject: $task, onlyTo: $user, source: 'mention', kind: 'task.mentioned',
+                    );
+                }
+            }
+
+            return $told;
+        });
     }
 
     /** @param  string[]  $userIds */

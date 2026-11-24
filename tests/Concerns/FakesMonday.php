@@ -43,6 +43,7 @@ trait FakesMonday
         return match (true) {
             str_contains($query, '{ me ') => ['me' => $this->monday['me'] ?? ['id' => '1', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com', 'account' => ['id' => 'acc1', 'name' => 'A-1 Group', 'slug' => 'a-1group']]],
             str_contains($query, 'users(') => ['users' => $this->monday['users']],
+            str_contains($query, 'updates(ids:') => ['updates' => array_values(array_filter($this->monday['update_bodies'] ?? [], fn ($u) => in_array((string) $u['id'], array_map('strval', $vars['i']), true)))],
             str_contains($query, 'workspaces(') => ['workspaces' => [['id' => '1']]],
             str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
@@ -64,10 +65,10 @@ trait FakesMonday
                 fn ($id) => isset($this->monday['states'][$id]) ? ['id' => $id, 'state' => $this->monday['states'][$id]] : null,
                 array_map('strval', $vars['i']),
             )))],
-            str_contains($query, 'items(ids:$i, limit:25)') => ['items' => array_values(array_filter(
+            str_contains($query, 'items(ids:$i, limit:25)') => ['items' => array_values(array_map(fn ($i) => $i + ['board' => ['id' => $i['_board']]], array_filter(
                 $allItems(),
                 fn ($i) => in_array((string) $i['id'], array_map('strval', $vars['i']), true),
-            ))],
+            )))],
             str_contains($query, '{ id name groups') => ['boards' => array_map(fn ($id) => [
                 'id' => $id, 'name' => $boards[$id]['name'], 'groups' => $boards[$id]['groups'], 'columns' => $boards[$id]['columns'],
                 'views' => $boards[$id]['views'] ?? [], 'board_folder_id' => $boards[$id]['folder'] ?? null,

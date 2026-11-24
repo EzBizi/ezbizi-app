@@ -42,11 +42,19 @@ class ProjectBoardClientMessages extends Command
                         'scheduled' => ($s = $since('scheduled')) !== null && $job->scheduled_for?->isFuture() && $job->updated_at?->gte($s),
                         'day_before' => $since('day_before') !== null && $job->scheduled_for !== null
                             && $job->scheduled_for->copy()->setTimezone($zone)->isSameDay(now($zone)->addDay()),
+                        'three_day_before' => $since('three_day_before') !== null && $job->scheduled_for !== null
+                            && $job->scheduled_for->copy()->setTimezone($zone)->isSameDay(now($zone)->addDays(3)),
+                        'crew_day_before' => $since('crew_day_before') !== null && $job->scheduled_for !== null
+                            && $job->scheduled_for->copy()->setTimezone($zone)->isSameDay(now($zone)->addDay()),
                         'complete' => ($s = $since('complete')) !== null && $job->updated_at?->gte($s)
                             && in_array(strtolower((string) $job->status), ['done', 'completed', 'complete'], true),
                     ];
                     foreach (array_keys(array_filter($due)) as $kind) {
                         $n += $messages->send($job, $kind) === null ? 1 : 0;
+                    }
+                    // The PM, 3 days ahead, when ordered parts are not in yet (always on).
+                    if ($job->scheduled_for !== null && $job->scheduled_for->copy()->setTimezone($zone)->isSameDay(now($zone)->addDays(3))) {
+                        $messages->partsCheck($job);
                     }
                 }
 

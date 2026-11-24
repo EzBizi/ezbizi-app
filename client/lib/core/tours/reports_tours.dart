@@ -69,7 +69,10 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'overview-missed',
         title: 'Missed calls',
-        body: 'Calls nobody answered, split into new and existing customers.',
+        body:
+            'Calls nobody answered while open, split into new and existing '
+            'customers. Calls missed while closed are listed beside it, '
+            'not counted.',
       ),
       TourStep(
         anchor: 'overview-not-booked',
@@ -295,6 +298,86 @@ const Map<String, Tour> reportsTours = {
         anchor: 'thumbtack-empty',
         title: 'Nothing yet',
         body: 'No Thumbtack leads in these dates.',
+      ),
+    ],
+  ),
+  'reports/Estimates': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-estimates',
+        title: 'Estimates',
+        body: 'Every estimate made in these dates: open, approved, declined, and the ones we texted that never answered. Click one to open its job.',
+      ),
+    ],
+  ),
+  'reports/Tasks': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tasks',
+        title: 'Task performance',
+        body: "Each owner's open, done and overdue tasks, and how many days a task takes to finish.",
+      ),
+    ],
+  ),
+  'reports/Complaints': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-complaints',
+        title: 'Complaints on time',
+        body: "How fast each complaint was first contacted and solved, against the business's own targets.",
+      ),
+    ],
+  ),
+  'reports/Dispatch': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-dispatch',
+        title: 'Dispatchers',
+        body: "Each dispatcher's leads, calls and messages, and how fast a person answered. The median is the fair number.",
+      ),
+    ],
+  ),
+  'reports/Accounting weekly': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-accounting',
+        title: 'What needs fixing',
+        body: 'Done jobs still owing or at \$0, invoices unpaid too long, money kept on cancelled jobs, deleted payments. Click one to open the job.',
+      ),
+    ],
+  ),
+  'reports/Recruiting': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-recruiting',
+        title: 'Hiring by position',
+        body: 'Spend, inquiries, response time, interviews and hires for each position, and what each hire cost.',
+      ),
+    ],
+  ),
+  'reports/Tech report': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-techs',
+        title: 'Each technician',
+        body: 'Jobs, revenue, complaints, redos and the AI checks, one row per technician.',
+      ),
+    ],
+  ),
+  'reports/AI checks': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tech-checks',
+        title: 'What the AI checked',
+        body: 'ETA calls, closing on time, inspection reports and photos. Click a technician to see the jobs behind each count.',
       ),
     ],
   ),

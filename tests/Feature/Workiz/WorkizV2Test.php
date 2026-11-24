@@ -294,6 +294,42 @@ class WorkizV2Test extends TestCase
         $this->assertNotNull($cards->firstWhere('id', $connection->getKey())['workiz']['health'] ?? null, 'the list draws this account health');
     }
 
+    /** Reports 11-20: 333 of 891 done jobs never had a single read, so their photos were unknown. */
+    public function test_a_done_jobs_files_are_read_once_per_version_of_the_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $base = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-D1', 'status' => 'Done', 'date' => now()->subDays(2)->format('Y-m-d H:i:s'), 'utcUpdatedAt' => '2026-11-19 15:00:00']);
+        $land = fn (array $job) => $this->inTenant($tenant['org'], fn () => WorkizJob::land($connection, WorkizV2::job($job)));
+        $queued = fn () => \Illuminate\Support\Facades\Queue::pushed(\App\Jobs\RereadWorkizRecord::class)->count();
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $land($base);
+        $this->artisan('ezbizi:read-workiz-job-files')->assertSuccessful();
+        $this->assertSame(1, $queued(), 'a done job no single read has touched is read');
+
+        $land($base + ['attachments' => [['id' => 'F1', 'name' => 'chimney.jpg', 'fileUrl' => 'https://st.sendajob.com/f1.jpg']]]);
+        $land($base);
+        $this->artisan('ezbizi:read-workiz-job-files')->assertSuccessful();
+        $this->assertSame(1, $queued(), 'read at this version, so not again; a list read keeps the files');
+
+        $land(array_replace($base, ['utcUpdatedAt' => '2026-11-19 18:00:00']));
+        $this->artisan('ezbizi:read-workiz-job-files')->assertSuccessful();
+        $this->assertSame(2, $queued(), 'the job changed after its files were read');
+        $this->assertSame('chimney.jpg', WorkizJob::query()->withoutGlobalScopes()->sole()->payload['Attachments'][0]['Name']);
+    }
+
+    /** 0621: synced_at moves on every list read, so a synced_at window matched 35,543 old jobs, not ~333. */
+    public function test_an_old_done_job_that_was_just_synced_is_not_read_for_files(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        \Illuminate\Support\Facades\Queue::fake();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::land($connection, WorkizV2::job(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-OLD', 'status' => 'Done', 'utcUpdatedAt' => '2026-01-01 10:00:00']))));
+        WorkizJob::query()->withoutGlobalScopes()->update(['scheduled_for' => now()->subDays(90), 'synced_at' => now()]);
+
+        $this->artisan('ezbizi:read-workiz-job-files')->assertSuccessful();
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RereadWorkizRecord::class);
+    }
+
     /** 11-12: a slot killed by its 300s timeout left the projection lock held an hour; no Workiz job reached EzBizi. */
     public function test_a_killed_runs_lock_frees_within_five_minutes_and_health_flags_a_waiting_job(): void
     {

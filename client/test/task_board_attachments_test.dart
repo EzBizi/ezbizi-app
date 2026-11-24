@@ -51,6 +51,8 @@ void main() {
       'id': 'u1',
       'body': 'Photos from the roof',
       'author': {'id': 'me', 'name': 'Maya Lopez'},
+      'can_edit': true,
+      'can_delete': true,
       'created_at': '2026-10-27T14:10:00Z',
       'attachments': [
         {
@@ -246,10 +248,12 @@ void main() {
     // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
     await tester.ensureVisible(find.byKey(const ValueKey('task-t1')));
     await tester.pumpAndSettle();
-    await tester.tapAt(
-      tester.getTopLeft(find.byKey(const ValueKey('task-t1'))) +
-          const Offset(160, 19),
-    );
+    final open = find.byKey(const ValueKey('task-open-t1'));
+    if (open.evaluate().isNotEmpty) {
+      await tester.tap(open);
+    } else {
+      await tester.tap(find.byKey(const ValueKey('task-t1'))); // a phone card
+    }
     await tester.pumpAndSettle();
   }
 
@@ -516,6 +520,28 @@ void main() {
     await pumpBoard(tester);
     await openTask(tester);
     final body = find.byKey(const ValueKey('task-update-body-u1'));
-    expect(tester.widget<SelectableText>(body).data, 'Photos from the roof');
+    expect(tester.widget<SelectableText>(body).textSpan!.toPlainText(), 'Photos from the roof');
+  });
+
+  testWidgets('the author edits an update from its menu (row 43, Sheryl)', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await openTask(tester);
+    await tester.tap(find.byKey(const ValueKey('task-update-menu-u1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('task-update-edit-field')),
+      'Photos from the roof, and the crown',
+    );
+    await tester.tap(find.byKey(const Key('task-update-edit-save')));
+    await tester.pumpAndSettle();
+    final patch = sent.singleWhere((r) => r.method == 'PATCH');
+    expect(patch.url.path, endsWith('/tasks/t1/updates/u1'));
+    expect(jsonDecode(patch.body), {
+      'body': 'Photos from the roof, and the crown',
+    });
   });
 }

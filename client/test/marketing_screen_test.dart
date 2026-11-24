@@ -3410,8 +3410,8 @@ void main() {
 
     // ── Newsletter audit 2026-11-10 (Rodrigo) ─────────────────────
 
-    testWidgets('the composer says which version goes out, and Back to blocks '
-        'clears the HTML with an Undo', (tester) async {
+    testWidgets('switching views keeps the HTML; only Use this design '
+        'changes what goes out (01a1f9ed)', (tester) async {
       final puts = <Map<String, dynamic>>[];
       final base = _handler(canEdit: true, newsletters: const [_draftWithHtml]);
       await _pumpComposer(tester, (request) async {
@@ -3422,18 +3422,76 @@ void main() {
       });
       await _toStep(tester, 'design');
 
-      expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
-      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(find.text('Active: Custom HTML'), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-use-design')), findsNothing);
 
       await tester.tap(find.text('Back to blocks'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
-      expect(find.text('Sending: the blocks'), findsOneWidget);
-      expect(puts.last['html_override'], anyOf(isNull, ''));
-
-      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
-      await tester.pumpAndSettle(const Duration(seconds: 1));
+      // Navigation only: still the HTML, offered as an explicit choice.
+      expect(find.text('Active: Custom HTML'), findsOneWidget);
       expect(find.text('Sending: custom HTML'), findsOneWidget);
+      for (final put in puts) {
+        expect(put['html_override'], '<p>Mine</p>');
+      }
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-use-design')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Active: Blocks'), findsOneWidget);
+      expect(puts.last['active_design'], 'blocks');
       expect(puts.last['html_override'], '<p>Mine</p>');
+    });
+
+    testWidgets('HTML with no blocks is read-only in Blocks, and Create '
+        'editable copy previews in a side panel before saving', (tester) async {
+      final copies = <Map<String, dynamic>>[];
+      const htmlOnly = {
+        'id': 'n-1',
+        'subject': 'Autumn sweeps',
+        'status': 'draft',
+        'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+        'html_override': '<p>Mine</p>',
+        'active_design': 'html',
+        'blocks': <Map<String, dynamic>>[],
+      };
+      final base = _handler(canEdit: true, newsletters: const [htmlOnly]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/editable-copy')) {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          copies.add(body);
+          if (body['confirm'] == true) return _json({'data': htmlOnly});
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'text', 'text': 'Mine'},
+              ],
+              'preview_html': '<p>Mine</p>',
+              'original_html': '<p>Mine</p>',
+              'faithful': false,
+              'lost': ['Rounded card corners'],
+              'preserved': 0,
+              'issues': <Map<String, dynamic>>[],
+            },
+          });
+        }
+        return base(request);
+      });
+      await _toStep(tester, 'design');
+      await tester.tap(find.text('Back to blocks'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.byKey(const ValueKey('newsletter-blocks-readonly')), findsOneWidget);
+      expect(find.textContaining("This draft's design is Custom HTML."), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('newsletter-editable-copy')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.text('Create editable copy').last, findsOneWidget);
+      expect(find.text("Won't carry over"), findsOneWidget);
+      expect(find.textContaining('Rounded card corners'), findsOneWidget);
+      expect(copies.single['confirm'], isNull, reason: 'the preview saves nothing');
+
+      await tester.tap(find.byKey(const ValueKey('editable-copy-create')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(copies.last['confirm'], true);
     });
 
     testWidgets('pasted HTML is checked, compared, refused with a script, and '

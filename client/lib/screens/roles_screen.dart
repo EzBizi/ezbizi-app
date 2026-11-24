@@ -1,3 +1,4 @@
+import 'role_mobile_bar.dart';
 import '../widgets/user_avatar.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/foundation.dart';
@@ -1414,6 +1415,16 @@ class _RolePageState extends State<_RolePage> {
                 ? (seen) => setState(() => _hiddenOnLeads = !seen)
                 : null,
           ),
+          // Design 208: this role's phone bottom bar, saved on its own.
+          if (widget.api != null) ...[
+            const SizedBox(height: 16),
+            RoleMobileBar(
+              api: widget.api!,
+              role: widget.role,
+              writable: _writable,
+              onSaved: widget.onSaved,
+            ),
+          ],
           const SizedBox(height: 16),
           _whoHasIt(theme),
         ],

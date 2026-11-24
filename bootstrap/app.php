@@ -134,6 +134,13 @@ return Application::configure(basePath: dirname(__DIR__))
             App\Http\Middleware\StaffOnly::class,
         );
 
+        // View as swaps the request's user, so it must run before tenancy is
+        // read off that user, and after authentication (Jose, 2026-11-23).
+        $middleware->prependToPriorityList(
+            App\Http\Middleware\SetTenantContext::class,
+            App\Http\Middleware\ApplyViewAs::class,
+        );
+
         /*
          * Never redirect an API caller to a login PAGE.
          *

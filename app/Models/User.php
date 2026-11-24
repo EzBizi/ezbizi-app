@@ -414,7 +414,7 @@ class User extends Authenticatable implements HoldsPersonalData
      */
     public function personalGrantKeys(): array
     {
-        $holds = MailboxGrant::query()->where('user_id', $this->getKey())->exists();
+        $holds = MailboxGrant::query()->where('user_id', $this->ownRowsKey())->exists();
 
         return $holds ? [\App\Support\Email\MailboxAccess::READ, 'email.inbox.view'] : [];
     }
@@ -602,5 +602,15 @@ class User extends Authenticatable implements HoldsPersonalData
     public function isAdministrator(): bool
     {
         return $this->role?->isAdministrator() ?? false;
+    }
+
+    /**
+     * The id to read this person's OWN per-user rows by (grants, assignments,
+     * board memberships). A View-as role clone answers a nil id, so it sees
+     * only what the role holds, never its actor's personal rows (2026-11-23).
+     */
+    public function ownRowsKey(): string
+    {
+        return (string) $this->getKey();
     }
 }

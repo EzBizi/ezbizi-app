@@ -78,6 +78,11 @@
             "parent": null,
             "tabs": []
         },
+        "development": {
+            "label": "Development",
+            "parent": null,
+            "tabs": []
+        },
         "email": {
             "label": "Email",
             "parent": null,
@@ -159,7 +164,8 @@
                 "New Inspection",
                 "Generated Reports",
                 "Builder",
-                "Testing"
+                "Testing",
+                "Review QR"
             ]
         },
         "inventory": {
@@ -330,12 +336,28 @@
                 "Overview",
                 "Cancelled",
                 "Pending",
+                "Estimates",
+                "Tasks",
+                "Complaints",
+                "Dispatch",
+                "Accounting weekly",
+                "Recruiting",
+                "Tech report",
+                "AI checks",
                 "Workspace"
             ],
             "within": {
                 "Overview": "Jobs",
                 "Cancelled": "Jobs",
-                "Pending": "Jobs"
+                "Pending": "Jobs",
+                "Estimates": "Jobs",
+                "Tasks": "Office",
+                "Complaints": "Office",
+                "Dispatch": "Office",
+                "Accounting weekly": "Office",
+                "Recruiting": "Office",
+                "Tech report": "Technicians",
+                "AI checks": "Technicians"
             }
         },
         "reviews": {
@@ -459,6 +481,8 @@
         "customers.export",
         "customers.view",
         "dashboard.view",
+        "development.view",
+        "development.view_as",
         "email.create",
         "email.delete",
         "email.edit",
@@ -632,10 +656,14 @@
         "phone.view",
         "profit_loss.view",
         "project_board.view",
+        "reports.accounting.view",
         "reports.build",
         "reports.builder.view",
         "reports.cancelled.view",
+        "reports.complaints.view",
         "reports.correct",
+        "reports.dispatch.view",
+        "reports.estimates.view",
         "reports.experimental.view",
         "reports.export",
         "reports.handles",
@@ -644,9 +672,13 @@
         "reports.marketing.view",
         "reports.meta.view",
         "reports.pending.view",
+        "reports.recruiting.view",
         "reports.scoring.view",
         "reports.scoring_weights",
         "reports.settings",
+        "reports.tasks.view",
+        "reports.tech_checks.view",
+        "reports.techs.view",
         "reports.thumbtack.view",
         "reports.view",
         "reports.workspace.view",

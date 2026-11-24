@@ -703,4 +703,51 @@ class MondayPushTest extends TestCase
         });
         $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->count()));
     }
+
+    /** Row 43 (Sheryl, 11-23): the author edits an update; Monday gets edit_update; nobody else may. A delete sends delete_update. */
+    public function test_the_author_edits_an_update_and_monday_gets_it_others_are_refused(): void
+    {
+        $other = $this->userWithRole($this->tenant, 'Dispatcher', ['tasks.view', 'tasks.edit'], 'other@ezbizi.test');
+        $update = $this->inTenant($this->tenant['org'], function () use ($other) {
+            \App\Models\TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'user_id' => $other->id, 'role' => 'member']);
+            $u = \App\Models\TaskUpdate::query()->create(['organization_id' => $this->tenant['org']->id, 'task_id' => $this->task->id, 'user_id' => $this->jose->id, 'body' => 'Liner is 6 inch']);
+            $u->forceFill(['external_ref' => 'monday:500'])->saveQuietly();
+
+            return $u;
+        });
+        $path = "/api/v1/tasks/{$this->task->id}/updates/{$update->id}";
+
+        $this->signedInAs($other)->patchJson($path, ['body' => 'hijack'])->assertForbidden();
+        $this->signedInAs($other)->deleteJson($path)->assertForbidden();
+        $this->signedInAs($this->jose)->patchJson($path, ['body' => 'Liner is 8 inch'])->assertOk()
+            ->assertJsonPath('data.body', 'Liner is 8 inch')->assertJsonPath('data.edited_at', fn ($v) => $v !== null);
+
+        $audit = $this->inTenant($this->tenant['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'task.update_edited')->sole());
+        $this->assertSame('Liner is 6 inch', $audit->changes['body']['from']);
+
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $edit = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'edit_update('));
+        $this->assertSame('500', (string) $edit['vars']['i']);
+        $this->assertStringStartsWith('Liner is 8 inch', $edit['vars']['b']);
+
+        $this->signedInAs($this->jose)->deleteJson($path)->assertNoContent();
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertTrue(collect($this->mutations)->contains(fn ($m) => str_contains($m['query'], 'delete_update(') && (string) $m['vars']['i'] === '500'));
+    }
+
+    /** Desk 11-23: a task moved from a board with no Monday mirror into a mirrored one is made there, in its group. */
+    public function test_a_task_moved_into_a_monday_board_is_created_there(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $plain = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $task = app(TaskWriter::class)->create($plain, ['title' => 'Callback Terence'], $this->jose);
+            $group = $this->board->groups()->orderBy('position')->get()->last();
+            app(TaskWriter::class)->move($task, $group, null, $this->jose);
+            $this->assertSame(['create'], MondayOutboxEntry::query()->where('task_id', $task->id)->sole()->kinds);
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $made = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'create_item('));
+        $this->assertNotNull($made, 'made on Monday');
+        $this->assertNotEmpty($made['vars']['g'] ?? null, 'with its group');
+    }
 }

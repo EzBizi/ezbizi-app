@@ -193,6 +193,9 @@ class NewslettersController extends Controller
             'preheader' => $this->clean($data['preheader'] ?? null),
             'blocks' => $data['blocks'] ?? [],
             'html_override' => $data['html_override'] ?? null,
+            'active_design' => $data['active_design']
+                ?? (Newsletter::htmlFor(Newsletter::DESIGN_HTML, $data['html_override'] ?? null) !== null
+                    ? Newsletter::DESIGN_HTML : Newsletter::DESIGN_BLOCKS),
             'brand' => NewsletterBrandSettings::clean($data['brand'] ?? null),
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
             'created_by' => $user->getKey(),
@@ -252,9 +255,18 @@ class NewslettersController extends Controller
 
         $row->fill([
             'subject' => $data['subject'],
-            'blocks' => $data['blocks'] ?? [],
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
         ]);
+        /*
+         * The two designs are saved independently (suggestion 01a1f9ed). The
+         * blocks change only when a request names them. Switching views is
+         * navigation, so an empty or null `html_override` (what a view switch
+         * used to send) keeps the stored HTML; only `discard_html: true`
+         * removes it. Revision 7 of draft 01a1f9ca lost its design that way.
+         */
+        if (array_key_exists('blocks', $data)) {
+            $row->blocks = $data['blocks'] ?? [];
+        }
         // Like the HTML: only a request that names them changes them.
         foreach (['name', 'preheader'] as $field) {
             if (array_key_exists($field, $data)) {
@@ -263,9 +275,12 @@ class NewslettersController extends Controller
         }
         // Only a request that names it changes the custom HTML; a save that
         // leaves it out (an older client, the subject alone) keeps it.
-        if (array_key_exists('html_override', $data)) {
+        if (Newsletter::htmlFor(Newsletter::DESIGN_HTML, $data['html_override'] ?? null) !== null) {
             $row->html_override = $data['html_override'];
+        } elseif ($request->boolean('discard_html')) {
+            $row->html_override = null;
         }
+        $this->applyActiveDesign($row, $data['active_design'] ?? null);
         // The applied brand (P1b): a snapshot, changed only when named. Null removes it.
         if (array_key_exists('brand', $data)) {
             $row->brand = NewsletterBrandSettings::clean($data['brand']);
@@ -317,9 +332,10 @@ class NewslettersController extends Controller
             'preheader' => $saved->preheader,
             'blocks' => $saved->blocks ?? [],
             'html_override' => $saved->html_override,
+            'active_design' => $saved->active_design,
             'author' => $saved->author?->name,
             'at' => $saved->created_at?->toIso8601String(),
-            'html' => $this->renderer->document(NewsletterSections::expand((array) ($saved->blocks ?? [])), $saved->html_override, $saved->preheader,
+            'html' => $this->renderer->document(NewsletterSections::expand((array) ($saved->blocks ?? [])), $saved->designHtml(), $saved->preheader,
                 NewsletterIdentity::footer($row) + ['unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview'],
                 $row->brand),
         ]]);
@@ -347,21 +363,32 @@ class NewslettersController extends Controller
                 ]);
             }
             $saved = $this->savedRevision($row, $revision);
+            // Either design alone, or the whole version (default): restoring
+            // the HTML never touches the blocks, and the other way round.
+            $part = (string) ($request->validate(['part' => ['nullable', 'string', 'in:all,html,blocks']])['part'] ?? 'all');
+            if ($part === 'html' && Newsletter::htmlFor(Newsletter::DESIGN_HTML, $saved->html_override) === null) {
+                throw ValidationException::withMessages(['part' => 'That version has no custom HTML to restore.']);
+            }
 
             $this->recordRevision($row, null, onlyIfMissing: true);
             NewsletterRevision::query()->where('newsletter_id', $row->getKey())
                 ->where('revision', (int) $row->revision)->update(['restore_point' => true]);
 
-            $row->forceFill([
-                'subject' => $saved->subject ?? $row->subject,
-                'name' => $saved->name,
-                'preheader' => $saved->preheader,
-                'blocks' => $saved->blocks ?? [],
-                'html_override' => $saved->html_override,
-                'revision' => (int) $row->revision + 1,
-            ])->save();
+            $fill = match ($part) {
+                'html' => ['html_override' => $saved->html_override],
+                'blocks' => ['blocks' => $saved->blocks ?? []],
+                default => [
+                    'subject' => $saved->subject ?? $row->subject,
+                    'name' => $saved->name,
+                    'preheader' => $saved->preheader,
+                    'blocks' => $saved->blocks ?? [],
+                    'html_override' => $saved->html_override,
+                    'active_design' => $saved->active_design ?? Newsletter::DESIGN_BLOCKS,
+                ],
+            };
+            $row->forceFill($fill + ['revision' => (int) $row->revision + 1])->save();
             $this->recordRevision($row, $user, restoredFrom: $saved->revision);
-            $this->audit->log('newsletter.restored', $row, ['from_revision' => $saved->revision], actor: $user);
+            $this->audit->log('newsletter.restored', $row, ['from_revision' => $saved->revision, 'part' => $part], actor: $user);
 
             return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
         });
@@ -423,6 +450,7 @@ class NewslettersController extends Controller
             'revision' => (int) $row->revision,
             'blocks' => $row->blocks ?? [],
             'html_override' => $row->html_override,
+            'active_design' => $row->active_design ?? Newsletter::DESIGN_BLOCKS,
             'subject' => $row->subject,
             'name' => $row->name,
             'preheader' => $row->preheader,
@@ -440,9 +468,10 @@ class NewslettersController extends Controller
 
     private function summaryOf(NewsletterRevision $r): string
     {
-        $what = is_string($r->html_override) && $r->html_override !== ''
-            ? 'Custom HTML'
-            : count((array) ($r->blocks ?? [])).' blocks';
+        $hasHtml = Newsletter::htmlFor(Newsletter::DESIGN_HTML, $r->html_override) !== null;
+        $blocks = count((array) ($r->blocks ?? [])).' blocks';
+        $what = ! $hasHtml ? $blocks
+            : ($r->designHtml() !== null ? 'Custom HTML (active), '.$blocks : $blocks.' (active), Custom HTML');
         $parts = [trim((string) $r->subject) ?: '(no subject)', $what];
         if ($r->restored_from !== null) {
             $parts[] = 'restored from revision '.$r->restored_from;
@@ -520,7 +549,23 @@ class NewslettersController extends Controller
         $user = $this->mayView($request);
         $row = $this->findInView($user, $newsletter);
 
-        return response()->json(['data' => ['html' => $this->htmlFor($row), 'revision' => (int) $row->revision]]);
+        // ?revision=N: that saved version's active design, as it would send.
+        $asked = $request->query('revision');
+        if (is_string($asked) && ctype_digit($asked) && (int) $asked !== (int) $row->revision) {
+            $saved = $this->savedRevision($row, (int) $asked);
+
+            return response()->json(['data' => [
+                'html' => $this->renderer->document(NewsletterSections::expand((array) ($saved->blocks ?? [])), $saved->designHtml(),
+                    $saved->preheader, $this->previewFooter($row), $row->brand),
+                'revision' => (int) $saved->revision,
+                'active_design' => $saved->active_design,
+            ]]);
+        }
+
+        return response()->json(['data' => [
+            'html' => $this->htmlFor($row), 'revision' => (int) $row->revision,
+            'active_design' => $row->designHtml() !== null ? Newsletter::DESIGN_HTML : Newsletter::DESIGN_BLOCKS,
+        ]]);
     }
 
     /**
@@ -639,7 +684,7 @@ class NewslettersController extends Controller
         $listId = (string) ($row->audience?->mailchimp_list_id ?? '');
         $sendHtml = $this->sendHtml($row);
         $linkIssues = $this->linkIssues($row, $sendHtml);
-        $badImages = app(NewsletterImages::class)->problems((array) ($row->blocks ?? []), $row->html_override);
+        $badImages = app(NewsletterImages::class)->problems((array) ($row->blocks ?? []), $row->designHtml());
 
         $check = fn (string $key, bool $ok, string $label, string $detail) => compact('key', 'ok', 'label', 'detail');
 
@@ -675,7 +720,7 @@ class NewslettersController extends Controller
     /** The document a send or test carries: footer ensured, preheader in. */
     private function sendHtml(Newsletter $row): string
     {
-        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override, $row->preheader,
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->designHtml(), $row->preheader,
             NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*'], $row->brand);
     }
 
@@ -692,7 +737,7 @@ class NewslettersController extends Controller
             'index' => $i, 'column' => $c, 'child' => $j, 'type' => $type, 'url' => $url, 'where' => $where,
         ];
 
-        if (is_string($row->html_override) && $row->html_override !== '') {
+        if ($row->designHtml() !== null) {
             return array_map(fn (string $u) => $issue(null, null, null, 'html', $u, 'Custom HTML'), $this->badLinks($sendHtml));
         }
 
@@ -815,6 +860,7 @@ class NewslettersController extends Controller
             'preheader' => $source->preheader,
             'blocks' => $source->blocks ?? [],
             'html_override' => $source->html_override,
+            'active_design' => $source->active_design,
             'brand' => $source->brand,
             'newsletter_audience_id' => $source->newsletter_audience_id,
             'created_by' => $user->getKey(),
@@ -1030,6 +1076,7 @@ class NewslettersController extends Controller
             'blocks' => ['nullable', 'array'],
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
             'html_override' => ['nullable', 'string'],
+            'active_design' => ['nullable', 'string', 'in:html,blocks'],
             'brand' => ['nullable', 'array'],
             'audience_id' => ['nullable', 'string'],
             'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i,Y-m-d H:i:s'],
@@ -1103,14 +1150,100 @@ class NewslettersController extends Controller
 
     private function htmlFor(Newsletter $row): string
     {
-        // As SendNewsletter fills it, so the preview shows the real footer.
-        $footer = NewsletterIdentity::footer($row) + [
-            // APP_URL, not the request's host: a preview fetched via localhost said localhost.
+        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->designHtml(),
+            $row->preheader, $this->previewFooter($row), $row->brand);
+    }
+
+    /** As SendNewsletter fills it, so the preview shows the real footer. */
+    private function previewFooter(Newsletter $row): array
+    {
+        // APP_URL, not the request's host: a preview fetched via localhost said localhost.
+        return NewsletterIdentity::footer($row) + [
             'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
         ];
+    }
 
-        return $this->renderer->document(NewsletterSections::expand((array) ($row->blocks ?? [])), $row->html_override,
-            $row->preheader, $footer, $row->brand);
+    /**
+     * "Use this design": the only way the design that goes out changes. A
+     * request that does not name one keeps it, except that a design with
+     * nothing in it gives way to the one that has content (a new draft whose
+     * first content is pasted HTML), since there is nothing there to keep.
+     */
+    private function applyActiveDesign(Newsletter $row, ?string $asked): void
+    {
+        $hasHtml = Newsletter::htmlFor(Newsletter::DESIGN_HTML, $row->html_override) !== null;
+        $hasBlocks = ((array) ($row->blocks ?? [])) !== [];
+
+        if ($asked === Newsletter::DESIGN_HTML && ! $hasHtml) {
+            throw ValidationException::withMessages(['active_design' => 'Write or import custom HTML before using it as the design.']);
+        }
+        if ($asked !== null) {
+            $row->active_design = $asked;
+
+            return;
+        }
+        if ($row->active_design === Newsletter::DESIGN_HTML && ! $hasHtml && $hasBlocks) {
+            $row->active_design = Newsletter::DESIGN_BLOCKS;
+        } elseif ($row->active_design !== Newsletter::DESIGN_HTML && ! $hasBlocks && $hasHtml) {
+            $row->active_design = Newsletter::DESIGN_HTML;
+        }
+    }
+
+    /**
+     * POST /newsletters/{id}/editable-copy: blocks converted from the custom
+     * HTML, for HTML the Blocks view can only show read-only. Without
+     * `confirm` it changes nothing and answers the converted blocks, the
+     * email they would render, and what the conversion would lose. With
+     * `confirm` the blocks are saved as a new revision (the version before
+     * is kept as a restore point); the HTML and the active design stay as
+     * they are, so the original is still what goes out until "Use this design".
+     */
+    public function editableCopy(Request $request, string $newsletter): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $newsletter) {
+            $user = $request->user();
+            abort_unless($user->hasPermission('newsletter.edit'), Status::HTTP_FORBIDDEN,
+                Refusal::permission('edit a newsletter')->message());
+            $confirm = $request->boolean('confirm');
+
+            $row = $this->findInView($user, $newsletter, lock: $confirm);
+            $html = Newsletter::htmlFor(Newsletter::DESIGN_HTML, $row->html_override);
+            if ($html === null) {
+                throw ValidationException::withMessages(['html_override' => 'This newsletter has no custom HTML to copy.']);
+            }
+            $converted = app(HtmlImportConverter::class)->convert($html);
+            $blocks = (array) $converted['blocks'];
+
+            if (! $confirm) {
+                return response()->json(['data' => [
+                    'blocks' => $blocks,
+                    'preview_html' => $this->renderer->document(NewsletterSections::expand($blocks), null, $row->preheader,
+                        $this->previewFooter($row), $row->brand),
+                    'original_html' => $this->renderer->document([], $html, $row->preheader, $this->previewFooter($row), $row->brand),
+                    'faithful' => $converted['lost'] === [] && (int) $converted['preserved'] === 0,
+                    'lost' => $converted['lost'],
+                    'preserved' => $converted['preserved'],
+                    'issues' => array_values($converted['issues']),
+                ]]);
+            }
+
+            $this->assertMayWrite($user, $row);
+            $this->assertCurrentRevision($request, $row);
+            if ($row->status !== Newsletter::STATUS_DRAFT && $row->status !== Newsletter::STATUS_FAILED) {
+                throw ValidationException::withMessages([
+                    'revision' => 'This newsletter is scheduled, sending, or already sent, so it cannot be changed.',
+                ]);
+            }
+            $this->recordRevision($row, null, onlyIfMissing: true);
+            NewsletterRevision::query()->where('newsletter_id', $row->getKey())->where('revision', (int) $row->revision)
+                ->update(['restore_point' => true, 'label' => 'Before editable copy']);
+
+            $row->forceFill(['blocks' => $blocks, 'revision' => (int) $row->revision + 1])->save();
+            $this->recordRevision($row, $user);
+            $this->audit->log('newsletter.editable_copy', $row, ['blocks' => count($blocks)], actor: $user);
+
+            return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -1138,6 +1271,8 @@ class NewslettersController extends Controller
             'author' => $n->author?->name,
             'has_html_override' => is_string($n->html_override) && $n->html_override !== '',
             'html_override' => is_string($n->html_override) && $n->html_override !== '' ? $n->html_override : null,
+            // Which of the two designs preview, test and send render.
+            'active_design' => $n->designHtml() !== null ? Newsletter::DESIGN_HTML : Newsletter::DESIGN_BLOCKS,
             // The brand as applied to this newsletter (P1b); null: none.
             'brand' => $n->brand,
             'last_send' => $send === null ? null : [

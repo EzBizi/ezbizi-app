@@ -1,0 +1,11 @@
+[Unit]
+Description=Read Local Services messages into Leads every minute
+
+[Timer]
+OnCalendar=*:*:10
+AccuracySec=1s
+Persistent=false
+Unit=ezbizi-scheduler-leads.service
+
+[Install]
+WantedBy=timers.target

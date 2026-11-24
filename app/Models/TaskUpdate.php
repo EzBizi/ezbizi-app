@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * A comment on a task. @mentions are plain text for now.
@@ -24,10 +25,11 @@ class TaskUpdate extends Model implements HoldsPersonalData
     use BelongsToTenant;
     use HasAttachments;
     use HasUuids;
+    use SoftDeletes;
 
     protected $fillable = ['organization_id', 'task_id', 'user_id', 'body', 'mentions'];
 
-    protected $casts = ['mentions' => 'array'];
+    protected $casts = ['mentions' => 'array', 'edited_at' => 'datetime'];
 
     public function task(): BelongsTo
     {

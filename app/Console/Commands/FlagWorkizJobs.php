@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Support\Jobs\EarnedStatuses;
+use App\Support\Jobs\ProjectCosts;
 use App\Models\Organization;
 use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
@@ -13,6 +15,7 @@ use App\Models\User;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Jobs\JobAddress;
+use App\Models\Task;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\People\NameMatch;
 use App\Support\Settings\SettingsResolver;
@@ -74,6 +77,12 @@ class FlagWorkizJobs extends Command
                     if ($checkFriday && $at && $at->isFriday() && $at->format('H:i') > '12:00' && $at->isFuture()) {
                         $issues['late_friday'] = self::FRIDAY_RULE;
                     }
+                    // A Project job completed in Workiz without its costs (Jose with Shoval, 2026-11-23).
+                    $linked = $w->job_id ? Job::query()->with('franchise')->find($w->job_id) : null;
+                    if ($linked?->franchise && EarnedStatuses::isEarned((string) $linked->status, $linked->franchise)
+                        && ($missing = ProjectCosts::missing($linked)) !== []) {
+                        $issues['project_costs'] = 'Project completed without its '.implode(' and ', $missing).'; add them in Project Management.';
+                    }
 
                     foreach ($issues as $issue => $sentence) {
                         // The insert is the dedupe: a second sweep finds the row and skips.
@@ -90,11 +99,8 @@ class FlagWorkizJobs extends Command
 
                         $booker = self::booker($w);
                         $job = $w->job_id ? Job::query()->find($w->job_id) : null;
-                        if ($booker) {
-                            $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: [$booker->getKey()]);
-                        }
-
-                        self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
+                        $task = self::flagTask($boards, $tasks, Franchise::query()->find($w->franchise_id), $title, self::WHY[$issue] ?? null, $job, [$booker?->getKey()]);
+                        self::tellFlag($notify, $title, $job, $task, [$booker?->getKey()]);
                     }
                 }
             });
@@ -108,6 +114,7 @@ class FlagWorkizJobs extends Command
     /** The one line that says what the flag asks for (desk 11-18: "what the point to them is"). */
     public const WHY = [
         'address' => 'Fix the address in Workiz so the tech can find it',
+        'project_costs' => 'A Project job is complete only with its Parts and Labor costs',
     ];
 
     /**
@@ -116,10 +123,10 @@ class FlagWorkizJobs extends Command
      *
      * @param  list<?string>  $userIds
      */
-    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds, ?string $group = null, ?string $bookedBy = null): void
+    public static function flagTask(TaskBoards $boards, TaskWriter $tasks, ?Franchise $franchise, string $title, ?string $why, ?Job $job, array $userIds, ?string $group = null, ?string $bookedBy = null): ?Task
     {
         if ($franchise === null || ! TaskBoards::hasPlaceBoard($franchise)) {
-            return;
+            return null;
         }
         $board = $boards->ensureFor($franchise);
         $can = $boards->assignable($board)->pluck('id')->map(fn ($id) => (string) $id)->all();
@@ -140,7 +147,7 @@ class FlagWorkizJobs extends Command
         // Short title, the whole sentence in Notes (row 6, desk 11-20: titles over 120 like the rules' cut).
         $full = implode(' · ', array_filter([$title, $why, $bookedBy ? 'booked by '.$bookedBy : null]));
         $values[self::textColumn($board, 'Notes')->id] = $full;
-        $tasks->create($board, array_filter([
+        $task = $tasks->create($board, array_filter([
             'title' => self::shortTitle($title),
             // Its own group when asked (Jose 11-18: overbooking warnings in "Overbooked").
             'group_id' => $group ? self::groupOn($board, $group)->id : null,
@@ -152,6 +159,28 @@ class FlagWorkizJobs extends Command
             'assignee_user_ids' => self::owners($board, $franchise, self::seat($board, $userIds, $can), $can) ?: null,
         ]), null);
         $tasks->quiet = $quiet;
+
+        return $task;
+    }
+
+    /**
+     * One bell per person (desk 11-23, Monday parity): the flag task's owners
+     * are told they were given it ("Assigned to me", opens the task); anyone
+     * else the alert reaches gets the job alert as before.
+     *
+     * @param  list<?string>  $to
+     */
+    public static function tellFlag(NotificationDispatcher $notify, string $title, ?Job $job, ?Task $task, array $to, bool $urgent = false): void
+    {
+        $owners = $task ? $task->owners()->pluck('user_id')->map(fn ($id) => (string) $id)->all() : [];
+        if ($owners !== []) {
+            $notify->dispatch(title: $title, body: 'On '.($task->board?->name ?? 'the Task Board'), subject: $task, source: 'tasks',
+                userIds: $owners, urgent: $urgent, kind: 'task.assigned');
+        }
+        $rest = array_values(array_diff(array_filter(array_map(fn ($id) => $id === null ? null : (string) $id, $to)), $owners));
+        if ($rest !== []) {
+            $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: $rest, urgent: $urgent);
+        }
     }
 
     /**

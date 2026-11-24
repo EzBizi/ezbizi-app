@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
 import '../../core/contracts.dart';
+import '../../core/deep_links.dart';
 import '../../core/files.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
@@ -67,10 +68,18 @@ import 'training_card.dart';
 /// and its absence is a decision: payroll, the audit trail (§10) and every job
 /// somebody ever ran point at this row.
 class RecordsTab extends StatefulWidget {
-  const RecordsTab({super.key, required this.api, required this.session});
+  const RecordsTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.link,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// A person to open (`DeepLink` type `person`, id = their user id).
+  final DeepLink? link;
 
   /// The open record's own section strip, for a test to find by NAME. Found
   /// by position (`.last`) it would silently re-aim the day any other strip
@@ -149,6 +158,7 @@ class _RecordsTabState extends State<RecordsTab> {
   @override
   void initState() {
     super.initState();
+    _selected = widget.link?.id;
     _load();
     // A person hired, edited or switched off elsewhere: page one re-read
     // quietly; the open record keeps what is being typed.
@@ -158,6 +168,17 @@ class _RecordsTabState extends State<RecordsTab> {
   }
 
   LiveSubscription? _live;
+
+  @override
+  void didUpdateWidget(RecordsTab old) {
+    super.didUpdateWidget(old);
+    if (widget.link != null && !identical(widget.link, old.link)) {
+      setState(() {
+        _selected = widget.link!.id;
+        _reading = null;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -348,10 +369,12 @@ class _RecordsTabState extends State<RecordsTab> {
       // The PANE's width, not the window's: this sits inside the HR shell, and a
       // window measurement would put a sidebar into a column too narrow for it.
       builder: (context, constraints) {
-        if (constraints.maxWidth >= 760) {
-          // At least 240 for the list and 420 for the record, whatever the
-          // window: the handle cannot squeeze either of them out.
-          final widest = constraints.maxWidth - 420;
+        // From 600 (design 206: the open iPhone Duo, an iPad mini).
+        if (constraints.maxWidth >= 600) {
+          // At least 240 for the list and 420 for the record (360 below 760),
+          // whatever the window: the handle cannot squeeze either out.
+          final widest =
+              constraints.maxWidth - (constraints.maxWidth >= 760 ? 420 : 360);
           final width = _listWidth.clamp(240.0, widest);
 
           return Row(
@@ -1307,7 +1330,10 @@ class _PersonRecordState extends State<_PersonRecord> {
       return v == 1 ? '1 day' : '$text days';
     }
 
-    final from = DateTime.tryParse(pto['eligible_from']?.toString() ?? '');
+    // The first day they have one to take (Jose, 2026-11-23).
+    final from = DateTime.tryParse(
+      (pto['usable_from'] ?? pto['eligible_from'])?.toString() ?? '',
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1318,7 +1344,7 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
         const SizedBox(height: 8),
         Text(
-          pto['eligible'] == true
+          (pto['usable'] ?? pto['eligible']) == true
               ? 'They can use it now.'
               : from == null
               ? 'When they can use it depends on their start date, which is '

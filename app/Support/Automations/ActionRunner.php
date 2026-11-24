@@ -2261,6 +2261,16 @@ class ActionRunner
         $to = trim((string) $this->contactFromStored(
             trim((string) ($action['to'] ?? '')), $event, 'phone', $subject,
         ));
+        // Stored as typed ("860.329.1234"): normalised to E.164 here, and a
+        // number that is still not one is skipped with a sentence, not sent to
+        // Twilio to fail (health sweep 11-24).
+        if ($to !== '') {
+            $to = (string) \App\Models\Lead::e164($to);
+            if (preg_match('/^\+[1-9]\d{7,14}$/', $to) !== 1) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => "\"{$to}\" is not a complete phone number, so nothing was sent. Fix it on the record."];
+            }
+        }
         // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
         // sending {{...}} out as braces: a missed-call text that cannot name the
         // number that called is the rule Jose has been running for two weeks.
@@ -3458,6 +3468,14 @@ class ActionRunner
         try {
             app(BusinessProfileReviews::class)->publish($reply);
         } catch (RuntimeException $e) {
+            // A listing Google says is unclaimed takes no replies until somebody re-verifies it on Google:
+            // keep the draft and say so, not a failure that switches the rule off (health sweep 2026-11-23).
+            if (str_contains($e->getMessage(), 'unclaimed location')) {
+                $reply->forceFill(['failure_reason' => $e->getMessage()])->save();
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => 'Google says this listing is unclaimed, so it takes no replies until it is verified again on Google. The draft is kept.'];
+            }
             // Google answers 404 for a review it has not finished indexing, and 503 when busy
             // (11-09, 11-12): keep the draft and try once more an hour later, not a failure.
             if (preg_match('/HTTP (404|503)/', $e->getMessage()) && ! ($action['retried'] ?? false)) {

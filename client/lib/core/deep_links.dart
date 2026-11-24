@@ -26,7 +26,12 @@ class DeepLink {
     this.mailbox,
     this.date,
     this.update,
+    this.label,
   });
+
+  /// For a `tab` link (a phone bottom-bar slot, design 208): the tab's label,
+  /// for a screen whose tabs are keyed by their words.
+  final String? label;
 
   /// For a `task` mention or reply: the update to scroll into view.
   final String? update;

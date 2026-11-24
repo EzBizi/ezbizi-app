@@ -542,7 +542,19 @@ void main() {
     await pump(tester);
 
     // The name opens the task; a cell edits in place (Jose, 2026-11-12).
-    await tester.tap(find.text('Order liner parts for the Oak Park job').first);
+    await tester.tap(
+      find
+          .descendant(
+            of: find
+                .ancestor(
+                  of: find.text('Order liner parts for the Oak Park job').first,
+                  matching: find.byType(Row),
+                )
+                .first,
+            matching: find.byTooltip('Open'),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -944,7 +956,19 @@ void main() {
     );
 
     // The name opens the task; a cell edits in place (Jose, 2026-11-12).
-    await tester.tap(find.text('Order liner parts for the Oak Park job').first);
+    await tester.tap(
+      find
+          .descendant(
+            of: find
+                .ancestor(
+                  of: find.text('Order liner parts for the Oak Park job').first,
+                  matching: find.byType(Row),
+                )
+                .first,
+            matching: find.byTooltip('Open'),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-panel-owner-u-2')), findsOneWidget);
     expect(find.byKey(const ValueKey('task-panel-owner-u-3')), findsOneWidget);
