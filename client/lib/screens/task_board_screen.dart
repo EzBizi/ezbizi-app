@@ -30,6 +30,7 @@ import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import 'task_board_activity.dart';
 import 'task_board_automate.dart';
+import 'task_board_feed.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
@@ -3440,6 +3441,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           ),
         ),
         child: const Text('Activity Log'),
+      ),
+      // Monday's update feed (gap review P1): every board's updates in one list.
+      MenuItemButton(
+        key: const Key('tasks-updates-feed'),
+        leadingIcon: const Icon(Icons.forum_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => UpdatesFeedPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('Updates feed'),
       ),
       MenuItemButton(
         key: const Key('tasks-board-export'),
