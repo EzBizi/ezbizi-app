@@ -64,7 +64,7 @@ class TaskUpdate extends Model implements HoldsPersonalData
                 'Who asked to be told of replies to this comment.',
                 Erasure::erase()),
             new PersonalDataEntry('likes', PersonalDataEntry::IDENTITY,
-                'Who liked this comment.',
+                'Who liked this comment, shown as the like count and names on it.',
                 Erasure::erase()),
             new PersonalDataEntry('body', PersonalDataEntry::CONTENT,
                 'What the person wrote in the comment.',
