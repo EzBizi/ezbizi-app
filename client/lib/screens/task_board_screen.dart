@@ -331,6 +331,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// The task in the panel docked beside the board, on a wide screen.
   _Json? _dockTask;
   bool _dockUpdatesOnly = false;
+  String? _dockFocusUpdate;
   List<Future<void>> _dockSaves = [];
 
   /// Set by the layout: wide enough to dock the task panel (1100, as the
@@ -541,7 +542,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final boardId = (res.body['data'] as Map?)?['board_id'];
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
-    if (mounted) _openTaskById(link.id);
+    // A mention or reply's bell opens the thread at that update (Jennine 11-24).
+    if (mounted) _openTaskById(link.id, update: link.update);
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -2373,24 +2375,34 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   /// The Gallery's "Go to task": false when this board's list lacks it.
-  bool _openTaskById(String id) {
+  bool _openTaskById(String id, {String? update}) {
     for (final t in _tasks) {
       if (t['id'] == id) {
-        _openTask(t);
+        _openTask(t, updatesOnly: update != null, focusUpdate: update);
         return true;
       }
     }
     return false;
   }
 
-  Future<void> _openTask(_Json task, {bool updatesOnly = false}) async {
+  Future<void> _openTask(
+    _Json task, {
+    bool updatesOnly = false,
+    String? focusUpdate,
+  }) async {
     setState(() => _openId = task['id'] as String?);
+    // Adeline 11-24: opening a task reads its updates (the panel tells the
+    // server); the row's red count clears now, not at the next reload.
+    if ((task['unread_notes'] as num? ?? 0) > 0) {
+      _replace({...task, 'unread_notes': 0});
+    }
     if (_dockWide && _view == 'table') {
       // Beside the board, which stays live (no scrim); another row swaps it.
       final before = _dockSaves;
       setState(() {
         _dockTask = task;
         _dockUpdatesOnly = updatesOnly;
+        _dockFocusUpdate = focusUpdate;
         _dockSaves = [];
       });
       unawaited(
@@ -2422,6 +2434,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         subtasks: _subtasksOf(task),
         saves: saves,
         updatesOnly: updatesOnly,
+        focusUpdate: focusUpdate,
       ),
     );
     // What was still typed is saved as the panel closes: read the board
@@ -2473,6 +2486,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             subtasks: _subtasksOf(task),
             saves: _dockSaves,
             updatesOnly: _dockUpdatesOnly,
+            focusUpdate: _dockFocusUpdate,
             docked: true,
             onClose: () => unawaited(_closeDock()),
           ),
@@ -2927,7 +2941,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       builder: (context, box) {
         // Each control on the line, with what stands in for it in the ⋯
         // when it does not fit.
+        // Chevel 11-24: the search is first, so it is the last thing a
+        // narrow line gives up; narrower there rather than gone.
         final line = <(Widget, List<Widget>)>[
+          if (searchOnLine)
+            (
+              box.maxWidth < 900
+                  ? SizedBox(width: phone ? 140 : 170, child: _search())
+                  : search,
+              const [],
+            ),
           (
             _viewSwitch(
               segments: !phone && box.maxWidth >= 1200,
@@ -2936,7 +2959,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             ),
             const [],
           ),
-          if (searchOnLine) (search, const []),
           if (_canEdit) (_newTaskButton(compact: phone), [_newTaskItem()]),
           if (!phone) ...[
             for (final a in actions) (actionButton(a), [actionItem(a)]),
@@ -5537,11 +5559,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _statusLabel(_board!, _statusOf(t)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: labelInk(colours.fill),
-        fontWeight: FontWeight.w700,
-        fontSize: 12,
-      ),
+      // Chaim 11-24: Monday's regular weight.
+      style: TextStyle(color: labelInk(colours.fill), fontSize: 13),
     );
 
     final editable = (_board?['statuses'] as List? ?? const []).any(
@@ -5735,7 +5754,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
                                     color: colours.ink,
                                   ),
                                 ),
@@ -6138,10 +6156,14 @@ class _TaskPanel extends StatefulWidget {
     this.subtasks = const [],
     this.saves,
     this.updatesOnly = false,
+    this.focusUpdate,
   });
 
   /// Opened from the Updates cell: the name and the thread only.
   final bool updatesOnly;
+
+  /// The update a bell pointed at: scrolled to and marked (Jennine 11-24).
+  final String? focusUpdate;
 
   /// Every save the panel makes, so the board reads after the last one.
   final List<Future<void>>? saves;
@@ -6172,6 +6194,24 @@ class _TaskPanel extends StatefulWidget {
 }
 
 class _TaskPanelState extends State<_TaskPanel> {
+  /// On the update a bell pointed at; scrolled into view once it is drawn.
+  final _focusKey = GlobalKey();
+  bool _focused = false;
+
+  void _scrollToFocus() {
+    if (_focused || widget.focusUpdate == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final at = _focusKey.currentContext;
+      if (_focused || at == null || !at.mounted) return;
+      _focused = true;
+      Scrollable.ensureVisible(
+        at,
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 250),
+      );
+    });
+  }
+
   _Json? _task;
   bool _loading = true;
   String? _error;
@@ -6619,6 +6659,7 @@ class _TaskPanelState extends State<_TaskPanel> {
       withBoardFont(context, Builder(builder: _build));
 
   Widget _build(BuildContext context) {
+    _scrollToFocus();
     // Closing saves what is still typed, before the board reads again.
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -6725,11 +6766,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               _statusLabel(widget.board, _statusOf(task)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colours.ink,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: colours.ink, fontSize: 13),
             ),
           ),
         ),
@@ -6849,7 +6886,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               focusNode: _titleFocus,
               enabled: _canEdit,
               minLines: 1,
-              maxLines: 3,
+              maxLines: null, // Natalie 11-24: the whole title, however long.
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
               style: theme.textTheme.bodyLarge?.copyWith(
@@ -7028,8 +7065,20 @@ class _TaskPanelState extends State<_TaskPanel> {
           const SizedBox(height: 8),
           if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
           for (final u in updates)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+            Container(
+              key: u['id'] == widget.focusUpdate ? _focusKey : null,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: u['id'] == widget.focusUpdate
+                  ? const EdgeInsets.all(6)
+                  : EdgeInsets.zero,
+              decoration: u['id'] == widget.focusUpdate
+                  ? BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

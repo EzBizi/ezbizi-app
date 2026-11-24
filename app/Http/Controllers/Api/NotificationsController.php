@@ -437,6 +437,19 @@ class NotificationsController extends Controller
             ];
         }
 
+        // A mention or reply bell about a task (Jennine 11-24): the update it
+        // came from, the newest on that task by then (for a mention, one
+        // naming this person), so the thread opens at it.
+        if ($notification->subject_type === Task::class && in_array($notification->kind, ['task.mentioned', 'task.reply'], true)) {
+            $by = TaskUpdate::query()->where('task_id', $notification->subject_id)
+                ->where('created_at', '<=', $notification->created_at->copy()->addMinute())->latest('created_at');
+            $update = $notification->kind === 'task.mentioned'
+                ? ((clone $by)->whereJsonContains('mentions', (string) $notification->user_id)->value('id') ?? $by->value('id'))
+                : $by->where('user_id', '!=', $notification->user_id)->value('id');
+
+            return ['type' => 'task', 'id' => (string) $notification->subject_id, 'update' => $update === null ? null : (string) $update];
+        }
+
         return [
             'type' => Str::snake(class_basename($notification->subject_type)),
             'id' => (string) $notification->subject_id,

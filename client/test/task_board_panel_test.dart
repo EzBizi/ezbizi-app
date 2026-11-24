@@ -38,6 +38,7 @@ void main() {
   );
 
   String? textValue;
+  int unread = 0;
 
   ApiClient fakeServer() {
     log = [];
@@ -58,7 +59,8 @@ void main() {
       'created_at': '2026-11-06T19:54:00+00:00',
       'due_on': '2099-11-16',
       'about': null,
-      'updates_count': 0,
+      'updates_count': unread,
+      'unread_notes': unread,
       'values': {
         'c-time': {'from': '2099-11-10', 'to': '2099-11-16'},
         'c-text': textValue,
@@ -624,6 +626,21 @@ void main() {
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
     await search('harbor');
     expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
+  });
+
+  testWidgets('Adeline 11-24: opening a task clears its red unread count at '
+      'once and tells the server', (tester) async {
+    unread = 2;
+    addTearDown(() => unread = 0);
+    await pump(tester);
+    expect(
+      log.where((e) => e.$1 == 'POST' && e.$2 == '/note-reads'),
+      isNotEmpty,
+    );
+    final badge = tester.widget<Badge>(
+      find.byKey(const ValueKey('task-unread-t1')),
+    );
+    expect(badge.isLabelVisible, isFalse);
   });
 
   testWidgets('a group header counts the tasks it shows: a search that hides '
