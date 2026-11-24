@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\NoteRead;
 use App\Models\Task;
 use App\Models\TaskActivity;
+use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
@@ -605,6 +606,124 @@ class TasksController extends Controller
                 'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
                 'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
                 'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);
+    }
+
+    /**
+     * GET task-updates (Monday's update feed, gap review P1): the updates on
+     * every board this person sees, newest first, 50 a page (before=). filter
+     * mentions: only those naming them; unread: only those after their read
+     * mark; board_id narrows to one board. meta.boards counts per board.
+     */
+    public function feed(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'filter' => ['sometimes', 'in:all,mentions'],
+            'unread' => ['sometimes', 'boolean'],
+            'board_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->pluck('name', 'id');
+        $base = TaskUpdate::query()
+            ->join('tasks', 'tasks.id', '=', 'task_updates.task_id')
+            ->whereIn('tasks.board_id', $boards->keys())
+            ->whereNull('tasks.deleted_at')
+            ->when(SensitiveTasks::machineReader($me), fn ($q) => $q->where('tasks.sensitive', false))
+            ->when(($input['filter'] ?? 'all') === 'mentions', fn ($q) => $q->whereJsonContains('task_updates.mentions', (string) $me->id))
+            ->when($request->boolean('unread'), fn ($q) => $q->where('task_updates.user_id', '!=', $me->id)
+                ->whereRaw('task_updates.created_at > COALESCE((SELECT r.last_read_at FROM note_reads r WHERE r.subject_type = ? AND r.subject_id = task_updates.task_id AND r.user_id = ?), ?)', ['task', $me->id, '1970-01-01']));
+        $counts = (clone $base)->selectRaw('tasks.board_id as b, COUNT(*) as c')->groupBy('tasks.board_id')->pluck('c', 'b');
+        $rows = (clone $base)
+            ->when($input['board_id'] ?? null, fn ($q, $b) => $q->where('tasks.board_id', $b))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_updates.created_at', '<', $b))
+            ->select('task_updates.*', 'tasks.title as task_title', 'tasks.board_id as task_board_id', 'tasks.sensitive as task_sensitive')
+            ->with(['user:id,name', 'attachments'])
+            ->latest('task_updates.created_at')->limit(50)->get();
+
+        return response()->json([
+            'data' => $rows->map(fn (TaskUpdate $u) => self::presentUpdate($u) + [
+                'task_id' => $u->task_id, 'task' => (string) $u->getAttribute('task_title'),
+                'board_id' => $u->getAttribute('task_board_id'), 'board' => (string) ($boards[$u->getAttribute('task_board_id')] ?? ''),
+            ] + ($u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE] : []))->values(),
+            'meta' => ['boards' => $counts->map(fn ($c, $b) => ['id' => $b, 'name' => (string) ($boards[$b] ?? ''), 'count' => (int) $c])->values()],
+        ]);
+    }
+
+    /**
+     * GET my-work (Monday's My Work, gap review P1): the open tasks this
+     * person owns on every board they see, with each task's board, for the
+     * client to bucket by due day. done=1 adds the last 30 days' done ones.
+     */
+    public function myWork(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->get(['id', 'name', 'kind'])->keyBy('id');
+        $tasks = Task::query()->with(self::WITH)->withCount(self::counts())
+            ->whereIn('board_id', $boards->keys())
+            ->where(fn ($q) => $q->where('assignee_user_id', $me->id)
+                ->orWhereIn('id', TaskAssignee::query()->select('task_id')->where('user_id', $me->id)))
+            ->when(! $request->boolean('done'), fn ($q) => $q->whereNull('completed_at'),
+                fn ($q) => $q->where(fn ($w) => $w->whereNull('completed_at')->orWhere('completed_at', '>=', now()->subDays(30))))
+            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(1000)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => self::present($t) + [
+            'board_name' => $boards[$t->board_id]?->kind === 'user' ? 'My board' : (string) $boards[$t->board_id]?->name,
+        ])->values()]);
+    }
+
+    /** POST task-updates/read-all: every task this person sees, read now (the feed's Mark all as read). */
+    public function feedReadAll(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $ids = Task::query()->whereIn('board_id', app(TaskBoards::class)->visibleTo($me)->select('id'))
+            ->whereIn('id', TaskUpdate::query()->select('task_id')->where('created_at', '>=', now()->subDays(90)))->pluck('id');
+        foreach ($ids as $id) {
+            NoteRead::query()->updateOrCreate(
+                ['user_id' => $me->id, 'subject_type' => 'task', 'subject_id' => $id],
+                ['last_read_at' => now(), 'organization_id' => $me->organization_id],
+            );
+        }
+
+        return response()->json(['data' => ['read' => $ids->count()]]);
+    }
+
+    /**
+     * GET task-boards/{board}/activity (Monday's board Activity Log, gap review P1):
+     * every change on the board's tasks, newest first, 100 a page, filtered by
+     * days back, group, column (by its label) and person. A sensitive task's row
+     * says who, what and when only.
+     */
+    public function boardActivity(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $hidden = SensitiveTasks::machineReader($request->user());
+        $rows = TaskActivity::query()
+            ->join('tasks', 'tasks.id', '=', 'task_activities.task_id')
+            ->where('tasks.board_id', $taskBoard->id)
+            ->when($hidden, fn ($q) => $q->where('tasks.sensitive', false))
+            ->when($input['days'] ?? null, fn ($q, $d) => $q->where('task_activities.created_at', '>=', now()->subDays((int) $d)))
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('tasks.group_id', $g))
+            ->when($input['label'] ?? null, fn ($q, $l) => $q->where('task_activities.label', $l))
+            ->when($input['user_id'] ?? null, fn ($q, $u) => $q->where('task_activities.user_id', $u))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_activities.created_at', '<', $b))
+            ->with('user:id,name')
+            ->select('task_activities.*', 'tasks.title as task_title', 'tasks.sensitive as task_sensitive', 'tasks.group_id as task_group_id')
+            ->latest('task_activities.created_at')->limit(100)->get();
+
+        return response()->json(['data' => $rows->map(fn ($a) => [
+            'id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name, 'user_id' => $a->user_id,
+            'task_id' => $a->task_id, 'task' => (string) $a->task_title, 'group_id' => $a->task_group_id,
+            'field' => $a->field, 'label' => $a->label,
+            'from' => $a->task_sensitive ? null : SensitiveTasks::open($a->from),
+            'to' => $a->task_sensitive ? null : SensitiveTasks::open($a->to),
+        ])->values()]);
     }
 
     /**

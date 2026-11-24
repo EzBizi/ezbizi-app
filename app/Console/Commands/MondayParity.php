@@ -91,6 +91,9 @@ class MondayParity extends Command
                         $gone = $gone->filter(fn ($t) => in_array($states[substr($t->external_ref, 7)] ?? 'gone', ['archived', 'deleted', 'gone'], true));
                     }
                     $gone = $gone->pluck('id')->all();
+                    if ($this->option('fix') && $this->option('gone')) {
+                        $this->dropGroupsGoneOnMonday($board, array_column($meta['groups'], 'monday_id'), $gone);
+                    }
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
                     $values = $this->option('values') ? $this->valueDrift($reader, $board, $mondayId, (bool) $this->option('fix')) : 0;
@@ -154,6 +157,36 @@ class MondayParity extends Command
      * them, by column title; a value Monday has no column for is not counted. With --fix,
      * each task gets one deferred outbox row naming the columns that differ.
      */
+    /**
+     * Desk 11-24 (Eve deleted NW's "Open Tasks" on Monday): a Monday group no
+     * longer there is removed here once it holds no live task besides those
+     * leaving with it. Its archived and leaving tasks first move to the board's
+     * last group, so the delete never cascades them away; the name is kept on
+     * the board so nothing makes the group again.
+     *
+     * @param  list<string>  $mondayGroupIds
+     * @param  list<string>  $leaving  tasks this run archives as gone on Monday
+     */
+    private function dropGroupsGoneOnMonday(TaskBoard $board, array $mondayGroupIds, array $leaving): void
+    {
+        foreach (TaskGroup::query()->where('board_id', $board->id)->where('external_ref', 'like', 'monday:%')->get() as $group) {
+            if (in_array(substr((string) $group->external_ref, 7), $mondayGroupIds, true)
+                || Task::query()->where('group_id', $group->id)->whereNotIn('id', $leaving)->exists()) {
+                continue;
+            }
+            $home = TaskGroup::query()->where('board_id', $board->id)->whereKeyNot($group->id)->orderByDesc('position')->first();
+            if ($home === null) {
+                continue;
+            }
+            Task::query()->withTrashed()->where('group_id', $group->id)->update(['group_id' => $home->id]);
+            $settings = (array) ($board->builtin_columns ?? []);
+            $settings['_monday_deleted_groups'] = array_values(array_unique([...($settings['_monday_deleted_groups'] ?? []), mb_strtolower(trim($group->name))]));
+            $board->forceFill(['builtin_columns' => $settings])->saveQuietly();
+            $group->delete();
+            $this->line("  {$board->name}: group \"{$group->name}\" deleted on Monday, removed here");
+        }
+    }
+
     private function valueDrift(MondayBoardReader $reader, TaskBoard $board, string $mondayId, bool $fix): int
     {
         $there = $reader->valuesByItem($mondayId);

@@ -83,6 +83,8 @@ class TaskWriter
             };
 
             $status = $this->resolveStatus($board, $input)
+                // The board's chosen default label (gap review P1), else Not started.
+                ?? $board->statuses()->where('is_default', true)->first()
                 ?? $board->statuses()->where('key', Task::STATUS_NOT_STARTED)->first()
                 ?? $board->statuses()->first();
 
@@ -381,9 +383,23 @@ class TaskWriter
     /** Where a task with no group named goes. */
     public function openTasks(TaskBoard $board): TaskGroup
     {
-        return $board->groups()->get()->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === mb_strtolower(self::DEFAULT_GROUP))
-            ?? TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => self::DEFAULT_GROUP,
-                'colour' => '#579BFC', 'position' => (int) $board->groups()->max('position') + 1]);
+        $groups = $board->groups()->orderBy('position')->get();
+        $open = $groups->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === mb_strtolower(self::DEFAULT_GROUP));
+        if ($open !== null) {
+            return $open;
+        }
+        // Desk 11-24: a group deleted on Monday is never made again. Its work goes to the
+        // board's last group that is not a done or archive one (never the first: Company Info).
+        if (in_array(mb_strtolower(self::DEFAULT_GROUP), (array) ($board->builtin_columns['_monday_deleted_groups'] ?? []), true)) {
+            $last = $groups->reverse()->first(fn (TaskGroup $g) => ! preg_match('/done|complete|closed|archive|cancel/i', $g->name)
+                && $g->id !== $groups->first()?->id);
+            if ($last !== null) {
+                return $last;
+            }
+        }
+
+        return TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => self::DEFAULT_GROUP,
+            'colour' => '#579BFC', 'position' => (int) $board->groups()->max('position') + 1]);
     }
 
     public const WORKIZ_JOB_COLUMN = 'Workiz Job ID';

@@ -1086,6 +1086,8 @@ Route::prefix('v1')
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
         Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
         Route::get('task-boards/{taskBoard}/search', [TaskBoardsController::class, 'search']);
+        Route::get('task-boards/{taskBoard}/activity', [TasksController::class, 'boardActivity']);
+        Route::get('task-boards/{taskBoard}/export', [TaskBoardsController::class, 'export']);
         Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
@@ -1130,6 +1132,9 @@ Route::prefix('v1')
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
         Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
+        Route::get('task-updates', [TasksController::class, 'feed']);
+        Route::get('my-work', [TasksController::class, 'myWork']);
+        Route::post('task-updates/read-all', [TasksController::class, 'feedReadAll']);
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);

@@ -21,13 +21,17 @@ import '../core/device_key_store_io.dart'
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/files.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import 'task_board_activity.dart';
 import 'task_board_automate.dart';
+import 'task_board_feed.dart';
+import 'task_board_my_work.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
@@ -113,7 +117,13 @@ Widget _avatar(
 /// One of a board's statuses. Each board has its own (UI queue 84), sent as
 /// `{id, name, colour, is_done}`; the fixed four came as `{key, label}` and
 /// still read here, coloured by [_tone].
-typedef _Status = ({String id, String name, Color? colour, bool done});
+typedef _Status = ({
+  String id,
+  String name,
+  Color? colour,
+  bool done,
+  bool retired,
+});
 
 /// Parsed once per statuses list: every row asks for them (freeze 11-16).
 final _statusMemo = Expando<List<_Status>>('statuses');
@@ -134,6 +144,8 @@ List<_Status> _parseStatuses(List raw) => [
           : null,
       done:
           s['is_done'] == true || (s['is_done'] == null && s['key'] == 'done'),
+      // Gap review P1: kept on its tasks, out of the pickers.
+      retired: s['retired'] == true,
     ),
 ];
 
@@ -1167,7 +1179,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ],
   );
 
+  /// Monday's Export to Excel (gap review P1): the board, one group or the
+  /// picked tasks, as an .xlsx the browser or the desktop saves.
+  Future<void> _export({String? groupId, List<String>? ids}) async {
+    final board = _board;
+    if (board == null) return;
+    final res = await widget.api.getBytesResponse(
+      '/task-boards/${board['id']}/export',
+      {
+        'group_id': ?groupId,
+        for (final (i, id) in (ids ?? const <String>[]).indexed) 'ids[$i]': id,
+      },
+    );
+    if (!mounted) return;
+    final bytes = res.bytes;
+    if (bytes == null) return _say(res.message ?? 'The export failed.');
+    final name = '${board['name']}'.replaceAll(RegExp(r'[^\w\- ]+'), '').trim();
+    Files.download('${name.isEmpty ? 'Board' : name}.xlsx', bytes);
+  }
+
   Future<void> _bulk(String op) async {
+    if (op == 'export') return _export(ids: _picked.toList());
     final ids = _picked.toList();
     Map<String, Object?>? extra;
     switch (op) {
@@ -1261,6 +1293,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ('duplicate', 'Duplicate'),
               ('status', 'Status'),
               ('assign', 'Assign'),
+              ('export', 'Export'),
               ('delete', 'Delete'),
             ])
               TextButton(
@@ -1628,6 +1661,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             _groupName.text = '${group['name']}';
           }),
           child: const Text('Rename'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-export-$id'),
+          leadingIcon: const Icon(Icons.download_outlined, size: 18),
+          onPressed: () => _export(groupId: id),
+          child: const Text('Export to Excel'),
         ),
         // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
         MenuItemButton(
@@ -3394,6 +3433,69 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           }),
         ),
       ],
+      // Monday's board Activity Log (gap review P1): for everyone who sees the board.
+      MenuItemButton(
+        key: const Key('tasks-board-activity'),
+        leadingIcon: const Icon(Icons.history, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => BoardActivityPanel(
+            api: widget.api,
+            board: _board!,
+            formats: _formats,
+            people: _people,
+            onOpenTask: (id) {
+              Navigator.of(context).maybePop();
+              _openTaskById(id);
+            },
+          ),
+        ),
+        child: const Text('Activity Log'),
+      ),
+      // Monday's update feed (gap review P1): every board's updates in one list.
+      MenuItemButton(
+        key: const Key('tasks-updates-feed'),
+        leadingIcon: const Icon(Icons.forum_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => UpdatesFeedPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('Updates feed'),
+      ),
+      // Monday's My Work (gap review P1): what I own on every board.
+      MenuItemButton(
+        key: const Key('tasks-my-work'),
+        leadingIcon: const Icon(Icons.assignment_ind_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => MyWorkPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('My Work'),
+      ),
+      MenuItemButton(
+        key: const Key('tasks-board-export'),
+        leadingIcon: const Icon(Icons.download_outlined, size: 18),
+        onPressed: _export,
+        child: const Text('Export to Excel'),
+      ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(
             (s) => s is Map && s.containsKey('id'),
@@ -5574,11 +5676,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             keyPrefix: 'task-status-${t['id']}',
             labels: [
               for (final s in _statuses(_board))
-                (
-                  id: s.id,
-                  label: s.name,
-                  colour: _statusColours(context, s).fill,
-                ),
+                if (!s.retired || s.id == _statusOf(t))
+                  (
+                    id: s.id,
+                    label: s.name,
+                    colour: _statusColours(context, s).fill,
+                  ),
             ],
             current: _statusOf(t),
             onPick: (id) {
@@ -7066,14 +7169,15 @@ class _TaskPanelState extends State<_TaskPanel> {
     return MenuAnchor(
       menuChildren: [
         for (final s in _statuses(widget.board))
-          MenuItemButton(
-            key: ValueKey('task-panel-status-${s.id}'),
-            leadingIcon: _statusDot(context, s),
-            onPressed: _statusOf(task) == s.id
-                ? null
-                : () => _patch(_statusBody(widget.board, s.id, task)),
-            child: Text(s.name),
-          ),
+          if (!s.retired || s.id == _statusOf(task))
+            MenuItemButton(
+              key: ValueKey('task-panel-status-${s.id}'),
+              leadingIcon: _statusDot(context, s),
+              onPressed: _statusOf(task) == s.id
+                  ? null
+                  : () => _patch(_statusBody(widget.board, s.id, task)),
+              child: Text(s.name),
+            ),
       ],
       // A box like every other field, the status's colour inside it.
       builder: (context, menu, _) => PanelFieldBox(
