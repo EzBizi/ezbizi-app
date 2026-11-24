@@ -48,7 +48,24 @@ class MondayUpdateLinks extends Command
             ->chunkById(100, function ($rows) use ($api, $backup, $who, &$counts) {
                 $byMonday = $rows->keyBy(fn (TaskUpdate $u) => (string) last(explode('.', substr((string) $u->external_ref, 7))));
                 $found = $api->query('query($i:[ID!]){ updates(ids:$i, limit:100) { id body text_body } }', ['i' => $byMonday->keys()->all()])['updates'] ?? [];
+                // Desk 11-23: updates(ids:) leaves out replies (and some older updates),
+                // so the rest are read through their items, replies included.
+                $missing = $byMonday->except(array_map(fn ($m) => (string) $m['id'], $found));
+                $items = Task::withoutGlobalScopes()->withTrashed()->whereKey($missing->pluck('task_id')->unique())->pluck('external_ref')
+                    ->map(fn ($r) => (string) preg_replace('/\D.*/', '', substr((string) $r, 7)))->filter()->unique()->values()->all();
+                if ($items !== []) {
+                    foreach ($api->query('query($i:[ID!]){ items(ids:$i, limit:100) { updates(limit:100) { id body text_body replies { id body text_body } } } }', ['i' => $items])['items'] ?? [] as $item) {
+                        foreach ($item['updates'] ?? [] as $up) {
+                            foreach ([$up, ...($up['replies'] ?? [])] as $m) {
+                                if ($missing->has((string) $m['id'])) {
+                                    $found[] = $m;
+                                }
+                            }
+                        }
+                    }
+                }
                 $counts['read'] += $rows->count();
+                $counts['found on Monday'] = ($counts['found on Monday'] ?? 0) + count($found);
                 foreach ($found as $m) {
                     $u = $byMonday[(string) $m['id']] ?? null;
                     $ids = array_values(array_unique(array_filter(array_map(fn ($id) => $who[$id] ?? null, MondayBoardReader::mentionIds($m)))));
