@@ -3311,7 +3311,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                         // cut-off list as modules MISSING). Drawn over the
                         // list it covered a module name (desktop review
                         // 2026-11-13, Top 6).
-                        _MoreBelow(controller: _railScroll),
+                        _MoreBelow(controller: _railScroll, compact: !expanded),
                       ],
                     ),
             ),
@@ -3868,9 +3868,13 @@ class Destination {
 /// A fade and a "More" chevron over the bottom of a scrolling list, shown only
 /// while there is still something below the fold. Tapping it scrolls down.
 class _MoreBelow extends StatefulWidget {
-  const _MoreBelow({required this.controller});
+  const _MoreBelow({required this.controller, this.compact = false});
 
   final ScrollController controller;
+
+  /// The collapsed rail: the chevron alone, centred under the icons (Jose
+  /// 11-24: "it should just show the arrow"); "More" is its tooltip.
+  final bool compact;
 
   @override
   State<_MoreBelow> createState() => _MoreBelowState();
@@ -3906,6 +3910,13 @@ class _MoreBelowState extends State<_MoreBelow> {
         // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
         final bg = scheme.surfaceContainerLow;
 
+        void toEnd() => controller.animateTo(
+          controller.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+        final arrow = Icon(Icons.expand_more, size: 18, color: scheme.primary);
+
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -3917,16 +3928,19 @@ class _MoreBelowState extends State<_MoreBelow> {
           child: Padding(
             padding: const EdgeInsets.only(top: 16),
             child: Center(
-              child: TextButton.icon(
-                key: const Key('sidebar-more-below'),
-                onPressed: () => controller.animateTo(
-                  controller.position.maxScrollExtent,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                ),
-                icon: Icon(Icons.expand_more, size: 18, color: scheme.primary),
-                label: const Text('More'),
-              ),
+              child: widget.compact
+                  ? IconButton(
+                      key: const Key('sidebar-more-below'),
+                      tooltip: 'More',
+                      onPressed: toEnd,
+                      icon: arrow,
+                    )
+                  : TextButton.icon(
+                      key: const Key('sidebar-more-below'),
+                      onPressed: toEnd,
+                      icon: arrow,
+                      label: const Text('More'),
+                    ),
             ),
           ),
         );

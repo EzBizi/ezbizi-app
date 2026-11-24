@@ -91,10 +91,11 @@ class _SuggestionAboutState extends State<SuggestionAbout> {
         ),
         if (images.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Wrap(
+          // One under another, each as large as the pane allows (Adeline,
+          // 11-24: "make the images bigger so you can review them").
+          Column(
             key: const Key('suggestion-gallery'),
-            spacing: 10,
-            runSpacing: 10,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final (i, f) in images.indexed)
                 _Thumb(
@@ -156,8 +157,10 @@ bool isPreviewableImage(String? mime) => const {
   'image/bmp',
 }.contains((mime ?? '').toLowerCase());
 
-/// One picture above its name, in a box of fixed size so nothing jumps when
-/// it arrives. A failure offers Retry, and the name downloads the original.
+/// One picture above its name, as wide as the pane up to its own size,
+/// never cropped and never stretched. Taller than most of the screen it
+/// shrinks to fit, ratio kept. A failure offers Retry, and the name
+/// downloads the original.
 class _Thumb extends StatelessWidget {
   const _Thumb({
     required this.file,
@@ -179,25 +182,38 @@ class _Thumb extends StatelessWidget {
     final scheme = theme.colorScheme;
     final index = file['index'];
     final name = file['name'] as String? ?? 'picture';
+    final tallest = MediaQuery.sizeOf(context).height * 0.8;
+    Widget box(Widget child) => Container(
+      height: 160,
+      width: 240,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: child,
+    );
 
-    return SizedBox(
-      width: 168,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
       child: FutureBuilder<ApiBytesResponse>(
         future: bytes,
         builder: (context, snap) {
           final data = snap.data?.bytes;
           final failed =
               snap.connectionState == ConnectionState.done && data == null;
-          Widget failure() => Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.broken_image_outlined, color: scheme.outline),
-              TextButton(
-                key: ValueKey('suggestion-thumb-retry-$index'),
-                onPressed: onRetry,
-                child: const Text('Retry'),
-              ),
-            ],
+          Widget failure() => box(
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.broken_image_outlined, color: scheme.outline),
+                TextButton(
+                  key: ValueKey('suggestion-thumb-retry-$index'),
+                  onPressed: onRetry,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
           );
 
           return Column(
@@ -209,27 +225,26 @@ class _Thumb extends StatelessWidget {
                   key: ValueKey('suggestion-thumb-$index'),
                   onTap: data == null ? null : onOpen,
                   borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: 168,
-                    height: 112,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: failed
-                        ? failure()
-                        : data == null
-                        ? Icon(Icons.image_outlined, color: scheme.outline)
-                        : Image.memory(
+                  child: failed
+                      ? failure()
+                      : data == null
+                      ? box(Icon(Icons.image_outlined, color: scheme.outline))
+                      : Container(
+                          clipBehavior: Clip.antiAlias,
+                          constraints: BoxConstraints(maxHeight: tallest),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: scheme.outlineVariant),
+                          ),
+                          // Unsized: the image takes its own size, scaled
+                          // down (ratio kept) only to fit the pane.
+                          child: Image.memory(
                             _u8(data),
                             key: ValueKey('suggestion-thumb-image-$index'),
                             fit: BoxFit.contain,
-                            cacheWidth: 336,
                             errorBuilder: (_, _, _) => failure(),
                           ),
-                  ),
+                        ),
                 ),
               ),
               const SizedBox(height: 4),
