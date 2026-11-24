@@ -77,6 +77,11 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 51 | **Empty date cells show a calendar icon** (Jose 11-24): every empty date-type cell shows a clickable calendar icon, not "—"; empty typed cells show what they take | Task Board | ROUTED | Sent 11-24 |
 | 52 | **Group title row: option 3** (Jose 11-24, gallery 210): half-strength tint across the whole title row, 4px full-colour rule under it, 20px title; phone 6; collapsed + kanban follow | Task Board (spec from UI/UX) | ROUTED | Sent 11-24 |
 | 53 | **Mirror the 7 Monday boards we lack before Thu 11-26** (Jose 11-24 "full review again ... watch for any new stuff"): DMV NEW (Shoval, 78), 3 templates, Users 150, Job Roles, Analytics Dashboard; hourly guard for unmirrored boards; final parity counts | Task Board | ROUTED | Sent 11-24 |
+| 54 | **Notification click opens the mention** (Jennine 01a20e55) | Task Board | ROUTED | Sent 11-24 |
+| 55 | **Search bar visible on narrow widths** (Chevel 01a20e59) | Task Board | ROUTED | Sent 11-24 |
+| 56 | **Bells for updates and replies, not only @mentions** (Chevel 01a20e5a) | Task Board | ROUTED | Sent 11-24 |
+| 57 | **Task title field shows the whole title** (Natalie 01a20e61) | Task Board | ROUTED | Sent 11-24 |
+| 58 | **Status save does nothing (duplicate "Done")** (Natalie 01a20e4b) | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
