@@ -18,6 +18,7 @@ class VersionHistory {
       'Task Board: a status name saves as you type, and a name already in use says so',
       'Task Board: people search also matches the start of an email and the Monday name, so Chris finds Kristopher',
       'Task Board: 7 more Monday boards are mirrored, including DMV NEW and the New Location, Brand and Franchise templates',
+      'Email: with the reading pane below, an open email gets most of the screen, and Open full shows it on the whole pane',
     ]),
     VersionRelease(version: '0.0.0634', date: '24 Nov 2026', items: [
       'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
