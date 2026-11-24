@@ -204,7 +204,12 @@ class RolesApiTest extends TestCase
         //            the Recordings tab, so listen without the tab is a grant
         //            nothing can spend; the requirement describes the product.
         // Roles audit 2026-11-09: the screens' own hidden requirements, declared.
-        $argued = ['company', 'estimates', 'field', 'guidelines', 'inspection', 'leads', 'organizations', 'project_board', 'reports', 'work_hours'];
+        // Roles audit 2026-11-24 (docs/agents/roles-permissions-audit-2026-11-24.md):
+        //   ai_assistance  WhatsApp groups and Staff bot are editors whose every
+        //            endpoint asks for `manage`; the screen drew neither without it.
+        //   memberships  the Dashboard counts the members list, which is
+        //            `memberships.members.view` on the server.
+        $argued = ['ai_assistance', 'company', 'estimates', 'field', 'guidelines', 'inspection', 'leads', 'memberships', 'organizations', 'project_board', 'reports', 'work_hours'];
 
         $declaring = [];
 

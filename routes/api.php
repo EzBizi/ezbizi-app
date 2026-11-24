@@ -1994,8 +1994,13 @@ Route::prefix('v1')
             Route::post('scheduling/zip-reports/{report}/move', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'move']);
             Route::post('scheduling/zip-reports/{report}/dismiss', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'dismiss']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+                ->except('index')
                 ->parameters(['areas' => 'area']);
         });
+        // The areas list is also Routing's first read (roles audit 2026-11-24):
+        // a role with Routing and not Settings got a 403 before any route.
+        Route::get('scheduling/areas', [SchedulingAreasController::class, 'index'])
+            ->middleware('permission:scheduling.routing.view,scheduling.settings.view');
 
         // Field — docs/superpowers/specs/2026-09-25-field-module-design.md.
         // `me` answers anybody (a phone asks before it knows its role); the

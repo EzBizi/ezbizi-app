@@ -1423,7 +1423,23 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('action:training.assign')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('not ticked'), findsOneWidget);
+    // Why it will not take effect, in plain words (roles audit 2026-11-24),
+    // on the row and again in "What this role sees".
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('requirement:training.assign')),
+          )
+          .data,
+      "Won't work: also tick Monitor training",
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:training')),
+        matching: find.textContaining('also tick Monitor training'),
+      ),
+      findsOneWidget,
+    );
 
     // The screen NEVER ticks the other box. The server refuses rather than
     // implying, because monitor is the larger disclosure -- a screen that
@@ -1435,6 +1451,105 @@ void main() {
           )
           .value,
       isFalse,
+    );
+  });
+
+  testWidgets('a tab waiting on another module names it, select all ticks a '
+      'module, search finds a tab, and the panel lists what opens', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'ai_assistance',
+          'AI Assistance',
+          actions: const [
+            ('view', 'View'),
+            ('manage', 'Edit answers and settings'),
+            ('ai.view', 'AI'),
+            ('staff_bot.view', 'Staff bot'),
+          ],
+          tabs: const ['ai.view', 'staff_bot.view'],
+          requires: const {
+            'staff_bot.view': ['reviews.view'],
+          },
+        ),
+        _catalogueModule(
+          'reviews',
+          'Reviews',
+          actions: const [('view', 'View')],
+        ),
+      ],
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AI Assistance'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('action:ai_assistance.staff_bot.view')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey('requirement:ai_assistance.staff_bot.view'),
+            ),
+          )
+          .data,
+      "Won't show: also tick Reviews › View",
+    );
+    // The panel opens nothing that is waiting.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:ai_assistance')),
+        matching: find.textContaining('opens, with no tab ticked'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('select-all:ai_assistance')));
+    await tester.pumpAndSettle();
+    for (final key in [
+      'ai_assistance.manage',
+      'ai_assistance.ai.view',
+      'ai_assistance.staff_bot.view',
+    ]) {
+      expect(
+        tester.widget<CheckboxListTile>(find.byKey(ValueKey('action:$key'))).value,
+        isTrue,
+        reason: key,
+      );
+    }
+    expect(find.text('Clear all in AI Assistance'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:ai_assistance')),
+        matching: find.textContaining('AI'),
+      ),
+      findsWidgets,
+    );
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-search')),
+        matching: find.byType(TextField),
+      ),
+      'staff',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('module:reviews')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('action:ai_assistance.staff_bot.view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('action:ai_assistance.manage')),
+      findsNothing,
     );
   });
 

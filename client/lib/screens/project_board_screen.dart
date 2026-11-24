@@ -145,7 +145,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   int _total = 0;
 
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
-  bool get _canSet => widget.session.me?.can('organizations.edit') ?? false;
+  // Settings is its own grant (roles audit 2026-11-24), which declares that
+  // it needs Organization settings › Edit, the key its writes ask for.
+  bool get _canSet =>
+      (widget.session.me?.can('project_board.settings.view') ?? false) &&
+      (widget.session.me?.can('organizations.edit') ?? false);
   List<(String, String, IconData)> get _shown => [
     // Jose, 2026-11-17: parts waiting, late, and reminders.
     ('dashboard', 'Dashboard', Icons.space_dashboard_outlined),

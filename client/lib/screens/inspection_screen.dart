@@ -103,8 +103,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
           () => TestingTab(api: widget.api, session: widget.session),
         ),
       // Jose 11-23: Review QR here too, on New Inspection's grant (the
-      // registry names `new.view`); the server's POST also needs reviews.
-      if (_mayOpen('new') && widget.session.me!.reaches('reviews'))
+      // registry names `new.view`). The POST asks for nothing more, so neither
+      // does the tab (roles audit 2026-11-24: it waited on Reviews unseen).
+      if (_mayOpen('new') && can('inspection.create'))
         ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     ];
   }
