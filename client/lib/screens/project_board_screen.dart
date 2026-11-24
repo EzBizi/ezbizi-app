@@ -365,7 +365,14 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     );
   }
 
-  bool _fills(BuildContext context) => MediaQuery.sizeOf(context).height >= 600;
+  /// The room this screen is given, keyboard added back so focusing the
+  /// search never flips the layout (set by [build]).
+  double _room = double.infinity;
+
+  /// By the room the board gets, not the screen: an iPhone Duo's cover screen
+  /// is 678 tall but leaves the board ~430, and the table ran 81 px past the
+  /// bottom (mobile review 11-24).
+  bool _fills(BuildContext context) => _room >= 560;
 
   Widget _fill(Widget Function(double height) table) => _fills(context)
       ? Expanded(
@@ -1376,7 +1383,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final view = View.of(context);
+      _room = box.maxHeight + view.viewInsets.bottom / view.devicePixelRatio;
+      return _board(context);
+    },
+  );
+
+  Widget _board(BuildContext context) {
     final theme = Theme.of(context);
     final rows = _rows;
     final shown = _shown;
