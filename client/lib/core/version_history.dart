@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Automations: alerts, task updates and task changes an automation makes now say EzBizi AI and the rule name, not the person who made the rule',
       'Email: on phones, tablets and small windows an email opens full screen with Back; on short desktop windows the reading pane sits beside the list',
       'Work Hours: correction requests fit on a phone screen',
       'Inspection: Review QR shows for every role that has the New Inspection and Review QR tab, without needing Customer Experience; the phone bar slot opens it',
