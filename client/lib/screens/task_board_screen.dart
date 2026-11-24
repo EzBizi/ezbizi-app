@@ -5559,8 +5559,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _statusLabel(_board!, _statusOf(t)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      // Chaim 11-24: Monday's regular weight.
-      style: TextStyle(color: labelInk(colours.fill), fontSize: 13),
+      // Chaim 11-24: Monday's regular weight at 14 px (measured off his screenshot).
+      style: TextStyle(color: labelInk(colours.fill), fontSize: 14),
     );
 
     final editable = (_board?['statuses'] as List? ?? const []).any(
@@ -7091,7 +7091,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               _statusLabel(widget.board, _statusOf(task)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colours.ink, fontSize: 13),
+              style: TextStyle(color: colours.ink, fontSize: 14),
             ),
           ),
         ),
