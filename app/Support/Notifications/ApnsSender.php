@@ -144,6 +144,15 @@ class ApnsSender
         }
 
         if ($response->successful()) {
+            // Recorded because a 200 is Apple's acceptance, not the phone
+            // showing it (2026-11-24: Jose saw nothing for pushes Apple took).
+            // The apns-id is what Apple's own delivery log is searched by.
+            Log::info('Push accepted by APNs.', [
+                'device_token_id' => $device->getKey(),
+                'user_id' => $device->user_id,
+                'apns_id' => $response->header('apns-id'),
+            ]);
+
             return true;
         }
 

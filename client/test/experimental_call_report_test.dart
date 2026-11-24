@@ -577,7 +577,8 @@ void main() {
             'not_booked',
             'ai_booked_no_job',
             'awaiting_review',
-            'no_result',
+            'no_result_in',
+            'no_result_out',
           ],
         ),
         (
@@ -608,6 +609,24 @@ void main() {
           expect(listed(), count(part), reason: part);
         }
       }
+
+      // Trey, 2026-11-24: No result told apart by direction - our two calls
+      // out are the outgoing half, and each half lists what it counts.
+      for (final all in ['every-call', 'every-client', 'every-direction']) {
+        await tester.tap(find.byKey(ValueKey('calls-filter-$all')));
+        await tester.pumpAndSettle();
+      }
+      expect(count('no_result_out'), 2);
+      for (final half in ['no_result_in', 'no_result_out']) {
+        await tester.tap(find.byKey(ValueKey('calls-filter-$half')));
+        await tester.pumpAndSettle();
+        expect(listed(), count(half), reason: half);
+      }
+      await tester.tap(find.byKey(const ValueKey('calls-filter-all')));
+      await tester.tap(find.byKey(const ValueKey('calls-filter-inbound')));
+      await tester.pumpAndSettle();
+      expect(shows('no_result_out'), isFalse);
+      expect(shows('no_result_in'), isTrue);
     },
   );
 

@@ -49,6 +49,7 @@ class MentionField extends StatefulWidget {
 
 class _MentionFieldState extends State<MentionField> {
   List<({String id, String name})>? _people;
+  final Map<String, String> _also = {};
   String? _query;
 
   @override
@@ -94,6 +95,13 @@ class _MentionFieldState extends State<MentionField> {
               ]
             : const [],
       );
+      // "Chris" finds Kristopher (Adeline 11-24): email start, Monday name.
+      for (final p
+          in r.ok && r.data is List
+              ? (r.data as List).whereType<Map>()
+              : const <Map>[]) {
+        if (p['also'] is String) _also['${p['id']}'] = p['also'] as String;
+      }
     }
   }
 
@@ -116,7 +124,11 @@ class _MentionFieldState extends State<MentionField> {
     final matches = q == null
         ? const <({String id, String name})>[]
         : (_people ?? const <({String id, String name})>[])
-              .where((p) => p.name.toLowerCase().contains(q))
+              .where(
+                (p) =>
+                    p.name.toLowerCase().contains(q) ||
+                    (_also[p.id]?.toLowerCase().contains(q) ?? false),
+              )
               .take(6)
               .toList();
 

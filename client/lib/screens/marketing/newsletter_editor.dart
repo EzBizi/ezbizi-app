@@ -24,6 +24,7 @@ import 'newsletter_import_panel.dart';
 import 'newsletter_preflight.dart';
 import 'newsletter_studio.dart';
 import 'newsletter_templates.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The three steps of the composer, in the order a campaign is built.
 enum NewsletterStep {
@@ -3593,7 +3594,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           TextField(
             key: const ValueKey('newsletter-section-name'),
             controller: _sectionName,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Section name', isDense: true),
           ),
           SwitchListTile(

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
@@ -94,7 +96,7 @@ class MailMessageView extends StatelessWidget {
               // The header scrolls on its own past its cap, so a long subject
               // and the From picker never push the mail off a phone.
               constraints: BoxConstraints(
-                maxHeight: constraints.maxHeight * (compact ? 0.3 : 0.55),
+                maxHeight: constraints.maxHeight * 0.3,
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -564,7 +566,9 @@ class _FoldedThreadState extends State<_FoldedThread> {
           ConstrainedBox(
             // The folded lines scroll on their own past a third of the pane;
             // they hold no page, so the wheel works over them.
-            constraints: BoxConstraints(maxHeight: constraints.maxHeight / 3),
+            constraints: BoxConstraints(
+              maxHeight: math.min(constraints.maxHeight / 4, 180),
+            ),
             child: ListView(
               key: const ValueKey('email-thread-folded'),
               shrinkWrap: true,

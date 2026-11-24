@@ -533,6 +533,74 @@ void main() {
     expect(link?.update, 'upd-1');
   });
 
+  testWidgets('a notification about an update can be liked from its row', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    await _pumpWithItem(
+      tester,
+      item: {
+        ..._email,
+        'id': 'n-like',
+        'meta': {
+          'module': 'tasks',
+          'filter': null,
+          'record': {'type': 'task', 'id': 'task-1', 'update': 'upd-1'},
+        },
+      },
+      onOpenModule: (_, _, _) {},
+      posted: posted,
+    );
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('notification-menu-n-like')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Like'));
+    await tester.pumpAndSettle();
+
+    expect(posted, contains(endsWith('/tasks/task-1/updates/upd-1/like')));
+  });
+
+  // Monday parity (desk, 2026-11-24): per-row read/unread and delete, a swipe
+  // deletes, Delete all asks once more.
+  testWidgets('a row can be marked read, swiped away, and all deleted', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    await _pumpWithItem(
+      tester,
+      item: _email,
+      also: [
+        {..._email, 'id': 'n10'},
+      ],
+      onOpenModule: (_, _, _) {},
+      posted: posted,
+    );
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('notification-menu-n9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mark as read'));
+    await tester.pumpAndSettle();
+    expect(posted, contains(endsWith('/notifications/n9/read')));
+
+    await tester.drag(
+      find.byKey(const ValueKey('notification-swipe-n9')),
+      const Offset(-600, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(posted, contains(endsWith('DELETE /api/v1/notifications/n9')));
+
+    posted.clear();
+    await tester.tap(find.byKey(const Key('notifications-delete-all')));
+    await tester.pumpAndSettle();
+    expect(posted, isEmpty, reason: 'the first tap only asks');
+    await tester.tap(find.byKey(const Key('notifications-delete-all')));
+    await tester.pumpAndSettle();
+    expect(posted, ['DELETE /api/v1/notifications']);
+  });
+
   testWidgets('a link for another module waits for that module', (
     tester,
   ) async {
@@ -965,15 +1033,21 @@ Future<void> _pumpWithItem(
   List<Map<String, dynamic>>? also,
   IconData? Function(String)? iconOf,
 }) async {
+  var deleted = false;
   final api = ApiClient(
     client: MockClient((request) async {
       if (request.method == 'POST') {
         posted?.add(request.url.path);
         return _json({'data': {}});
       }
+      if (request.method == 'DELETE') {
+        posted?.add('DELETE ${request.url.path}');
+        deleted = true;
+        return _json({'data': {'deleted': 1}});
+      }
 
       return _json({
-        'data': [item, ...?also],
+        'data': [if (!deleted) item, ...?also],
         'meta': {'unread': item['read_at'] == null ? 1 : 0},
       });
     }),

@@ -224,6 +224,8 @@ Schedule::command('ezbizi:tasks-fill-from-record --all-open --done --since=15')-
 // QuickBooks -> Financials > Markets (Shoval, 11-20): what changed every six hours, 400 days by date nightly. Read only. Slow lane.
 Schedule::command('ezbizi:quickbooks-sync')->everySixHours(17)->withoutOverlapping(60);
 Schedule::command('ezbizi:quickbooks-sync --full')->dailyAt('04:10')->timezone('America/New_York')->withoutOverlapping(120);
+// Plaid -> Financials > Bank (Jose, 11-24): Plaid's webhook runs it per bank; this is the backstop. Read only. Slow lane.
+Schedule::command('ezbizi:plaid-sync')->everySixHours(23)->withoutOverlapping(60);
 Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 // Desk 11-18: four parallel senders, each on its own share of tasks (a task's rows stay in order),
@@ -237,6 +239,10 @@ foreach (range(0, 3) as $shard) {
 // every board up to 2,000 items; NW stays nightly.
 Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2000')->everyThirtyMinutes()->withoutOverlapping(25);
 Schedule::command('ezbizi:monday-parity --values')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
+// Desk 11-24: a Monday board nobody mirrored (DMV NEW) is reported within the hour.
+Schedule::command('ezbizi:monday-unmirrored')->hourly()->withoutOverlapping(30);
+// Gap review 11-24: scheduled task updates post on their minute.
+Schedule::command('ezbizi:tasks-post-scheduled-updates')->everyMinute()->withoutOverlapping(5);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
@@ -572,7 +578,7 @@ foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event)
     // With ezbizi.scheduler.leads_lane off it is placed like any other command, as before.
     $messages = str_contains((string) $event->command, 'sync-leads') && str_contains((string) $event->command, '--messages');
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity|quickbooks-sync)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync|monday-parity|quickbooks-sync|plaid-sync)(\s|\'|$)/',
         (string) $event->command,
     );
     // In the slow lane a run starts whenever the last one ends (~every 3.5 min), so a job due

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,6 +24,7 @@ import 'mail_data.dart';
 import 'message_list.dart';
 import 'message_view.dart';
 import 'reply_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Where the open conversation sits beside the list (design 137 option 1).
 enum ReadingPane { right, below, off }
@@ -141,6 +143,12 @@ class _GmailInboxState extends State<GmailInbox> {
   /// The list needs this much beside a reading pane on the right; under it
   /// the pane goes below instead.
   static const double _rightPaneNeeds = 900;
+
+  /// Window height below which "reading pane below" has no room (11-24).
+  static const double _belowNeedsHeight = 1300;
+
+  /// Window height below which no split is offered (a landscape phone).
+  static const double _splitNeedsHeight = 700;
 
   bool _loadingMailboxes = true;
   String? _mailboxesError;
@@ -398,7 +406,12 @@ class _GmailInboxState extends State<GmailInbox> {
     _loadList();
   }
 
+  /// The open mail given the whole pane from a split layout ("Open full");
+  /// closing it returns to the split (Lucas Snyder 11-24: "too compact").
+  bool _readerFull = false;
+
   void _closeReader() {
+    _readerFull = false;
     _openRow = null;
     _fromId = null;
     _open = null;
@@ -1143,6 +1156,18 @@ class _GmailInboxState extends State<GmailInbox> {
     );
   }
 
+  /// Whether a split reading pane may be offered at all: not on a phone or
+  /// tablet, and not in a narrow or short window (a landscape phone, a small
+  /// browser). Tests run as Android, so they set the platform they mean.
+  bool _splitAllowed(BuildContext context, double width) {
+    final touch =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    return !touch &&
+        width >= _rightPaneNeeds &&
+        MediaQuery.sizeOf(context).height >= _splitNeedsHeight;
+  }
+
   Widget _paneMenu() => MenuAnchor(
     menuChildren: [
       for (final (pane, label) in const [
@@ -1422,9 +1447,19 @@ class _GmailInboxState extends State<GmailInbox> {
     final open = _openRow != null;
     // Side by side that does not fit opens the mail over the whole pane, with
     // back — not a half-height reader below (Jose 11-03).
-    final pane = _pane == ReadingPane.right && width < _rightPaneNeeds
-        ? ReadingPane.off
+    // Jose 11-24: "this should not even be an option on mobile, the expanded
+    // view should be the default there". Touch-first devices and short or
+    // narrow windows open the mail full with back; the split layouts are
+    // desktop's. Lucas Snyder saw one line of mail below the list at 1205px.
+    // On a desktop too short for a reader below the list it sits beside it.
+    final wanted =
+        _pane == ReadingPane.below &&
+            MediaQuery.sizeOf(context).height < _belowNeedsHeight
+        ? ReadingPane.right
         : _pane;
+    final pane = _splitAllowed(context, width) && !(_readerFull && open)
+        ? wanted
+        : ReadingPane.off;
 
     final Widget body = switch (pane) {
       // The list stays built under the open mail, so back finds it where it
@@ -1460,9 +1495,11 @@ class _GmailInboxState extends State<GmailInbox> {
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // The mail gets two thirds: an even split left two lines of
+                  // a message under its header (Lucas Snyder 11-24).
                   Expanded(child: _list(context)),
                   const Divider(height: 1),
-                  Expanded(child: _reader(context, back: false)),
+                  Expanded(flex: 2, child: _reader(context, back: false)),
                 ],
               )
             : _list(context),
@@ -1480,7 +1517,7 @@ class _GmailInboxState extends State<GmailInbox> {
                   onPressed: () => setState(() => _drawer = true),
                 )
               : null,
-          trailing: _paneMenu(),
+          trailing: _splitAllowed(context, width) ? _paneMenu() : null,
         ),
         ?notice,
         if (_folder == 'inbox') _categoryTabs(context),
@@ -1625,6 +1662,13 @@ class _GmailInboxState extends State<GmailInbox> {
                     tooltip: 'Back to the messages',
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => setState(_closeReader),
+                  )
+                else
+                  IconButton(
+                    key: const ValueKey('email-open-full'),
+                    tooltip: 'Open full',
+                    icon: const Icon(Icons.open_in_full),
+                    onPressed: () => setState(() => _readerFull = true),
                   ),
                 IconButton(
                   tooltip: 'Archive',
@@ -1809,13 +1853,16 @@ class _GmailInboxState extends State<GmailInbox> {
         Positioned(
           right: 16,
           bottom: 16,
-          child: _composeControl(
-            (onPressed) => FloatingActionButton.extended(
-              key: const ValueKey('email-compose-fab'),
-              heroTag: null,
-              onPressed: onPressed,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Compose'),
+          // Typing a search, it stops covering the list.
+          child: FoldWhileTyping(
+            child: _composeControl(
+              (onPressed) => FloatingActionButton.extended(
+                key: const ValueKey('email-compose-fab'),
+                heroTag: null,
+                onPressed: onPressed,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Compose'),
+              ),
             ),
           ),
         ),

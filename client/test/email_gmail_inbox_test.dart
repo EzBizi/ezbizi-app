@@ -11,6 +11,8 @@ import 'package:ezbizi_client/screens/email/gmail_inbox.dart';
 import 'package:ezbizi_client/screens/email/inbox_rows.dart';
 import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/gestures.dart';
+import 'package:ezbizi_client/screens/email/message_body.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -383,9 +385,87 @@ void main() {
     expect(server.lists.last.queryParameters.containsKey('category'), isFalse);
   });
 
-  testWidgets('the reading pane setting is remembered', (tester) async {
+  /// Lucas Snyder 11-24: "I can't read my emails at all, the whole workspace
+  /// feels too compact" -- pane below, the mail had two lines under its
+  /// header. The mail gets two thirds, and Open full gives it everything.
+  testWidgets('with the pane below, the open mail gets most of the height '
+      'and can be opened full', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final server = _Server();
-    await _pump(tester, server);
+    await _pump(tester, server, size: const Size(2560, 1300));
+
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
+    await _tap(tester, find.textContaining('You received money').first);
+
+    final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
+    final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
+    expect(reader.height, greaterThan(list.height * 1.8));
+
+    await _tap(tester, find.byKey(const ValueKey('email-open-full')));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+    expect(find.byKey(const ValueKey('email-reader')), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('Back to the messages'));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-reader')), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  /// Lucas Snyder 11-24, again: "about 5% reading visibility" at 2576x1205
+  /// with the pane below. A short window puts the mail beside the list, and
+  /// the mail's body gets most of the reader.
+  for (final size in const [Size(2576, 1205), Size(1366, 768)]) {
+    testWidgets(
+      'a short window at $size on a desktop puts the mail beside the list, '
+      'its body most of the reader',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final server = _Server();
+        await _pump(tester, server, size: size);
+
+        await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+        await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
+        await _tap(tester, find.textContaining('You received money').first);
+
+        final list = tester.getRect(
+          find.byKey(const ValueKey('tour-email-list')),
+        );
+        final reader = tester.getRect(
+          find.byKey(const ValueKey('email-reader')),
+        );
+        expect(reader.left, greaterThanOrEqualTo(list.right - 1));
+
+        final body = tester.getRect(find.byType(MessageBody).first);
+        final shown = (reader.bottom - body.top).clamp(0, reader.height);
+        expect(shown / reader.height, greaterThan(0.6));
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+
+  /// Jose 11-24: "this should not even be an option on mobile, the expanded
+  /// view should be the default there". A phone or tablet has no pane
+  /// setting, and a mail opens over the list with back.
+  testWidgets('on a phone or tablet there is no pane setting and a mail '
+      'opens full', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, size: const Size(1366, 1024));
+
+    expect(find.byKey(const ValueKey('email-pane-setting')), findsNothing);
+    await _tap(tester, find.textContaining('You received money').first);
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+    expect(find.byTooltip('Back to the messages'), findsOneWidget);
+  });
+
+  testWidgets('the reading pane setting is remembered', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final server = _Server();
+    // Tall enough for a reader below the list (1300px, 11-24).
+    await _pump(tester, server, size: const Size(1500, 1400));
 
     await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
     await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
@@ -396,6 +476,7 @@ void main() {
     final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
     final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
     expect(reader.top, greaterThanOrEqualTo(list.bottom));
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('at 390×844 it is the Gmail app: nothing overflows, swipe '

@@ -22,6 +22,7 @@ import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
 import 'hours_bulk.dart';
 import 'seo_helper_pane.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
 ///
@@ -821,7 +822,7 @@ class _AddSiteFormState extends State<_AddSiteForm> {
               ),
             TextField(
               controller: _host,
-              autofocus: true,
+              autofocus: autofocusOnOpen,
               decoration: const InputDecoration(
                 labelText: 'Website address',
                 hintText: 'nj.a-1chimney.com',

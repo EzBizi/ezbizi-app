@@ -294,6 +294,36 @@ class Job extends Model implements StatesRetention
     }
 
     /**
+     * Who the job's technician is, by name (Jose, 2026-11-24: "a lot of
+     * removed account"): its scheduling technicians, else the performer
+     * unless that account was erased. Null for no one.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, string> job id => "Ana Ruiz, Tom Tech"
+     */
+    public static function technicianNames(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $named = \Illuminate\Support\Facades\DB::table('job_technicians')
+            ->join('scheduling_technicians', 'scheduling_technicians.id', '=', 'job_technicians.technician_id')
+            ->whereIn('job_technicians.job_id', $ids)->whereNotNull('scheduling_technicians.name')
+            ->where('scheduling_technicians.name', 'not like', 'Removed %')
+            ->orderBy('scheduling_technicians.name')->get(['job_technicians.job_id', 'scheduling_technicians.name'])
+            ->groupBy('job_id')->map(fn ($r) => $r->pluck('name')->unique()->implode(', '))->all();
+        $performers = self::query()->whereIn('id', array_diff($ids, array_keys($named)))->whereNotNull('performed_by_user_id')
+            ->with('performedBy:id,name')->get(['id', 'performed_by_user_id']);
+        foreach ($performers as $job) {
+            if (! User::isErasedName($job->performedBy?->name)) {
+                $named[$job->id] = $job->performedBy->name;
+            }
+        }
+
+        return $named;
+    }
+
+    /**
      * The total is what the lines come to — never what somebody typed.
      *
      * Call inside the transaction that changed a line, so a rolled-back line

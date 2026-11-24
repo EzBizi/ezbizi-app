@@ -25,4 +25,19 @@ class ReleaseTestReportTest extends TestCase
             unlink($path);
         }
     }
+
+    public function test_refuses_a_total_that_differs_from_the_listed_suite(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'ezbizi-junit-');
+        try {
+            file_put_contents($path, '<testsuites><testsuite tests="7" failures="0" errors="0"/></testsuites>');
+            foreach ([['7', 0, 'EZBIZI_BACKEND_TESTS=7'], ['8', 1, ''], ['6', 1, '']] as [$expected, $status, $output]) {
+                $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/scripts/phpunit-count.php', $path, $expected]);
+                self::assertSame($status, $process->run());
+                self::assertSame($output, trim($process->getOutput()));
+            }
+        } finally {
+            unlink($path);
+        }
+    }
 }

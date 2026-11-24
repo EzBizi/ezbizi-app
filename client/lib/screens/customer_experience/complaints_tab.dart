@@ -151,6 +151,8 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
   void initState() {
     super.initState();
     _load();
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
     // A complaint logged, moved or noted elsewhere: page one re-reads
     // quietly (the board, filters and the open one kept), and the open one
     // re-reads in place (its notes and history; the note being typed kept).
@@ -178,6 +180,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _live?.cancel();
     _debounce?.cancel();
     _note.dispose();
@@ -272,6 +275,13 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
   }
 
   // ------------------------------------------------------------- writes
+
+  /// A complaint's address (a board's Link cell, Jose 11-24) opens it.
+  void _takeLink() {
+    if (DeepLinks.pending.value?.type != 'complaint') return;
+    final link = DeepLinks.take('customer_experience');
+    if (link != null) _openRow({'id': link.id});
+  }
 
   Future<void> _openRow(Map<String, dynamic> row) async {
     setState(() {

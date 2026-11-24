@@ -65,7 +65,13 @@ class TaskBoardSettingsController extends Controller
             $this->uniqueStatusName($taskBoard, $input['name'], except: $row->id);
         }
 
-        DB::transaction(function () use ($row, $input, $request) {
+        abort_if(($input['retired'] ?? false) && ($input['is_default'] ?? $row->is_default), 422, 'The default label cannot be retired. Choose another default first.');
+
+        DB::transaction(function () use ($row, $input, $request, $taskBoard) {
+            // One default per board.
+            if ($input['is_default'] ?? false) {
+                $taskBoard->statuses()->whereKeyNot($row->id)->update(['is_default' => false]);
+            }
             $row->fill($input);
             $doneChanged = $row->isDirty('is_done');
             $this->audit->logChange('task_board.status_updated', $row, $request->user());
@@ -277,7 +283,9 @@ class TaskBoardSettingsController extends Controller
 
     public static function presentStatus(TaskStatus $s): array
     {
-        return ['id' => $s->id, 'name' => $s->name, 'colour' => $s->colour, 'position' => $s->position, 'is_done' => $s->is_done];
+        return ['id' => $s->id, 'name' => $s->name, 'colour' => $s->colour, 'position' => $s->position, 'is_done' => $s->is_done,
+            // Gap review P1: the label a new task starts on, and a label kept on its tasks but out of the pickers.
+            'is_default' => (bool) $s->is_default, 'retired' => (bool) $s->retired];
     }
 
     public static function presentColumn(TaskColumn $c): array
@@ -321,7 +329,7 @@ class TaskBoardSettingsController extends Controller
         $taken = $board->statuses()->get()
             ->contains(fn (TaskStatus $s) => $s->id !== $except && mb_strtolower($s->name) === mb_strtolower($name));
         if ($taken) {
-            throw ValidationException::withMessages(['name' => 'This board already has a status with that name.']);
+            throw ValidationException::withMessages(['name' => "There is already a status called {$name} on this board."]);
         }
     }
 
@@ -422,6 +430,8 @@ class TaskBoardSettingsController extends Controller
             'name' => [...$req, 'string', 'max:100'],
             'colour' => ['sometimes', 'nullable', 'string', 'max:16'],
             'is_done' => ['sometimes', 'boolean'],
+            'is_default' => ['sometimes', 'boolean'],
+            'retired' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];
     }

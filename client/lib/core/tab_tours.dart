@@ -59,7 +59,7 @@ const Map<String, Tour> tabTours = {
         since: 4,
         body:
             'Pick a board here. Your Personal Task Board is yours alone; '
-            'Team boards are the boards shared with you. Under All markets, '
+            'Franchise boards are the boards shared with you. Under All markets, '
             "each company's board shows every one of its markets' tasks "
             'together, each marked with its market.',
       ),
@@ -535,6 +535,17 @@ const Map<String, Tour> tabTours = {
         title: 'Markets',
         body:
             "Expenses per market from QuickBooks, by week and category, beside each market's closing rate and cost per closed job.",
+      ),
+    ],
+  ),
+  'financials/Bank': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-bank',
+        title: 'Bank',
+        body:
+            'Connect your business bank and card accounts through Plaid. See balances and search every transaction. EzBizi only reads; it never moves money.',
       ),
     ],
   ),

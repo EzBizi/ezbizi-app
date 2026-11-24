@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -102,9 +103,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Icons.science_outlined,
           () => TestingTab(api: widget.api, session: widget.session),
         ),
-      // Jose 11-23: Review QR here too, on New Inspection's grant (the
-      // registry names `new.view`); the server's POST also needs reviews.
-      if (_mayOpen('new') && widget.session.me!.reaches('reviews'))
+      // Jose 11-23: Review QR here too, on New Inspection's tab and Create
+      // (the registry names `new.view`). Jose 11-24: a ticked tab shows; the
+      // POST needs no Reviews grant, so none is asked for here.
+      if (_mayOpen('new') && can('inspection.create'))
         ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     ];
   }
@@ -130,6 +132,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-inspection-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('inspection', tab: tab.$1, label: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$1, tab.$2)],
             selected: selected,
             onSelected: (tab) => setState(() => _tab = tab),

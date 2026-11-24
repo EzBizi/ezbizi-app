@@ -184,7 +184,10 @@ void main() {
 
     final card = find.byKey(const Key('locations-detail-l-3'));
     await tester.tap(
-      find.descendant(of: card, matching: find.byTooltip('Copy the phone number')),
+      find.descendant(
+        of: card,
+        matching: find.byTooltip('Copy the phone number'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -209,7 +212,14 @@ void main() {
       {},
       locations: [
         ..._locations,
-        _location('l-9', 'Lakeshore', 'Toronto', ' Ontario ', 'M5V', '(416) 555-0199'),
+        _location(
+          'l-9',
+          'Lakeshore',
+          'Toronto',
+          ' Ontario ',
+          'M5V',
+          '(416) 555-0199',
+        ),
       ],
     );
 
@@ -240,10 +250,71 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('locations-row-l-2')),
-        matching: find.text('Akron · (330) 555-0177'),
+        matching: find.text('(330) 555-0177'),
       ),
       findsOneWidget,
     );
+    // Jose, 11-24: on a phone the address sits under the branch name.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('locations-row-l-2')),
+        matching: find.text('1 Main St, Akron, OH 44308'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('each branch shows its street address in its own column, '
+      'muted when it has none', (tester) async {
+    final none = Map<String, Object?>.of(_locations[2])
+      ..['address_line1'] = null
+      ..['city'] = null
+      ..['state'] = null
+      ..['postal_code'] = null;
+    await _pump(
+      tester,
+      const Size(1400, 900),
+      {},
+      locations: [_locations[0], _locations[1], none],
+    );
+
+    final columnTitle = find.descendant(
+      of: find
+          .ancestor(of: find.text('BRANCH'), matching: find.byType(Row))
+          .first,
+      matching: find.text('ADDRESS'),
+    );
+    expect(columnTitle, findsOneWidget);
+    final header = tester.getTopLeft(columnTitle).dx;
+    expect(header, greaterThan(tester.getTopLeft(find.text('BRANCH')).dx));
+    expect(
+      header,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: find
+                    .ancestor(
+                      of: find.text('BRANCH'),
+                      matching: find.byType(Row),
+                    )
+                    .first,
+                matching: find.text('SERVES'),
+              ),
+            )
+            .dx,
+      ),
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('locations-address-l-1'))).data,
+      '1 Main St, Warrensville Heights, OH 44128',
+    );
+    final missing = tester.widget<Text>(
+      find.byKey(const Key('locations-address-l-3')),
+    );
+    expect(missing.data, 'No address');
+    expect(missing.style?.fontStyle, FontStyle.italic);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets("Settings keeps each company's note for new dispatchers", (
@@ -264,7 +335,11 @@ void main() {
                 if (canEdit) 'scheduling.edit',
               ],
               'companies': [
-                {'id': 'co-1', 'name': 'Harbor Chimney', 'parent_company_id': null},
+                {
+                  'id': 'co-1',
+                  'name': 'Harbor Chimney',
+                  'parent_company_id': null,
+                },
               ],
             },
           });
@@ -279,7 +354,10 @@ void main() {
             'data': _locations,
             'meta': {
               'notes': [
-                {'company_id': 'co-1', 'text': 'Office lead: Dana Kim, ext 204'},
+                {
+                  'company_id': 'co-1',
+                  'text': 'Office lead: Dana Kim, ext 204',
+                },
               ],
             },
           });
@@ -334,7 +412,11 @@ void main() {
             'data': {
               ..._me,
               'companies': [
-                {'id': 'co-1', 'name': 'Harbor Chimney', 'parent_company_id': null},
+                {
+                  'id': 'co-1',
+                  'name': 'Harbor Chimney',
+                  'parent_company_id': null,
+                },
               ],
             },
           });
@@ -344,7 +426,10 @@ void main() {
             'data': _locations,
             'meta': {
               'notes': [
-                {'company_id': 'co-1', 'text': 'Office lead: Dana Kim, ext 204'},
+                {
+                  'company_id': 'co-1',
+                  'text': 'Office lead: Dana Kim, ext 204',
+                },
               ],
             },
           });
@@ -487,7 +572,14 @@ Map<String, Object?> _location(
 };
 
 final _locations = [
-  _location('l-1', 'Cleveland', 'Warrensville Heights', 'OH', '44128', '(216) 555-0142'),
+  _location(
+    'l-1',
+    'Cleveland',
+    'Warrensville Heights',
+    'OH',
+    '44128',
+    '(216) 555-0142',
+  ),
   _location('l-2', 'Akron', 'Akron', 'OH', '44308', '(330) 555-0177'),
   _location('l-3', 'Chicago', 'Chicago', 'IL', '60642', '(312) 555-0133'),
 ];

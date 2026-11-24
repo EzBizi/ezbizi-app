@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
 import 'side_panel.dart';
+import '../core/soft_keyboard.dart';
 
 /// One place a quick-search result can take you.
 typedef QuickSearchHit = ({
@@ -212,7 +213,7 @@ class _QuickSearchState extends State<QuickSearch> {
           onKeyEvent: _key,
           child: TextField(
             key: const Key('quick-search-field'),
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             focusNode: _focus,
             onChanged: _changed,
             decoration: const InputDecoration(

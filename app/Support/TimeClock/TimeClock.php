@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -125,7 +126,9 @@ final class TimeClock
      * Lift the lock screen for the rest of today without clocking in
      * (Jose, 2026-10-28). The audit row IS the record: payload() reads it
      * back, so there is no second store to drift. The person stays off the
-     * clock.
+     * clock. An Administrator's skip is NOT an audit row (Jose, 2026-11-24:
+     * "should not be saved or even recorded"): it lives in the cache until
+     * the end of their day.
      */
     public function skipLock(User $user): array
     {
@@ -133,7 +136,12 @@ final class TimeClock
             abort(403, Refusal::permission('skip the lock screen')->message());
         }
 
-        if (! $this->skippedToday($user, $this->scheduleFor($user), ViewScope::forUser($user)->settingsScope())) {
+        $schedule = $this->scheduleFor($user);
+        $scope = ViewScope::forUser($user)->settingsScope();
+        if ($user->isAdministrator()) {
+            $end = now()->timezone($this->dayZone($schedule, $scope))->endOfDay();
+            Cache::put($this->skipKey($user, $schedule, $scope), true, $end);
+        } elseif (! $this->skippedToday($user, $schedule, $scope)) {
             $this->audit->log('time_clock.lock_skipped', $user, actor: $user);
         }
 
@@ -143,7 +151,10 @@ final class TimeClock
     /** "Today" is the schedule's day, in its zone — the same day `today` describes. */
     private function skippedToday(User $user, ?array $schedule, mixed $scope): bool
     {
-        $tz = (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+        if (Cache::has($this->skipKey($user, $schedule, $scope))) {
+            return true;
+        }
+        $tz = $this->dayZone($schedule, $scope);
 
         return AuditEvent::query()
             ->where('organization_id', $user->organization_id)
@@ -152,6 +163,16 @@ final class TimeClock
             ->where('target_id', $user->getKey())
             ->where('occurred_at', '>=', now()->timezone($tz)->startOfDay()->setTimezone(config('app.timezone')))
             ->exists();
+    }
+
+    private function dayZone(?array $schedule, mixed $scope): string
+    {
+        return (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+    }
+
+    private function skipKey(User $user, ?array $schedule, mixed $scope): string
+    {
+        return 'time_clock.lock_skipped:'.$user->getKey().':'.now()->timezone($this->dayZone($schedule, $scope))->toDateString();
     }
 
     /**
@@ -303,7 +324,7 @@ final class TimeClock
                     ]);
                 }
 
-                $this->audit->log('time_clock.clocked_in', $shift);
+                $this->logShift('time_clock.clocked_in', $shift);
                 $this->events->emit(
                     'time_clock.clocked_in',
                     $user,
@@ -375,7 +396,7 @@ final class TimeClock
             $open->ended_by = $causedBy !== null ? TimeClockShift::ENDED_BY_AUTOMATION : $endedBy;
             $open->save();
 
-            $this->audit->log('time_clock.clocked_out', $open);
+            $this->logShift('time_clock.clocked_out', $open);
             // Their branch's managers hear through an Automations rule (Jose, 2026-11-13).
             if (app(ShiftFinishedNotice::class)->isManual($user)) {
                 $this->events->emit('time_clock.technician_clocked_out', $user,
@@ -498,7 +519,7 @@ final class TimeClock
 
             $shift->save();
 
-            $this->audit->log('time_clock.corrected', $shift, changes: [
+            $this->logShift('time_clock.corrected', $shift, changes: [
                 'before' => $before,
                 'after' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
@@ -581,7 +602,7 @@ final class TimeClock
             'edit_source' => $earlier->edit_source ?? $later->edit_source,
         ])->save();
 
-        $this->audit->log('time_clock.merged', $earlier, changes: [
+        $this->logShift('time_clock.merged', $earlier, changes: [
             'before' => $before,
             'after' => ['clocked_in_at' => $this->instant($earlier->clocked_in_at), 'clocked_out_at' => $this->instant($earlier->clocked_out_at)],
         ]);
@@ -603,7 +624,7 @@ final class TimeClock
         $this->assertReaches($actor, $shift->user);
 
         DB::transaction(function () use ($shift) {
-            $this->audit->log('time_clock.deleted', $shift, changes: [
+            $this->logShift('time_clock.deleted', $shift, changes: [
                 'before' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
@@ -706,7 +727,7 @@ final class TimeClock
                 'extensions' => 0,
             ]);
 
-            $this->audit->log('time_clock.added', $shift, changes: [
+            $this->logShift('time_clock.added', $shift, changes: [
                 'after' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
@@ -871,7 +892,7 @@ final class TimeClock
             $open->extensions = $open->extensions + 1;
             $open->save();
 
-            $this->audit->log('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
+            $this->logShift('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
             $this->events->emit('time_clock.extended', $user, $this->eventPayload($open));
 
             return $this->payload($user);
@@ -1195,6 +1216,21 @@ final class TimeClock
      * Carbon's own `startOfWeek()` is deliberately not used: it answers for the
      * locale, and this has to answer for a setting somebody chose.
      */
+    /**
+     * The audit row for a shift event, unless the shift is an Administrator's
+     * (Jose, 2026-11-24: "Administrator Role Accounts should not have logs").
+     * By the OWNER's role, not who did it: a technician's hours edited by an
+     * administrator are still recorded. The shift itself is unchanged.
+     */
+    private function logShift(string $action, TimeClockShift $shift, array $changes = [], array $metadata = []): void
+    {
+        $owner = $shift->relationLoaded('user') ? $shift->user : User::query()->withoutGlobalScopes()->with('role')->find($shift->user_id);
+        if ($owner?->isAdministrator()) {
+            return;
+        }
+        $this->audit->log($action, $shift, changes: $changes, metadata: $metadata);
+    }
+
     /** The start of the week $date falls in, for Payroll (2026-11-19). */
     public function weekStartFor(string $date, string $tz, string $startsOn): Carbon
     {

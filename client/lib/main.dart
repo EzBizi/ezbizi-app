@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/address.dart';
+import 'core/app_window.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deep_links.dart';
@@ -31,6 +32,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
@@ -57,6 +59,7 @@ import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
 import 'widgets/tab_help.dart';
+import 'widgets/open_in_window.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
@@ -93,7 +96,9 @@ Future<void> main() async {
   BrokenWidgetCard.install();
 
   // A paired camera-bridge PC streams on its site key, signed in or not.
-  unawaited(startCameraBridge());
+  // Once per machine: never from a second window (AppWindow).
+  if (!AppWindow.secondary) unawaited(startCameraBridge());
+  AppWindow.watchFirst();
 
   runApp(const EzBiziApp());
 }
@@ -163,14 +168,8 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Never closes the app under a live call (Jose, 2026-10-09).
     // ...and only installs on its own once a person who takes calls here has
     // set Do Not Disturb (Jose, 2026-10-09).
-    DesktopUpdater.instance.guardCalls(
-      PhoneCallService.current,
-      () => PhoneCallService.current.busy,
-      availableForCalls: () =>
-          PhoneCallService.current.presenceHasLine &&
-          PhoneCallService.current.presence != 'dnd',
-    );
-    DesktopUpdater.instance.start();
+    // The first window updates; a second one would race it for the installer.
+    if (!AppWindow.secondary) _startUpdater();
     _session.addListener(_tellUpdaterWhoIsHere);
     _staffSession.addListener(_tellUpdaterWhoIsHere);
 
@@ -187,6 +186,17 @@ class _EzBiziAppState extends State<EzBiziApp> {
     } else {
       _staffSession.restore();
     }
+  }
+
+  void _startUpdater() {
+    DesktopUpdater.instance.guardCalls(
+      PhoneCallService.current,
+      () => PhoneCallService.current.busy,
+      availableForCalls: () =>
+          PhoneCallService.current.presenceHasLine &&
+          PhoneCallService.current.presence != 'dnd',
+    );
+    DesktopUpdater.instance.start();
   }
 
   @override
@@ -393,7 +403,10 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // The lock is the server's answer, never a permission read here
       // (design 2026-09-08 §3.9). Phones never lock, whatever it says.
       if (_session.me!.timeClock.lock && ClockWindow.canLock) {
-        return LockScreen(api: _api, session: _session);
+        // One lock screen: a second window points at the first.
+        return AppWindow.secondary
+            ? _ClockInElsewhere(session: _session)
+            : LockScreen(api: _api, session: _session);
       }
 
       return HomeShell(api: _api, session: _session, address: _address);
@@ -477,12 +490,26 @@ enum _Rail { modules, pinned, staff, profile }
 const Key shellSidebarGroup = Key('shell-traversal-sidebar');
 const Key shellPageGroup = Key('shell-traversal-page');
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  /// The on-screen keyboard is up. Jose 11-24: "when the keyboard is on, you
+  /// can barely see stuff" (Leads > conversation: one message line visible).
+  /// On a phone it folds the chrome away: the company row, the state strip
+  /// and the page title. Set only when it flips, not on every frame of the
+  /// keyboard's slide.
+  bool _typing = false;
+
+  @override
+  void didChangeMetrics() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final up = views.isNotEmpty && views.first.viewInsets.bottom > 0;
+    if (up != _typing && mounted) setState(() => _typing = up);
+  }
+
   /// For Android's Back, which closes the drawer before anything else.
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
-  late final ShiftReminderController _reminder;
+  ShiftReminderController? _reminder;
   Timer? _clockPoll;
 
   /// Access changed elsewhere (an inbox granted, a role edited) reaches an
@@ -531,7 +558,7 @@ class _HomeShellState extends State<HomeShell> {
   /// class's own doc comment that the keep-alive fires unconditionally once
   /// this exists. Assigning it here forces that construction to happen
   /// exactly once, unconditionally, the moment the shell mounts.
-  late final MonitoringHeartbeat _heartbeat;
+  MonitoringHeartbeat? _heartbeat;
 
   /// This device's own periodic screen captures
   /// (2026-08-31-monitoring-screenshots). Same lifecycle as [_heartbeat] and
@@ -586,6 +613,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_quickSearchKey);
 
     // One-time tips: what this person already dismissed, and where a new
@@ -609,62 +637,10 @@ class _HomeShellState extends State<HomeShell> {
     // told, so it omits the `screenshot` capability from its beat.
     final exempt = widget.session.me?.screenMonitoringExempt ?? false;
 
-    _heartbeat = MonitoringHeartbeat(
-      widget.api,
-      screenMonitoringExempt: exempt,
-    );
-
-    // RGB lighting a manager sets in Monitoring, and the hardware inventory
-    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
-    startLighting(widget.api);
-
-    // The availability icon, given a minute hand.
-    //
-    // Do Not Disturb set on the web now reaches the desktop's SERVER state
-    // immediately, and the desktop's ICON found out only when something else
-    // made it look — which in practice meant changing tabs. Jose: "the status
-    // now syncs across devices, which is good, but only displays the change
-    // once you change tabs."
-    //
-    // I had claimed the app coming forward would cover it. It does not, and
-    // his report is what showed that: two windows side by side never leave
-    // the screen, so `AppLifecycleState.resumed` never fires and the hook
-    // watching for it can only wait. That claim is corrected where I made it.
-    //
-    // A minute is the wrong answer for a phone ringing and the right one for
-    // an icon: what it prevents is somebody reading a stale dot for the rest
-    // of the afternoon. Anything that must be immediate — a call starting or
-    // ending — already notifies in the same frame.
-    _heartbeat.onBeat = () {
-      PhoneCallService.current.presenceMayHaveChanged();
-      // A phone account that just got its first line is picked up within a
-      // minute, without a reload (Jose, 2026-11-12).
-      unawaited(PhoneCallService.current.syncAccounts());
-    };
-    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
-    // So no computer asks somebody who has the phone app to install it.
-    markPhoneAppUsed(widget.session);
-    if (!exempt) {
-      // The capture service tells the heartbeat how each attempt went, and
-      // the beat carries it to the server — otherwise a device that cannot
-      // capture at all is indistinguishable from one that has not tried yet.
-      _screenshots = ScreenshotService(
-        widget.api,
-        onOutcome: _heartbeat.reportCapture,
-      );
-      _liveView = LiveViewService(widget.api);
-      _remoteControl = RemoteControlService(widget.api);
-      _fileAccess = FileAccessService(widget.api);
-    }
-
-    _reminder = ShiftReminderController(
-      api: widget.api,
-      session: widget.session,
-      context: () => context,
-    );
-    _reminder.sync();
-    widget.session.addListener(_reminder.sync);
-    _stopClockListening = () => widget.session.removeListener(_reminder.sync);
+    // A second window (AppWindow) shows screens and nothing else: the
+    // heartbeat, monitoring, the shift reminder and the softphone run once,
+    // in the first window, or calls would ring and beats count twice.
+    if (!AppWindow.secondary) _startMachineServices(exempt);
 
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
@@ -701,15 +677,21 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    _followScope();
-    widget.session.addListener(_followScope);
+    if (!AppWindow.secondary) {
+      _followScope();
+      widget.session.addListener(_followScope);
+    }
 
     _apply(widget.address?.path);
+    // A second window names what it opened on from the first frame.
+    if (_selected case final opened? when AppWindow.secondary) {
+      _titleWindow(opened);
+    }
     // The day-before email's "Open Booked vs available" link carries its day
     // in the query, which the address bar's path drops (UI queue 147).
     // Leads opens one lead through its constructor (see [_screenFor]); every
     // other module takes the link from [DeepLinks].
-    if (DeepLinks.fromUri(Uri.base) case final link?) {
+    if (DeepLinks.fromUri(AppWindow.start ?? Uri.base) case final link?) {
       if (link.module == 'leads') {
         _leadsOpen = link.id;
       } else {
@@ -789,13 +771,75 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(phone.restart(widget.api));
   }
 
+  /// What one machine runs once: see [initState].
+  void _startMachineServices(bool exempt) {
+    _heartbeat = MonitoringHeartbeat(
+      widget.api,
+      screenMonitoringExempt: exempt,
+    );
+
+    // RGB lighting a manager sets in Monitoring, and the hardware inventory
+    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
+    startLighting(widget.api);
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat!.onBeat = () {
+      PhoneCallService.current.presenceMayHaveChanged();
+      // A phone account that just got its first line is picked up within a
+      // minute, without a reload (Jose, 2026-11-12).
+      unawaited(PhoneCallService.current.syncAccounts());
+    };
+    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
+    // So no computer asks somebody who has the phone app to install it.
+    markPhoneAppUsed(widget.session);
+    if (!exempt) {
+      // The capture service tells the heartbeat how each attempt went, and
+      // the beat carries it to the server — otherwise a device that cannot
+      // capture at all is indistinguishable from one that has not tried yet.
+      _screenshots = ScreenshotService(
+        widget.api,
+        onOutcome: _heartbeat!.reportCapture,
+      );
+      _liveView = LiveViewService(widget.api);
+      _remoteControl = RemoteControlService(widget.api);
+      _fileAccess = FileAccessService(widget.api);
+    }
+
+    _reminder = ShiftReminderController(
+      api: widget.api,
+      session: widget.session,
+      context: () => context,
+    );
+    final reminder = _reminder!;
+    reminder.sync();
+    widget.session.addListener(reminder.sync);
+    _stopClockListening = () => widget.session.removeListener(reminder.sync);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_quickSearchKey);
     Callouts.ready = false;
     _stopListening?.call();
     DeepLinks.module.removeListener(_openRequestedModule);
-    _heartbeat.dispose();
+    _heartbeat?.dispose();
     stopLighting();
     _fieldTracker?.dispose();
     // Null for an exempt session, where they were never constructed.
@@ -804,17 +848,17 @@ class _HomeShellState extends State<HomeShell> {
     _remoteControl?.dispose();
     _fileAccess?.dispose();
 
-    widget.session.removeListener(_followScope);
+    if (!AppWindow.secondary) widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
-    PhoneCallService.current.stop();
+    if (!AppWindow.secondary) PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
     _accessPoll?.cancel();
     _accessOnResume?.dispose();
     _stopClockListening?.call();
-    _reminder.dispose();
+    _reminder?.dispose();
 
     super.dispose();
   }
@@ -960,7 +1004,8 @@ class _HomeShellState extends State<HomeShell> {
     _rail = rail;
     _selected = id;
     widget.address?.push(_pathFor(rail, id));
-    unawaited(_heartbeat.enter(id));
+    unawaited(_heartbeat?.enter(id) ?? Future.value());
+    _titleWindow(id);
   });
 
   /// Another screen sending someone here ([OpenDestination]): read the id the
@@ -969,6 +1014,13 @@ class _HomeShellState extends State<HomeShell> {
     final key = DeepLinks.module.value;
     if (key == null || !mounted) return;
     DeepLinks.module.value = null;
+    // Leads opens one lead through its constructor, not DeepLinks.
+    if (key == 'leads') {
+      if (DeepLinks.take('leads') case final lead?) {
+        _show(_Rail.modules, 'leads', openLead: lead.id);
+        return;
+      }
+    }
     _open(key);
   }
 
@@ -978,7 +1030,18 @@ class _HomeShellState extends State<HomeShell> {
       _apply(Address.pathOf(id));
     });
     widget.address?.push(_pathFor(_rail, _selected));
-    if (_selected case final shown?) unawaited(_heartbeat.enter(shown));
+    if (_selected case final shown?) {
+      unawaited(_heartbeat?.enter(shown) ?? Future.value());
+      _titleWindow(shown);
+    }
+  }
+
+  /// A second window says what it shows, so two EzBizis tell apart in the
+  /// taskbar and Alt-Tab.
+  void _titleWindow(String id) {
+    if (!AppWindow.secondary) return;
+    final label = widget.session.me?.module(id)?.label ?? id;
+    unawaited(AppWindow.setTitle('EzBizi — $label'));
   }
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -1203,21 +1266,11 @@ class _HomeShellState extends State<HomeShell> {
     // source means none of them has to know the order exists. `divideAfter`
     // holds positions in it, and is empty for everybody who has never dragged
     // anything.
-    final arranged = arrangeSidebar(
-      destinations,
-      me.navigationOrder,
-      (d) => d.id,
-    );
-    // Under fixed group headings (Muse audit 1A); their order still
-    // decides the order inside each group.
-    final grouped = groupSidebar(
-      arranged.rows,
-      arranged.divideAfter,
-      (d) => d.id,
-    );
-    destinations = grouped.rows;
-    final divideAfter = grouped.divideAfter;
-    final headingAt = grouped.headingAt;
+    final laid = layoutSidebar(destinations, me.navigationOrder, (d) => d.id);
+    destinations = laid.rows;
+    final divideAfter = laid.divideAfter;
+    // Their sections (Jose 11-24), or the fixed groups until they arrange.
+    final headingAt = laid.headingAt;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -1324,6 +1377,8 @@ class _HomeShellState extends State<HomeShell> {
     IssueReporter.module = shownId;
     IssueReporter.route = Address.pathOf(shownId);
 
+    // A phone with the keyboard up keeps only the toolbar and "Viewing as".
+    final folded = !wide && _typing;
     final barStates = _BarStates(
       // A state is not a control, and states already have a home here:
       // `_timeClockNotice` is described in this file as sitting "as a
@@ -1334,12 +1389,12 @@ class _HomeShellState extends State<HomeShell> {
       // showing, the actions row runs off the right edge -- these two
       // are conditional, so the worst case is worse than any screenshot
       // of a healthy account.
-      twoFactor: !wide && me.twoFactorEnrolmentRequired,
-      readOnly: !wide && me.organization.isReadOnly,
+      twoFactor: !wide && !folded && me.twoFactorEnrolmentRequired,
+      readOnly: !wide && !folded && me.organization.isReadOnly,
       // The third state this strip's own comment anticipated. It
       // scrolls rather than wraps, so it does not push every screen
       // down a row on a phone.
-      emailConfirmation: !wide && me.emailConfirmationRequired,
+      emailConfirmation: !wide && !folded && me.emailConfirmationRequired,
       onTwoFactor: _showProfile,
       onEmailConfirmation: _resendConfirmation,
       // "View as" (design 205): on every screen, desktop and phone.
@@ -1353,7 +1408,7 @@ class _HomeShellState extends State<HomeShell> {
       // The company picker on its own row on a phone (live 0.0.0597 at 375:
       // between the hamburger and the icons it got ~20 px and drew an
       // empty box). Only when there is somewhere else to stand.
-      scope: !wide && ScopeSwitcher.hasChoices(me)
+      scope: !wide && !folded && ScopeSwitcher.hasChoices(me)
           ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
           : null,
     );
@@ -1373,11 +1428,16 @@ class _HomeShellState extends State<HomeShell> {
       // a phone the state strip and the company picker's row).
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
-          kToolbarHeight + barStates.preferredSize.height,
+          (folded ? 0 : kToolbarHeight) + barStates.preferredSize.height,
         ),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
           builder: (context) => AppBar(
+            // Typing on a phone the toolbar folds too (mobile review 11-24):
+            // menu, clock, calls, search and bell are not used mid-sentence,
+            // and 56 px is two more lines of a conversation. AppBar clips its
+            // toolbar, so at height 0 nothing in it draws or takes a tap.
+            toolbarHeight: folded ? 0 : null,
             // A rule under the top bar.
             //
             // The bar and the rail were both plain surface, so on a light theme
@@ -2258,29 +2318,33 @@ class _HomeShellState extends State<HomeShell> {
       children: [
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
-        PhoneAppBanner(session: widget.session),
-        ListenableBuilder(
-          listenable: Listenable.merge([toolbar, action]),
-          builder: (context, _) => ModulePageHeader(
-            actions: [?action.value],
-            title: destination.label,
-            subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
-            // UI queue 81: the walkthrough and the how-to video, as A1 Tools
-            // had them, each only where the tab has one.
-            beside: TabHelpButtons(
-              module: destination.id,
-              label: destination.label,
-              api: widget.api,
-              session: widget.session,
+        if (!_typing) PhoneAppBanner(session: widget.session),
+        _HiddenWhileTyping(
+          typing: _typing && MediaQuery.sizeOf(context).width < 900,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([toolbar, action]),
+            builder: (context, _) => ModulePageHeader(
+              actions: [?action.value],
+              title: destination.label,
+              subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+              // UI queue 81: the walkthrough and the how-to video, as A1 Tools
+              // had them, each only where the tab has one.
+              beside: TabHelpButtons(
+                module: destination.id,
+                label: destination.label,
+                api: widget.api,
+                session: widget.session,
+              ),
+              toolbar: toolbar.value,
             ),
-            toolbar: toolbar.value,
           ),
         ),
-        TourOffer(
-          module: destination.id,
-          label: destination.label,
-          session: widget.session,
-        ),
+        if (!_typing)
+          TourOffer(
+            module: destination.id,
+            label: destination.label,
+            session: widget.session,
+          ),
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
@@ -2318,96 +2382,46 @@ class _HomeShellState extends State<HomeShell> {
     final at = _rail == _Rail.modules
         ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
-    // One line under each icon at any width and text size (Jose,
-    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
-    // label to one line, so the bar is drawn here: a short word, scaled
-    // down to fit its slot rather than wrapped.
-    final scheme = Theme.of(context).colorScheme;
-    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
-      final on = i == at;
-      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
-      return Expanded(
-        child: Tooltip(
-          message: tip,
-          child: InkWell(
-            key: key,
-            onTap: () {
-              if (i == slots.length) {
-                _scaffoldKey.currentState?.openDrawer();
-                return;
-              }
-              final (d, tab, label) = slots[i];
-              // A tab slot: the module takes the link and opens on that tab.
-              if (tab != null) {
-                DeepLinks.open(
-                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
-                );
-              }
-              _show(_Rail.modules, d.id);
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 56,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: on ? scheme.secondaryContainer : null,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(icon, color: ink, size: 22),
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: ink,
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
+    // One shared bar with the Roles editor's preview (Jose 2026-11-24:
+    // "you can't tell stuff apart"): equal slots, readable labels, and a
+    // tab slot with its own icon.
+    return PhoneBottomBar(
       key: const Key('phone-bottom-bar'),
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              for (final (i, (d, tab, label)) in slots.indexed)
-                slot(
-                  i,
-                  d.icon,
-                  label,
-                  tab == null ? d.label : '${d.label} › $label',
-                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
-                ),
-              slot(
-                slots.length,
-                Icons.menu,
-                'More',
-                'More',
-                const Key('phone-bottom-more'),
+      selected: at,
+      items: [
+        for (final (d, tab, label) in slots)
+          () {
+            final (icon, badge) = slotIcon(d.icon, tab);
+            return PhoneBarItem(
+              icon: icon,
+              badge: badge,
+              label: label,
+              tooltip: tab == null ? d.label : '${d.label} › $label',
+              key: ValueKey(
+                'phone-bottom-${d.id}${tab == null ? '' : '-$tab'}',
               ),
-            ],
-          ),
+            );
+          }(),
+        const PhoneBarItem(
+          icon: Icons.menu,
+          label: 'More',
+          key: Key('phone-bottom-more'),
         ),
-      ),
+      ],
+      onTap: (i) {
+        if (i == slots.length) {
+          _scaffoldKey.currentState?.openDrawer();
+          return;
+        }
+        final (d, tab, label) = slots[i];
+        // A tab slot: the module takes the link and opens on that tab.
+        if (tab != null) {
+          DeepLinks.open(
+            DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+          );
+        }
+        _show(_Rail.modules, d.id);
+      },
     );
   }
 
@@ -2427,14 +2441,17 @@ class _HomeShellState extends State<HomeShell> {
         bottom: false,
         child: Builder(
           builder: (context) {
-            Widget tile(Destination d, _Rail rail) => ListTile(
-              leading: Icon(d.icon),
-              title: Text(d.label),
-              selected: _rail == rail && _selected == d.id,
-              onTap: () {
-                Navigator.of(context).pop();
-                _show(rail, d.id);
-              },
+            Widget tile(Destination d, _Rail rail) => OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: ListTile(
+                leading: Icon(d.icon),
+                title: Text(d.label),
+                selected: _rail == rail && _selected == d.id,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _show(rail, d.id);
+                },
+              ),
             );
 
             final header = Padding(
@@ -2454,6 +2471,7 @@ class _HomeShellState extends State<HomeShell> {
                     child: _SidebarArranger(
                       destinations: destinations,
                       divideAfter: divideAfter,
+                      headingAt: headingAt,
                       onDone: (order) {
                         setState(() => _arrangingDrawer = false);
                         if (order != null) onArranged(order);
@@ -3208,6 +3226,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                   ? _SidebarArranger(
                       destinations: widget.destinations,
                       divideAfter: widget.divideAfter,
+                      headingAt: widget.headingAt,
                       onDone: (order) {
                         setState(() => _arranging = false);
                         if (order != null) widget.onArranged!(order);
@@ -3479,11 +3498,16 @@ class _SidebarArranger extends StatefulWidget {
   const _SidebarArranger({
     required this.destinations,
     required this.divideAfter,
+    required this.headingAt,
     required this.onDone,
   });
 
   final List<Destination> destinations;
   final Set<int> divideAfter;
+
+  /// The section headings, where they sit (Jose 11-24: "on the re-arrange
+  /// mode you don't see the group divisions").
+  final Map<int, String> headingAt;
 
   /// The order to save, or null when nothing moved — leaving without changing
   /// anything must not write a preference.
@@ -3493,7 +3517,7 @@ class _SidebarArranger extends StatefulWidget {
   State<_SidebarArranger> createState() => _SidebarArrangerState();
 }
 
-/// One row being dragged: a module, or a divider with an identity of its own.
+/// One row being dragged: a module, a divider, or a section heading.
 ///
 /// Dividers are identical to look at and must NOT be identical to the reorder
 /// animation — every child of a ReorderableListView needs a key that is unique
@@ -3504,8 +3528,15 @@ class _ArrangeRow {
 
   _ArrangeRow.divider() : id = sidebarDivider, key = UniqueKey();
 
-  final String id;
+  _ArrangeRow.heading(String label)
+    : id = '$sidebarHeading$label',
+      key = UniqueKey();
+
+  /// A heading's id changes as it is renamed.
+  String id;
   final Key key;
+
+  bool get isHeading => isSidebarHeading(id);
 }
 
 class _SidebarArrangerState extends State<_SidebarArranger> {
@@ -3515,27 +3546,73 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
   @override
   void initState() {
     super.initState();
-    _was = sidebarOrderOf(widget.destinations, widget.divideAfter, (d) => d.id);
+    _was = sidebarSectionsOf(
+      widget.destinations,
+      widget.divideAfter,
+      widget.headingAt,
+      (d) => d.id,
+    );
     _rows = [
       for (final entry in _was)
         if (entry == sidebarDivider)
           _ArrangeRow.divider()
+        else if (isSidebarHeading(entry))
+          _ArrangeRow.heading(entry.substring(1))
         else
           _ArrangeRow(entry, ValueKey(entry)),
     ];
   }
 
-  List<String> get _order => [for (final row in _rows) row.id];
+  // A heading cleared to nothing still saves as a heading, so the sections
+  // drawn after Done are the ones on screen now.
+  List<String> get _order => [
+    for (final row in _rows)
+      row.id == sidebarHeading
+          ? '$sidebarHeading${UiStrings.t('shell.new_section')}'
+          : row.id,
+  ];
 
   void _done() {
     final order = _order;
     widget.onDone(listEquals(order, _was) ? null : order);
   }
 
+  void _reorder(int from, int to) => setState(() {
+    if (!_rows[from].isHeading) {
+      // The index a drop reports is a GAP, so moving a row downwards counts
+      // the gap it vacated. A module dropped under another heading is now in
+      // that section; nothing else records which section it is in.
+      if (to > from) to -= 1;
+      _rows.insert(to, _rows.removeAt(from));
+      return;
+    }
+    // A heading carries its section with it, and lands between sections
+    // rather than splitting one.
+    var end = from + 1;
+    while (end < _rows.length && !_rows[end].isHeading) {
+      end++;
+    }
+    if (to >= from && to <= end) return;
+    final block = _rows.sublist(from, end);
+    _rows.removeRange(from, end);
+    if (to > end) to -= block.length;
+    bool edge(int i) => i == 0 || i == _rows.length || _rows[i].isHeading;
+    while (!edge(to)) {
+      to += to < from ? -1 : 1;
+    }
+    _rows.insertAll(to, block);
+  });
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final labels = {for (final d in widget.destinations) d.id: d};
+    final small = TextButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      textStyle: theme.textTheme.labelMedium,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3543,28 +3620,37 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextButton.icon(
-                  // After the first row, not at the end.
-                  //
-                  // A rule needs something on both sides to draw at all, so a
-                  // new one appended to the bottom is one you add, see in the
-                  // list, press Done on, and never see again. Here it is legal
-                  // the moment it exists, and on screen without scrolling.
-                  onPressed: () => setState(
-                    () => _rows.insert(
-                      math.min(1, _rows.length),
-                      _ArrangeRow.divider(),
+                child: Wrap(
+                  children: [
+                    TextButton.icon(
+                      // A new section goes on top, empty; drag modules in.
+                      onPressed: () => setState(
+                        () => _rows.insert(
+                          0,
+                          _ArrangeRow.heading(UiStrings.t('shell.new_section')),
+                        ),
+                      ),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: Text(UiStrings.t('shell.add_section')),
+                      style: small,
                     ),
-                  ),
-                  icon: const Icon(Icons.horizontal_rule, size: 16),
-                  label: Text(UiStrings.t('shell.add_divider')),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    alignment: Alignment.centerLeft,
-                    textStyle: theme.textTheme.labelMedium,
-                  ),
+                    TextButton.icon(
+                      // After the first module, where a rule is legal the
+                      // moment it exists and on screen without scrolling.
+                      onPressed: () => setState(() {
+                        final first = _rows.indexWhere(
+                          (r) => !r.isHeading && r.id != sidebarDivider,
+                        );
+                        _rows.insert(first + 1, _ArrangeRow.divider());
+                      }),
+                      icon: const Icon(Icons.horizontal_rule, size: 16),
+                      label: Text(UiStrings.t('shell.add_divider')),
+                      style: small,
+                    ),
+                  ],
                 ),
               ),
               TextButton(
@@ -3578,18 +3664,13 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           child: ReorderableListView.builder(
             padding: const EdgeInsets.only(bottom: 12),
             itemCount: _rows.length,
-            onReorder: (from, to) => setState(() {
-              // The index a drop reports is a GAP, so moving a row downwards
-              // counts the gap it vacated. Without this every downward drag
-              // lands one row short of where it was dropped.
-              if (to > from) to -= 1;
-              _rows.insert(to, _rows.removeAt(from));
-            }),
+            onReorder: _reorder,
             itemBuilder: (context, i) {
               final row = _rows[i];
               if (row.id == sidebarDivider) {
                 return _dividerRow(context, i, key: row.key);
               }
+              if (row.isHeading) return _headingRow(context, i, row);
               final destination = labels[row.id];
 
               return ListTile(
@@ -3609,6 +3690,48 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           ),
         ),
       ],
+    );
+  }
+
+  /// A section heading: its name, editable in place, a way to remove it (its
+  /// modules join the section above), and a handle that moves the section.
+  Widget _headingRow(BuildContext context, int i, _ArrangeRow row) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      key: row.key,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              initialValue: row.id.substring(1),
+              onChanged: (v) => row.id = '$sidebarHeading${v.trim()}',
+              inputFormatters: [LengthLimitingTextInputFormatter(40)],
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: UiStrings.t('shell.section_name'),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: UiStrings.t('shell.remove_section'),
+            onPressed: () => setState(() => _rows.removeAt(i)),
+          ),
+          ReorderableDragStartListener(
+            index: i,
+            child: const Icon(Icons.drag_handle),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3684,8 +3807,15 @@ Widget _rail(
     destinations: destinations
         .map(
           (d) => NavigationRailDestination(
-            icon: Icon(d.icon),
-            label: _railLabel(context, d.label, query),
+            // Right-click: "Open in new window" (AppWindow).
+            icon: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: Icon(d.icon),
+            ),
+            label: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: _railLabel(context, d.label, query),
+            ),
           ),
         )
         .toList(),
@@ -3834,3 +3964,106 @@ String barLabel(String id, String label) =>
       'customer_experience': 'Experience',
     }[id] ??
     (label.length <= 10 ? label : label.split(' ').first);
+
+/// A second window while the clock is locked (AppWindow): one lock screen,
+/// in the first window. This one says where to go and opens again on its own
+/// once the clock is in.
+class _ClockInElsewhere extends StatefulWidget {
+  const _ClockInElsewhere({required this.session});
+
+  final Session session;
+
+  @override
+  State<_ClockInElsewhere> createState() => _ClockInElsewhereState();
+}
+
+class _ClockInElsewhereState extends State<_ClockInElsewhere> {
+  late final Timer _poll = Timer.periodic(
+    const Duration(seconds: 15),
+    (_) => widget.session.refresh(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _poll;
+  }
+
+  @override
+  void dispose() {
+    _poll.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    key: const ValueKey('clock-in-elsewhere'),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_clock_outlined, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Clock in from your main EzBizi window.',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'This window opens again by itself once you are clocked in.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Folds [child] away while the phone keyboard is up, unless the focus is in
+/// it (a header search being typed into stays). Its state is kept, so a typed
+/// search survives the fold.
+class _HiddenWhileTyping extends StatefulWidget {
+  const _HiddenWhileTyping({required this.typing, required this.child});
+
+  final bool typing;
+  final Widget child;
+
+  @override
+  State<_HiddenWhileTyping> createState() => _HiddenWhileTypingState();
+}
+
+class _HiddenWhileTypingState extends State<_HiddenWhileTyping> {
+  final _focus = FocusNode(
+    debugLabel: 'Hidden while typing',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_changed);
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _focus,
+    child: Visibility(
+      visible: !widget.typing || _focus.hasFocus,
+      maintainState: true,
+      child: widget.child,
+    ),
+  );
+}

@@ -130,6 +130,7 @@ final class ConnectionLiveness
             SocialProvider::Mailchimp->value => fn (SocialConnection $c) => self::mailchimp($c),
             SocialProvider::Monday->value => fn (SocialConnection $c) => self::monday($c),
             SocialProvider::QuickBooks->value => fn (SocialConnection $c) => self::quickBooks($c),
+            SocialProvider::Plaid->value => fn (SocialConnection $c) => self::plaid($c),
         ];
     }
 
@@ -344,6 +345,31 @@ final class ConnectionLiveness
         }
 
         return $name !== null ? Liveness::alive() : Liveness::unknown('QuickBooks answered without naming the company.');
+    }
+
+    /**
+     * Plaid: the bank login itself (/item/get). An Item that carries an error
+     * the person must fix (ITEM_LOGIN_REQUIRED and the like) is refused, so the
+     * card says Reconnect; a healthy one is alive.
+     */
+    private static function plaid(SocialConnection $c): Liveness
+    {
+        try {
+            $item = app(\App\Support\Financials\Plaid\PlaidClient::class)->forItem($c, 'item/get');
+        } catch (\App\Support\Financials\Plaid\PlaidRefused $e) {
+            return Liveness::refused($e->getMessage());
+        } catch (\Throwable $e) {
+            return Liveness::unknown('Plaid did not answer: '.mb_substr($e->getMessage(), 0, 160));
+        }
+
+        $code = $item['item']['error']['error_code'] ?? null;
+        if (is_string($code) && $code !== '') {
+            return in_array($code, \App\Support\Financials\Plaid\PlaidClient::RELINK, true)
+                ? Liveness::refused(\App\Support\Financials\Plaid\PlaidRefused::RELINK)
+                : Liveness::unknown('Plaid reports '.$code.' for this bank.');
+        }
+
+        return isset($item['item']['item_id']) ? Liveness::alive() : Liveness::unknown('Plaid answered without the bank login.');
     }
 
     private static function stored(SocialConnection $c, string $key): ?string

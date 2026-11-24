@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -13,6 +14,7 @@ import 'scheduling/locations_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_roster.dart';
+import 'scheduling/zip_reports.dart';
 import 'settings_screen.dart';
 
 /// Scheduling: Availability, the Schedule board, and Settings.
@@ -246,6 +248,10 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
           color: theme.colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-scheduling-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('scheduling', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: _select,
@@ -297,6 +303,18 @@ class SchedulingSettings extends StatefulWidget {
 class _SchedulingSettingsState extends State<SchedulingSettings> {
   int _tab = 0;
   final Set<int> _shown = {0};
+  int _wrongZips = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The open-report badge shows before the tab is opened.
+    widget.api.get('/scheduling/zip-reports').then((r) {
+      if (mounted && r.ok) {
+        setState(() => _wrongZips = (r.body['meta'] as Map?)?['open'] ?? 0);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -348,6 +366,17 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
             visible: visible,
           ),
         ),
+      // Nelly Escobar, suggestion 01a20e5c (Jose 11-24): reported wrong ZIPs.
+      (
+        'Wrong ZIPs',
+        Icons.flag_outlined,
+        (visible) => ZipReportsSettings(
+          api: widget.api,
+          session: widget.session,
+          visible: visible,
+          onCount: (n) => setState(() => _wrongZips = n),
+        ),
+      ),
       // The suggested-availability radius and look-ahead (Jose, 2026-10-13:
       // "make it so i can change that in the app as well on the scheduling
       // settings"): the Settings rows of the scheduling group, as Field's
@@ -371,6 +400,9 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
           key: const ValueKey('tour-scheduling-settings-tabs'),
           level: TabLevel.secondary,
           labels: [for (final t in tabs) (t.$1, t.$2)],
+          missing: [
+            for (final t in tabs) t.$1 == 'Wrong ZIPs' ? _wrongZips : 0,
+          ],
           selected: _tab,
           onSelected: (i) => setState(() {
             _tab = i;

@@ -958,9 +958,11 @@ class JobsController extends Controller
                 'qty' => $line->qty,
                 'amount_minor' => $line->amount_minor,
             ])->all()] : []),
-            'performed_by' => $job->performedBy
+            // An erased performer is no one (Jose, 2026-11-24: "removed account").
+            'performed_by' => $job->performedBy && ! User::isErasedName($job->performedBy->name)
                 ? ['id' => $job->performed_by_user_id, 'name' => $job->performedBy->name]
                 : null,
+            'technician_name' => Job::technicianNames([$job->id])[$job->id] ?? null,
             'earned_at' => $job->earned_at?->toIso8601String(),
             'created_at' => $job->created_at->toIso8601String(),
         ] + $this->materialsFor($job) + $this->inspectionsFor($job);

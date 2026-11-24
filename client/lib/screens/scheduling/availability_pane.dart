@@ -18,6 +18,7 @@ import '../../widgets/error_note.dart';
 import 'availability_calendar.dart';
 import '../../widgets/suggest_search.dart';
 import 'availability_suggestion.dart';
+import 'zip_reports.dart';
 
 /// Availability — "When can we come out?"
 ///
@@ -657,13 +658,27 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              heading,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: muted,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    heading,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (zipIn(_suggestionZip ?? _search.text) case final zip?)
+                  ReportWrongZipButton(
+                    api: widget.api,
+                    zip: zip,
+                    areaId: area['area_id']?.toString(),
+                    areaName: area['area_name']?.toString(),
+                    compact: true,
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             _office(theme, area),

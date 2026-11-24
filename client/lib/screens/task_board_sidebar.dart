@@ -641,6 +641,8 @@ class _BoardTreeState extends State<BoardTree> {
               if (widget.docked)
                 IconButton(
                   key: const Key('tasks-boards-collapse'),
+                  // Compact, so a narrow sidebar's search keeps its words (Chevel 11-24).
+                  visualDensity: VisualDensity.compact,
                   tooltip: 'Hide boards',
                   icon: const Icon(Icons.keyboard_double_arrow_left, size: 18),
                   onPressed: () => _collapse(true),
@@ -1132,7 +1134,7 @@ class _BoardTreeState extends State<BoardTree> {
       if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('shared', 'Team boards', asHeader: true, [
+      ...group('shared', 'Franchise boards', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),

@@ -21,7 +21,9 @@ use App\Models\TaskStatus;
 use App\Models\User;
 use App\Support\Integrations\DisconnectCode;
 use App\Support\Notes\NoteActivity;
+use App\Support\Reports\Xlsx;
 use App\Support\Scoping\OwnedScope;
+use App\Support\Tasks\PeopleAliases;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Time\ViewTimezone;
@@ -229,6 +231,8 @@ class TaskBoardsController extends Controller
         $assignable = $this->boards->assignable($taskBoard);
         $withPhoto = User::query()->whereIn('id', $assignable->pluck('id'))
             ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
+        // Other words each is found by in the picker (Adeline 11-24: "Chris").
+        $also = PeopleAliases::of($assignable);
 
         return response()->json(['data' => [
             'id' => $taskBoard->id,
@@ -266,10 +270,13 @@ class TaskBoardsController extends Controller
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             // has_avatar: a face without a photo is not asked for one (each was a 404).
+            // Two active accounts of one name (Artem Maliuk, Jose 11-24) say which is which.
             'assignable' => $assignable->map(fn ($u) => [
                 'id' => $u->id,
-                'name' => $u->name,
+                'name' => $assignable->where('name', $u->name)->count() > 1
+                    ? $u->name.' · '.User::query()->whereKey($u->id)->value('email') : $u->name,
                 'has_avatar' => isset($withPhoto[(string) $u->id]),
+                'also' => $also[(string) $u->id] ?? null,
             ])->all(),
             'tasks' => $tasks->map($present)
                 ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [
@@ -445,6 +452,92 @@ class TaskBoardsController extends Controller
         return response()->json([
             'data' => $tasks->map(fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0])->all(),
             'meta' => array_diff_key($page, ['ids' => 0]),
+        ]);
+    }
+
+    /**
+     * GET task-boards/{board}/search?q= (Natalie 11-24, 01a20df2): the board's
+     * tasks, open and done, whose title or any column holds q: an option by
+     * its label, a number by its digits ("600025660" finds "600-025-660").
+     * The board shows only a page per group, so its search asks here too.
+     */
+    public function search(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']])['q']);
+        $like = '%'.addcslashes($q, '%_\\').'%';
+        $digits = preg_match('/^[\d\s\-()#.]+$/', $q) ? preg_replace('/\D/', '', $q) : '';
+        $options = [];
+        foreach (TaskColumn::query()->where('board_id', $taskBoard->id)->whereIn('type', TaskColumn::WITH_OPTIONS)->get() as $c) {
+            foreach ($c->options() as $o) {
+                if (mb_stripos((string) ($o['label'] ?? ''), $q) !== false) {
+                    $options[] = (string) $o['id'];
+                }
+            }
+        }
+        $values = TaskColumnValue::query()->select('task_id')
+            ->whereIn('column_id', TaskColumn::query()->select('id')->where('board_id', $taskBoard->id))->where(function ($w) use ($like, $digits, $options) {
+                $w->where('value_text', 'like', $like);
+                if (strlen($digits) >= 3) {
+                    // ponytail: a scan of the board's values, an index if boards outgrow it
+                    $w->orWhereRaw("REGEXP_REPLACE(value_text, '[^0-9]', '') LIKE ?", ['%'.$digits.'%']);
+                }
+                $options && $w->orWhereIn('value_text', $options);
+            });
+        $tasks = $this->ownTasks($taskBoard, SensitiveTasks::machineReader($request->user()))
+            ->where(fn ($w) => $w->where('title', 'like', $like)->orWhereIn('id', $values))
+            ->limit(200)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => TasksController::present($t))->all()]);
+    }
+
+    /**
+     * GET task-boards/{board}/export (Monday's Export to Excel, gap review P1):
+     * the whole board, one group (group_id) or the chosen tasks (ids[]), one
+     * row per task as the board shows it: labels by name, people by name.
+     */
+    public function export(Request $request, TaskBoard $taskBoard): Response
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'ids' => ['sometimes', 'array', 'max:5000'],
+            'ids.*' => ['uuid'],
+        ]);
+        $columns = $taskBoard->columns()->orderBy('position')->get();
+        $tasks = $this->ownTasks($taskBoard, SensitiveTasks::machineReader($request->user()))
+            ->with(['group', 'values'])
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('group_id', $g))
+            ->when($input['ids'] ?? null, fn ($q, $ids) => $q->whereIn('id', $ids))
+            ->get();
+        $names = User::query()->pluck('name', 'id')->mapWithKeys(fn ($n, $id) => [(string) $id => (string) $n])->all();
+        $text = function (mixed $v, TaskColumn $c) use ($names): mixed {
+            $labels = collect($c->options())->pluck('label', 'id')->all();
+            $one = fn ($x) => is_scalar($x) ? ($labels[(string) $x] ?? $names[(string) $x] ?? $x) : json_encode($x);
+
+            return match (true) {
+                $v === null => '',
+                is_array($v) && isset($v['label']) => (string) $v['label'],
+                is_array($v) && isset($v['from']) => trim(($v['from'] ?? '').' – '.($v['to'] ?? ''), ' –'),
+                is_array($v) => implode(', ', array_map($one, $v)),
+                default => $one($v),
+            };
+        };
+        $rows = [['Task', 'Group', 'Status', 'Owners', 'Due', ...$columns->pluck('name')->all()]];
+        foreach ($tasks as $t) {
+            $byColumn = $t->values->keyBy('column_id');
+            $rows[] = [
+                (string) $t->title, (string) $t->group?->name, (string) $t->statusRow?->name,
+                $t->owners->map(fn ($o) => $o->user?->name)->filter()->implode(', '),
+                $t->due_on?->toDateString() ?? '',
+                ...$columns->map(fn (TaskColumn $c) => $t->sensitive ? '' : $text(isset($byColumn[$c->id]) ? TasksController::valueOf($byColumn[$c->id]) : null, $c))->all(),
+            ];
+        }
+        $name = trim((string) preg_replace('/[^\w\- ]+/u', '', $taskBoard->name)) ?: 'Board';
+
+        return response(Xlsx::write([mb_substr($name, 0, 31) => $rows]), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$name.'.xlsx"',
         ]);
     }
 

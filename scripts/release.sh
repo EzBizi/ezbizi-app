@@ -32,7 +32,7 @@
 # what is live -- it is whether the publisher has actually stopped:
 #
 #   taskkill //F //IM flutter_tester.exe    # and dart.exe
-#   ssh app "pgrep -fa 'vendor/bin/phpunit'"          # the remote gate
+#   ssh app "pgrep -fa 'vendor/bin/(phpunit|paratest)'"   # the remote gate
 #   ssh app "flock -n /opt/ezbizi-test/.deploy-gate.lock -c true"
 #         ^ a dead run holds this for an hour and the next gate waits on it
 #

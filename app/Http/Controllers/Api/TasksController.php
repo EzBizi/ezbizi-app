@@ -7,8 +7,10 @@ use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\NoteRead;
 use App\Models\Task;
 use App\Models\TaskActivity;
+use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
@@ -22,10 +24,12 @@ use App\Support\Files\UploadLimits;
 use App\Support\Notes\NoteActivity;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
 use App\Support\Tasks\TaskWriter;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -90,8 +94,21 @@ class TasksController extends Controller
     {
         $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'updates.attachments', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
+        // Monday's seen count: who has read the task since each update was written.
+        $reads = NoteRead::query()->where('subject_type', 'task')->where('subject_id', $task->id)->pluck('last_read_at', 'user_id');
+        $seen = [];
+        foreach ($task->updates as $u) {
+            $seen[(string) $u->id] = $reads->filter(fn ($at, $who) => (string) $who !== (string) $u->user_id && $u->created_at !== null && $at >= $u->created_at)->keys()->all();
+        }
+
+        // Chaim 11-24: the Files tab lists the file columns' files too.
+        $fileIds = $task->values->filter(fn ($v) => $v->column?->type === 'files')
+            ->flatMap(fn ($v) => (array) (json_decode((string) $v->value_text, true) ?: []))->filter()->unique()->values();
+        $columnFiles = $fileIds->isEmpty() ? collect() : Attachment::query()->whereKey($fileIds)->get();
+
         return self::present($task, $reveal) + [
-            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all() : [],
+            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u, $seen))->all() : [],
+            'column_files' => $reveal ? $columnFiles->map(fn (Attachment $a) => self::presentAttachment($a))->values()->all() : [],
         ];
     }
 
@@ -100,30 +117,47 @@ class TasksController extends Controller
      * (GET attachments/{id}, same bearer token, board `view` decides);
      * `?inline=1` opens an image or a PDF in place.
      */
-    public static function presentUpdate(TaskUpdate $u): array
+    /**
+     * @param  array<string, list<string>>  $seen  update id => who (besides its author) has read the task since it was written
+     */
+    public static function presentUpdate(TaskUpdate $u, array $seen = []): array
     {
+        $likes = array_values((array) ($u->likes ?? []));
+
         return [
             'id' => $u->id,
-            'body' => (string) SensitiveTasks::open($u->body),
+            // Chaim 11-24 (Monday's panel): a reply hangs under its update.
+            'parent_id' => $u->parent_update_id,
+            'likes' => count($likes),
+            'liked' => ($me = request()->user()) !== null && in_array((string) $me->id, $likes, true),
+            'seen' => count($seen[(string) $u->id] ?? []),
+            'following' => $me !== null && in_array((string) $me->id, array_values((array) ($u->followers ?? [])), true),
+            'bookmarked' => $me !== null && in_array((string) $me->id, array_values((array) ($u->bookmarks ?? [])), true),
+            'scheduled_for' => $u->scheduled_for?->toIso8601String(),
+            // A reply threaded under its update needs no "↳ " mark of its own.
+            'body' => $u->parent_update_id !== null ? (string) preg_replace('/^↳ /u', '', (string) SensitiveTasks::open($u->body)) : (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->sender_label ?? $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
             'edited_at' => $u->edited_at?->toIso8601String(),
             // Row 43: its author edits; its author or an Administrator deletes.
-            'can_edit' => ($me = request()->user()) !== null && $u->user_id === $me->id,
+            'can_edit' => $me !== null && $u->user_id === $me->id,
             'can_delete' => $me !== null && ($u->user_id === $me->id || $me->isAdministrator()),
-            'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
-                $url = url("/api/v1/attachments/{$a->id}");
+            'attachments' => $u->attachments->sortBy('created_at')->values()->map(fn (Attachment $a) => self::presentAttachment($a))->all(),
+        ];
+    }
 
-                return [
-                    'id' => $a->id,
-                    'name' => $a->realName(),
-                    'mime' => $a->mime,
-                    'size' => (int) $a->size_bytes,
-                    'url' => $url,
-                    'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                    'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                ];
-            })->all(),
+    public static function presentAttachment(Attachment $a): array
+    {
+        $url = url("/api/v1/attachments/{$a->id}");
+
+        return [
+            'id' => $a->id,
+            'name' => $a->realName(),
+            'mime' => $a->mime,
+            'size' => (int) $a->size_bytes,
+            'url' => $url,
+            'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
+            'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
         ];
     }
 
@@ -457,6 +491,65 @@ class TasksController extends Controller
         return response()->noContent();
     }
 
+    /** POST tasks/{task}/updates/{update}/bookmark: save it to find again, or unsave (Monday's Bookmarked). */
+    public function bookmarkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->bookmarks ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['bookmarks' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['bookmarked' => in_array($me, $who, true)]]);
+    }
+
+    /** POST tasks/{task}/updates/{update}/follow: be told of its replies, or stop (Monday's bell). */
+    public function followUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->followers ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['followers' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['following' => in_array($me, $who, true)]]);
+    }
+
+    /**
+     * POST tasks/{task}/updates/{update}/check {line}: tick or untick the
+     * checklist item on that line of the update (Monday's update checklist:
+     * lines starting with a box). Anyone who may work the task may tick.
+     */
+    public function checkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('update', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $line = (int) $request->validate(['line' => ['required', 'integer', 'min:0', 'max:500']])['line'];
+        $lines = explode("\n", (string) SensitiveTasks::open($update->body));
+        abort_unless(isset($lines[$line]) && preg_match('/^(☐|☑) /u', $lines[$line]), 422, 'That line is not a checklist item.');
+        $lines[$line] = (str_starts_with($lines[$line], '☐') ? '☑' : '☐').mb_substr($lines[$line], 1);
+        $body = implode("\n", $lines);
+        $update->forceFill(['body' => $task->sensitive ? SensitiveTasks::seal($body) : $body])->saveQuietly();
+        app(MondayOutbox::class)->record($task, ['update_edit'], $update);
+
+        return response()->json(['data' => self::presentUpdate($update->fresh()->load(['user:id,name', 'attachments']))]);
+    }
+
+    /** POST tasks/{task}/updates/{update}/like: like it, or take the like back (Monday's thumbs up). */
+    public function likeUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $likes = array_values((array) ($update->likes ?? []));
+        $likes = in_array($me, $likes, true) ? array_values(array_diff($likes, [$me])) : [...$likes, $me];
+        $update->forceFill(['likes' => $likes ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['likes' => count($likes), 'liked' => in_array($me, $likes, true)]]);
+    }
+
     public function storeUpdate(Request $request, Task $task): JsonResponse
     {
         $this->authorize('update', $task);
@@ -477,6 +570,9 @@ class TasksController extends Controller
             'files.*' => ['file', 'mimes:'.implode(',', $extensions), 'max:'.self::UPDATE_MAX_KB],
             'mentions' => ['sometimes', 'array', 'max:50'],
             'mentions.*' => ['uuid'],
+            'parent_id' => ['sometimes', 'nullable', 'uuid'],
+            // Monday's scheduled update: posted at this time, not before.
+            'post_at' => ['sometimes', 'nullable', 'date', 'after:now'],
         ], [
             'body.required_without' => 'Write something or attach a file.',
             'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
@@ -492,9 +588,14 @@ class TasksController extends Controller
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
             // A mention on a sensitive task says only that there is something to read.
             app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
-            $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
-                $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
-            $update = $this->writer->comment($task, $request->user(), $body, $mentions);
+            // A scheduled update names its people now and tells them when it posts.
+            $mentions = ! empty($input['post_at']) ? array_values($input['mentions'] ?? [])
+                : app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
+                    $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
+            // A reply hangs under a top update of this same task.
+            $parent = empty($input['parent_id']) ? null : TaskUpdate::query()->where('task_id', $task->id)->whereNull('parent_update_id')->findOrFail($input['parent_id']);
+            $update = $this->writer->comment($task, $request->user(), $body, $mentions, $parent,
+                empty($input['post_at']) ? null : CarbonImmutable::parse($input['post_at']));
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
             }
@@ -570,6 +671,129 @@ class TasksController extends Controller
                 'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
                 'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
                 'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);
+    }
+
+    /**
+     * GET task-updates (Monday's update feed, gap review P1): the updates on
+     * every board this person sees, newest first, 50 a page (before=). filter
+     * mentions: only those naming them; unread: only those after their read
+     * mark; board_id narrows to one board. meta.boards counts per board.
+     */
+    public function feed(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'filter' => ['sometimes', 'in:all,mentions,bookmarked,scheduled'],
+            'unread' => ['sometimes', 'boolean'],
+            'board_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->pluck('name', 'id');
+        $base = TaskUpdate::query()
+            ->join('tasks', 'tasks.id', '=', 'task_updates.task_id')
+            ->whereIn('tasks.board_id', $boards->keys())
+            ->whereNull('tasks.deleted_at')
+            ->when(SensitiveTasks::machineReader($me), fn ($q) => $q->where('tasks.sensitive', false))
+            ->when(($input['filter'] ?? 'all') === 'mentions', fn ($q) => $q->whereJsonContains('task_updates.mentions', (string) $me->id))
+            ->when(($input['filter'] ?? 'all') === 'bookmarked', fn ($q) => $q->whereJsonContains('task_updates.bookmarks', (string) $me->id))
+            // Scheduled: my own, not posted yet; every other tab: only what is posted.
+            ->when(($input['filter'] ?? 'all') === 'scheduled',
+                fn ($q) => $q->where('task_updates.user_id', $me->id)->where('task_updates.scheduled_for', '>', now()),
+                fn ($q) => $q->where('task_updates.created_at', '<=', now()))
+            ->when($request->boolean('unread'), fn ($q) => $q->where('task_updates.user_id', '!=', $me->id)
+                ->whereRaw('task_updates.created_at > COALESCE((SELECT r.last_read_at FROM note_reads r WHERE r.subject_type = ? AND r.subject_id = task_updates.task_id AND r.user_id = ?), ?)', ['task', $me->id, '1970-01-01']));
+        $counts = (clone $base)->selectRaw('tasks.board_id as b, COUNT(*) as c')->groupBy('tasks.board_id')->pluck('c', 'b');
+        $rows = (clone $base)
+            ->when($input['board_id'] ?? null, fn ($q, $b) => $q->where('tasks.board_id', $b))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_updates.created_at', '<', $b))
+            ->select('task_updates.*', 'tasks.title as task_title', 'tasks.board_id as task_board_id', 'tasks.sensitive as task_sensitive')
+            ->with(['user:id,name', 'attachments'])
+            ->latest('task_updates.created_at')->limit(50)->get();
+
+        return response()->json([
+            'data' => $rows->map(fn (TaskUpdate $u) => self::presentUpdate($u) + [
+                'task_id' => $u->task_id, 'task' => (string) $u->getAttribute('task_title'),
+                'board_id' => $u->getAttribute('task_board_id'), 'board' => (string) ($boards[$u->getAttribute('task_board_id')] ?? ''),
+            ] + ($u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE] : []))->values(),
+            'meta' => ['boards' => $counts->map(fn ($c, $b) => ['id' => $b, 'name' => (string) ($boards[$b] ?? ''), 'count' => (int) $c])->values()],
+        ]);
+    }
+
+    /**
+     * GET my-work (Monday's My Work, gap review P1): the open tasks this
+     * person owns on every board they see, with each task's board, for the
+     * client to bucket by due day. done=1 adds the last 30 days' done ones.
+     */
+    public function myWork(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->get(['id', 'name', 'kind'])->keyBy('id');
+        $tasks = Task::query()->with(self::WITH)->withCount(self::counts())
+            ->whereIn('board_id', $boards->keys())
+            ->where(fn ($q) => $q->where('assignee_user_id', $me->id)
+                ->orWhereIn('id', TaskAssignee::query()->select('task_id')->where('user_id', $me->id)))
+            ->when(! $request->boolean('done'), fn ($q) => $q->whereNull('completed_at'),
+                fn ($q) => $q->where(fn ($w) => $w->whereNull('completed_at')->orWhere('completed_at', '>=', now()->subDays(30))))
+            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(1000)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => self::present($t) + [
+            'board_name' => $boards[$t->board_id]?->kind === 'user' ? 'My board' : (string) $boards[$t->board_id]?->name,
+        ])->values()]);
+    }
+
+    /** POST task-updates/read-all: every task this person sees, read now (the feed's Mark all as read). */
+    public function feedReadAll(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $ids = Task::query()->whereIn('board_id', app(TaskBoards::class)->visibleTo($me)->select('id'))
+            ->whereIn('id', TaskUpdate::query()->select('task_id')->where('created_at', '>=', now()->subDays(90)))->pluck('id');
+        foreach ($ids as $id) {
+            NoteRead::query()->updateOrCreate(
+                ['user_id' => $me->id, 'subject_type' => 'task', 'subject_id' => $id],
+                ['last_read_at' => now(), 'organization_id' => $me->organization_id],
+            );
+        }
+
+        return response()->json(['data' => ['read' => $ids->count()]]);
+    }
+
+    /**
+     * GET task-boards/{board}/activity (Monday's board Activity Log, gap review P1):
+     * every change on the board's tasks, newest first, 100 a page, filtered by
+     * days back, group, column (by its label) and person. A sensitive task's row
+     * says who, what and when only.
+     */
+    public function boardActivity(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $hidden = SensitiveTasks::machineReader($request->user());
+        $rows = TaskActivity::query()
+            ->join('tasks', 'tasks.id', '=', 'task_activities.task_id')
+            ->where('tasks.board_id', $taskBoard->id)
+            ->when($hidden, fn ($q) => $q->where('tasks.sensitive', false))
+            ->when($input['days'] ?? null, fn ($q, $d) => $q->where('task_activities.created_at', '>=', now()->subDays((int) $d)))
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('tasks.group_id', $g))
+            ->when($input['label'] ?? null, fn ($q, $l) => $q->where('task_activities.label', $l))
+            ->when($input['user_id'] ?? null, fn ($q, $u) => $q->where('task_activities.user_id', $u))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_activities.created_at', '<', $b))
+            ->with('user:id,name')
+            ->select('task_activities.*', 'tasks.title as task_title', 'tasks.sensitive as task_sensitive', 'tasks.group_id as task_group_id')
+            ->latest('task_activities.created_at')->limit(100)->get();
+
+        return response()->json(['data' => $rows->map(fn ($a) => [
+            'id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name, 'user_id' => $a->user_id,
+            'task_id' => $a->task_id, 'task' => (string) $a->task_title, 'group_id' => $a->task_group_id,
+            'field' => $a->field, 'label' => $a->label,
+            'from' => $a->task_sensitive ? null : SensitiveTasks::open($a->from),
+            'to' => $a->task_sensitive ? null : SensitiveTasks::open($a->to),
+        ])->values()]);
     }
 
     /**

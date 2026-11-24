@@ -48,11 +48,15 @@ void main() {
       ),
       findsOneWidget,
     );
-    final filters = [
-      for (final k in ['all', 'waiting', 'replied'])
-        tester.getRect(find.byKey(ValueKey('project-inbox-filter-$k'))).top,
-    ];
-    expect(filters.toSet(), hasLength(1), reason: 'one row, never wrapped');
+    // Jose, 2026-11-24: the chips wrap inside the list, none clipped.
+    final edge = tester.getRect(find.byKey(const Key('project-inbox-filters'))).right;
+    for (final k in ['all', 'waiting', 'replied']) {
+      expect(
+        tester.getRect(find.byKey(ValueKey('project-inbox-filter-$k'))).right,
+        lessThanOrEqualTo(edge),
+        reason: k,
+      );
+    }
     // A row as in Leads: the name, the job, what it waits on.
     expect(find.text('Lena Park'), findsWidgets);
     expect(find.text('J-1001'), findsOneWidget);
@@ -69,6 +73,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('project-inbox-filter-replied')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('project-inbox-thread-j-2')), findsNothing);
+    // Before 11-24 the clipped Replied chip swallowed this tap; back to All.
+    await tester.tap(find.byKey(const ValueKey('project-inbox-filter-all')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('project-inbox-thread-j-1')));
     await tester.pumpAndSettle();
@@ -143,9 +150,44 @@ void main() {
     expect(find.byKey(const Key('project-inbox-list')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('a client who replied STOP: the composer is closed, and the '
+      'filters fit a 390 phone', (tester) async {
+    const stop = 'Lena replied STOP on 11/24 at 9:58 AM. Texts to this number are off.';
+    final api = _api([], optedOut: stop);
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: ProjectBoardScreen(api: api, session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Inbox'));
+    await tester.pumpAndSettle();
+    // Jose, 2026-11-24: "this is also overflowing" - no chip past the edge.
+    for (final k in ['all', 'waiting', 'replied']) {
+      expect(
+        tester.getRect(find.byKey(ValueKey('project-inbox-filter-$k'))).right,
+        lessThanOrEqualTo(390),
+        reason: k,
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey('project-inbox-thread-j-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-inbox-closed')), findsOneWidget);
+    expect(find.text(stop), findsOneWidget);
+    expect(find.byKey(const Key('project-inbox-box')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
-ApiClient _api(List<Map<String, dynamic>> posts) => ApiClient(
+ApiClient _api(List<Map<String, dynamic>> posts, {String? optedOut}) =>
+    ApiClient(
     client: MockClient((request) async {
       final path = request.url.path;
       if (path.endsWith('/me')) {
@@ -182,6 +224,7 @@ ApiClient _api(List<Map<String, dynamic>> posts) => ApiClient(
             'customer': 'Lena Park',
             'phone': '+15125550101',
             'stage': 'scheduled',
+            'opted_out': optedOut,
           },
           'data': [
             {

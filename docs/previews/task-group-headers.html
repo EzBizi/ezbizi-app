@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task group headers</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:34px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 10px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.pair{display:flex;gap:14px;flex-wrap:wrap}
+/* The app's own surfaces, both themes, side by side */
+.pane{flex:1 1 520px;min-width:0;border-radius:12px;padding:12px;border:1px solid var(--line);overflow:hidden}
+.pane.l{--cv:#e8edf2;--gp:#f6f8fa;--rw:#ffffff;--tx:#16191c;--mt:#5b6670;--ln:#dde2e7}
+.pane.d{--cv:#080b0f;--gp:#151b21;--rw:#1b222a;--tx:#e8ecef;--mt:#9aa6b0;--ln:#2c343d}
+.pane{background:var(--cv);color:var(--tx)}
+.pane .tag{font-size:11px;color:var(--mt);margin-bottom:8px;font-weight:600}
+.scroll{overflow-x:auto}
+.grp{background:var(--gp);border-radius:8px;margin-bottom:10px;min-width:560px;overflow:hidden;border:1px solid var(--ln)}
+.ttl{display:flex;align-items:center;gap:8px;padding:9px 10px}
+.ttl .chev{font-size:14px;width:14px}
+.ttl .nm{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl .ct{font-size:12px;opacity:.85;white-space:nowrap}
+.ttl .dots{margin-left:2px;opacity:.8}
+.cols,.row{display:grid;grid-template-columns:minmax(180px,2.2fr) 70px 110px 80px 1fr;align-items:center}
+.cols div{padding:6px 8px;font-size:11px;font-weight:700;border-left:1px solid var(--ln)}
+.cols div:first-child{border-left:0}
+.row{background:var(--rw);border-top:1px solid var(--ln)}
+.row div{padding:7px 8px;font-size:12px;border-left:1px solid var(--ln);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row div:first-child{border-left:0}
+.st{display:block;text-align:center;color:#fff;border-radius:3px;padding:2px 0;font-size:11px;font-weight:600}
+.av{display:inline-block;width:20px;height:20px;border-radius:10px;background:#579bfc;color:#fff;font-size:10px;text-align:center;line-height:20px}
+.kb{display:flex;gap:8px;overflow-x:auto;margin-top:4px}
+.kc{flex:0 0 210px;background:var(--gp);border-radius:8px;overflow:hidden;border:1px solid var(--ln)}
+.kc .ttl{padding:8px}.kc .dots{display:none}.kc .nm{min-width:0;flex:0 1 auto}
+.kc .card{background:var(--rw);margin:6px;border-radius:6px;padding:7px;font-size:12px;border:1px solid var(--ln)}
+.lbl{font-size:11px;color:var(--mt);margin:12px 0 5px;font-weight:600}
+.cr{font-size:10.5px;color:var(--mt);margin-top:6px}
+.cr b{font-weight:700}
+.ok{color:#0a8a4a}.no{color:#c0392b}
+.pane.d .ok{color:#4fd18b}.pane.d .no{color:#ff7b6b}
+/* Phone */
+.phones{display:flex;gap:14px;flex-wrap:wrap}
+.phone{width:250px;height:470px;border:6px solid #2a2f35;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;flex:none}
+.phone .scr{flex:1;overflow:hidden;background:var(--cv);padding:8px 8px 0}
+.phone .hdr{font-weight:700;font-size:13px;padding:2px 2px 8px;display:flex;justify-content:space-between}
+.phone .grp{min-width:0}.phone .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+.pc{background:var(--rw);border-top:1px solid var(--ln);padding:8px 10px;font-size:12px}
+.pc .meta{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:11px;color:var(--mt)}
+.pc .st{display:inline-block;padding:1px 6px}
+.fab{align-self:flex-end;margin:-52px 12px 12px auto;width:44px;height:44px;border-radius:22px;background:#0b6e8a;color:#fff;font-size:22px;line-height:44px;text-align:center;position:relative}
+.theme-btn{position:fixed;top:12px;right:16px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:5px 12px;font:inherit;cursor:pointer}
+@media (max-width:600px){body{padding:16px}.theme-btn{position:static;margin-bottom:10px}}
+</style></head>
+<body>
+<button class="theme-btn" onclick="flip()">Page light / dark</button>
+<h1>210 · Task Board: bigger group titles, the title row in the group's colour</h1>
+<p class="lead">Jose 11-24: <i>"make these titles a bit bigger, and… give the entire group top column a color"</i>, then <i>"the title row"</i>. So every option colours the whole title row, edge to edge ("Company Files · 11 tasks ···"), and leaves the column headings as they are. Each option is drawn in the app's light and dark themes side by side. The groups and colours are real Triplex ones (Ohio Project Management, Ohio, a personal board). Every option shows the open group, a collapsed group, kanban, and (4, 5, 6) the phone. Under each pane is the measured contrast of the title text against what it sits on; 4.5 is the bar. Today's title is 14px in the group colour on grey, with the column headings on grey.</p>
+
+<div id="out"></div>
+
+<script>
+const G=[
+ {n:'Company Files',c:'#ff5ac4',k:11},
+ {n:'Open Tasks',c:'#037f4c',k:7},
+ {n:'Unscheduled - Waiting Review - Cleveland',c:'#579bfc',k:23},
+ {n:'Unscheduled - Ready To Schedule - Columbus / Cincinnati',c:'#ffcb00',k:4},
+];
+const ROWS=[['Collect W9 from supplier','Working on it','#fdab3d','Nov 26','Chris Lancia'],['Insurance certificate 2027','Done','#00c875','Nov 20','Eve Sarfaty']];
+const ESC=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function rgb(h){h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16))}
+function hex(a){return'#'+a.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')}
+function lum(h){return rgb(h).map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0)}
+function ratio(a,b){const x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+function mix(a,b,t){const A=rgb(a),B=rgb(b);return hex(A.map((v,i)=>v+(B[i]-v)*t))}
+/* On a full colour: white or black, whichever reads better. */
+function onFill(c){return ratio('#ffffff',c)>=ratio('#16191c',c)?'#ffffff':'#16191c'}
+/* The group colour as text on a surface: darkened (light) or lightened (dark) until 4.5. */
+function inkOn(c,bg,dark){let t=0,x=c;while(ratio(x,bg)<4.5&&t<1){t+=.05;x=mix(c,dark?'#ffffff':'#000000',t)}return x}
+const P={l:{gp:'#f6f8fa',rw:'#ffffff'},d:{gp:'#151b21',rw:'#1b222a'}};
+function badge(fg,bg){const r=ratio(fg,bg);return`<b class="${r>=4.5?'ok':'no'}">${r.toFixed(1)}</b>`}
+
+/* Each style: how the title row, the column row and a collapsed group look. */
+const S={
+ band(g,t){const fg=onFill(g.c);const x=`background:${g.c};color:${fg}`;return{ttl:x,cols:``,fg,bg:g.c,size:18,fold:x}},
+ wash(g,t){const bg=mix(P[t].gp,g.c,t=='l'?.18:.28);const fg=inkOn(g.c,bg,t=='d');const x=`background:${bg};color:${fg};box-shadow:inset 6px 0 ${g.c}`;return{ttl:x,cols:``,fg,bg,size:18,fold:x}},
+ rule(g,t){const bg=mix(P[t].gp,g.c,.5);const fg=onFill(bg);const x=`background:${bg};color:${fg};border-bottom:4px solid ${g.c}`;return{ttl:x,cols:``,fg,bg,size:20,fold:x}},
+};
+
+function title(g,s,size,open,extra=''){return`<div class="ttl" style="${extra}"><span class="chev">${open?'▾':'▸'}</span><span class="nm" style="font-size:${size}px">${ESC(g.n)}</span><span class="ct">· ${g.k} tasks</span><span class="dots">···</span></div>`}
+function table(style,t){
+ const a=S[style](G[0],t),b=S[style](G[2],t),y=S[style](G[3],t),o=S[style](G[1],t);
+ let h=`<div class="scroll"><div class="grp"><div style="${a.ttl}">${title(G[0],a,a.size,1)}</div>
+ <div class="cols" style="${a.cols}"><div>Task</div><div>Owner</div><div>Status</div><div>Due</div><div>Client name</div></div>`;
+ for(const r of ROWS)h+=`<div class="row"><div>${r[0]}</div><div><span class="av">CL</span></div><div><span class="st" style="background:${r[2]}">${r[1]}</span></div><div>${r[3]}</div><div>${r[4]}</div></div>`;
+ h+=`</div>`;
+ h+=`<div class="lbl">Collapsed</div>`;
+ for(const [g,s] of [[G[2],b],[G[3],y]])h+=`<div class="grp"><div style="${s.fold}">${title(g,s,s.size,0)}</div></div>`;
+ h+=`</div><div class="lbl">Kanban</div><div class="kb">`;
+ for(const [g,s] of [[G[1],o],[G[2],b],[G[3],y]])h+=`<div class="kc"><div style="${s.ttl}">${title({...g,n:g.n.length>22?g.n.slice(0,21)+'…':g.n},s,Math.min(s.size,16),1)}</div><div class="card">Call back about W9</div></div>`;
+ h+=`</div><div class="cr">Title contrast: ${G.map(g=>{const s=S[style](g,t);return ESC(g.n.split(' - ')[0])+' '+badge(s.fg,s.bg)}).join(' · ')}</div>`;
+ return h;
+}
+function phone(style,t){
+ let h=`<div class="phone"><div class="scr pane ${t}" style="border:0;border-radius:0;padding:8px 8px 0"><div class="hdr"><span>Ohio Project Mgmt ▾</span><span>⋯</span></div>`;
+ G.slice(1,4).forEach((g,i)=>{const s=S[style](g,t);const open=i<2;
+  h+=`<div class="grp" style="margin-bottom:8px"><div style="${open?s.ttl:s.fold}">${title(g,s,style=='rule'?18:17,open)}</div>`;
+  if(open)for(const r of ROWS.slice(0,i?1:2))h+=`<div class="pc">${r[0]}<div class="meta"><span class="st" style="background:${r[2]}">${r[1]}</span><span class="av">CL</span>${r[3]}</div></div>`;
+  h+=`</div>`});
+ return h+`</div><div class="fab">+</div></div>`;
+}
+const OPTS=[
+ ['1','band','Title row in the full group colour',' <span class="rec">(recommended)</span>','The whole title row, edge to edge, is filled with the group colour. The title is 18px, in white or black, whichever measures better (yellow, pink and blue get black). The column headings under it stay as they are. Collapsed, a group is just its coloured bar. This is the closest to monday, which the managers know.'],
+ ['2','wash','Title row in a light wash, solid edge','','The whole title row gets a soft tint of the group colour, with a 6px solid edge on the left. The 18px title is in the group colour, darkened (light theme) or lightened (dark theme) until it passes 4.5. Calmer than 1 on a board with 12 groups.'],
+ ['3','rule','Title row half-tinted, solid rule under it','','The whole title row is a half-strength tint of the group colour, with a 4px rule of the full colour along its bottom edge. The title is 20px in white or black, whichever measures better. A middle ground between 1 and 2.'],
+];
+let out='';
+for(const [n,st,h,rec,p] of OPTS){
+ out+=`<div class="opt"><h2>${n} · ${h}${rec}</h2><p>${p}</p><div class="pair"><div class="pane l"><div class="tag">Light</div>${table(st,'l')}</div><div class="pane d"><div class="tag">Dark</div>${table(st,'d')}</div></div></div>`;
+}
+const PH=[
+ ['4','band','Phone with 1: full-colour title bands',' <span class="rec">(recommended, goes with 1)</span>','Each group title is a full-colour band, at 17px, over its cards; a collapsed group is just its band. The + adds to the open group.'],
+ ['5','wash','Phone with 2: washed title bands with an edge','','The same tint and edge as 2, so the phone and the desktop match.'],
+ ['6','rule','Phone with 3: half-tinted title bands with a rule','','The same half-tint and rule as 3.'],
+];
+for(const [n,st,h,rec,p] of PH){
+ out+=`<div class="opt"><h2>${n} · ${h}${rec}</h2><p>${p}</p><div class="phones">${phone(st,'l')}${phone(st,'d')}</div></div>`;
+}
+document.getElementById('out').innerHTML=out;
+function flip(){const r=document.documentElement;const d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme:dark)').matches);r.dataset.theme=d?'light':'dark'}
+</script>
+</body></html>

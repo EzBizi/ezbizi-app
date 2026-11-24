@@ -1652,11 +1652,13 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
-     * Revoked after it was accepted (Jose, 2026-10-05: "she should be able to
-     * still revoke it. regardless of anything"): the paperwork is cancelled
-     * and the account it opened is switched off. A rule still may not.
+     * An accepted invitation is not revoked (Jose, 2026-11-24: "if an
+     * invitation has been completed ... the revoke button is unnecesary",
+     * replacing 2026-10-05's "regardless of anything"): removing the person
+     * happens on their HR record. Neither a rule nor a person, and the
+     * account stays on.
      */
-    public function test_an_accepted_invitation_can_still_be_revoked_by_a_person(): void
+    public function test_an_accepted_invitation_cannot_be_revoked(): void
     {
         [$alpha, $employee, $id] = $this->scenario();
         $invitationId = $this->form($alpha['admin'], $id)['invitation_id'];
@@ -1669,11 +1671,10 @@ class HrOnboardingTest extends TestCase
             $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
 
             $this->as($alpha['admin'])->deleteJson("/api/v1/hr/invitations/{$invitationId}")
-                ->assertOk()
-                ->assertJsonPath('data.status', 'revoked');
+                ->assertUnprocessable()->assertJsonValidationErrors('invitation');
 
-            $this->assertSame('cancelled', $this->form($alpha['admin'], $id)['status']);
-            $this->assertFalse((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
+            $this->assertNotSame('cancelled', $this->form($alpha['admin'], $id)['status']);
+            $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
         }
     }
 

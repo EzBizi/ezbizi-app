@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -217,7 +218,23 @@ class _SidePanelState extends State<SidePanel> {
           // look this panel exists to avoid. Padding the content instead keeps
           // the surface bleeding to every edge and moves only the parts you
           // touch.
-          child: SafeArea(child: _content(context)),
+          //
+          // And the keyboard (mobile review 11-24): this is a dialog route, so
+          // nothing resized it, and the footer's Save / Create / Book sat under
+          // the keyboard on a phone. The larger of the keyboard and the home
+          // bar, not both: the keyboard already covers the home bar.
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: math.max(
+                  MediaQuery.viewInsetsOf(context).bottom,
+                  MediaQuery.viewPaddingOf(context).bottom,
+                ),
+              ),
+              child: _content(context),
+            ),
+          ),
         ),
       ),
     );

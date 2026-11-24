@@ -162,6 +162,34 @@ class NotificationsController extends Controller
         return response()->json(['data' => ['id' => $notification->id, 'read_at' => $notification->read_at]]);
     }
 
+    /** POST /api/v1/notifications/{id}/unread — Monday parity (desk, 2026-11-24). */
+    public function markUnread(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->forceFill(['read_at' => null])->save();
+
+        return response()->json(['data' => ['id' => $notification->id, 'read_at' => null]]);
+    }
+
+    /** DELETE /api/v1/notifications/{id} — one row, the person's own. */
+    public function destroy(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->delete();
+
+        return response()->json(['data' => ['deleted' => 1]]);
+    }
+
+    /** DELETE /api/v1/notifications — every row of the person's own. */
+    public function destroyAll(Request $request): JsonResponse
+    {
+        $deleted = Notification::query()->where('user_id', $request->user()->getKey())->delete();
+
+        return response()->json(['data' => ['deleted' => $deleted]]);
+    }
+
     /** POST /api/v1/notifications/read-all */
     public function markAllRead(Request $request): JsonResponse
     {
@@ -435,6 +463,19 @@ class NotificationsController extends Controller
                 'id' => (string) TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
                 'update' => (string) $notification->subject_id,
             ];
+        }
+
+        // A mention or reply bell about a task (Jennine 11-24): the update it
+        // came from, the newest on that task by then (for a mention, one
+        // naming this person), so the thread opens at it.
+        if ($notification->subject_type === Task::class && in_array($notification->kind, ['task.mentioned', 'task.reply'], true)) {
+            $by = TaskUpdate::query()->where('task_id', $notification->subject_id)
+                ->where('created_at', '<=', $notification->created_at->copy()->addMinute())->latest('created_at');
+            $update = $notification->kind === 'task.mentioned'
+                ? ((clone $by)->whereJsonContains('mentions', (string) $notification->user_id)->value('id') ?? $by->value('id'))
+                : $by->where('user_id', '!=', $notification->user_id)->value('id');
+
+            return ['type' => 'task', 'id' => (string) $notification->subject_id, 'update' => $update === null ? null : (string) $update];
         }
 
         return [

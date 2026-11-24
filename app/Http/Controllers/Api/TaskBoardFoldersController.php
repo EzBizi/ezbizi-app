@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\TaskBoardFolder;
 use App\Models\Setting;
+use App\Models\TaskBoardFolder;
 use App\Support\Settings\SettingDefinition;
+use App\Support\Tasks\TaskBoards;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,11 +20,27 @@ class TaskBoardFoldersController extends Controller
     /** A colour is "#rrggbb", like a status's; Monday's folder colours import as their hex. */
     public const COLOUR = 'regex:/^#[0-9a-fA-F]{6}$/';
 
-    public function index(): JsonResponse
+    /**
+     * Jose 11-24: a folder shows only when it holds, at any depth, a board this
+     * person can open (its parents with it). Whoever arranges the list sees
+     * every folder, empty ones too, so they can fill them.
+     */
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(['data' => TaskBoardFolder::query()
-            ->orderBy('position')->orderBy('name')
-            ->get(['id', 'parent_id', 'name', 'colour', 'position'])]);
+        $folders = TaskBoardFolder::query()->orderBy('position')->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'colour', 'position']);
+        if (! $request->user()->hasPermission('tasks.create_boards')) {
+            $parent = $folders->pluck('parent_id', 'id');
+            $keep = [];
+            foreach (app(TaskBoards::class)->visibleTo($request->user())->pluck('folder_id')->filter()->unique() as $id) {
+                for ($at = $id; $at !== null && ! isset($keep[$at]); $at = $parent[$at] ?? null) {
+                    $keep[$at] = true;
+                }
+            }
+            $folders = $folders->filter(fn (TaskBoardFolder $f) => isset($keep[$f->id]))->values();
+        }
+
+        return response()->json(['data' => $folders]);
     }
 
     public function store(Request $request): JsonResponse

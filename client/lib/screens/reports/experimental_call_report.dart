@@ -1433,6 +1433,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               (c) => !_judged.any((result) => byResult(result, [c]).isNotEmpty),
             )
             .toList(),
+      // Split by direction (Trey, 2026-11-24: "no result incoming calls and
+      // no result outgoing calls not in the same tab").
+      'no_result_in' => byResult(
+        'no_result',
+        from,
+      ).where((c) => !_isOutbound(c)).toList(),
+      'no_result_out' => byResult(
+        'no_result',
+        from,
+      ).where(_isOutbound).toList(),
       _ => from,
     };
     // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
@@ -1550,12 +1560,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('not_booked', 'Not booked'),
           ('ai_booked_no_job', 'Needs Attention'),
           ('awaiting_review', 'Awaiting review'),
-          ('no_result', 'No result'),
+          ('no_result_in', 'No result · incoming'),
+          ('no_result_out', 'No result · outgoing'),
         ])
-          // The follow-up lists only while they have calls, or are chosen.
-          if (!{'ai_booked_no_job', 'awaiting_review'}.contains(key) ||
-              _result == key ||
-              pick(result: key).isNotEmpty)
+          // The follow-up lists only while they have calls, or are chosen;
+          // a No result half only while its direction is in view.
+          if (_result == key ||
+              switch (key) {
+                'ai_booked_no_job' ||
+                'awaiting_review' => pick(result: key).isNotEmpty,
+                'no_result_in' => _directionFilter != 'outbound',
+                'no_result_out' => _directionFilter != 'inbound',
+                _ => true,
+              })
             chip(
               key,
               '$label ${pick(result: key).length}',
@@ -1564,10 +1581,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 _result = key;
                 _labelFilter = null;
               },
-              tooltip: key == 'no_result'
-                  ? 'No sale to judge: existing clients, missed calls, '
-                        'other lines and our calls out'
-                  : null,
+              tooltip: switch (key) {
+                'no_result_in' =>
+                  'Calls in with no sale to judge: existing clients, '
+                      'missed calls and other lines',
+                'no_result_out' => 'Our calls out: no sale to judge',
+                _ => null,
+              },
             ),
       ]),
       group('Call', [

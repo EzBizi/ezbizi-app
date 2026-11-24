@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 
 import '../core/theme.dart';
 import 'not_filled_in.dart';
+import 'open_in_window.dart';
 import 'side_panel.dart';
 
 /// A simple segmented row of destinations.
@@ -27,7 +28,12 @@ class TabBarLike extends StatefulWidget {
     this.tones,
     this.level,
     this.wrap = false,
+    this.windowPaths,
   });
+
+  /// Each tab's [AppWindow.pathFor], for "Open in new window" on a
+  /// right-click (Jose, 2026-11-24). Null, or a null entry, offers none.
+  final List<String?>? windowPaths;
 
   /// On a desk (600 px and wider), wrap onto more lines instead of scrolling
   /// sideways: for a row whose every chip must be on show at once, as the
@@ -203,7 +209,10 @@ class _TabBarLikeState extends State<TabBarLike> {
           },
           onTap: () => onSelected(i),
           excludeSemantics: true,
-          child: _plain(context, i, level),
+          child: OpenInWindow(
+            path: widget.windowPaths?.elementAtOrNull(i),
+            child: _plain(context, i, level),
+          ),
         ),
     ];
 

@@ -19,6 +19,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Tasks\ColumnConverter;
@@ -154,7 +155,9 @@ final class MondayImport
         DB::beginTransaction();
         try {
             // What Monday already has is never written back to it (MondayOutbox).
-            MondayOutbox::suppress(fn () => $this->tenant->run($org, function () use ($data, $as) {
+            // Desk 11-24: Jose's Activity held 300k sync writes as his clicks. The sync is
+            // logged as "Monday sync"; a task Monday's creator made, as that creator.
+            MondayOutbox::suppress(fn () => app(AuditLogger::class)->actingAs(null, 'Monday sync', fn () => $this->tenant->run($org, function () use ($data, $as) {
                 $this->people = User::query()->get()->keyBy(fn (User $u) => mb_strtolower($u->email))->all();
                 $actor = $as instanceof User ? $as : ($this->person($as)
                     ?? throw new \RuntimeException('--as must be the email of a user in this organization.'));
@@ -181,7 +184,7 @@ final class MondayImport
                         }
                     }
                 }
-            }));
+            })));
             if (! $this->dry && ($this->retitled !== [] || $this->blankStatus !== [])) {
                 // Outside the suppression: the cleaned titles, and the status we gave an item Monday
                 // left blank (Monday showed an empty cell, we "Not started"), go back as live rows.
@@ -429,7 +432,12 @@ final class MondayImport
             ? $this->reuse($existing, $board, $parent, $input, $as)
             // On the sync, made by the Monday item's creator when they have an account here, else by
             // nobody (Monday), never by the connection's own user (desk 11-19).
-            : $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $this->refresh ? $this->person($item['creator_email'] ?? null) : $as);
+            : (function () use ($board, $input, $parent, $item, $as) {
+                $creator = $this->refresh ? $this->person($item['creator_email'] ?? null) : $as;
+                $make = fn () => $this->writer->create($board, $input + ['parent_task_id' => $parent?->id], $creator);
+
+                return $this->refresh && $creator !== null ? app(AuditLogger::class)->actingAs($creator, 'Monday sync', $make) : $make();
+            })();
 
         $created = isset($item['created_at']) ? CarbonImmutable::parse($item['created_at']) : null;
         $task->forceFill(array_filter([
@@ -748,13 +756,15 @@ final class MondayImport
                 // The 11-03 run keyed a reply by its position; now by its own id.
                 $ref = 'monday:'.$u['monday_id'].'.'.($r['monday_id'] ?? $i);
                 $legacy = 'monday:'.$u['monday_id'].'.'.$i;
-                $this->update($task, $r, $ref, $as, true, $legacy);
+                $this->update($task, $r, $ref, $as, true, $legacy, 'monday:'.$u['monday_id']);
             }
         }
     }
 
-    private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null): void
+    private function update(Task $task, array $u, string $ref, User $as, bool $reply = false, ?string $legacy = null, ?string $parentRef = null): void
     {
+        // Chaim 11-24: a Monday reply hangs under its update here.
+        $parentId = $parentRef === null ? null : TaskUpdate::query()->withTrashed()->where('external_ref', $parentRef)->value('id');
         $files = $u['files'] ?? [];
         $existing = TaskUpdate::query()->withTrashed()->whereIn('external_ref', array_filter([$ref, $legacy]))->first();
         $body = trim((string) preg_replace('/\n\n— from EzBizi.*$/su', '', trim((string) ($u['body'] ?? ''))));
@@ -765,10 +775,14 @@ final class MondayImport
         }
         if ($existing !== null) {
             $this->counts['updates already there']++;
+            if ($parentId !== null && $existing->parent_update_id === null) {
+                $existing->forceFill(['parent_update_id' => $parentId])->saveQuietly();
+            }
             $this->files($existing, $files, $as, true);
             // Edited on Monday (row 43): its text comes here, marked Edited unless only a link's form changed.
-            $now = $body === '' ? '' : ($reply ? '↳ ' : '').$body;
             $had = (string) SensitiveTasks::open($existing->body);
+            // An old reply kept its "↳ " mark; one threaded under its update has none.
+            $now = $body === '' ? '' : ($reply && str_starts_with($had, '↳ ') ? '↳ ' : '').$body;
             if ($this->refresh && ! $existing->trashed() && $now !== '' && $now !== $had) {
                 $plain = fn (string $s) => (string) preg_replace('/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/', '$1', $s);
                 $sensitive = (bool) Task::query()->withTrashed()->whereKey($existing->task_id)->value('sensitive');
@@ -787,7 +801,8 @@ final class MondayImport
             'organization_id' => $task->organization_id,
             'task_id' => $task->id,
             'user_id' => $author?->id,
-            'body' => $body === '' ? '' : ($reply ? '↳ ' : '').$body,
+            'parent_update_id' => $parentId,
+            'body' => $body === '' ? '' : ($reply && $parentId === null ? '↳ ' : '').$body,
             'mentions' => $mentioned ?: null,
         ]);
         $at = isset($u['created_at']) ? CarbonImmutable::parse($u['created_at']) : null;
@@ -1116,7 +1131,8 @@ final class MondayImport
                 'is_done' => $done, 'colour' => $colour, 'position' => (int) $statuses->max('position') + 1,
             ]);
             $this->counts['statuses made']++;
-        } elseif ($colour !== null && $found->colour === null) {
+        } elseif ($colour !== null && strtolower((string) $found->colour) !== strtolower($colour)) {
+            // Chaim 11-24: Monday's exact colour, kept in step.
             $found->forceFill(['colour' => $colour])->save();
         }
 
@@ -1162,7 +1178,8 @@ final class MondayImport
                 if ($i === null) {
                     $options[] = $o;
                     $changed = true;
-                } elseif (($options[$i]['colour'] ?? null) === null && ($o['colour'] ?? null) !== null) {
+                } elseif (($o['colour'] ?? null) !== null && strtolower((string) ($options[$i]['colour'] ?? '')) !== strtolower((string) $o['colour'])) {
+                    // Chaim 11-24: Monday's exact colour for each label, kept in step.
                     $options[$i]['colour'] = $o['colour'];
                     $changed = true;
                 }

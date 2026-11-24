@@ -408,7 +408,7 @@ void main() {
     });
   });
 
-  testWidgets('Jose 11-18: the company board comes first in Team boards, and '
+  testWidgets('Jose 11-18: the company board comes first in Franchise boards, and '
       'Move up reorders, saved as a shared position', (tester) async {
     arrange = true;
     addTearDown(() => arrange = false);
@@ -512,7 +512,7 @@ void main() {
     for (final below in [
       heading('My boards'),
       row('b-mine2'),
-      heading('Team boards'),
+      heading('Franchise boards'),
       heading('Folders'),
       heading('All markets'),
       heading("Everyone's boards"),
