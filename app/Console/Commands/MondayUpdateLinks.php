@@ -37,7 +37,7 @@ class MondayUpdateLinks extends Command
         $map = array_change_key_case((array) ($connection->setup['monday']['people'] ?? []));
         $here = User::withoutGlobalScopes()->where('organization_id', $connection->organization_id)->get();
         $who = [];
-        foreach ($api->query('{ users(limit:500) { id name email } }')['users'] ?? [] as $m) {
+        foreach ($api->query('{ users(limit:1000, kind:all) { id name email } }')['users'] ?? [] as $m) {
             $email = mb_strtolower((string) ($m['email'] ?? ''));
             $email = mb_strtolower((string) ($map[$email] ?? $email));
             $who[(string) $m['id']] = $here->first(fn (User $u) => mb_strtolower((string) $u->email) === $email)?->id
