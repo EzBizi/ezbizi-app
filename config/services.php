@@ -135,6 +135,20 @@ return [
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/quickbooks/callback',
     ],
 
+    /*
+     * Plaid (dashboard.plaid.com, team EzBizi, app "EzBizi"): bank and card
+     * accounts per tenant, read only (Transactions, Balance). Connect is Plaid
+     * Hosted Link (PlaidOAuth); its completion page returns to
+     * APP_URL/api/v1/social/plaid/callback, and Plaid's webhooks go to
+     * APP_URL/api/v1/integrations/plaid/webhook. environment: sandbox |
+     * production (the secret differs per environment; the client id does not).
+     */
+    'plaid' => [
+        'client_id' => env('PLAID_CLIENT_ID'),
+        'secret' => env('PLAID_SECRET'),
+        'environment' => env('PLAID_ENVIRONMENT', 'production'),
+    ],
+
     'pinterest' => [
         'client_id' => env('PINTEREST_CLIENT_ID'),
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),

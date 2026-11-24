@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialBankController;
 use App\Http\Controllers\Api\FinancialMarketsController;
 use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialsController;
@@ -171,6 +172,7 @@ use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
+use App\Http\Controllers\Api\PlaidWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
@@ -667,6 +669,17 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
+
+// Plaid returns here after a bank reconnect (update mode); the state names the bank login.
+Route::get('v1/social/plaid/relinked', [SocialAuthController::class, 'plaidRelinked'])
+    ->middleware('throttle:30,1')
+    ->name('social.plaid.relinked');
+
+// Plaid says a bank login changed. Unauthenticated by necessity; it names an
+// item and EzBizi re-reads that item from Plaid (PlaidWebhookController).
+Route::post('v1/integrations/plaid/webhook', PlaidWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.plaid.webhook');
 
 // Monday says an item changed. Unauthenticated by necessity: the JWT Monday
 // signs with the app's Signing Secret is what is checked (MondayWebhookController).
@@ -1399,6 +1412,13 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Bank (Jose, 11-24): banks connected through Plaid, balances, transactions.
+        Route::middleware('permission:financials.bank.view')->group(function (): void {
+            Route::get('financials/bank', [FinancialBankController::class, 'index']);
+            Route::get('financials/bank/transactions', [FinancialBankController::class, 'transactions']);
+            Route::post('financials/bank/{connection}/reconnect', [FinancialBankController::class, 'reconnect']);
+            Route::post('financials/bank/{connection}/refresh', [FinancialBankController::class, 'refresh']);
         });
         // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
         Route::middleware('permission:financials.markets.view')->group(function (): void {
