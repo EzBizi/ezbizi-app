@@ -20,6 +20,10 @@ class VersionHistory {
       'Task Board: 7 more Monday boards are mirrored, including DMV NEW and the New Location, Brand and Franchise templates',
       'Email: with the reading pane below, an open email gets most of the screen, and Open full shows it on the whole pane',
       'Scheduling: Report wrong ZIP flags a ZIP that lands in the wrong area; Settings › Wrong ZIPs lists them to move or dismiss',
+      'Notifications: tapping a mention or reply opens the task on that exact update',
+      'Task Board: the search stays visible on narrow windows, and the task title field shows the whole title',
+      'Task Board: opening a task clears its unread badge at once',
+      'Task Board: labels use the regular weight and exact colours that Monday uses, on every board',
     ]),
     VersionRelease(version: '0.0.0634', date: '24 Nov 2026', items: [
       'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
