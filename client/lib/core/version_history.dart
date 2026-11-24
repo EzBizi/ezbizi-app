@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Inspection: Review QR shows for every role that has the New Inspection and Review QR tab, without needing Customer Experience; the phone bar slot opens it',
+      'Inspection: New Inspection explains when your role has no inspection to start, instead of a blank screen',
+    ]),
     VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
       'Phones: the bottom bar gives each item equal room and its own icon, and the role editor previews it at real phone size',
       'Financials › Bank: connect your company bank and card accounts through Plaid to see balances and transactions (read-only; EzBizi never moves money)',
