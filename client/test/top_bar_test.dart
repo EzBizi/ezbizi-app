@@ -20,6 +20,22 @@ import 'package:http/testing.dart';
 /// The load-bearing test here is the overflow one. Everything else asserts what
 /// is on screen; only that asserts the bar FITS, which is the actual complaint.
 void main() {
+  // Mobile review 11-24: a phone turned sideways (923x411) got the desktop
+  // shell, whose sidebar left the module list -54 px. A touch device under 560
+  // tall keeps the phone shape; a desktop-sized window keeps the sidebar.
+  testWidgets('a phone on its side keeps the phone shape', (tester) async {
+    await _pump(tester, width: 923, height: 411);
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('phone-bottom-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-list')), findsNothing);
+  });
+
+  testWidgets('a tall wide window keeps the sidebar', (tester) async {
+    await _pump(tester, width: 1200, height: 900);
+    expect(find.byKey(const ValueKey('sidebar-list')), findsOneWidget);
+    expect(find.byKey(const Key('phone-bottom-bar')), findsNothing);
+  });
+
   group('phone', () {
     /// Jose 11-24: "when the keyboard is on, you can barely see stuff". With
     /// the keyboard up a phone keeps the toolbar only: no company row, no
@@ -199,12 +215,13 @@ void main() {
 Future<void> _pump(
   WidgetTester tester, {
   required double width,
+  double height = 900,
   bool clock = false,
   bool twoFactor = false,
   bool readOnly = false,
   bool choices = false,
 }) async {
-  tester.view.physicalSize = Size(width, 900);
+  tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 

@@ -615,9 +615,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
           appBar: AppBar(title: Text(title)),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: body,
+          // The sides and the bottom: on an iPhone Duo's cover screen the card
+          // ran under the clock column on the right (mobile review 11-24).
+          body: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: body,
+            ),
           ),
         ),
       ),
