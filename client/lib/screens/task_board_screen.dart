@@ -6162,6 +6162,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       },
       header: DropdownMenu<String>(
         key: const Key('plan-calendar-column'),
+        enableFilter: true,
+        requestFocusOnTap: true,
         label: const Text('Date column'),
         initialSelection: id,
         dropdownMenuEntries: [
