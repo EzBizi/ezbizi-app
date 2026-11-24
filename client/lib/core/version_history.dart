@@ -17,8 +17,8 @@ class VersionHistory {
       'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
       'Settings › Activity: What changed shows one line per changed field, with plain names and local times, instead of raw data',
       'Task Board: the search finds any column value, such as a job number, phone or label, on open and done tasks',
-      'Scheduling › Locations: a new Address column shows each branch's address',
-      'Work Hours: an Administrator's own clock-ins, clock-outs and edits are no longer kept in the activity log',
+      'Scheduling › Locations: a new Address column shows the address of each branch',
+      "Work Hours: an Administrator's own clock-ins, clock-outs and edits are no longer kept in the activity log",
     ]),
     VersionRelease(version: '0.0.0633', date: '24 Nov 2026', items: [
       'Automations: when a rule cannot change a task board, the run log names the board and the reason',
