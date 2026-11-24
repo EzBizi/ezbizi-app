@@ -59,6 +59,7 @@ class ProjectInboxController extends Controller
                     $spoke['c'.$m->customer_id] = $spoke['p'.$m->from_e164] = true;
                 }
             });
+        $out = \App\Models\SmsOptOut::query()->whereIn('e164', $phones)->pluck('e164')->flip();
         $threads = [];
         foreach ($jobs as $job) {
             $last = collect([$byCustomer[$job->customer_id] ?? null, $byPhone[(string) $job->customer?->phone] ?? null])
@@ -75,7 +76,9 @@ class ProjectInboxController extends Controller
                 'phone' => $job->customer?->phone, 'last_body' => $last->body,
                 'last_at' => $last->created_at?->toIso8601String(), 'last_direction' => $last->direction,
                 // The client spoke last: somebody owes them an answer.
-                'waiting' => $last->direction === PhoneMessage::DIRECTION_INBOUND,
+                // Opted out (STOP): nobody can answer, so nothing is owed (Jose, 2026-11-24).
+                'opted_out' => $optedOut = $out->has((string) $job->customer?->phone),
+                'waiting' => ! $optedOut && $last->direction === PhoneMessage::DIRECTION_INBOUND,
                 'client_spoke' => isset($spoke['c'.$job->customer_id]) || isset($spoke['p'.$job->customer?->phone]),
             ];
         }
@@ -105,6 +108,7 @@ class ProjectInboxController extends Controller
             'job' => [
                 'id' => $job->id, 'number' => $job->number, 'customer' => $job->customer?->name,
                 'phone' => $job->customer?->phone, 'stage' => $board->stageOf($job, $user),
+                'opted_out' => self::optedOut($job),
             ],
         ]);
     }
@@ -157,6 +161,7 @@ class ProjectInboxController extends Controller
         abort_if($body === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'Write the message first.');
         $to = (string) ($job->customer?->phone ?? '');
         abort_if($to === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'The client has no phone number to text.');
+        abort_if(($stop = self::optedOut($job)) !== null, Response::HTTP_UNPROCESSABLE_ENTITY, $stop);
         $line = $schedule->line($job);
         abort_if($line === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'No texting line is cleared to send for this job\'s company.');
 
@@ -173,6 +178,25 @@ class ProjectInboxController extends Controller
             'at' => $message->created_at?->toIso8601String(),
             'sent_by' => $user->name, 'sent_by_id' => $user->id, 'automatic' => false,
         ]], Response::HTTP_CREATED);
+    }
+
+    /**
+     * The sentence for a client whose number replied STOP (Jose, 2026-11-24),
+     * e.g. "Adam replied STOP on 11/24 at 9:58 AM. Texts to this number are
+     * off.", or null while texts are allowed (a START clears it).
+     */
+    public static function optedOut(Job $job): ?string
+    {
+        $phone = (string) ($job->customer?->phone ?? '');
+        $row = $phone === '' ? null : \App\Models\SmsOptOut::query()->where('e164', $phone)->latest('created_at')->first();
+        if ($row === null) {
+            return null;
+        }
+        $at = $row->created_at === null ? null : \Illuminate\Support\Carbon::parse($row->created_at, 'UTC')->setTimezone($job->franchise?->timezone ?: 'America/New_York');
+        $first = trim(strtok((string) $job->customer?->name, ' ') ?: 'The client');
+
+        return "{$first} replied ".strtoupper((string) ($row->keyword ?: 'STOP')).($at ? ' on '.$at->format('n/j').' at '.$at->format('g:i A') : '')
+            .'. Texts to this number are off.';
     }
 
     /** The client's texts both ways: linked to the customer, or to their number. */

@@ -386,6 +386,32 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(3, $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->json('data.0.status_days'));
     }
 
+    /** Jose, 2026-11-24: "a lot of removed account" - the job's technician by name, never an erased performer. */
+    public function test_an_erased_performer_shows_the_jobs_technician_or_no_one(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$named, $bare] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $gone = $this->userWithRole($alpha, 'Technician', ['jobs.view']);
+            $gone->forceFill(['name' => 'Removed account'])->save();
+            $named = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            $bare = $this->job($alpha['franchise'], 'J-2', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->whereKey([$named, $bare])->update(['performed_by_user_id' => $gone->id]);
+            $tech = \App\Models\SchedulingTechnician::create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Danylo Yakovlev', 'user_id' => $gone->id]);
+            $ghost = \App\Models\SchedulingTechnician::create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Removed technician']);
+            \App\Models\JobTechnician::create(['job_id' => $named, 'technician_id' => $tech->id, 'source' => 'workiz']);
+            \App\Models\JobTechnician::create(['job_id' => $bare, 'technician_id' => $ghost->id, 'source' => 'workiz']);
+
+            return [$named, $bare];
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $rows = collect($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()->json('data'))->keyBy('id');
+
+        $this->assertSame('Danylo Yakovlev', $rows[$named]['technician']);
+        $this->assertNull($rows[$bare]['technician'], 'an erased performer is no one');
+        $job = $api->getJson("/api/v1/jobs/{$named}")->assertOk();
+        $this->assertSame([null, 'Danylo Yakovlev'], [$job->json('data.performed_by'), $job->json('data.technician_name')]);
+    }
+
     /** Jose with Shoval, 2026-11-23: a Project job completes only with Parts and Labor costs in. */
     public function test_a_project_job_cannot_complete_without_parts_and_labor_costs(): void
     {
@@ -692,6 +718,18 @@ class ProjectBoardTest extends TestCase
 
         $viewer = $this->userWithRole($alpha, 'Viewer', ['project_board.view', 'jobs.view']);
         $this->signedInAs($viewer)->postJson("/api/v1/project-board/inbox/{$board}", ['body' => 'Hi'])->assertForbidden();
+
+        $api = $this->signedInAs($alpha['admin']);
+        // Jose, 2026-11-24: the client replied STOP - opted out, owed nothing, and no reply can go.
+        $this->inTenant($alpha['org'], fn () => \App\Models\SmsOptOut::query()->create(['e164' => '+15125550101', 'keyword' => 'STOP', 'created_at' => '2026-11-24 14:58:52']));
+        $t = $api->getJson('/api/v1/project-board/inbox')->json('data.0');
+        $this->assertSame([true, false], [$t['opted_out'], $t['waiting']]);
+        $stop = $api->getJson("/api/v1/project-board/inbox/{$board}")->json('job.opted_out');
+        $this->assertStringContainsString('replied STOP on 11/24 at 9:58 AM. Texts to this number are off.', $stop);
+        $api->postJson("/api/v1/project-board/inbox/{$board}", ['body' => 'Hi'])->assertUnprocessable()->assertJsonPath('message', $stop);
+        // START clears the row, and the composer comes back.
+        $this->inTenant($alpha['org'], fn () => \App\Models\SmsOptOut::query()->where('e164', '+15125550101')->delete());
+        $this->assertNull($api->getJson("/api/v1/project-board/inbox/{$board}")->json('job.opted_out'));
     }
 
     /**
