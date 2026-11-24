@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -125,7 +126,9 @@ final class TimeClock
      * Lift the lock screen for the rest of today without clocking in
      * (Jose, 2026-10-28). The audit row IS the record: payload() reads it
      * back, so there is no second store to drift. The person stays off the
-     * clock.
+     * clock. An Administrator's skip is NOT an audit row (Jose, 2026-11-24:
+     * "should not be saved or even recorded"): it lives in the cache until
+     * the end of their day.
      */
     public function skipLock(User $user): array
     {
@@ -133,7 +136,12 @@ final class TimeClock
             abort(403, Refusal::permission('skip the lock screen')->message());
         }
 
-        if (! $this->skippedToday($user, $this->scheduleFor($user), ViewScope::forUser($user)->settingsScope())) {
+        $schedule = $this->scheduleFor($user);
+        $scope = ViewScope::forUser($user)->settingsScope();
+        if ($user->isAdministrator()) {
+            $end = now()->timezone($this->dayZone($schedule, $scope))->endOfDay();
+            Cache::put($this->skipKey($user, $schedule, $scope), true, $end);
+        } elseif (! $this->skippedToday($user, $schedule, $scope)) {
             $this->audit->log('time_clock.lock_skipped', $user, actor: $user);
         }
 
@@ -143,7 +151,10 @@ final class TimeClock
     /** "Today" is the schedule's day, in its zone — the same day `today` describes. */
     private function skippedToday(User $user, ?array $schedule, mixed $scope): bool
     {
-        $tz = (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+        if (Cache::has($this->skipKey($user, $schedule, $scope))) {
+            return true;
+        }
+        $tz = $this->dayZone($schedule, $scope);
 
         return AuditEvent::query()
             ->where('organization_id', $user->organization_id)
@@ -152,6 +163,16 @@ final class TimeClock
             ->where('target_id', $user->getKey())
             ->where('occurred_at', '>=', now()->timezone($tz)->startOfDay()->setTimezone(config('app.timezone')))
             ->exists();
+    }
+
+    private function dayZone(?array $schedule, mixed $scope): string
+    {
+        return (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+    }
+
+    private function skipKey(User $user, ?array $schedule, mixed $scope): string
+    {
+        return 'time_clock.lock_skipped:'.$user->getKey().':'.now()->timezone($this->dayZone($schedule, $scope))->toDateString();
     }
 
     /**
