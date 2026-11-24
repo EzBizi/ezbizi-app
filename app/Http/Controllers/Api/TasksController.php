@@ -105,7 +105,7 @@ class TasksController extends Controller
         return [
             'id' => $u->id,
             'body' => (string) SensitiveTasks::open($u->body),
-            'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
+            'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->sender_label ?? $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
             'edited_at' => $u->edited_at?->toIso8601String(),
             // Row 43: its author edits; its author or an Administrator deletes.
@@ -566,7 +566,7 @@ class TasksController extends Controller
 
         return response()->json(['data' => TaskActivity::query()->where('task_id', $task->id)
             ->with('user:id,name')->latest('created_at')->limit(200)->get()
-            ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name,
+            ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->sender_label ?? $a->user?->name,
                 'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
                 'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
                 'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);

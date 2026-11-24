@@ -22,6 +22,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class TaskUpdate extends Model implements HoldsPersonalData
 {
+    protected static function booted(): void
+    {
+        static::creating(fn (self $row) => \App\Support\Automations\AutomationVoice::stamp($row));
+    }
+
     use BelongsToTenant;
     use HasAttachments;
     use HasUuids;

@@ -782,7 +782,7 @@ class TaskWriter
                 ->merge($task->owners()->pluck('user_id'))
                 ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
                 ->filter()->unique()->diff([...$skip, $update->user_id])->all();
-            $who = $update->user()->value('name') ?? 'Monday';
+            $who = $update->sender_label ?? $update->user()->value('name') ?? 'Monday';
             $told = 0;
             foreach (User::query()->whereKey($ids)->where('is_active', true)->get() as $user) {
                 if (Gate::forUser($user)->check('view', $task)) {
