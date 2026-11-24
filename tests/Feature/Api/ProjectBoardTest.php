@@ -913,9 +913,7 @@ class ProjectBoardTest extends TestCase
         // The opt-out line rides only on a number's first text (07dc971ce), and whether this is
         // the first depends on what ran before; the reminder itself is what this asserts.
         $this->assertSame([['+15125550101', 'Hi Lena, see you Thursday, November 26 at 9:00 AM. Call your project manager.']],
-            array_map(fn ($s) => [$s[0], preg_replace('/
-
-Reply STOP to opt out\.$/', '', $s[1])], $sends()), 'once, to the client only');
+            array_map(fn ($s) => [$s[0], preg_replace('/\s*Reply STOP to opt out\.$/', '', $s[1])], $sends()), 'once, to the client only');
         $this->inTenant($alpha['org'], fn () => $this->assertSame(1, \App\Models\Notification::query()
             ->where('user_id', $alpha['admin']->id)->where('title', 'Confirm parts are in for J-1')->count()));
 
