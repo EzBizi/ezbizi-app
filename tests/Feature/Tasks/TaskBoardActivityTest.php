@@ -3,7 +3,9 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\TaskBoard;
+use App\Models\TaskGroup;
 use App\Support\Reports\Xlsx;
+use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -98,5 +100,23 @@ class TaskBoardActivityTest extends TestCase
         $api()->patchJson("/api/v1/task-boards/{$board->id}/statuses/{$working}", ['retired' => true])->assertStatus(422);
         $api()->patchJson("/api/v1/task-boards/{$board->id}/statuses/{$stuck}", ['retired' => true])->assertOk()->assertJsonPath('data.retired', true);
         $this->assertSame(1, collect($api()->getJson("/api/v1/task-boards/{$board->id}")->json('data.statuses'))->where('is_default', true)->count());
+    }
+
+    /** Desk 11-24 (Eve deleted NW's "Open Tasks" on Monday): nothing makes it again, nor lands in the first group. */
+    public function test_a_group_deleted_on_monday_is_not_made_again_and_work_goes_to_the_last_working_group(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], function () {
+            $board = TaskBoard::query()->first();
+            $board->groups()->delete();
+            foreach (['Company Info', 'Field Manager', 'Done', 'Overbooked'] as $i => $name) {
+                TaskGroup::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $name, 'position' => $i]);
+            }
+            $board->forceFill(['builtin_columns' => ['_monday_deleted_groups' => ['open tasks']] + (array) $board->builtin_columns])->save();
+
+            $group = app(TaskWriter::class)->openTasks($board->fresh());
+            $this->assertSame('Overbooked', $group->name);
+            $this->assertSame(0, $board->groups()->where('name', 'Open Tasks')->count());
+        });
     }
 }
