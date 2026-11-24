@@ -92,6 +92,15 @@ void main() {
     expect(serviceKind({'group': null, 'label': null}), 'Other');
   });
 
+  // Mobile review 11-24: at an iOS accessibility text size the card's fixed
+  // 118 px text area overflowed by 24 px. It grows with the text.
+  testWidgets('cards fit at a large text size on a phone', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpScreen(tester, services: _mixed, size: const Size(400, 900));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a kind chip filters to that kind', (tester) async {
     await _pumpScreen(tester, services: _mixed);
     await tester.tap(find.byKey(const ValueKey('services-kind-Popular')));

@@ -16,6 +16,7 @@ import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/sending_server_panel.dart';
 import '../widgets/location_setting.dart';
+import '../widgets/async_body.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -545,30 +546,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final me = widget.session.me!;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // A line saying what these settings belong to. The switcher above says
-        // where you are; this says what changing something here would affect,
-        // which is the question people actually get wrong.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-          child: Text(
-            _scopeType == 'organization'
-                ? 'Settings for ${me.organization.name} — everything inherits these '
-                      'unless a company or a '
-                      '${me.organization.franchiseLabel.toLowerCase()} overrides them.'
-                : 'Settings for $_scopeLabel. Anything left alone inherits from '
-                      'above; anything set here overrides it.',
-            style: Theme.of(context).textTheme.bodyMedium,
+    // On a phone the sentence and the search scroll away with the settings:
+    // at iOS accessibility text sizes they left the list -45 px (mobile
+    // review 11-24).
+    return HeaderAboveList(
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // A line saying what these settings belong to. The switcher above says
+          // where you are; this says what changing something here would affect,
+          // which is the question people actually get wrong.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            child: Text(
+              _scopeType == 'organization'
+                  ? 'Settings for ${me.organization.name} — everything inherits these '
+                        'unless a company or a '
+                        '${me.organization.franchiseLabel.toLowerCase()} overrides them.'
+                  : 'Settings for $_scopeLabel. Anything left alone inherits from '
+                        'above; anything set here overrides it.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
-        ),
-        // Nothing to search and nothing to count until the first load lands.
-        if (_rows.isNotEmpty) _toolbar(context),
-        const SizedBox(height: 12),
-        const Divider(height: 1),
-        Expanded(child: _body(context)),
-      ],
+          // Nothing to search and nothing to count until the first load lands.
+          if (_rows.isNotEmpty) _toolbar(context),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+        ],
+      ),
+      list: _body(context),
     );
   }
 

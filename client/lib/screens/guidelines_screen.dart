@@ -316,7 +316,11 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                   maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600
                       ? 600
                       : 280,
-                  mainAxisExtent: 220,
+                  // The text part grows with the reader's text size (iOS
+                  // extra-extra-large overflowed the card by 6 px; mobile
+                  // review 11-24); the 102 px picture strip does not.
+                  mainAxisExtent:
+                      102 + MediaQuery.textScalerOf(context).scale(118),
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),

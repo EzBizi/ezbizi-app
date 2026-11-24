@@ -231,7 +231,11 @@ class _FinancialHomeState extends State<FinancialHome> {
       builder: (context, box) {
         final phone = box.maxWidth < 700;
         final columns = box.maxWidth >= 1000 ? 4 : (phone ? 2 : 3);
-        final height = phone ? 104.0 : 132.0;
+        // Grows with the reader's text size: at iOS accessibility sizes the
+        // tiles overflowed by 21 px (mobile review 11-24).
+        final height = MediaQuery.textScalerOf(
+          context,
+        ).scale(phone ? 104.0 : 132.0);
 
         Widget grid(List<Widget> cards) => GridView(
           shrinkWrap: true,

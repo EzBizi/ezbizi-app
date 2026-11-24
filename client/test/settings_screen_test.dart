@@ -344,6 +344,40 @@ void main() {
     expect(tester.widget<TextField>(number).textAlign, TextAlign.right);
   });
 
+  // Mobile review 11-24: on an iPhone Duo at an iOS accessibility text size,
+  // the sentence and the search above the settings left the list -45 px. On
+  // a phone they scroll away with the list instead.
+  testWidgets('on a short phone at a large text size nothing overflows', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(466, 260);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'locale',
+            label: 'Language',
+            type: 'enum',
+            value: 'en',
+            options: const [
+              {'value': 'en', 'label': 'English'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('on a phone a row reads across, with its control underneath', (
     tester,
   ) async {
