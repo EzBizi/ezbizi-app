@@ -5559,8 +5559,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _statusLabel(_board!, _statusOf(t)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      // Chaim 11-24: Monday's regular weight.
-      style: TextStyle(color: labelInk(colours.fill), fontSize: 13),
+      // Chaim 11-24: Monday's regular weight at 14 px (measured off his screenshot).
+      style: TextStyle(color: labelInk(colours.fill), fontSize: 14),
     );
 
     final editable = (_board?['statuses'] as List? ?? const []).any(
@@ -6267,6 +6267,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   @override
   void dispose() {
+    _reply.dispose();
     _disposing = true;
     _flushAll();
     _relock?.cancel();
@@ -6537,6 +6538,330 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// JSON with words only, as before; multipart once a file is attached,
   /// `files[]` and the body only if there is one.
+  /// One update as Monday's card (Chaim 11-24): its words (long ones folded
+  /// to six lines, Read more), Like, Reply and the seen count; its replies
+  /// under it, each with the same card, and a reply box when Reply is open.
+  Widget _updateCard(BuildContext context, _Json u) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Container(
+      key: u['id'] == widget.focusUpdate ? _focusKey : null,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: u['id'] == widget.focusUpdate
+          ? const EdgeInsets.all(6)
+          : EdgeInsets.zero,
+      decoration: u['id'] == widget.focusUpdate
+          ? BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _avatar(
+            context,
+            '${(u['author'] as Map?)?['name'] ?? '?'}',
+            api: widget.api,
+            userId: (u['author'] as Map?)?['id'],
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text:
+                            '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(
+                        text: formatStamp(
+                          u['created_at'],
+                          '',
+                          formats: widget.formats,
+                        ),
+                        style: muted,
+                      ),
+                      if (u['edited_at'] != null)
+                        TextSpan(text: '  · Edited', style: muted),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // Selectable, to copy as is (Merav via Jose 11-19).
+                if ('${u['body'] ?? ''}'.isNotEmpty)
+                  _clamped(
+                    u,
+                    linkedText(
+                      context,
+                      '${u['body']}',
+                      key: ValueKey('task-update-body-${u['id']}'),
+                    ),
+                  ),
+                TaskAttachments(
+                  api: widget.api,
+                  attachments: [
+                    for (final a in (u['attachments'] as List? ?? const []))
+                      if (a is Map) Map<String, dynamic>.from(a),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (u['can_edit'] == true || u['can_delete'] == true)
+            PopupMenuButton<String>(
+              key: ValueKey('task-update-menu-${u['id']}'),
+              tooltip: 'More',
+              icon: const Icon(Icons.more_horiz, size: 18),
+              onSelected: (v) =>
+                  v == 'edit' ? _editUpdate(u) : _deleteUpdate(u),
+              itemBuilder: (_) => [
+                if (u['can_edit'] == true)
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                if (u['can_delete'] == true)
+                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Chaim 11-24 (Monday's panel): which update's reply box is open, what
+  /// is typed in it, and which long updates are read in full.
+  String? _replyTo;
+  final _reply = TextEditingController();
+  bool _replying = false;
+  final Set<String> _readMore = {};
+
+  /// A long update shows six lines and "Read more"; "Show less" folds it.
+  Widget _clamped(_Json u, Widget body) {
+    final text = '${u['body'] ?? ''}';
+    final long = '\n'.allMatches(text).length >= 6 || text.length > 600;
+    final id = '${u['id']}';
+    if (!long) return body;
+    final open = _readMore.contains(id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (open)
+          body
+        else
+          ClipRect(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 6 * 20),
+              child: body,
+            ),
+          ),
+        TextButton(
+          key: ValueKey('task-update-more-$id'),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: () =>
+              setState(() => open ? _readMore.remove(id) : _readMore.add(id)),
+          child: Text(open ? 'Show less' : 'Read more'),
+        ),
+      ],
+    );
+  }
+
+  /// Like · Reply on the left, the seen count on the right.
+  Widget _updateFooter(BuildContext context, _Json u, {bool reply = false}) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final likes = (u['likes'] as num? ?? 0).toInt();
+    final liked = u['liked'] == true;
+    final seen = (u['seen'] as num? ?? 0).toInt();
+    return Padding(
+      padding: const EdgeInsets.only(left: 40, bottom: 8),
+      child: Row(
+        children: [
+          TextButton.icon(
+            key: ValueKey('task-update-like-${u['id']}'),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            onPressed: () => _like(u),
+            icon: Icon(
+              liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+              size: 16,
+            ),
+            label: Text(likes > 0 ? 'Like · $likes' : 'Like'),
+          ),
+          if (!reply && _canEdit)
+            TextButton.icon(
+              key: ValueKey('task-update-reply-${u['id']}'),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => setState(() {
+                _replyTo = _replyTo == u['id'] ? null : u['id'] as String?;
+                _reply.clear();
+              }),
+              icon: const Icon(Icons.reply, size: 16),
+              label: const Text('Reply'),
+            ),
+          const Spacer(),
+          if (seen > 0)
+            Tooltip(
+              message: 'Seen by $seen',
+              child: Row(
+                key: ValueKey('task-update-seen-${u['id']}'),
+                children: [
+                  Icon(
+                    Icons.visibility_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text('$seen', style: muted),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// "Write a reply and mention others with @" under the update.
+  Widget _replyBox(BuildContext context, _Json u) => Padding(
+    padding: const EdgeInsets.only(left: 36, bottom: 10),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: MentionField(
+            api: widget.api,
+            type: 'task',
+            id: widget.taskId,
+            controller: _reply,
+            mentions: _mentions,
+            child: TextField(
+              key: ValueKey('task-update-reply-box-${u['id']}'),
+              controller: _reply,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Write a reply and mention others with @',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          key: ValueKey('task-update-reply-send-${u['id']}'),
+          onPressed: _replying ? null : () => _sendReply(u),
+          child: const Text('Reply'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _sendReply(_Json u) async {
+    final body = _reply.text.trim();
+    if (body.isEmpty) return;
+    setState(() => _replying = true);
+    final mentions = _mentions.ids(body);
+    final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
+      'body': body,
+      'parent_id': u['id'],
+      if (mentions.isNotEmpty) 'mentions': mentions,
+    });
+    if (!mounted) return;
+    setState(() {
+      _replying = false;
+      if (!res.ok) {
+        _postError = res.reason;
+        return;
+      }
+      _reply.clear();
+      _replyTo = null;
+      _task = {
+        ..._task!,
+        'updates': [
+          ...(_task!['updates'] as List? ?? const []),
+          res.body['data'],
+        ],
+      };
+    });
+  }
+
+  Future<void> _like(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/like',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    final data = res.body['data'] as Map;
+    setState(() {
+      _task = {
+        ..._task!,
+        'updates': [
+          for (final x
+              in (_task!['updates'] as List? ?? const []).cast<_Json>())
+            if (x['id'] == u['id'])
+              {...x, 'likes': data['likes'], 'liked': data['liked']}
+            else
+              x,
+        ],
+      };
+    });
+  }
+
+  /// Which tab is over the thread: updates, files or activity.
+  String _thread = 'updates';
+
+  /// Every file on the task's updates, newest first (Monday's Files tab).
+  List<Map<String, dynamic>> _taskFiles(List<_Json> updates) => [
+    for (final u in updates.reversed)
+      for (final a in (u['attachments'] as List? ?? const []))
+        if (a is Map) a.cast<String, dynamic>(),
+  ];
+
+  /// The task's changes, newest first (Monday's Activity Log).
+  Widget _activityList(TextStyle? muted) {
+    final activity = _activity;
+    if (activity == null) return const LinearProgressIndicator();
+    if (activity.isEmpty) return Text('No changes yet.', style: muted);
+    return Column(
+      key: const Key('task-activity'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final a in activity)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${a['who'] ?? 'An automation'}  ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(
+                    text:
+                        '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                  ),
+                  TextSpan(
+                    text: formatStamp(a['at'], '', formats: widget.formats),
+                    style: muted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Future<void> _post() async {
     final body = _update.text.trim();
     if (body.isEmpty && _files.isEmpty) return;
@@ -6766,7 +7091,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               _statusLabel(widget.board, _statusOf(task)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colours.ink, fontSize: 13),
+              style: TextStyle(color: colours.ink, fontSize: 14),
             ),
           ),
         ),
@@ -7056,233 +7381,134 @@ class _TaskPanelState extends State<_TaskPanel> {
             ),
             const Divider(height: 24),
           ],
-          Text(
-            updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          // Chaim 11-24: Monday's tabs over the thread.
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final (key, label) in [
+                (
+                  'updates',
+                  updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
+                ),
+                (
+                  'files',
+                  _taskFiles(updates).isEmpty
+                      ? 'Files'
+                      : 'Files · ${_taskFiles(updates).length}',
+                ),
+                ('activity', 'Activity Log'),
+              ])
+                ChoiceChip(
+                  key: ValueKey('task-thread-$key'),
+                  label: Text(label),
+                  selected: _thread == key,
+                  onSelected: (_) {
+                    setState(() => _thread = key);
+                    if (key == 'activity' && _activity == null) _loadActivity();
+                  },
+                ),
+            ],
           ),
           const SizedBox(height: 8),
-          if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
-          for (final u in updates)
-            Container(
-              key: u['id'] == widget.focusUpdate ? _focusKey : null,
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: u['id'] == widget.focusUpdate
-                  ? const EdgeInsets.all(6)
-                  : EdgeInsets.zero,
-              decoration: u['id'] == widget.focusUpdate
-                  ? BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withValues(
-                        alpha: 0.5,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    )
-                  : null,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _avatar(
-                    context,
-                    '${(u['author'] as Map?)?['name'] ?? '?'}',
+          if (_thread == 'files')
+            _taskFiles(updates).isEmpty
+                ? Text('No files on this task yet.', style: muted)
+                : TaskAttachments(
                     api: widget.api,
-                    userId: (u['author'] as Map?)?['id'],
+                    attachments: _taskFiles(updates),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text:
-                                    '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              TextSpan(
-                                text: formatStamp(
-                                  u['created_at'],
-                                  '',
-                                  formats: widget.formats,
-                                ),
-                                style: muted,
-                              ),
-                              if (u['edited_at'] != null)
-                                TextSpan(text: '  · Edited', style: muted),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        // Selectable, to copy as is (Merav via Jose 11-19).
-                        if ('${u['body'] ?? ''}'.isNotEmpty)
-                          linkedText(
-                            context,
-                            '${u['body']}',
-                            key: ValueKey('task-update-body-${u['id']}'),
-                          ),
-                        TaskAttachments(
-                          api: widget.api,
-                          attachments: [
-                            for (final a
-                                in (u['attachments'] as List? ?? const []))
-                              if (a is Map) Map<String, dynamic>.from(a),
-                          ],
-                        ),
-                      ],
-                    ),
+          if (_thread == 'activity') _activityList(muted),
+          if (_thread == 'updates') ...[
+            if (updates.isEmpty)
+              Text('Nothing written here yet.', style: muted),
+            for (final u in updates.where((x) => x['parent_id'] == null)) ...[
+              _updateCard(context, u),
+              _updateFooter(context, u),
+              for (final r in updates.where((x) => x['parent_id'] == u['id']))
+                Padding(
+                  padding: const EdgeInsets.only(left: 36),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _updateCard(context, r),
+                      _updateFooter(context, r, reply: true),
+                    ],
                   ),
-                  if (u['can_edit'] == true || u['can_delete'] == true)
-                    PopupMenuButton<String>(
-                      key: ValueKey('task-update-menu-${u['id']}'),
-                      tooltip: 'More',
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      onSelected: (v) =>
-                          v == 'edit' ? _editUpdate(u) : _deleteUpdate(u),
-                      itemBuilder: (_) => [
-                        if (u['can_edit'] == true)
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Edit'),
-                          ),
-                        if (u['can_delete'] == true)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-          if (_canEdit) ...[
-            const SizedBox(height: 4),
-            MentionField(
-              api: widget.api,
-              type: 'task',
-              id: widget.taskId,
-              controller: _update,
-              mentions: _mentions,
-              child: TextField(
-                key: const Key('task-update-body'),
+                ),
+              if (_replyTo == u['id']) _replyBox(context, u),
+            ],
+            if (_canEdit) ...[
+              const SizedBox(height: 4),
+              MentionField(
+                api: widget.api,
+                type: 'task',
+                id: widget.taskId,
                 controller: _update,
-                minLines: 2,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  hintText: 'Write an update… (@ to mention)',
-                  border: OutlineInputBorder(),
+                mentions: _mentions,
+                child: TextField(
+                  key: const Key('task-update-body'),
+                  controller: _update,
+                  minLines: 2,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    hintText: 'Write an update… (@ to mention)',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
-            ),
-            if (_files.isNotEmpty) ...[
+              if (_files.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (i, f) in _files.indexed)
+                      TaskFileChip(
+                        key: ValueKey('task-update-file-$i'),
+                        name: f.name,
+                        size: f.bytes.length,
+                        onDeleted: _posting
+                            ? null
+                            : () => setState(() => _files.removeAt(i)),
+                      ),
+                  ],
+                ),
+              ],
+              if (_postError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _postError!,
+                  key: const Key('task-update-error'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Wrap(
-                spacing: 6,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
                 runSpacing: 6,
                 children: [
-                  for (final (i, f) in _files.indexed)
-                    TaskFileChip(
-                      key: ValueKey('task-update-file-$i'),
-                      name: f.name,
-                      size: f.bytes.length,
-                      onDeleted: _posting
-                          ? null
-                          : () => setState(() => _files.removeAt(i)),
-                    ),
+                  TextButton.icon(
+                    key: const Key('task-update-attach'),
+                    onPressed: _posting || _files.length >= taskUpdateMaxFiles
+                        ? null
+                        : _attach,
+                    icon: const Icon(Icons.attach_file, size: 18),
+                    label: const Text('Attach'),
+                  ),
+                  FilledButton(
+                    key: const Key('task-update-post'),
+                    onPressed: _posting ? null : _post,
+                    child: Text(_posting ? 'Posting…' : 'Post update'),
+                  ),
                 ],
               ),
             ],
-            if (_postError != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _postError!,
-                key: const Key('task-update-error'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                TextButton.icon(
-                  key: const Key('task-update-attach'),
-                  onPressed: _posting || _files.length >= taskUpdateMaxFiles
-                      ? null
-                      : _attach,
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('Attach'),
-                ),
-                FilledButton(
-                  key: const Key('task-update-post'),
-                  onPressed: _posting ? null : _post,
-                  child: Text(_posting ? 'Posting…' : 'Post update'),
-                ),
-              ],
-            ),
           ],
           if (!widget.updatesOnly) ...[
-            const Divider(height: 24),
-            // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
-            ExpansionTile(
-              key: const Key('task-activity'),
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'Activity',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onExpansionChanged: (open) {
-                if (open && _activity == null) _loadActivity();
-              },
-              children: [
-                if (_activity == null)
-                  const LinearProgressIndicator()
-                else if (_activity!.isEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('No changes yet.', style: muted),
-                  )
-                else
-                  for (final a in _activity!)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '${a['who'] ?? 'An automation'}  ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            TextSpan(
-                              text:
-                                  '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
-                            ),
-                            TextSpan(
-                              text: formatStamp(
-                                a['at'],
-                                '',
-                                formats: widget.formats,
-                              ),
-                              style: muted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-              ],
-            ),
             // Who made it is a field above; the footer keeps when.
             if (task['created_at'] != null)
               Padding(

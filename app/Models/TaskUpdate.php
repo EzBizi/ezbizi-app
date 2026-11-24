@@ -27,9 +27,9 @@ class TaskUpdate extends Model implements HoldsPersonalData
     use HasUuids;
     use SoftDeletes;
 
-    protected $fillable = ['organization_id', 'task_id', 'user_id', 'body', 'mentions'];
+    protected $fillable = ['organization_id', 'task_id', 'parent_update_id', 'user_id', 'body', 'mentions'];
 
-    protected $casts = ['mentions' => 'array', 'edited_at' => 'datetime'];
+    protected $casts = ['mentions' => 'array', 'likes' => 'array', 'edited_at' => 'datetime'];
 
     public function task(): BelongsTo
     {
@@ -56,6 +56,9 @@ class TaskUpdate extends Model implements HoldsPersonalData
         return [
             new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
                 'Which person wrote this comment on the task.',
+                Erasure::erase()),
+            new PersonalDataEntry('likes', PersonalDataEntry::IDENTITY,
+                'Who liked this comment.',
                 Erasure::erase()),
             new PersonalDataEntry('body', PersonalDataEntry::CONTENT,
                 'What the person wrote in the comment.',

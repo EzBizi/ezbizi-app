@@ -401,14 +401,17 @@ void main() {
     expect(find.text('Late'), findsOneWidget);
 
     // Activity: who changed what, from and to (Jose, 2026-11-09).
-    await tester.ensureVisible(find.byKey(const Key('task-activity')));
-    await tester.tap(find.byKey(const Key('task-activity')));
+    // Chaim 11-24: the Activity Log is a tab over the thread.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('task-thread-activity')),
+    );
+    await tester.tap(find.byKey(const ValueKey('task-thread-activity')));
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Status: Working on it → Stuck'),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const Key('task-activity')));
+    await tester.tap(find.byKey(const ValueKey('task-thread-updates')));
     await tester.pumpAndSettle();
 
     // One status chip opens the statuses (sidebar option A, 11-12).

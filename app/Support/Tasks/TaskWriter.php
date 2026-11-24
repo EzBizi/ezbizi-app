@@ -28,8 +28,8 @@ use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -598,12 +598,13 @@ class TaskWriter
         });
     }
 
-    public function comment(Task $task, User $author, string $body, array $mentions = []): TaskUpdate
+    public function comment(Task $task, User $author, string $body, array $mentions = [], ?TaskUpdate $parent = null): TaskUpdate
     {
-        return DB::transaction(function () use ($task, $author, $body, $mentions) {
+        return DB::transaction(function () use ($task, $author, $body, $mentions, $parent) {
             $update = TaskUpdate::query()->create([
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
+                'parent_update_id' => $parent?->id,
                 'user_id' => $author->getKey(),
                 'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
