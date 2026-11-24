@@ -90,6 +90,15 @@ final class ClientMessages
             return $e->getMessage();
         }
         $this->note($job, 'Text to client: '.$body);
+        // At scheduling, as before, while the day-before crew text is off;
+        // never both (desk, 2026-11-23).
+        if ($kind === 'scheduled' && $this->wording($job, 'crew_day_before') === null
+            && collect($job->tags ?? [])->contains(fn ($t) => ProjectBoardController::isRepairTeam((string) $t))) {
+            $when = $job->scheduled_for?->format('D M j, g:i A') ?? 'the scheduled date';
+            if (($why = $this->toCrew($job, "Work order for {$job->number} on {$when}: ".ProjectBoardController::workOrderLink($job))) !== null) {
+                $this->note($job, "Work order not sent to the crew: {$why}");
+            }
+        }
 
         return null;
     }

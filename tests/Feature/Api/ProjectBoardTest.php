@@ -805,6 +805,43 @@ class ProjectBoardTest extends TestCase
         $this->get(strtok($link, '?'))->assertForbidden();
     }
 
+    /** Desk, 2026-11-23: while crew_day_before is off the crew still gets the work order at scheduling; once on, only the day before. */
+    public function test_the_crew_gets_the_work_order_at_scheduling_until_the_day_before_text_is_on(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-23 09:00:00');
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $crew = fn () => collect($twilio->calls)->where('method', 'sendMessage')->filter(fn ($c) => $c['args'][2] === '+15125550199')->count();
+        $make = function (string $num, bool $dayBefore) use ($alpha) {
+            return $this->inTenant($alpha['org'], function () use ($alpha, $num, $dayBefore) {
+                if (! \App\Models\PhoneNumber::query()->exists()) {
+                    $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+                    \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+                }
+                $set = app(\App\Support\Settings\SettingsResolver::class);
+                $set->set('project_board.repair_tags', $alpha['org'], [['name' => 'KENNI REPAIR TEAM', 'phone' => '+15125550199']]);
+                $since = now()->subDay()->toIso8601String();
+                $set->set('project_board.client_messages', $alpha['org'], ['scheduled' => ['on' => true, 'since' => $since, 'text' => 'Set for {date}.']]
+                    + ($dayBefore ? ['crew_day_before' => ['on' => true, 'since' => $since, 'text' => '{job} tomorrow.']] : []));
+                $id = $this->job($alpha['franchise'], $num, 'Submitted', '2026-11-30 09:00:00', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+                Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101'])->save();
+
+                return $id;
+            });
+        };
+
+        $make('J-1', false);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before off: at scheduling, as before');
+
+        $make('J-2', true);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before on: not at scheduling');
+    }
+
     /** Jose's PM flow, 2026-11-23: client reminder 3 days out, PM asked to confirm open parts, crew work order the day before with the balance. */
     public function test_three_days_out_the_client_and_pm_are_reminded_and_the_crew_gets_the_work_order_the_day_before(): void
     {
