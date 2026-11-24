@@ -59,4 +59,25 @@ class TaskBoardActivityTest extends TestCase
         $only = Xlsx::read($api()->get("/api/v1/task-boards/{$board->id}/export?ids[]={$a}")->getContent(), $title);
         $this->assertCount(2, $only, 'a header and the chosen task');
     }
+
+    /** Monday's My Work (gap review P1): my open tasks on every board I see, by due day. */
+    public function test_my_work_lists_my_open_tasks_across_boards_soonest_first(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
+        $me = $tenant['admin'];
+        $other = $this->userWithRole($tenant, 'Tech', ['tasks.view', 'tasks.edit']);
+        $api = fn () => $this->signedInAs($me);
+        $mk = fn (string $title, ?string $due, $owner) => $api()->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => $title, 'due_on' => $due, 'assignee_user_id' => $owner->id])->assertCreated()->json('data.id');
+        $mk('Later', now()->addDays(20)->toDateString(), $me);
+        $mk('Today', now()->toDateString(), $me);
+        $mk('No date', null, $me);
+        $mk('Theirs', now()->toDateString(), $other);
+        $done = $mk('Done one', now()->toDateString(), $me);
+        $api()->patchJson("/api/v1/tasks/{$done}", ['status' => 'Done'])->assertOk();
+
+        $titles = collect($api()->getJson('/api/v1/my-work')->assertOk()->json('data'))->pluck('title')->all();
+        $this->assertSame(['Today', 'Later', 'No date'], $titles);
+        $this->assertContains('Done one', collect($api()->getJson('/api/v1/my-work?done=1')->json('data'))->pluck('title')->all());
+    }
 }

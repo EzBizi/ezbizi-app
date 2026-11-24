@@ -31,6 +31,7 @@ import '../widgets/status_pill.dart';
 import 'task_board_activity.dart';
 import 'task_board_automate.dart';
 import 'task_board_feed.dart';
+import 'task_board_my_work.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
@@ -3460,6 +3461,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           ),
         ),
         child: const Text('Updates feed'),
+      ),
+      // Monday's My Work (gap review P1): what I own on every board.
+      MenuItemButton(
+        key: const Key('tasks-my-work'),
+        leadingIcon: const Icon(Icons.assignment_ind_outlined, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => MyWorkPanel(
+            api: widget.api,
+            formats: _formats,
+            onOpenTask: (id) async {
+              Navigator.of(context).maybePop();
+              if (_openTaskById(id)) return;
+              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+              await _takeLink();
+            },
+          ),
+        ),
+        child: const Text('My Work'),
       ),
       MenuItemButton(
         key: const Key('tasks-board-export'),

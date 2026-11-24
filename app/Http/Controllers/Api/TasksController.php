@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\NoteRead;
 use App\Models\Task;
 use App\Models\TaskActivity;
+use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
@@ -646,6 +647,28 @@ class TasksController extends Controller
             ] + ($u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE] : []))->values(),
             'meta' => ['boards' => $counts->map(fn ($c, $b) => ['id' => $b, 'name' => (string) ($boards[$b] ?? ''), 'count' => (int) $c])->values()],
         ]);
+    }
+
+    /**
+     * GET my-work (Monday's My Work, gap review P1): the open tasks this
+     * person owns on every board they see, with each task's board, for the
+     * client to bucket by due day. done=1 adds the last 30 days' done ones.
+     */
+    public function myWork(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->get(['id', 'name', 'kind'])->keyBy('id');
+        $tasks = Task::query()->with(self::WITH)->withCount(self::counts())
+            ->whereIn('board_id', $boards->keys())
+            ->where(fn ($q) => $q->where('assignee_user_id', $me->id)
+                ->orWhereIn('id', TaskAssignee::query()->select('task_id')->where('user_id', $me->id)))
+            ->when(! $request->boolean('done'), fn ($q) => $q->whereNull('completed_at'),
+                fn ($q) => $q->where(fn ($w) => $w->whereNull('completed_at')->orWhere('completed_at', '>=', now()->subDays(30))))
+            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(1000)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => self::present($t) + [
+            'board_name' => $boards[$t->board_id]?->kind === 'user' ? 'My board' : (string) $boards[$t->board_id]?->name,
+        ])->values()]);
     }
 
     /** POST task-updates/read-all: every task this person sees, read now (the feed's Mark all as read). */
