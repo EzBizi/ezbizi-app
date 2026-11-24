@@ -1879,6 +1879,8 @@ Route::prefix('v1')
         // The Schedule tab: one day's board, read-only.
         // Scheduling › Overbooking (Jose, 2026-09-29).
         // Scheduling › Locations (Jovanni, 2026-10-01; queue 49).
+        // Anyone who sees an area can report a wrong ZIP; the controller asks scheduling.view.
+        Route::post('scheduling/zip-reports', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'store']);
         Route::middleware('permission:scheduling.locations.view')->group(function () {
             Route::get('scheduling/locations', [SchedulingLocationsController::class, 'index']);
             Route::get('scheduling/locations/nearest', [SchedulingLocationsController::class, 'nearest']);
@@ -1988,6 +1990,9 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+            Route::get('scheduling/zip-reports', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'index']);
+            Route::post('scheduling/zip-reports/{report}/move', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'move']);
+            Route::post('scheduling/zip-reports/{report}/dismiss', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'dismiss']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
                 ->parameters(['areas' => 'area']);
         });
