@@ -805,6 +805,85 @@ class ProjectBoardTest extends TestCase
         $this->get(strtok($link, '?'))->assertForbidden();
     }
 
+    /** Desk, 2026-11-23: while crew_day_before is off the crew still gets the work order at scheduling; once on, only the day before. */
+    public function test_the_crew_gets_the_work_order_at_scheduling_until_the_day_before_text_is_on(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-23 09:00:00');
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $crew = fn () => collect($twilio->calls)->where('method', 'sendMessage')->filter(fn ($c) => $c['args'][2] === '+15125550199')->count();
+        $make = function (string $num, bool $dayBefore) use ($alpha) {
+            return $this->inTenant($alpha['org'], function () use ($alpha, $num, $dayBefore) {
+                if (! \App\Models\PhoneNumber::query()->exists()) {
+                    $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+                    \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                        'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+                }
+                $set = app(\App\Support\Settings\SettingsResolver::class);
+                $set->set('project_board.repair_tags', $alpha['org'], [['name' => 'KENNI REPAIR TEAM', 'phone' => '+15125550199']]);
+                $since = now()->subDay()->toIso8601String();
+                $set->set('project_board.client_messages', $alpha['org'], ['scheduled' => ['on' => true, 'since' => $since, 'text' => 'Set for {date}.']]
+                    + ($dayBefore ? ['crew_day_before' => ['on' => true, 'since' => $since, 'text' => '{job} tomorrow.']] : []));
+                $id = $this->job($alpha['franchise'], $num, 'Submitted', '2026-11-30 09:00:00', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+                Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101'])->save();
+
+                return $id;
+            });
+        };
+
+        $make('J-1', false);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before off: at scheduling, as before');
+
+        $make('J-2', true);
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $crew(), 'day-before on: not at scheduling');
+    }
+
+    /** Jose's PM flow, 2026-11-23: client reminder 3 days out, PM asked to confirm open parts, crew work order the day before with the balance. */
+    public function test_three_days_out_the_client_and_pm_are_reminded_and_the_crew_gets_the_work_order_the_day_before(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-23 09:00:00');
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->map(fn ($c) => [$c['args'][2], explode("
+
+", $c['args'][3])[0]])->values()->all();
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', '2026-11-26 09:00:00', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+            Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101', 'name' => 'Lena Park'])->save();
+            \App\Models\JobPart::create(['organization_id' => $alpha['org']->id, 'job_id' => $id, 'kind' => 'order', 'item' => 'Damper', 'quantity' => 1, 'position' => 0, 'ordered_at' => now()]);
+            $set = app(\App\Support\Settings\SettingsResolver::class);
+            $set->set('project_board.repair_tags', $alpha['org'], [['name' => 'KENNI REPAIR TEAM', 'phone' => '+15125550199']]);
+            $set->set('project_board.client_messages', $alpha['org'], [
+                'three_day_before' => ['on' => true, 'since' => now()->subDay()->toIso8601String(), 'text' => 'Hi {client_first}, see you {date}. Call {pm_name}.'],
+                'crew_day_before' => ['on' => true, 'since' => now()->subDay()->toIso8601String(), 'text' => '{job} tomorrow: {work_order} Balance {balance}.'],
+            ]);
+
+            return $id;
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame([['+15125550101', 'Hi Lena, see you Thursday, November 26 at 9:00 AM. Call your project manager.']], $sends(), 'once, to the client only');
+        $this->inTenant($alpha['org'], fn () => $this->assertSame(1, \App\Models\Notification::query()
+            ->where('user_id', $alpha['admin']->id)->where('title', 'Confirm parts are in for J-1')->count()));
+
+        $this->travel(2)->days();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        [$to, $body] = $sends()[1];
+        $this->assertSame('+15125550199', $to);
+        $this->assertMatchesRegularExpression('#^J-1 tomorrow: https?://\S+ Balance \$0\.00\.$#', $body);
+        $this->assertCount(2, $sends());
+    }
+
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
     public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
     {
