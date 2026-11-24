@@ -122,7 +122,7 @@ class NotificationsController extends Controller
         $senders = Alert::query()
             ->whereIn('id', $rows->where('subject_type', Alert::class)->pluck('subject_id'))
             ->with('sender:id,name')
-            ->get(['id', 'sender_id', 'kind', 'context', 'choices', 'allow_text'])
+            ->get(['id', 'sender_id', 'sender_label', 'kind', 'context', 'choices', 'allow_text'])
             ->keyBy('id');
 
         return $rows->map(function (Notification $row) use ($senders) {
@@ -134,7 +134,7 @@ class NotificationsController extends Controller
                 'id' => $row->id,
                 'title' => $row->title,
                 'body' => $row->body,
-                'sender' => $suggestion ? 'EzBizi' : $senders->get($row->subject_id)?->sender?->name,
+                'sender' => $suggestion ? 'EzBizi' : ($senders->get($row->subject_id)?->sender_label ?? $senders->get($row->subject_id)?->sender?->name),
                 'created_at' => $row->created_at?->toIso8601String(),
                 'suggestion_id' => $suggestion ? $row->subject_id : null,
                 'update' => $suggestion && $row->body === SuggestionAlerts::UPDATE_BODY,

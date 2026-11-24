@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
@@ -25,6 +26,7 @@ void main() {
     WidgetTester tester, {
     Size size = const Size(1200, 900),
     Set<int> refuse = const {},
+    List<int>? picture,
   }) async {
     final asked = <String>[];
     tester.view.physicalSize = size;
@@ -41,7 +43,10 @@ void main() {
             headers: {'content-type': 'application/json'},
           );
         }
-        return http.Response.bytes(index < 3 ? _png : utf8.encode('text'), 200);
+        return http.Response.bytes(
+          index < 3 ? picture ?? _png : utf8.encode('text'),
+          200,
+        );
       }),
     );
     await tester.pumpWidget(
@@ -144,7 +149,39 @@ void main() {
     },
   );
 
-  testWidgets('on a phone the gallery wraps without overflow', (tester) async {
+  // Adeline, 11-24: "make the images bigger so you can review them, while
+  // preserving their ratios". An 800x400 picture: its own size on a wide
+  // pane, the pane's width on a phone, 2:1 both times, never cropped.
+  for (final (size, width) in [
+    (const Size(1200, 900), 800.0),
+    (const Size(390, 844), 390.0),
+  ]) {
+    testWidgets('an 800x400 picture shows ${width}px wide, ratio kept, '
+        'at ${size.width}', (tester) async {
+      final wide = await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFF4080C0), BlendMode.src);
+        final image = await recorder.endRecording().toImage(800, 400);
+        return (await image.toByteData(
+          format: ui.ImageByteFormat.png,
+        ))!.buffer.asUint8List();
+      });
+      await pump(tester, size: size, picture: wide);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+
+      final shown = tester.getSize(
+        find.byKey(const ValueKey('suggestion-thumb-image-0')),
+      );
+      expect(shown.width, closeTo(width, 2));
+      expect(shown.width / shown.height, closeTo(2, 0.02));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('on a phone the pictures stack without overflow', (tester) async {
     await pump(tester, size: const Size(390, 844));
     expect(tester.takeException(), isNull);
     final first = tester.getTopLeft(
@@ -153,7 +190,7 @@ void main() {
     final third = tester.getTopLeft(
       find.byKey(const ValueKey('suggestion-thumb-2')),
     );
-    expect(third.dy, greaterThan(first.dy), reason: 'wrapped to a new row');
+    expect(third.dy, greaterThan(first.dy), reason: 'one under another');
     expect(
       tester
           .getBottomRight(find.byKey(const ValueKey('suggestion-thumb-2')))

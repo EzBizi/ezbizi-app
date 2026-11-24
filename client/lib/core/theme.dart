@@ -109,9 +109,14 @@ class EzBiziTheme {
       : const Color(0xFFEDF2F7);
 
   /// A group's title row (gallery 210, Jose 11-24): the board's group grey
-  /// and the group colour half and half.
-  static Color groupTitleFill(BuildContext context, Color colour) =>
-      Color.lerp(boardGroup(context), colour, 0.5)!;
+  /// tinted by the group colour. Light uses 30% colour (Jose 11-24: "a bit
+  /// lighter"); dark stays half and half, since mixing in more of the dark
+  /// grey would only make it darker.
+  static Color groupTitleFill(BuildContext context, Color colour) => Color.lerp(
+    boardGroup(context),
+    colour,
+    Theme.of(context).brightness == Brightness.dark ? 0.5 : 0.3,
+  )!;
 
   /// The ink for text on [fill]: white or near-black, whichever reads more.
   static Color inkOn(Color fill) {

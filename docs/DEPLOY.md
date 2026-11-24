@@ -152,6 +152,19 @@ phpunit, and the first then failed 200+ tests with `Failed opening required
 bootstrap/app.php`. The test database is shared, so they cannot run in parallel
 anyway. The lock waits up to an hour.
 
+**Parallel gate (2026-11-24).** The suite runs in parallel (`scripts/gate-backend.sh`,
+paratest, 8 workers, each in its own `ezbizi_testing_test_<n>`). One real
+`migrate:fresh` builds `ezbizi_testing` first and `scripts/gate-template-db.php` dumps
+it, rows included, to `database/schema/mysql-schema.sql`, which every worker loads
+instead of re-running 534 migrations (DDL is disk-bound on the box). The JUnit total
+must equal `phpunit --list-tests`. After a failed full run the next cut may re-run only
+the failed test files plus the test files it changes, when nothing else that could
+affect them changed (rules beside `rerun_plan` in `scripts/deploy.sh`;
+`EZBIZI_GATE_FULL=1` forces the full suite). Such a cut ships on the re-run and runs
+the full suite afterwards in `/opt/ezbizi-test/.background` (`scripts/gate-background.sh`,
+log `.gate-runs/<run>-full.log`); a red result is a ✗ on that release in the Releases
+screen and the next cut prints it.
+
 That last part is the point of the whole arrangement. It used to live in
 `/var/www/ezbizi` alongside the production `.env`, and Laravel falls back to `.env` when
 the environment file it was asked for does not exist — which is how

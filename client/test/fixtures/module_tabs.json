@@ -120,6 +120,7 @@
                 "Home",
                 "Bills",
                 "Markets",
+                "Bank",
                 "Settings"
             ]
         },
@@ -511,6 +512,7 @@
         "financial_results.edit",
         "financial_results.view",
         "financials.approve",
+        "financials.bank.view",
         "financials.bases.view",
         "financials.bills.view",
         "financials.create",

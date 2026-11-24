@@ -38,10 +38,8 @@ class AppearanceCard extends StatelessWidget {
             _row(
               context,
               label: 'Theme',
-              // "Match my device" rather than "System": it says what will
-              // happen, and it is the option most people actually want.
+              // Light and dark only (Jose 11-24: no "match my device").
               options: const [
-                ('system', 'Match my device'),
                 ('light', 'Light'),
                 ('dark', 'Dark'),
                 // Named by what changes rather than "Mixed 1" and "Mixed 2".

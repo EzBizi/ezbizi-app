@@ -35,6 +35,31 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   final _search = TextEditingController();
   String? _error;
   String? _empty;
+
+  /// Why there is nothing to start, said before the search (Jose 11-24: a role
+  /// with no named inspection saw a blank tab). Null until /startable answers.
+  String? _nothingOffered;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOffered();
+  }
+
+  Future<void> _checkOffered() async {
+    final response = await widget.api.get('/inspections/startable');
+    if (!mounted || !response.ok) return;
+    if ((response.data as List? ?? const []).isEmpty) {
+      setState(
+        () => _nothingOffered =
+            response.body['message'] as String? ?? _noneOffered,
+      );
+    }
+  }
+
+  static const _noneOffered =
+      'No inspection is granted to your role. Ask an admin to tick one under '
+      'Roles & permissions › Inspection › Named inspections.';
   List<Map<String, dynamic>> _hits = const [];
   List<Map<String, dynamic>> _picker = const [];
   Map<String, dynamic>? _scope;
@@ -163,8 +188,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     setState(() {
       _picker = rows;
       _empty = rows.isEmpty
-          ? (response.body['message'] as String? ??
-                'This organization has not offered any inspections to this role yet.')
+          ? (response.body['message'] as String? ?? _noneOffered)
           : null;
     });
   }
@@ -520,6 +544,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       return _resumePanel(context);
     }
 
+    if (_nothingOffered != null) {
+      return Padding(
+        padding: const EdgeInsets.all(DashboardCard.padding),
+        child: Center(child: DashboardNote(_nothingOffered!)),
+      );
+    }
     if (_scope == null) return _searchPage(context);
 
     return Padding(

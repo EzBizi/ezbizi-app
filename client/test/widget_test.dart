@@ -728,6 +728,43 @@ void main() {
     );
   });
 
+  // Jose 11-24: "on the collapsed sidebar the more feels a bit weird, it
+  // should just show the arrow". It wrapped to "Mo / re" at 80px.
+  testWidgets('collapsed, More is the arrow alone, centred, named by tooltip', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 420);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
+    await tester.pump();
+    await tester.pump();
+
+    final more = find.byKey(const Key('sidebar-more-below'));
+    expect(more, findsOneWidget);
+    expect(
+      find.descendant(of: more, matching: find.text('More')),
+      findsNothing,
+    );
+    expect(find.byTooltip('More'), findsOneWidget);
+    expect(
+      tester.getCenter(more).dx,
+      closeTo(NavigationSidebar.collapsedWidth / 2, 1),
+    );
+
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: (_) {}));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('sidebar-more-below')),
+        matching: find.text('More'),
+      ),
+      findsOneWidget,
+      reason: 'Expanded keeps the word.',
+    );
+  });
+
   testWidgets('the collapsed rail has no search, and a filter that matches '
       'nothing explains itself', (tester) async {
     await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));

@@ -159,6 +159,32 @@ class SocialCommentsTest extends TestCase
         $this->assertNull(collect($response->json('sources'))->firstWhere('network', 'youtube')['error']);
     }
 
+    // Jose 11-24: the panel showed Graph's "(#10) This endpoint requires..." and X's "credits depleted".
+    public function test_a_missing_meta_permission_and_spent_x_credits_read_as_plain_sentences(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->facebook($t, ['pages_read_engagement']);
+        $this->x($t);
+        // Both bodies captured from production 2026-11-24.
+        $this->fakeNetworks([
+            'graph.facebook.com/v21.0/page-1/posts*' => Http::response(['error' => [
+                'message' => "(#10) This endpoint requires the 'pages_read_user_content' permission or the 'Page Public Content Access' feature. Refer to https://developers.facebook.com/docs/apps/review/login-permissions#manage-pages",
+                'type' => 'OAuthException', 'code' => 10, 'fbtrace_id' => 'AJlCmi0VB0S8RHsBHL3Soi7',
+            ]], 400),
+            'api.x.com/2/users/x-user-1/mentions*' => Http::response(['detail' => 'credits depleted', 'status' => 402, 'title' => 'Payment Required',
+                'type' => 'https://api.x.com/2/problems/credits-depleted'], 402),
+        ]);
+
+        $response = $this->signedInAs($t['admin'])->getJson('/api/v1/social/comments')->assertOk();
+        $sources = collect($response->json('sources'))->keyBy('network');
+
+        $this->assertSame('Facebook comments need a Meta permission that EzBizi is still getting approved.', $sources['facebook']['error']);
+        $this->assertSame('X comments are paused: the X API credits ran out.', $sources['x']['error']);
+        // Instagram rides the same Page and still loads.
+        $this->assertNull($sources['instagram']['error']);
+        $this->assertSame(['instagram'], array_column($response->json('data'), 'network'));
+    }
+
     public function test_facebook_reply_and_hide_reach_the_graph_and_are_audited(): void
     {
         $t = $this->provisionTenant('A1-Group');

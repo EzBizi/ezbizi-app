@@ -13,7 +13,25 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Theme: the button switches between light and dark only; Match my device is gone',
+      'Suggestions: attached screenshots show large and keep their shape',
+      'Sidebar: when folded, More is just the arrow; Task Board group titles are a lighter tint',
+      'Task Board: folding the sidebars no longer leaves a grey band; the toolbar keeps Invite and the menu',
+      'Light and dark mode switch instantly, without the slow fade on big boards',
+      'Task Board: a line under every row again, in light and dark',
+      'Task Board: images open in a viewer in the middle of the screen, with zoom and next/previous; downloads keep their file type',
+      'Task Board: the Updates column shows the red unread count or the total, never both; the group colour strip runs the full height of the group',
+      'Comments: a Facebook or X account that cannot load says why in one plain line, and the other accounts keep loading',
+      'Automations: alerts, task updates and task changes an automation makes now say EzBizi AI and the rule name, not the person who made the rule',
+      'Email: on phones, tablets and small windows an email opens full screen with Back; on short desktop windows the reading pane sits beside the list',
+      'Work Hours: correction requests fit on a phone screen',
+      'Inspection: Review QR shows for every role that has the New Inspection and Review QR tab, without needing Customer Experience; the phone bar slot opens it',
+      'Inspection: New Inspection explains when your role has no inspection to start, instead of a blank screen',
+    ]),
     VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
+      'Phones: the bottom bar gives each item equal room and its own icon, and the role editor previews it at real phone size',
+      'Financials › Bank: connect your company bank and card accounts through Plaid to see balances and transactions (read-only; EzBizi never moves money)',
       'Sidebar: Rearrange shows the section headings; drag modules between sections, move, rename, add or remove sections',
       'Inspection: the garage door inspection step 2 works again (a step with two section dividers broke the form)',
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',

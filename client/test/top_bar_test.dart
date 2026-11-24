@@ -127,7 +127,8 @@ void main() {
       await _pump(tester, width: 375);
 
       for (final icon in [
-        Icons.contrast,
+        Icons.wb_sunny_outlined,
+        Icons.dark_mode_outlined,
         Icons.light_mode,
         Icons.dark_mode,
       ]) {

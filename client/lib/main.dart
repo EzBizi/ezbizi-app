@@ -32,6 +32,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
@@ -205,6 +206,9 @@ class _EzBiziAppState extends State<EzBiziApp> {
       debugShowCheckedModeBanner: false,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
+      // No cross-fade: every frame of the 200 ms lerp rebuilt each board
+      // cell on its own, ~12 full rebuilds on a big Task Board (Jose 11-24).
+      themeAnimationDuration: Duration.zero,
       /*
        * The signed-in person's choice (§2.1 category 6), falling back to the
        * device before anyone has signed in — there is nobody to have a
@@ -628,6 +632,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       'callouts.seen',
       Callouts.seen.value.toList(),
     );
+
+    // No "match my device" any more (Jose 11-24): whoever is still on it, or
+    // never chose, keeps what their device shows now. After the frame, since
+    // a preference write rebuilds the app above this shell.
+    final theme = widget.session.me;
+    if (theme != null && !theme.themeChosen && !AppWindow.secondary) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.session.setPreference('appearance.theme', theme.theme);
+        }
+      });
+    }
 
     // SECURITY exemption: the Lead Developer's own device still beats (online)
     // and reports specs, but never captures, live-views or is remote-driven —
@@ -1599,9 +1615,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // second setting. Two places that both claim to control the theme and
               // disagree is worse than one place that is hard to find.
               //
-              // Cycles system -> light -> dark rather than toggling two states: the
-              // default is "match my device", and a two-way switch would silently
-              // throw that away the first time anybody touched it.
+              // Two states, light and dark (Jose 11-24: "get rid of the middle
+              // matching your device mode"). A mixed theme flips by its page.
               // Desktop only, by Jose's word (2026-09-10): "we can get rid of
               // the light-dark mode switcher and have it only managed via your
               // account on mobile". It was always a shortcut to the account
@@ -1609,29 +1624,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // path and never a capability -- which is the only reason it is
               // safe to drop rather than relocate.
               if (wide)
-                IconButton(
-                  tooltip: switch (me.theme) {
-                    'light' => 'Light — switch to dark',
-                    'dark' => 'Dark — match my device',
-                    _ => 'Matching your device — switch to light',
+                Builder(
+                  builder: (context) {
+                    final light =
+                        EzBiziTheme.modeFor(me.theme) == ThemeMode.light;
+                    return IconButton(
+                      tooltip: light
+                          ? 'Light — switch to dark'
+                          : 'Dark — switch to light',
+                      icon: Icon(
+                        light
+                            ? Icons.wb_sunny_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
+                      onPressed: () => widget.session.setPreference(
+                        'appearance.theme',
+                        light ? 'dark' : 'light',
+                      ),
+                    );
                   },
-                  icon: Icon(switch (me.theme) {
-                    'light' => Icons.wb_sunny_outlined,
-                    'dark' => Icons.dark_mode_outlined,
-                    // Not brightness_auto: that glyph is a sun with an A, and
-                    // it sits next to the two-factor shield that also carries
-                    // an A. Contrast is the half-and-half circle — light and
-                    // dark in one mark, no letter.
-                    _ => Icons.contrast,
-                  }),
-                  onPressed: () => widget.session.setPreference(
-                    'appearance.theme',
-                    switch (me.theme) {
-                      'system' => 'light',
-                      'light' => 'dark',
-                      _ => 'system',
-                    },
-                  ),
                 ),
               // "View as" a role or person (design 205): developers who are
               // Administrators; lit while on, so it can be switched or left.
@@ -2381,96 +2392,46 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final at = _rail == _Rail.modules
         ? slots.indexWhere((s) => s.$1.id == _selected)
         : -1;
-    // One line under each icon at any width and text size (Jose,
-    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
-    // label to one line, so the bar is drawn here: a short word, scaled
-    // down to fit its slot rather than wrapped.
-    final scheme = Theme.of(context).colorScheme;
-    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
-      final on = i == at;
-      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
-      return Expanded(
-        child: Tooltip(
-          message: tip,
-          child: InkWell(
-            key: key,
-            onTap: () {
-              if (i == slots.length) {
-                _scaffoldKey.currentState?.openDrawer();
-                return;
-              }
-              final (d, tab, label) = slots[i];
-              // A tab slot: the module takes the link and opens on that tab.
-              if (tab != null) {
-                DeepLinks.open(
-                  DeepLink(module: d.id, type: 'tab', id: tab, label: label),
-                );
-              }
-              _show(_Rail.modules, d.id);
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 56,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: on ? scheme.secondaryContainer : null,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(icon, color: ink, size: 22),
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: ink,
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
+    // One shared bar with the Roles editor's preview (Jose 2026-11-24:
+    // "you can't tell stuff apart"): equal slots, readable labels, and a
+    // tab slot with its own icon.
+    return PhoneBottomBar(
       key: const Key('phone-bottom-bar'),
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              for (final (i, (d, tab, label)) in slots.indexed)
-                slot(
-                  i,
-                  d.icon,
-                  label,
-                  tab == null ? d.label : '${d.label} › $label',
-                  ValueKey('phone-bottom-${d.id}${tab == null ? '' : '-$tab'}'),
-                ),
-              slot(
-                slots.length,
-                Icons.menu,
-                'More',
-                'More',
-                const Key('phone-bottom-more'),
+      selected: at,
+      items: [
+        for (final (d, tab, label) in slots)
+          () {
+            final (icon, badge) = slotIcon(d.icon, tab);
+            return PhoneBarItem(
+              icon: icon,
+              badge: badge,
+              label: label,
+              tooltip: tab == null ? d.label : '${d.label} › $label',
+              key: ValueKey(
+                'phone-bottom-${d.id}${tab == null ? '' : '-$tab'}',
               ),
-            ],
-          ),
+            );
+          }(),
+        const PhoneBarItem(
+          icon: Icons.menu,
+          label: 'More',
+          key: Key('phone-bottom-more'),
         ),
-      ),
+      ],
+      onTap: (i) {
+        if (i == slots.length) {
+          _scaffoldKey.currentState?.openDrawer();
+          return;
+        }
+        final (d, tab, label) = slots[i];
+        // A tab slot: the module takes the link and opens on that tab.
+        if (tab != null) {
+          DeepLinks.open(
+            DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+          );
+        }
+        _show(_Rail.modules, d.id);
+      },
     );
   }
 
@@ -3360,7 +3321,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                         // cut-off list as modules MISSING). Drawn over the
                         // list it covered a module name (desktop review
                         // 2026-11-13, Top 6).
-                        _MoreBelow(controller: _railScroll),
+                        _MoreBelow(controller: _railScroll, compact: !expanded),
                       ],
                     ),
             ),
@@ -3917,9 +3878,13 @@ class Destination {
 /// A fade and a "More" chevron over the bottom of a scrolling list, shown only
 /// while there is still something below the fold. Tapping it scrolls down.
 class _MoreBelow extends StatefulWidget {
-  const _MoreBelow({required this.controller});
+  const _MoreBelow({required this.controller, this.compact = false});
 
   final ScrollController controller;
+
+  /// The collapsed rail: the chevron alone, centred under the icons (Jose
+  /// 11-24: "it should just show the arrow"); "More" is its tooltip.
+  final bool compact;
 
   @override
   State<_MoreBelow> createState() => _MoreBelowState();
@@ -3955,6 +3920,13 @@ class _MoreBelowState extends State<_MoreBelow> {
         // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
         final bg = scheme.surfaceContainerLow;
 
+        void toEnd() => controller.animateTo(
+          controller.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+        final arrow = Icon(Icons.expand_more, size: 18, color: scheme.primary);
+
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -3966,16 +3938,19 @@ class _MoreBelowState extends State<_MoreBelow> {
           child: Padding(
             padding: const EdgeInsets.only(top: 16),
             child: Center(
-              child: TextButton.icon(
-                key: const Key('sidebar-more-below'),
-                onPressed: () => controller.animateTo(
-                  controller.position.maxScrollExtent,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                ),
-                icon: Icon(Icons.expand_more, size: 18, color: scheme.primary),
-                label: const Text('More'),
-              ),
+              child: widget.compact
+                  ? IconButton(
+                      key: const Key('sidebar-more-below'),
+                      tooltip: 'More',
+                      onPressed: toEnd,
+                      icon: arrow,
+                    )
+                  : TextButton.icon(
+                      key: const Key('sidebar-more-below'),
+                      onPressed: toEnd,
+                      icon: arrow,
+                      label: const Text('More'),
+                    ),
             ),
           ),
         );

@@ -51,6 +51,7 @@ class SocialNetworkMark extends StatelessWidget {
     'telegram': 'assets/social/telegram.svg',
     'monday': 'assets/social/monday.svg',
     'quickbooks': 'assets/social/quickbooks.svg',
+    'plaid': 'assets/social/plaid.svg',
 
     // Web Management's Social links fields, keyed as SeoFields keys them
     // (Jose, 2026-11-09: each network's logo in its field).
