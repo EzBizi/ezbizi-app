@@ -1564,7 +1564,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                           )
                         : null,
                   ),
-                  if (_totals case final t?) _totalsStrip(t),
+                  // Typing on a phone the totals fold: with them the table
+                  // ran 35 px past the bottom (mobile review 11-24).
+                  if (_totals case final t?)
+                    FoldWhileTyping(child: _totalsStrip(t)),
                   _fill(
                     (height) => ListTable(
                       key: ValueKey('project-board-table:$_tab'),
