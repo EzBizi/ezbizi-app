@@ -296,6 +296,33 @@ void main() {
     },
   );
 
+  testWidgets('staff 11-24: the calendar plots the picked date column, a '
+      'timeline as its span, and is never silently blank', (tester) async {
+    await pumpBoard(tester);
+    await pickView(tester, 'Calendar');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan-calendar-column')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Timeline').last);
+    await tester.pumpAndSettle();
+    // Today through today+4: on every day of the span in this month's grid.
+    final days = [
+      for (var i = 0; i <= 4; i++) today.add(Duration(days: i)),
+    ].where((d) => d.month == today.month);
+    for (final d in days) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('plan-day-${formatCalendarDay(d)}')),
+          matching: find.text('Task t1'),
+        ),
+        findsOneWidget,
+        reason: '$d',
+      );
+    }
+    expect(find.byKey(const Key('plan-calendar-none')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a short Timeline bar wears its dates beside it, not clipped '
       'inside', (tester) async {
     await pumpBoard(tester);
