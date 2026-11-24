@@ -70,6 +70,14 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
   void _followLink() {
     final key = DeepLinks.pending.value?.module;
     if (key == null) return;
+    // A complaint's link (the Reviews & Complaints board, Jose 11-24).
+    if (key == 'customer_experience' &&
+        DeepLinks.pending.value?.type == 'complaint') {
+      if (_tab != 'Reviews & Complaints') {
+        setState(() => _tab = 'Reviews & Complaints');
+      }
+      return;
+    }
     for (final module in widget.session.me?.reachableModules ?? const []) {
       if (module.key == key && module.parent == 'customer_experience') {
         final label = _labelOf(module.key, module.label);

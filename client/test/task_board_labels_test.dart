@@ -55,32 +55,33 @@ void main() {
     expect(tester.getSize(find.byType(Wrap)).width, greaterThan(one * 2.5));
   });
 
-  testWidgets('a timeline pill fills the elapsed part; an empty one is "-"', (
-    tester,
-  ) async {
-    const formats = DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');
-    await tester.pumpWidget(
-      host(
-        SizedBox(
-          width: 200,
-          child: TimelinePill(
-            value: const {'from': '2026-11-01', 'to': '2026-11-10'},
-            formats: formats,
-            now: DateTime(2026, 11, 6),
+  testWidgets(
+    'a timeline pill fills the elapsed part; an empty one shows a date icon (Jose 11-24)',
+    (tester) async {
+      const formats = DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            child: TimelinePill(
+              value: const {'from': '2026-11-01', 'to': '2026-11-10'},
+              formats: formats,
+              now: DateTime(2026, 11, 6),
+            ),
           ),
         ),
-      ),
-    );
-    final f = tester.widget<FractionallySizedBox>(
-      find.byKey(const Key('timeline-elapsed')),
-    );
-    expect(f.widthFactor, closeTo(0.5, 0.01));
+      );
+      final f = tester.widget<FractionallySizedBox>(
+        find.byKey(const Key('timeline-elapsed')),
+      );
+      expect(f.widthFactor, closeTo(0.5, 0.01));
 
-    await tester.pumpWidget(
-      host(const TimelinePill(value: null, formats: formats)),
-    );
-    expect(find.text('-'), findsOneWidget);
-  });
+      await tester.pumpWidget(
+        host(const TimelinePill(value: null, formats: formats)),
+      );
+      expect(find.byIcon(Icons.date_range_outlined), findsOneWidget);
+    },
+  );
 
   test('a footer date range runs from the earliest to the latest day', () {
     const formats = DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');

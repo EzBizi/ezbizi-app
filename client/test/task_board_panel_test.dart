@@ -512,27 +512,26 @@ void main() {
     expect(top.color, const Color(0xFFD0D4E4));
   });
 
-  testWidgets('clicking the name edits it in place; Enter saves, Esc '
-      'cancels (row 40, Chaim)', (tester) async {
+  testWidgets('clicking the name edits it in the same card as every cell; '
+      'Enter saves, Esc cancels (Jose 11-24, row 40)', (tester) async {
     await pump(tester, width: 1700);
     await tester.tap(find.byTooltip('Close Lakeview'));
     await settle(tester);
     final name = find.byKey(const ValueKey('task-name-t1'));
     await tester.tap(name);
-    await tester.pump();
-    final field = find.byKey(const ValueKey('task-rename-t1'));
-    expect(field, findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cell-card')), findsOneWidget);
     expect(find.byTooltip('Close Lakeview'), findsNothing, reason: 'no panel');
 
-    await tester.enterText(field, 'Gutter guard');
+    await tester.enterText(find.byType(EditableText).last, 'Gutter guard');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pump();
-    expect(field, findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cell-card')), findsNothing);
     expect(log.where((e) => e.$1 == 'PATCH'), isEmpty, reason: 'Esc');
 
     await tester.tap(name);
-    await tester.pump();
-    await tester.enterText(field, 'Gutter guard');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(EditableText).last, 'Gutter guard');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(
@@ -541,6 +540,7 @@ void main() {
         {'title': 'Gutter guard'},
       ],
     );
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('the board and its panel are in Figtree, the Monday font '

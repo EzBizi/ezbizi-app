@@ -364,8 +364,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// The task being dragged: its row stays behind as a faint ghost.
   String? _draggingId;
-  String? _renamingId;
-  final _renameText = TextEditingController();
 
   /// The groups that were folded before a group drag folded them all.
   Set<String?>? _foldedBeforeDrag;
@@ -480,7 +478,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   @override
   void dispose() {
-    _renameText.dispose();
     _live?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
@@ -4538,32 +4535,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                           if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
-                            child: _renamingId == t['id']
-                                ? _renameField(t)
-                                // Click the name to edit it in place, as on
-                                // Monday (row 40, Chaim); the rest of the row
-                                // still opens the panel.
-                                : GestureDetector(
-                                    key: ValueKey('task-name-${t['id']}'),
-                                    onTap: _canEdit
-                                        ? () => setState(() {
-                                            _renameText.text =
-                                                '${t['title'] ?? ''}';
-                                            _renamingId = t['id'] as String?;
-                                          })
-                                        : null,
-                                    child: Text(
-                                      taskTitle(t),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: sub
-                                                ? FontWeight.w500
-                                                : FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
+                            // Jose 11-24: the name edits in the same card as
+                            // every other cell, not in a field in the row.
+                            child: _nameCell(t, theme, sub: sub),
                           ),
                           IconButton(
                             key: ValueKey('task-open-${t['id']}'),
@@ -4625,16 +4599,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                         _w('due'),
                         _dueCell(
                           t,
-                          Text(
-                            _dueLabel(t['due_on'], _formats),
-                            maxLines: 1,
-                            style: late
-                                ? TextStyle(
-                                    color: theme.colorScheme.error,
-                                    fontWeight: FontWeight.w700,
-                                  )
-                                : null,
-                          ),
+                          t['due_on'] == null
+                              ? const EmptyCellIcon(
+                                  Icons.calendar_today_outlined,
+                                )
+                              : Text(
+                                  _dueLabel(t['due_on'], _formats),
+                                  maxLines: 1,
+                                  style: late
+                                      ? TextStyle(
+                                          color: theme.colorScheme.error,
+                                          fontWeight: FontWeight.w700,
+                                        )
+                                      : null,
+                                ),
                         ),
                       ),
                     for (final c in boardColumns(_board))
@@ -5875,39 +5853,44 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Color _planColour(_Json t) =>
       _statusColours(context, _statusFor(_board, _statusOf(t))).fill;
 
-  Widget _renameField(_Json t) {
-    var done = false;
-    void finish(String? to) {
-      if (done) return;
-      done = true;
-      setState(() => _renamingId = null);
-      final name = to?.trim() ?? '';
-      if (name.isNotEmpty && name != '${t['title']}') {
-        _patchTask(t, {'title': name});
-      }
-    }
+  static const BoardColumn _nameColumn = (
+    id: 'title',
+    name: 'Task',
+    type: 'text',
+    unit: null,
+    max: null,
+    options: [],
+    format: 'plain',
+    footer: 'none',
+    formula: null,
+  );
 
-    return Focus(
-      onKeyEvent: (_, e) {
-        if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.escape) {
-          finish(null);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: TextField(
-        key: ValueKey('task-rename-${t['id']}'),
-        controller: _renameText,
-        autofocus: true,
-        style: Theme.of(context).textTheme.bodyMedium,
-        decoration: const InputDecoration(
-          isDense: true,
-          border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        ),
-        onSubmitted: finish,
-        onTapOutside: (_) => finish(_renameText.text),
+  Widget _nameCell(_Json t, ThemeData theme, {required bool sub}) {
+    final shown = Text(
+      taskTitle(t),
+      key: ValueKey('task-name-${t['id']}'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        fontWeight: sub ? FontWeight.w500 : FontWeight.w600,
       ),
+    );
+    if (!_canEdit) return shown;
+    return InlineCellEditor(
+      key: ValueKey('task-rename-${t['id']}'),
+      api: widget.api,
+      column: _nameColumn,
+      cellMenu: false,
+      value: '${t['title'] ?? ''}',
+      people: const {},
+      formats: _formats,
+      onChanged: (v) {
+        final name = '${v ?? ''}'.trim();
+        if (name.isNotEmpty && name != '${t['title']}') {
+          _patchTask(t, {'title': name});
+        }
+      },
+      child: shown,
     );
   }
 

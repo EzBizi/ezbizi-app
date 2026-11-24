@@ -1132,7 +1132,7 @@ class _BoardTreeState extends State<BoardTree> {
       if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('shared', 'Team boards', asHeader: true, [
+      ...group('shared', 'Franchise boards', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),
