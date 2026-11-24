@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 
@@ -309,6 +310,69 @@ void main() {
         .map((t) => t.data)
         .join();
   }
+
+  testWidgets(
+    'Jose 11-24: folding the boards tree or the main sidebar only '
+    'changes widths: one page colour, the whole toolbar, a rail on its line',
+    (tester) async {
+      // Main sidebar open (~240) or folded (~64), at 1366 and 1920.
+      for (final w in [1366 - 240.0, 1366 - 64.0, 1920 - 240.0, 1920 - 64.0]) {
+        for (final folded in [false, true]) {
+          tester.view.physicalSize = Size(w, 900);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+          final api = fakeServer();
+          final session = Session(api);
+          await session.adopt('tok');
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: EzBiziTheme.light(),
+              home: Scaffold(
+                body: TaskBoardScreen(api: api, session: session),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final isFolded = find
+              .byKey(const Key('tasks-boards-expand'))
+              .evaluate()
+              .isNotEmpty;
+          if (isFolded != folded) {
+            await tester.tap(
+              find.byKey(
+                Key(folded ? 'tasks-boards-collapse' : 'tasks-boards-expand'),
+              ),
+            );
+            await tester.pumpAndSettle();
+          }
+          final at = '$w folded=$folded';
+          // The page colour sits behind the toolbar too, so no band above it.
+          final page = tester.getRect(
+            find.byKey(const Key('tasks-board-page')),
+          );
+          final bar = tester.getRect(
+            find.byKey(const Key('tasks-toolbar-line')),
+          );
+          expect(page.top, lessThanOrEqualTo(bar.top), reason: at);
+          expect(page.right, w, reason: at);
+          // The toolbar's right end stays: the More menu, inside the screen.
+          final more = tester.getRect(find.byKey(const Key('board-menu')));
+          expect(more.right, lessThanOrEqualTo(w), reason: at);
+          if (folded) {
+            final rail = tester.getRect(
+              find.byKey(const Key('tasks-boards-expand')),
+            );
+            expect(
+              (rail.center.dy - more.center.dy).abs(),
+              lessThan(8),
+              reason: at,
+            );
+          }
+          expect(tester.takeException(), isNull, reason: at);
+        }
+      }
+    },
+  );
 
   testWidgets('a title typed and the panel closed is saved, before the '
       'board reads again', (tester) async {
@@ -644,6 +708,49 @@ void main() {
     expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
   });
 
+  testWidgets('row 37: a visible rule under every row, painted over the '
+      'row fill so no cell hides it, in light and dark', (tester) async {
+    await pump(tester);
+    // The rule paints over the row (foreground), so no fill hides it.
+    final rule = EzBiziTheme.boardRowLine(
+      tester.element(find.byType(TaskBoardScreen)),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is DecoratedBox &&
+            w.position == DecorationPosition.foreground &&
+            (w.decoration as BoxDecoration?)?.border?.top.color == rule,
+      ),
+      findsWidgets,
+    );
+    double ratio(Color a, Color b) {
+      final (x, y) = (a.computeLuminance(), b.computeLuminance());
+      return (max(x, y) + 0.05) / (min(x, y) + 0.05);
+    }
+
+    for (final b in Brightness.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: b),
+          home: Builder(
+            builder: (context) {
+              expect(
+                ratio(
+                  EzBiziTheme.boardRowLine(context),
+                  EzBiziTheme.boardRow(context),
+                ),
+                greaterThanOrEqualTo(1.3),
+                reason: '$b',
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+    }
+  });
+
   testWidgets('Adeline 11-24: opening a task clears its red unread count at '
       'once and tells the server', (tester) async {
     unread = 2;
@@ -657,6 +764,8 @@ void main() {
       find.byKey(const ValueKey('task-unread-t1')),
     );
     expect(badge.isLabelVisible, isFalse);
+    // Jose 11-24: read, it shows the plain total; never the badge and a number.
+    expect(find.byKey(const ValueKey('task-updates-count-t1')), findsOneWidget);
   });
 
   testWidgets('Chaim 11-24: replies sit under their update, a long one reads '

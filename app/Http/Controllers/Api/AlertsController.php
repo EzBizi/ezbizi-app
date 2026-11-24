@@ -263,7 +263,7 @@ class AlertsController extends Controller
             'context' => $alert->context,
             'choices' => $alert->choices ?? [],
             'allow_text' => (bool) $alert->allow_text,
-            'sender' => $alert->sender?->name,
+            'sender' => $alert->sender_label ?? $alert->sender?->name,
             'created_at' => $alert->created_at?->toIso8601String(),
         ];
     }

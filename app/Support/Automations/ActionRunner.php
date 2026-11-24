@@ -493,7 +493,8 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: the enquiry was removed as a duplicate before this ran.'];
         }
 
-        return match ($type) {
+        // Whatever the step writes speaks as the rule, never its creator (Adeline 11-24).
+        return AutomationVoice::speak($automation, fn () => match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
@@ -550,7 +551,7 @@ class ActionRunner
                 "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
-        };
+        });
     }
 
     /**

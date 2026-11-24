@@ -9,9 +9,45 @@ import 'files_io.dart' if (dart.library.js_interop) 'files_web.dart' as impl;
 class Files {
   /// Offer [content] to the user as a download named [filename].
   static void download(String filename, List<int> content) {
+    final name = withExtension(filename, content);
     final hook = debugOnDownload;
-    if (hook != null) return hook(filename, content);
-    impl.download(filename, content);
+    if (hook != null) return hook(name, content);
+    impl.download(name, content);
+  }
+
+  /// [filename] with an extension read from [content]'s first bytes when it
+  /// has none (Adeline 11-24: Monday assets often come without one, and the
+  /// saved file would not open).
+  static String withExtension(String filename, List<int> content) {
+    if (RegExp(r'\.[A-Za-z0-9]{1,5}$').hasMatch(filename)) return filename;
+    bool at(int i, List<int> sig) =>
+        content.length >= i + sig.length &&
+        List.generate(
+          sig.length,
+          (k) => content[i + k] == sig[k],
+        ).every((b) => b);
+    final ext = at(0, [0x89, 0x50, 0x4E, 0x47])
+        ? 'png'
+        : at(0, [0xFF, 0xD8, 0xFF])
+        ? 'jpg'
+        : at(0, [0x47, 0x49, 0x46, 0x38])
+        ? 'gif'
+        : at(0, [0x25, 0x50, 0x44, 0x46])
+        ? 'pdf'
+        : at(8, [0x57, 0x45, 0x42, 0x50])
+        ? 'webp'
+        : at(4, [0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63])
+        ? 'heic'
+        : at(4, [0x66, 0x74, 0x79, 0x70, 0x71, 0x74])
+        ? 'mov'
+        : at(4, [0x66, 0x74, 0x79, 0x70])
+        ? 'mp4'
+        : at(0, [0x50, 0x4B, 0x03, 0x04])
+        ? 'zip'
+        : null;
+    return ext == null
+        ? filename
+        : '${filename.isEmpty ? 'download' : filename}.$ext';
   }
 
   /// Tests set this to see what would have been saved, and under what name.
