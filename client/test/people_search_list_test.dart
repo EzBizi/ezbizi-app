@@ -30,6 +30,14 @@ void main() {
     await tester.pump();
     expect(picked, 'u2');
 
+    // Adeline 11-24: a word they are also known by finds them.
+    PeopleSearchList.aliases['u1'] = 'chris Chris Restivo';
+    addTearDown(PeopleSearchList.aliases.clear);
+    await tester.enterText(box, 'chris');
+    await tester.pump();
+    expect(find.text('Lena Okafor'), findsOneWidget);
+    expect(find.text('Omar Feld'), findsNothing);
+
     await tester.enterText(box, 'zz');
     await tester.pump();
     expect(find.text('Nobody by that name'), findsOneWidget);

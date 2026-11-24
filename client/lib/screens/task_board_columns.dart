@@ -580,9 +580,8 @@ class _TagChips extends StatelessWidget {
               child: Text(
                 o.label,
                 maxLines: 1,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                // Chaim 11-24: Monday's regular weight on every label.
+                style: theme.textTheme.bodySmall,
               ),
             ),
         ],
@@ -833,11 +832,7 @@ class ColumnCell extends StatelessWidget {
                   picked?.label ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: labelInk(fill),
-                  ),
+                  style: TextStyle(fontSize: 13, color: labelInk(fill)),
                 ),
               ),
             ),
@@ -881,9 +876,7 @@ class ColumnCell extends StatelessWidget {
                   picked?.label ?? '—',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: theme.textTheme.bodySmall,
                 ),
               ),
             ),
@@ -2402,6 +2395,7 @@ class _StatusesPanelState extends State<StatusesPanel> {
 
   @override
   void dispose() {
+    _typing?.cancel();
     for (final c in _names.values) {
       c.dispose();
     }
@@ -2428,9 +2422,24 @@ class _StatusesPanelState extends State<StatusesPanel> {
     }
   }
 
+  Timer? _typing;
+
+  void _rename(Map<String, dynamic> s, String v) {
+    _typing?.cancel();
+    if (v.trim().isNotEmpty && v.trim() != s['name']) {
+      _patch(s, {'name': v.trim()});
+    }
+  }
+
   Future<void> _add() async {
+    // A second new one before the first is named is not a duplicate.
+    final taken = {for (final r in _rows) '${r['name']}'.toLowerCase()};
+    var name = 'New status';
+    for (var i = 2; taken.contains(name.toLowerCase()); i++) {
+      name = 'New status $i';
+    }
     final res = await widget.api.post(statusesPath(_board), {
-      'name': 'New status',
+      'name': name,
       'colour': swatches[_rows.length % swatches.length],
       'is_done': false,
     });
@@ -2493,10 +2502,15 @@ class _StatusesPanelState extends State<StatusesPanel> {
                         isDense: true,
                         border: OutlineInputBorder(),
                       ),
-                      onSubmitted: (v) {
-                        if (v.trim().isNotEmpty && v.trim() != s['name']) {
-                          _patch(s, {'name': v.trim()});
-                        }
+                      // Natalie 11-24: a name typed and left (a click on
+                      // Done, anywhere) saves too, not only on Enter.
+                      onSubmitted: (v) => _rename(s, v),
+                      onChanged: (v) {
+                        _typing?.cancel();
+                        _typing = Timer(
+                          const Duration(milliseconds: 700),
+                          () => _rename(s, v),
+                        );
                       },
                     ),
                   ),
@@ -2963,11 +2977,7 @@ class LabelBlocks extends StatelessWidget {
               l.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: labelInk(fill),
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: labelInk(fill), fontSize: 13),
             ),
           ),
         ),

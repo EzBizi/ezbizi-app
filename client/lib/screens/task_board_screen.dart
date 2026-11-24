@@ -331,6 +331,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// The task in the panel docked beside the board, on a wide screen.
   _Json? _dockTask;
   bool _dockUpdatesOnly = false;
+  String? _dockFocusUpdate;
   List<Future<void>> _dockSaves = [];
 
   /// Set by the layout: wide enough to dock the task panel (1100, as the
@@ -541,7 +542,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final boardId = (res.body['data'] as Map?)?['board_id'];
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
-    if (mounted) _openTaskById(link.id);
+    // A mention or reply's bell opens the thread at that update (Jennine 11-24).
+    if (mounted) _openTaskById(link.id, update: link.update);
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -1481,6 +1483,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Map<String, String> _peopleNow() {
     final assignable = _board?['assignable'];
     if (assignable is List) {
+      for (final p in assignable.whereType<Map>()) {
+        if (p['also'] is String) {
+          PeopleSearchList.aliases['${p['id']}'] = p['also'] as String;
+        }
+      }
       // Faces without a photo are not asked for one.
       UserAvatar.knownPhotos({
         for (final p in assignable.whereType<Map>())
@@ -2368,24 +2375,34 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   /// The Gallery's "Go to task": false when this board's list lacks it.
-  bool _openTaskById(String id) {
+  bool _openTaskById(String id, {String? update}) {
     for (final t in _tasks) {
       if (t['id'] == id) {
-        _openTask(t);
+        _openTask(t, updatesOnly: update != null, focusUpdate: update);
         return true;
       }
     }
     return false;
   }
 
-  Future<void> _openTask(_Json task, {bool updatesOnly = false}) async {
+  Future<void> _openTask(
+    _Json task, {
+    bool updatesOnly = false,
+    String? focusUpdate,
+  }) async {
     setState(() => _openId = task['id'] as String?);
+    // Adeline 11-24: opening a task reads its updates (the panel tells the
+    // server); the row's red count clears now, not at the next reload.
+    if ((task['unread_notes'] as num? ?? 0) > 0) {
+      _replace({...task, 'unread_notes': 0});
+    }
     if (_dockWide && _view == 'table') {
       // Beside the board, which stays live (no scrim); another row swaps it.
       final before = _dockSaves;
       setState(() {
         _dockTask = task;
         _dockUpdatesOnly = updatesOnly;
+        _dockFocusUpdate = focusUpdate;
         _dockSaves = [];
       });
       unawaited(
@@ -2417,6 +2434,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         subtasks: _subtasksOf(task),
         saves: saves,
         updatesOnly: updatesOnly,
+        focusUpdate: focusUpdate,
       ),
     );
     // What was still typed is saved as the panel closes: read the board
@@ -2468,6 +2486,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             subtasks: _subtasksOf(task),
             saves: _dockSaves,
             updatesOnly: _dockUpdatesOnly,
+            focusUpdate: _dockFocusUpdate,
             docked: true,
             onClose: () => unawaited(_closeDock()),
           ),
@@ -2922,7 +2941,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       builder: (context, box) {
         // Each control on the line, with what stands in for it in the ⋯
         // when it does not fit.
+        // Chevel 11-24: the search is first, so it is the last thing a
+        // narrow line gives up; narrower there rather than gone.
         final line = <(Widget, List<Widget>)>[
+          if (searchOnLine)
+            (
+              box.maxWidth < 900
+                  ? SizedBox(width: phone ? 140 : 170, child: _search())
+                  : search,
+              const [],
+            ),
           (
             _viewSwitch(
               segments: !phone && box.maxWidth >= 1200,
@@ -2931,7 +2959,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             ),
             const [],
           ),
-          if (searchOnLine) (search, const []),
           if (_canEdit) (_newTaskButton(compact: phone), [_newTaskItem()]),
           if (!phone) ...[
             for (final a in actions) (actionButton(a), [actionItem(a)]),
@@ -3700,6 +3727,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final virtual = group['virtual'] == true;
     final id = virtual ? null : group['id'] as String?;
     final fold = group['id'] as String?;
+    final fill = EzBiziTheme.groupTitleFill(context, colour);
+    final ink = EzBiziTheme.inkOn(fill);
 
     final header = _groupDropTarget(
       id,
@@ -3707,86 +3736,103 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _dropOn(
         id,
         null,
-        InkWell(
-          key: ValueKey('task-group-$fold'),
-          onTap: () =>
-              setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              children: [
-                // The name and count take the row; the menu sits at its end.
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Drag the header onto another to reorder (row 15, Jose 11-19).
-                      if (_canEdit && id != null)
-                        Draggable<_GroupDrag>(
-                          key: ValueKey('group-drag-$id'),
-                          data: _GroupDrag(id),
-                          // Every group folds to its header while one moves,
-                          // so the whole board fits; what was open opens
-                          // again after (design 200, 4; Jose 11-20).
-                          onDragStarted: _foldAllForDrag,
-                          onDragEnd: (_) => _unfoldAfterDrag(),
-                          feedback: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Text('${group['name']}'),
+        DecoratedBox(
+          key: ValueKey('task-group-head-$fold'),
+          // Gallery 210 (Jose 11-24, option 3): the row tinted in the group's
+          // colour, a 4 px rule in it, the words in whichever ink reads.
+          decoration: BoxDecoration(
+            color: fill,
+            border: Border(bottom: BorderSide(color: colour, width: 4)),
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(color: ink),
+            child: InkWell(
+              key: ValueKey('task-group-$fold'),
+              onTap: () => setState(
+                () => folded ? _folded.remove(fold) : _folded.add(fold),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    // The name and count take the row; the menu sits at its end.
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Drag the header onto another to reorder (row 15, Jose 11-19).
+                          if (_canEdit && id != null)
+                            Draggable<_GroupDrag>(
+                              key: ValueKey('group-drag-$id'),
+                              data: _GroupDrag(id),
+                              // Every group folds to its header while one moves,
+                              // so the whole board fits; what was open opens
+                              // again after (design 200, 4; Jose 11-20).
+                              onDragStarted: _foldAllForDrag,
+                              onDragEnd: (_) => _unfoldAfterDrag(),
+                              feedback: Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text('${group['name']}'),
+                                ),
+                              ),
+                              child: const MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: Icon(Icons.drag_indicator, size: 18),
+                              ),
+                            ),
+                          Icon(
+                            folded ? Icons.chevron_right : Icons.expand_more,
+                            color: ink,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          if (id != null && _naming == id)
+                            _groupNameField(id)
+                          else
+                            Flexible(
+                              child: Text(
+                                '${group['name']}',
+                                key: ValueKey('task-group-title-$fold'),
+                                // A phone wraps a long name to two lines (phone 6).
+                                maxLines: cards ? 2 : 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: ink,
+                                  fontSize: cards ? 18 : 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          Text(
+                            // What is shown (Jose 11-20: CT › Company Info said
+                            // "5 tasks" with a filter hiding all five); the
+                            // server's whole count only while nothing is hidden.
+                            switch (shown.length < all.length
+                                ? shown.length
+                                : (_totalsOf(id)?['count'] as num?)?.toInt() ??
+                                      all.length) {
+                              1 => '1 task',
+                              final n => '$n tasks',
+                            },
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: ink,
                             ),
                           ),
-                          child: const MouseRegion(
-                            cursor: SystemMouseCursors.grab,
-                            child: Icon(Icons.drag_indicator, size: 18),
-                          ),
-                        ),
-                      Icon(
-                        folded ? Icons.chevron_right : Icons.expand_more,
-                        color: colour,
-                        size: 20,
+                          // Beside the name, Monday's place: at the row's end it sat
+                          // past the screen's edge on a wide board (QA 11-16).
+                          if (_canEdit && id != null) ...[
+                            const SizedBox(width: 4),
+                            _groupMenu(group, all.length),
+                          ],
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      if (id != null && _naming == id)
-                        _groupNameField(id)
-                      else
-                        Flexible(
-                          child: Text(
-                            '${group['name']}',
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: colour,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      Text(
-                        // What is shown (Jose 11-20: CT › Company Info said
-                        // "5 tasks" with a filter hiding all five); the
-                        // server's whole count only while nothing is hidden.
-                        switch (shown.length < all.length
-                            ? shown.length
-                            : (_totalsOf(id)?['count'] as num?)?.toInt() ??
-                                  all.length) {
-                          1 => '1 task',
-                          final n => '$n tasks',
-                        },
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      // Beside the name, Monday's place: at the row's end it sat
-                      // past the screen's edge on a wide board (QA 11-16).
-                      if (_canEdit && id != null) ...[
-                        const SizedBox(width: 4),
-                        _groupMenu(group, all.length),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -5513,11 +5559,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _statusLabel(_board!, _statusOf(t)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: labelInk(colours.fill),
-        fontWeight: FontWeight.w700,
-        fontSize: 12,
-      ),
+      // Chaim 11-24: Monday's regular weight.
+      style: TextStyle(color: labelInk(colours.fill), fontSize: 13),
     );
 
     final editable = (_board?['statuses'] as List? ?? const []).any(
@@ -5711,7 +5754,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
                                     color: colours.ink,
                                   ),
                                 ),
@@ -6009,24 +6051,35 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Row(
-                children: [
-                  _statusDot(context, status),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      '${status.name} · ${tasks.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+            // Gallery 210: the status colour's tint, its 4 px rule, 16 px.
+            Builder(
+              builder: (context) {
+                final colour = _statusColours(context, status).fill;
+                final fill = EzBiziTheme.groupTitleFill(context, colour);
+                final ink = EzBiziTheme.inkOn(fill);
+                return Container(
+                  key: ValueKey('kanban-head-${status.id}'),
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                    border: Border(bottom: BorderSide(color: colour, width: 4)),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Text(
+                    '${status.name} · ${tasks.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
             Expanded(
               child: ListView(
@@ -6103,10 +6156,14 @@ class _TaskPanel extends StatefulWidget {
     this.subtasks = const [],
     this.saves,
     this.updatesOnly = false,
+    this.focusUpdate,
   });
 
   /// Opened from the Updates cell: the name and the thread only.
   final bool updatesOnly;
+
+  /// The update a bell pointed at: scrolled to and marked (Jennine 11-24).
+  final String? focusUpdate;
 
   /// Every save the panel makes, so the board reads after the last one.
   final List<Future<void>>? saves;
@@ -6137,6 +6194,24 @@ class _TaskPanel extends StatefulWidget {
 }
 
 class _TaskPanelState extends State<_TaskPanel> {
+  /// On the update a bell pointed at; scrolled into view once it is drawn.
+  final _focusKey = GlobalKey();
+  bool _focused = false;
+
+  void _scrollToFocus() {
+    if (_focused || widget.focusUpdate == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final at = _focusKey.currentContext;
+      if (_focused || at == null || !at.mounted) return;
+      _focused = true;
+      Scrollable.ensureVisible(
+        at,
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 250),
+      );
+    });
+  }
+
   _Json? _task;
   bool _loading = true;
   String? _error;
@@ -6584,6 +6659,7 @@ class _TaskPanelState extends State<_TaskPanel> {
       withBoardFont(context, Builder(builder: _build));
 
   Widget _build(BuildContext context) {
+    _scrollToFocus();
     // Closing saves what is still typed, before the board reads again.
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -6690,11 +6766,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               _statusLabel(widget.board, _statusOf(task)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colours.ink,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: colours.ink, fontSize: 13),
             ),
           ),
         ),
@@ -6814,7 +6886,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               focusNode: _titleFocus,
               enabled: _canEdit,
               minLines: 1,
-              maxLines: 3,
+              maxLines: null, // Natalie 11-24: the whole title, however long.
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
               style: theme.textTheme.bodyLarge?.copyWith(
@@ -6993,8 +7065,20 @@ class _TaskPanelState extends State<_TaskPanel> {
           const SizedBox(height: 8),
           if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
           for (final u in updates)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+            Container(
+              key: u['id'] == widget.focusUpdate ? _focusKey : null,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: u['id'] == widget.focusUpdate
+                  ? const EdgeInsets.all(6)
+                  : EdgeInsets.zero,
+              decoration: u['id'] == widget.focusUpdate
+                  ? BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

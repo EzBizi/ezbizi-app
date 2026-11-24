@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Support\Notes\NoteActivity;
+use App\Support\Tasks\PeopleAliases;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,8 +17,12 @@ class NoteActivityController extends Controller
     /** GET /api/v1/mentionable?type=job&id=… */
     public function mentionable(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->notes->mentionable($this->record($request))
-            ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()]);
+        $people = $this->notes->mentionable($this->record($request));
+        $also = PeopleAliases::of($people);
+
+        // also: other words they are found by ("Chris" for Kristopher, Adeline 11-24).
+        return response()->json(['data' => $people
+            ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'also' => $also[(string) $u->id] ?? null])->values()]);
     }
 
     /** POST /api/v1/note-reads {type, id} */

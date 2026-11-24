@@ -13,6 +13,18 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0635', date: '24 Nov 2026', items: [
+      'Task Board: group title rows are tinted in the group colour with a bigger title',
+      'Task Board: a status name saves as you type, and a name already in use says so',
+      'Task Board: people search also matches the start of an email and the Monday name, so Chris finds Kristopher',
+      'Task Board: 7 more Monday boards are mirrored, including DMV NEW and the New Location, Brand and Franchise templates',
+      'Email: with the reading pane below, an open email gets most of the screen, and Open full shows it on the whole pane',
+      'Scheduling: Report wrong ZIP flags a ZIP that lands in the wrong area; Settings › Wrong ZIPs lists them to move or dismiss',
+      'Notifications: tapping a mention or reply opens the task on that exact update',
+      'Task Board: the search stays visible on narrow windows, and the task title field shows the whole title',
+      'Task Board: opening a task clears its unread badge at once',
+      'Task Board: labels use the regular weight and exact colours that Monday uses, on every board',
+    ]),
     VersionRelease(version: '0.0.0634', date: '24 Nov 2026', items: [
       'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
       'Settings › Activity: What changed shows one line per changed field, with plain names and local times, instead of raw data',

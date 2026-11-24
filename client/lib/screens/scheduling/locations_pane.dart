@@ -12,6 +12,7 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'availability_pane.dart';
+import 'zip_reports.dart';
 
 /// Scheduling › Locations (UI queue 49, Jose: 1 and 4): every branch, the
 /// one closest to a customer's address, and who to call (Jovanni Martin,
@@ -157,6 +158,8 @@ class _LocationsPaneState extends State<LocationsPane> {
           (location, miles[id], id == '$serving'),
     ];
   }
+
+  Map? get _servingArea => ((_result?['serving'] as Map?)?['area']) as Map?;
 
   String _addressOf(Map<String, dynamic> l, {bool withZip = true}) {
     final region = [
@@ -384,6 +387,13 @@ class _LocationsPaneState extends State<LocationsPane> {
                   OutlinedButton(
                     onPressed: () => _copy(tel, 'Phone number'),
                     child: const Text('Copy phone'),
+                  ),
+                if (zip.isNotEmpty)
+                  ReportWrongZipButton(
+                    api: widget.api,
+                    zip: zip,
+                    areaId: (_servingArea?['id'])?.toString(),
+                    areaName: (_servingArea?['name'])?.toString(),
                   ),
               ],
             ),

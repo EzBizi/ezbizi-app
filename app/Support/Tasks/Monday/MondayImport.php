@@ -1124,7 +1124,8 @@ final class MondayImport
                 'is_done' => $done, 'colour' => $colour, 'position' => (int) $statuses->max('position') + 1,
             ]);
             $this->counts['statuses made']++;
-        } elseif ($colour !== null && $found->colour === null) {
+        } elseif ($colour !== null && strtolower((string) $found->colour) !== strtolower($colour)) {
+            // Chaim 11-24: Monday's exact colour, kept in step.
             $found->forceFill(['colour' => $colour])->save();
         }
 
@@ -1170,7 +1171,8 @@ final class MondayImport
                 if ($i === null) {
                     $options[] = $o;
                     $changed = true;
-                } elseif (($options[$i]['colour'] ?? null) === null && ($o['colour'] ?? null) !== null) {
+                } elseif (($o['colour'] ?? null) !== null && strtolower((string) ($options[$i]['colour'] ?? '')) !== strtolower((string) $o['colour'])) {
+                    // Chaim 11-24: Monday's exact colour for each label, kept in step.
                     $options[$i]['colour'] = $o['colour'];
                     $changed = true;
                 }
