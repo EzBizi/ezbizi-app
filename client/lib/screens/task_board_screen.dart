@@ -2575,48 +2575,61 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
 
-        final board = Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_boards.isNotEmpty) _picker(context, phone: cards),
-            Expanded(
-              child: AsyncBody(
-                loading: _loading,
-                error: _error,
-                onRetry: _load,
-                child: _board == null
-                    ? const SizedBox.shrink()
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _toolbar(context, phone: cards),
-                          // UI pass 11-16: on the toolbar line a phone's search
-                          // was 110 wide and read "Se…". Its own line instead.
-                          if (MediaQuery.sizeOf(context).width < 600)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                              child: _search(),
-                            ),
-                          Expanded(
-                            child: switch (_view) {
-                              'kanban' => _kanbanView(context, narrow: cards),
-                              'calendar' => _calendarView(phone: cards),
-                              'timeline' => _timelineView(phone: cards),
-                              'gallery' => TaskBoardGallery(
-                                key: ValueKey('gallery-${_board!['id']}'),
-                                api: widget.api,
-                                boardId: '${_board!['id']}',
-                                formats: _formats,
-                                onOpenTask: _openTaskById,
+        // One page colour behind the picker, toolbar and table: the canvas
+        // on the table alone left a band above it (Jose 11-24).
+        final board = ColoredBox(
+          key: const Key('tasks-board-page'),
+          color: _view == 'table'
+              ? EzBiziTheme.boardCanvas(context)
+              : Colors.transparent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_boards.isNotEmpty) _picker(context, phone: cards),
+              Expanded(
+                child: AsyncBody(
+                  loading: _loading,
+                  error: _error,
+                  onRetry: _load,
+                  child: _board == null
+                      ? const SizedBox.shrink()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _toolbar(context, phone: cards),
+                            // UI pass 11-16: on the toolbar line a phone's search
+                            // was 110 wide and read "Se…". Its own line instead.
+                            if (MediaQuery.sizeOf(context).width < 600)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  4,
+                                  16,
+                                  4,
+                                ),
+                                child: _search(),
                               ),
-                              _ => _tableView(context, cards: cards),
-                            },
-                          ),
-                        ],
-                      ),
+                            Expanded(
+                              child: switch (_view) {
+                                'kanban' => _kanbanView(context, narrow: cards),
+                                'calendar' => _calendarView(phone: cards),
+                                'timeline' => _timelineView(phone: cards),
+                                'gallery' => TaskBoardGallery(
+                                  key: ValueKey('gallery-${_board!['id']}'),
+                                  api: widget.api,
+                                  boardId: '${_board!['id']}',
+                                  formats: _formats,
+                                  onOpenTask: _openTaskById,
+                                ),
+                                _ => _tableView(context, cards: cards),
+                              },
+                            ),
+                          ],
+                        ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
         if (_boards.isEmpty) return board;
         if (cards) return _choosing ? _choosingPane(context) : board;
