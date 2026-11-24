@@ -164,7 +164,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       _picker = rows;
       _empty = rows.isEmpty
           ? (response.body['message'] as String? ??
-              'This organization has not offered any inspections to this role yet.')
+                'This organization has not offered any inspections to this role yet.')
           : null;
     });
   }
@@ -309,20 +309,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   /// What gets sent. Text fields and photo fields, in one map.
   Map<String, dynamic> _answers() => {
-        for (final e in _fields.entries) e.key: e.value.text,
-        for (final e in _photos.entries) e.key: e.value,
-        for (final e in _checks.entries) e.key: e.value,
-        for (final e in _work.entries) e.key: e.value,
-      };
+    for (final e in _fields.entries) e.key: e.value.text,
+    for (final e in _photos.entries) e.key: e.value,
+    for (final e in _checks.entries) e.key: e.value,
+    for (final e in _work.entries) e.key: e.value,
+  };
 
   /// Every screen this version declares, shown or not.
   ///
   /// Kept separate from [_screensOf] because saving and freezing reason about
   /// all of them while the step strip only walks the visible ones.
   List<Map<String, dynamic>> _allScreensOf(Map<String, dynamic> run) => [
-        for (final s in (run['screens'] as List? ?? const []))
-          if (s is Map) Map<String, dynamic>.from(s),
-      ];
+    for (final s in (run['screens'] as List? ?? const []))
+      if (s is Map) Map<String, dynamic>.from(s),
+  ];
 
   /// The screens actually asked, given what has been answered so far.
   ///
@@ -340,9 +340,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   /// Every field this screen declares, shown or not.
   List<Map<String, dynamic>> _allFieldsOf(Map<String, dynamic> screen) => [
-        for (final f in (screen['fields'] as List? ?? const []))
-          if (f is Map) Map<String, dynamic>.from(f),
-      ];
+    for (final f in (screen['fields'] as List? ?? const []))
+      if (f is Map) Map<String, dynamic>.from(f),
+  ];
 
   /// The building code frozen onto this field at publish, if it cites one.
   ///
@@ -374,14 +374,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title.isNotEmpty)
-              Text(title,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             if (body.isNotEmpty) ...[
               if (title.isNotEmpty) const SizedBox(height: 2),
-              Text(body,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                body,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ],
         ),
@@ -433,7 +439,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   }
 
   /// This one field's label if it is required and empty, otherwise null.
-  String? _missingLabel(Map<String, dynamic> field, Map<String, dynamic> answers) {
+  String? _missingLabel(
+    Map<String, dynamic> field,
+    Map<String, dynamic> answers,
+  ) {
     final rule = field['required_if'];
     var needs = field['required'] == true;
 
@@ -449,7 +458,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     // A photo, signature or multi-choice answer is a list, and an empty one is
     // the missing case. `''` would never match it and a required photo would
     // wave everybody through.
-    final empty = value is List ? value.isEmpty : value.toString().trim().isEmpty;
+    final empty = value is List
+        ? value.isEmpty
+        : value.toString().trim().isEmpty;
 
     return empty ? '${field['label'] ?? field['key']}' : null;
   }
@@ -461,7 +472,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     if (screens.isEmpty) return;
     final missing = _missingOn(screens[_screen.clamp(0, screens.length - 1)]);
     if (missing != null) {
-      setState(() => _blocked = '$missing needs an answer before you can continue.');
+      setState(
+        () => _blocked = '$missing needs an answer before you can continue.',
+      );
       return;
     }
     await _save();
@@ -627,7 +640,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   Widget _resumePanel(BuildContext context) {
     final named = _choice?['named'];
-    final label = named is Map ? '${named['name'] ?? 'this inspection'}' : 'this inspection';
+    final label = named is Map
+        ? '${named['name'] ?? 'this inspection'}'
+        : 'this inspection';
 
     return Padding(
       key: const Key('inspection-resume-panel'),
@@ -647,7 +662,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           FilledButton(onPressed: _resume, child: const Text('Resume')),
           const SizedBox(height: 8),
           if (_mayDiscard)
-            OutlinedButton(onPressed: _startAgain, child: const Text('Start again')),
+            OutlinedButton(
+              onPressed: _startAgain,
+              child: const Text('Start again'),
+            ),
         ],
       ),
     );
@@ -666,7 +684,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Widget _control(Map<String, dynamic> field, Map<String, dynamic> run) {
     final key = '${field['key']}';
     final label = '${field['label'] ?? key}';
-    final widgetKey = Key('field-$key');
+    // No key for a divider or alert: they have no `key`, and two of them on one
+    // screen shared Key('field-null'), which corrupted the ListView in a
+    // release build (Bar 11-24: step 2 drew half and took no clicks).
+    final widgetKey = field['key'] == null ? null : Key('field-$key');
 
     switch ('${field['type'] ?? 'text'}') {
       case 'photo':
@@ -700,23 +721,26 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         final current = _fields[key]?.text ?? '';
 
         return SearchPickerField<String>(
-                 key: widgetKey,
-                 value: options.contains(current) && current != '' ? current : null,
-                 label: label,
-                 options: [
+          key: widgetKey,
+          value: options.contains(current) && current != '' ? current : null,
+          label: label,
+          options: [
             for (final choice in choices)
               SearchOption(value: choice.value, label: choice.label),
             // An answer already given against an option since removed. Dropping
             // it silently would change a saved answer by redrawing the screen.
             if (current != '' && !options.contains(current))
-              SearchOption(value: current, label: '$current — no longer offered'),
+              SearchOption(
+                value: current,
+                label: '$current — no longer offered',
+              ),
           ],
-                 onChanged: (value) {
+          onChanged: (value) {
             _fields[key]?.text = value ?? '';
             setState(() {});
             _save();
           },
-               );
+        );
 
       case 'divider':
         // A heading between fields. Not a control, so it takes no key and
@@ -730,7 +754,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
               if (label.isNotEmpty)
                 Text(label, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 6),
-              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+              Divider(
+                height: 1,
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ],
           ),
         );
@@ -750,16 +777,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (title.isNotEmpty)
-                Text(title,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSecondaryContainer,
-                        )),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
               if (body.isNotEmpty) ...[
                 if (title.isNotEmpty) const SizedBox(height: 4),
-                Text(body,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSecondaryContainer,
-                        )),
+                Text(
+                  body,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
               ],
             ],
           ),
@@ -789,7 +820,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           controller: _fields[key],
           minLines: 3,
           maxLines: 6,
-          decoration: InputDecoration(labelText: label, alignLabelWithHint: true),
+          decoration: InputDecoration(
+            labelText: label,
+            alignLabelWithHint: true,
+          ),
         );
 
       case 'email':
@@ -939,10 +973,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             ErrorNote(_blocked!),
             const SizedBox(height: 8),
           ],
-          FilledButton(
-            onPressed: _next,
-            child: Text(last ? 'Submit' : 'Next'),
-          ),
+          FilledButton(onPressed: _next, child: Text(last ? 'Submit' : 'Next')),
         ],
       ),
     );
