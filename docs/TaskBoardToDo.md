@@ -71,6 +71,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 45 | **Search finds any column value** (Natalie Escobar suggestion 01a20df2, Jose approved 11-24): the board search reads every column (job numbers, phones, labels) and also asks the server, so done tasks are found too | Task Board | ROUTED | Sent 11-24 |
 | 46 | **Person picker = search bar; no removed accounts** (Jose 11-24, screenshots): every Task Board person picker opens with a focused search field; "Removed account"/deactivated users never listed; duplicate names (Artem Maliuk x2, "Ailyn B. Malintad Ailyn B. Malintad") deduped or told apart | Task Board | ROUTED | Sent 11-24 |
 | 47 | **Hide folders with nothing the user can open** (Jose 11-24, viewing as Adeline; "in general"): a folder shows only if it holds, at any depth, a board the user can open; parents of visible boards stay; filter server-side | Task Board | ROUTED | Sent 11-24 |
+| 48 | **Rename "Team Boards" to "Franchise Boards"** (Jose 11-24): sidebar header, tour text, people sentence, tests | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
