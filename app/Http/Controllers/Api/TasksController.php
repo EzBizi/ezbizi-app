@@ -608,6 +608,45 @@ class TasksController extends Controller
     }
 
     /**
+     * GET task-boards/{board}/activity (Monday's board Activity Log, gap review P1):
+     * every change on the board's tasks, newest first, 100 a page, filtered by
+     * days back, group, column (by its label) and person. A sensitive task's row
+     * says who, what and when only.
+     */
+    public function boardActivity(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $hidden = SensitiveTasks::machineReader($request->user());
+        $rows = TaskActivity::query()
+            ->join('tasks', 'tasks.id', '=', 'task_activities.task_id')
+            ->where('tasks.board_id', $taskBoard->id)
+            ->when($hidden, fn ($q) => $q->where('tasks.sensitive', false))
+            ->when($input['days'] ?? null, fn ($q, $d) => $q->where('task_activities.created_at', '>=', now()->subDays((int) $d)))
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('tasks.group_id', $g))
+            ->when($input['label'] ?? null, fn ($q, $l) => $q->where('task_activities.label', $l))
+            ->when($input['user_id'] ?? null, fn ($q, $u) => $q->where('task_activities.user_id', $u))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_activities.created_at', '<', $b))
+            ->with('user:id,name')
+            ->select('task_activities.*', 'tasks.title as task_title', 'tasks.sensitive as task_sensitive', 'tasks.group_id as task_group_id')
+            ->latest('task_activities.created_at')->limit(100)->get();
+
+        return response()->json(['data' => $rows->map(fn ($a) => [
+            'id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name, 'user_id' => $a->user_id,
+            'task_id' => $a->task_id, 'task' => (string) $a->task_title, 'group_id' => $a->task_group_id,
+            'field' => $a->field, 'label' => $a->label,
+            'from' => $a->task_sensitive ? null : SensitiveTasks::open($a->from),
+            'to' => $a->task_sensitive ? null : SensitiveTasks::open($a->to),
+        ])->values()]);
+    }
+
+    /**
      * Mirror columns (Monday's): the values of [column_id] on the tasks this task's
      * [connect_column_id] names, as a list. ponytail: a query per mirror column per
      * task; batch per board if boards with mirrors grow large.

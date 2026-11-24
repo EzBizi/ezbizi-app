@@ -27,6 +27,7 @@ import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import 'task_board_activity.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
@@ -3393,6 +3394,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           }),
         ),
       ],
+      // Monday's board Activity Log (gap review P1): for everyone who sees the board.
+      MenuItemButton(
+        key: const Key('tasks-board-activity'),
+        leadingIcon: const Icon(Icons.history, size: 18),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (_) => BoardActivityPanel(
+            api: widget.api,
+            board: _board!,
+            formats: _formats,
+            people: _people,
+            onOpenTask: (id) {
+              Navigator.of(context).maybePop();
+              _openTaskById(id);
+            },
+          ),
+        ),
+        child: const Text('Activity Log'),
+      ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(
             (s) => s is Map && s.containsKey('id'),
