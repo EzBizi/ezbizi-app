@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0634', date: '24 Nov 2026', items: [
+      'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
+      'Settings › Activity: What changed shows one line per changed field, with plain names and local times, instead of raw data',
+    ]),
     VersionRelease(version: '0.0.0633', date: '24 Nov 2026', items: [
       'Automations: when a rule cannot change a task board, the run log names the board and the reason',
     ]),
