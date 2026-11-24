@@ -74,6 +74,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 48 | **Rename "Team Boards" to "Franchise Boards"** (Jose 11-24): sidebar header, tour text, people sentence, tests | Task Board | ROUTED | Sent 11-24 |
 | 49 | **Links in cells are clickable** (Jose 11-24, Reviews & Complaints "Link", 770 text values): any URL in a cell opens; app.ezbizi.com/app/#/ links navigate in-app; external open a tab | Task Board | ROUTED | Sent 11-24 |
 | 50 | **One way to edit a cell: the popup** (Jose 11-24): the task name and every column type edit through the same popup editor on every view; no inline in-cell fields | Task Board | ROUTED | Sent 11-24 |
+| 51 | **Empty date cells show a calendar icon** (Jose 11-24): every empty date-type cell shows a clickable calendar icon, not "—"; empty typed cells show what they take | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
