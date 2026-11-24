@@ -383,6 +383,31 @@ void main() {
     expect(server.lists.last.queryParameters.containsKey('category'), isFalse);
   });
 
+  /// Lucas Snyder 11-24: "I can't read my emails at all, the whole workspace
+  /// feels too compact" -- pane below, the mail had two lines under its
+  /// header. The mail gets two thirds, and Open full gives it everything.
+  testWidgets('with the pane below, the open mail gets most of the height '
+      'and can be opened full', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, size: const Size(2560, 1300));
+
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
+    await _tap(tester, find.textContaining('You received money').first);
+
+    final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
+    final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
+    expect(reader.height, greaterThan(list.height * 1.8));
+
+    await _tap(tester, find.byKey(const ValueKey('email-open-full')));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+    expect(find.byKey(const ValueKey('email-reader')), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('Back to the messages'));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-reader')), findsNothing);
+  });
+
   testWidgets('the reading pane setting is remembered', (tester) async {
     final server = _Server();
     await _pump(tester, server);
