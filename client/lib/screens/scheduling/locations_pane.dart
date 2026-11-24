@@ -656,6 +656,8 @@ class _LocationsPaneState extends State<LocationsPane> {
               children: [
                 Expanded(flex: 5, child: Text('BRANCH', style: quiet)),
                 const SizedBox(width: 10),
+                Expanded(flex: 5, child: Text('ADDRESS', style: quiet)),
+                const SizedBox(width: 10),
                 Expanded(flex: 3, child: Text('SERVES', style: quiet)),
                 SizedBox(
                   width: 130,
@@ -726,6 +728,12 @@ class _LocationsPaneState extends State<LocationsPane> {
     final company = '${(l['company'] as Map?)?['name'] ?? ''}'.trim();
     final city = '${l['city'] ?? ''}'.trim();
     final serves = '${l['service_area'] ?? ''}'.trim();
+    // Jose, 11-24: the branch's street address in its own column; on a phone, under the name.
+    final address = _addressOf(l);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+      fontStyle: FontStyle.italic,
+    );
 
     final name = Text(
       '${l['name'] ?? ''}',
@@ -739,12 +747,19 @@ class _LocationsPaneState extends State<LocationsPane> {
     final under = Text(
       [
         if (!phone && company.isNotEmpty) company.toUpperCase(),
-        if (city.isNotEmpty) city,
+        if (!phone && city.isNotEmpty) city,
         if (phone && tel.isNotEmpty) tel,
       ].join(' · '),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodySmall,
+    );
+    final addressText = Text(
+      address.isEmpty ? 'No address' : address,
+      key: Key('locations-address-${l['id']}'),
+      maxLines: phone ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      style: address.isEmpty ? muted : theme.textTheme.bodySmall,
     );
 
     return Material(
@@ -770,7 +785,7 @@ class _LocationsPaneState extends State<LocationsPane> {
                 flex: 5,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [name, under],
+                  children: [name, if (phone) addressText, under],
                 ),
               ),
               if (phone) ...[
@@ -781,6 +796,8 @@ class _LocationsPaneState extends State<LocationsPane> {
                     onPressed: () => _call(tel),
                   ),
               ] else ...[
+                const SizedBox(width: 10),
+                Expanded(flex: 5, child: addressText),
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
