@@ -72,6 +72,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 46 | **Person picker = search bar; no removed accounts** (Jose 11-24, screenshots): every Task Board person picker opens with a focused search field; "Removed account"/deactivated users never listed; duplicate names (Artem Maliuk x2, "Ailyn B. Malintad Ailyn B. Malintad") deduped or told apart | Task Board | ROUTED | Sent 11-24 |
 | 47 | **Hide folders with nothing the user can open** (Jose 11-24, viewing as Adeline; "in general"): a folder shows only if it holds, at any depth, a board the user can open; parents of visible boards stay; filter server-side | Task Board | ROUTED | Sent 11-24 |
 | 48 | **Rename "Team Boards" to "Franchise Boards"** (Jose 11-24): sidebar header, tour text, people sentence, tests | Task Board | ROUTED | Sent 11-24 |
+| 49 | **Links in cells are clickable** (Jose 11-24, Reviews & Complaints "Link", 770 text values): any URL in a cell opens; app.ezbizi.com/app/#/ links navigate in-app; external open a tab | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
