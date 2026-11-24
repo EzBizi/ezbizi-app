@@ -82,6 +82,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 56 | **Bells for updates and replies, not only @mentions** (Chevel 01a20e5a) | Task Board | ROUTED | Sent 11-24 |
 | 57 | **Task title field shows the whole title** (Natalie 01a20e61) | Task Board | ROUTED | Sent 11-24 |
 | 58 | **Status save does nothing (duplicate "Done")** (Natalie 01a20e4b) | Task Board | ROUTED | Sent 11-24 |
+| 59 | **Opening Updates marks them read** (Adeline 01a20e7f): unread badge stays after opening; must clear per viewer, at once, everywhere | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
