@@ -5,6 +5,7 @@ namespace Tests\Feature\CustomerExperience;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\ReviewLinkEvent;
+use App\Models\ServiceArea;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Memberships\CustomerLinks;
@@ -95,7 +96,7 @@ class ReviewLinkEventsTest extends TestCase
     public function test_a_review_qr_counts_every_scan_for_the_technician_who_made_it(): void
     {
         $tech = $this->userWithRole($this->t, 'Tech', ['reviews.view'], null, $this->t['franchise']);
-        $this->inTenant($this->t['org'], fn () => \App\Models\ServiceArea::create(['organization_id' => $this->t['org']->id,
+        $this->inTenant($this->t['org'], fn () => ServiceArea::create(['organization_id' => $this->t['org']->id,
             'franchise_id' => $this->t['franchise']->id, 'name' => 'North'])->zips()->create(['zip' => '06511', 'franchise_id' => $this->t['franchise']->id]));
 
         $qr = $this->signedInAs($tech)->postJson('/api/v1/customer-experience/review-qr', ['zip' => '06511'])->assertOk()->json('data');
@@ -116,5 +117,15 @@ class ReviewLinkEventsTest extends TestCase
         $this->assertSame(2, $person['qr']);
         $this->assertSame(1, $person['happy']);
         $this->assertSame(1, $person['sad']);
+    }
+
+    /** Jose 11-24: Review QR is an Inspection tab too; a technician with Inspection grants only can make one. */
+    public function test_an_inspection_only_technician_can_make_a_review_qr(): void
+    {
+        $tech = $this->userWithRole($this->t, 'Inspector', ['inspection.view', 'inspection.create', 'inspection.new.view'], null, $this->t['franchise']);
+        $this->inTenant($this->t['org'], fn () => ServiceArea::create(['organization_id' => $this->t['org']->id,
+            'franchise_id' => $this->t['franchise']->id, 'name' => 'North'])->zips()->create(['zip' => '06511', 'franchise_id' => $this->t['franchise']->id]));
+
+        $this->signedInAs($tech)->postJson('/api/v1/customer-experience/review-qr', ['zip' => '06511'])->assertOk();
     }
 }

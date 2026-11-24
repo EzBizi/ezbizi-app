@@ -129,6 +129,12 @@ enum SocialProvider: string
     // per market). Read only. realmId is the remote id.
     case QuickBooks = 'quickbooks';
 
+    // The tenant's own bank and card accounts through Plaid (Jose, 2026-11-24:
+    // Plaid approved). Read only: transactions and balances into Financials ›
+    // Bank. One connection per Plaid Item (one bank login); item_id is the
+    // remote id. Connected through Plaid Hosted Link (PlaidOAuth).
+    case Plaid = 'plaid';
+
     public function label(): string
     {
         return match ($this) {
@@ -155,6 +161,7 @@ enum SocialProvider: string
             self::Ekomi => 'eKomi',
             self::Monday => 'Monday',
             self::QuickBooks => 'QuickBooks',
+            self::Plaid => 'Plaid',
         };
     }
 
@@ -213,6 +220,7 @@ enum SocialProvider: string
             self::Ekomi => 'ekomi',
             self::Monday => 'monday',
             self::QuickBooks => 'quickbooks',
+            self::Plaid => 'plaid',
         };
     }
 
@@ -286,7 +294,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday, self::QuickBooks];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday, self::QuickBooks, self::Plaid];
     }
 
     /**
@@ -460,6 +468,9 @@ enum SocialProvider: string
             // Its expenses land in Financials; whoever edits Financials may bring the books.
             self::QuickBooks => 'financials.edit',
 
+            // The same: bank feeds land in Financials › Bank.
+            self::Plaid => 'financials.edit',
+
             default => 'marketing.edit',
         };
     }
@@ -509,6 +520,7 @@ enum SocialProvider: string
             self::Ekomi => 'connect an eKomi account',
             self::Monday => 'connect Monday',
             self::QuickBooks => 'connect QuickBooks',
+            self::Plaid => 'connect a bank account',
             default => 'connect a social account',
         };
     }
@@ -663,6 +675,12 @@ enum SocialProvider: string
             self::QuickBooks => sprintf(
                 '%s is connected to EzBizi. You can close this window — its expenses are being read '
                 .'into Financials › Markets.',
+                $name,
+            ),
+
+            self::Plaid => sprintf(
+                '%s is connected to EzBizi. You can close this window — its accounts, balances and '
+                .'transactions are being read into Financials › Bank.',
                 $name,
             ),
 

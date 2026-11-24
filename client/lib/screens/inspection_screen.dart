@@ -103,9 +103,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Icons.science_outlined,
           () => TestingTab(api: widget.api, session: widget.session),
         ),
-      // Jose 11-23: Review QR here too, on New Inspection's grant (the
-      // registry names `new.view`); the server's POST also needs reviews.
-      if (_mayOpen('new') && widget.session.me!.reaches('reviews'))
+      // Jose 11-23: Review QR here too, on New Inspection's tab and Create
+      // (the registry names `new.view`). Jose 11-24: a ticked tab shows; the
+      // POST needs no Reviews grant, so none is asked for here.
+      if (_mayOpen('new') && can('inspection.create'))
         ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     ];
   }

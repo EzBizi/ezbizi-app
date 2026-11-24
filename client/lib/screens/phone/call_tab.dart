@@ -20,6 +20,7 @@ import '../../core/timestamps.dart';
 import 'staff_thread.dart';
 import 'call_history_pane.dart';
 import 'phone_search.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 /// Which of the desk's two faces is showing.
@@ -1433,11 +1434,14 @@ class _CallTabState extends State<CallTab> {
             Positioned(
               right: 16,
               bottom: 16,
-              child: FilledButton.icon(
-                key: const Key('phone-open-keypad'),
-                onPressed: () => setState(() => _pane = _CallPane.pad),
-                icon: const Icon(Icons.dialpad, size: 18),
-                label: const Text('Keypad'),
+              // Typing a search, it stops covering the list.
+              child: FoldWhileTyping(
+                child: FilledButton.icon(
+                  key: const Key('phone-open-keypad'),
+                  onPressed: () => setState(() => _pane = _CallPane.pad),
+                  icon: const Icon(Icons.dialpad, size: 18),
+                  label: const Text('Keypad'),
+                ),
               ),
             ),
           ],

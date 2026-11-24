@@ -32,6 +32,7 @@ import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_where.dart';
+import '../core/soft_keyboard.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -470,9 +471,11 @@ class _JobsScreenState extends State<JobsScreen> {
               // Filters panel, and what is on as removable chips.
               // Design 195: a phone's count is the group line's.
               if (!_phone(context)) PanelHeader(note: _note(me)),
+              // Typing a search on a phone, the results get the room.
               if (_seesMoney && _moneyTotals.isNotEmpty)
-                _moneyTiles(context, wide: wide),
-              if (_statusChoices.isNotEmpty) _statusChips(context),
+                FoldWhileTyping(child: _moneyTiles(context, wide: wide)),
+              if (_statusChoices.isNotEmpty)
+                FoldWhileTyping(child: _statusChips(context)),
               _toolbar(context, me, refused, wide: wide),
               _activeChips(context, me),
             ],

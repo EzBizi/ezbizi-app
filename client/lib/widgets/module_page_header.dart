@@ -64,7 +64,10 @@ class ModulePageHeader extends StatelessWidget {
   static const double phoneBelow = 600;
 
   /// What a phone header leaves its actions once the title has its width.
-  // ponytail: the (i) and the (?) are estimated (24 + 46), not measured.
+  // ponytail: the (i) and the help buttons are estimated, not measured: 24
+  // and 86 (the (?) and the video button, 40 each + 6; the video one comes
+  // from a future). One button budgets 40 too many, which only sends the
+  // action to its own line sooner. Mobile review 11-24: 46 cut "Customers".
   double _actionRoom(
     BuildContext context,
     double width,
@@ -78,7 +81,7 @@ class ModulePageHeader extends StatelessWidget {
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
     final titleWidth =
-        painter.width + (hasSubtitle ? 24 : 0) + (beside == null ? 0 : 46);
+        painter.width + (hasSubtitle ? 24 : 0) + (beside == null ? 0 : 86);
     painter.dispose();
     // Gutter.phone on the left, 12 on the right, 12 between, 2 to spare.
     return width - Gutter.phone - 26 - titleWidth;

@@ -62,6 +62,70 @@ void main() {
   // ~290 px on a computer. A tag column and the clock on one line left the
   // name ~70 px ("Rach…", "+1 (77…"). The tag now goes under the time
   // whenever the COLUMN is narrow, not only on a phone screen.
+  // Mobile review 11-24: on an iPhone Duo's cover screen the pane was ~150
+  // tall; the heading, search and chips left the calls nothing and the
+  // column overflowed. Short, they scroll with the calls instead.
+  testWidgets('recent calls in a short pane scroll instead of overflowing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(466, 678);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'id': 'c-1',
+                'number_id': 'n-1',
+                'connection_id': 'pc-1',
+                'direction': 'inbound',
+                'from_e164': '+12035550199',
+                'to_e164': '+12035550100',
+                'status': 'completed',
+                'duration_seconds': 60,
+                'voicemail': true,
+                'customer_name': 'Rachel',
+                'customer_id': 'cu-1',
+                'created_at': '2026-10-20T09:14:00+00:00',
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 382,
+              height: 150,
+              child: CallHistoryPane(
+                api: api,
+                formats: DisplayFormats.fallback,
+                onPick: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey('comm-call-history-search')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('recent calls keep room for the name in a narrow column', (
     tester,
   ) async {

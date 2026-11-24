@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// Whether this device types on an on-screen keyboard (a phone or tablet,
 /// native or in a browser). A function so a test can say which device it is.
@@ -18,3 +19,55 @@ bool Function() hasSoftKeyboard = () =>
 /// opened by asking to type (a code, a password, a rename, a reply), and says
 /// so with a `// keyboard:` comment. client/test/soft_keyboard_guard_test.dart.
 bool get autofocusOnOpen => !hasSoftKeyboard();
+
+/// The on-screen keyboard is up. Read from the window, not `MediaQuery`: inside
+/// a Scaffold body (every module) `MediaQuery.viewInsets` is already zeroed by
+/// the resize, so `MediaQuery.viewInsetsOf(context).bottom > 0` never fires
+/// there. The body shrinking is what rebuilds a LayoutBuilder that asks this.
+bool keyboardUp(BuildContext context) => View.of(context).viewInsets.bottom > 0;
+
+/// Hides [child] on a phone while the keyboard is up, keeping its state:
+/// summary tiles above a search, a floating Compose or Keypad button. Typing,
+/// the results get the room (mobile review 11-24: Jobs showed one job, and
+/// Project Management's totals pushed its table 35 px past the bottom).
+class FoldWhileTyping extends StatefulWidget {
+  const FoldWhileTyping({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<FoldWhileTyping> createState() => _FoldWhileTypingState();
+}
+
+class _FoldWhileTypingState extends State<FoldWhileTyping>
+    with WidgetsBindingObserver {
+  bool _up = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // A Scaffold body sees no keyboard inset, so nothing rebuilds this when the
+  // keyboard comes up; the window's metrics change does.
+  @override
+  void didChangeMetrics() {
+    if (!mounted) return;
+    final up = keyboardUp(context);
+    if (up != _up) setState(() => _up = up);
+  }
+
+  @override
+  Widget build(BuildContext context) => Visibility(
+    visible: !(_up && MediaQuery.sizeOf(context).width < 900),
+    maintainState: true,
+    child: widget.child,
+  );
+}

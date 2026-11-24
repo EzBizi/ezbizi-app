@@ -26,9 +26,10 @@ final class SocialOAuthDrivers
         WhatsAppOAuth $whatsApp,
         MondayOAuth $monday,
         QuickBooksOAuth $quickBooks,
+        PlaidOAuth $plaid,
     ) {
         foreach ([$facebook, $instagram, $threads, $linkedin, $tiktok, $pinterest, $youtube, $x,
-            $businessProfile, $googleAds, $thumbtack, $facebookAds, $whatsApp, $monday, $quickBooks] as $driver) {
+            $businessProfile, $googleAds, $thumbtack, $facebookAds, $whatsApp, $monday, $quickBooks, $plaid] as $driver) {
             $this->byRoute[$driver->routeKey()] = $driver;
             $this->byProvider[$driver->provider()->value] = $driver;
         }

@@ -21,6 +21,12 @@ Standalone Apple build helpers have unsigned/ad-hoc compile fallbacks when signi
 
 Artifacts go to the main checkout's `Distribution/Windows`, `Distribution/Android` and `Distribution/Apple`, including when the release runs from a pinned worktree. `client/VERSION` and the pinned commit supply release identity. Do not take the product version from the template version in `client/pubspec.yaml`.
 
+### Mac relay: Xcode per platform, and a known hang
+
+- **iOS builds with the App Store Xcode (27.2), macOS with the 26.0.1 pin.** `build-app.sh` exports `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` for iOS only, since 0.0.0630 (`eb9742ad8`). Check an IPA by its own stamp, not the script: `Payload/*.app/Info.plist` reads `DTXcode 2720`, `DTSDKName iphoneos27.2` for 0630 and 0631, and `2601` / `iphoneos26.0` for 0625. An iOS 26 SDK build runs on iOS 27 in a compatibility window: on an iPhone Duo it draws ~80% wide with a blank strip on the right (Jose's report 2026-11-24, an older installed build).
+- **Xcode 27.2 has no Simulator.app.** Its replacement is `/Applications/Xcode.app/Contents/Applications/DeviceHub.app`. The iPhone Duo simulator takes input only there.
+- **`flutter run`/`build` hangs at "Running Xcode build" with nothing using the CPU.** Look for `impellerc --runtime-stage-metal` stuck at `_dyld_start` (`sample <pid> 1`). Measured 2026-11-24 on the relay: `/opt/homebrew/share/flutter/bin/cache/artifacts/engine/darwin-x64/impellerc` (an arm64 binary despite the folder name) never started when launched over ssh, and even `impellerc --help` hung. A byte-identical fresh copy (`cat impellerc > impellerc.new`) ran at once, so it was replaced with that copy; the original is at `~/ezbizi-mobile/impellerc.orig`. A Flutter upgrade or `flutter precache` restores a fresh binary. If it recurs, check the other tools in `artifacts/engine` the same way: run each with `--help` and see which one doesn't return.
+
 ## Console work, separate from building
 
 These are checks for the next submission, not claims that every item is currently missing. Inspect existing console records and the [work board](http://localhost:8787) before creating duplicate accounts, identifiers or listings.

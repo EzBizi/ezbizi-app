@@ -211,4 +211,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('version-upcoming')), findsNothing);
   });
+
+  testWidgets(
+    'a deployed release shows its time in the viewer zone (Jose 11-24)',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 20000);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: const Scaffold(body: VersionHistoryPanel()),
+        ),
+      );
+      final r = VersionHistory.releases.firstWhere(
+        (r) => r.version == '0.0.0632',
+      );
+      expect(r.deployed, '2026-11-24 15:56');
+      final at = DateTime.utc(2026, 11, 24, 15, 56).toLocal();
+      final ctx = tester.element(find.byType(VersionHistoryPanel));
+      expect(
+        find.textContaining(TimeOfDay.fromDateTime(at).format(ctx)),
+        findsWidgets,
+      );
+    },
+  );
 }

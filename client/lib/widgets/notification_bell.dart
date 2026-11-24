@@ -489,7 +489,8 @@ class _NotificationBellState extends State<NotificationBell>
     final response = switch (action) {
       'delete' => await widget.api.delete('/notifications/$id'),
       'like' => await widget.api.post('/tasks/${record?['id']}/updates/${record?['update']}/like', {}),
-      _ => await widget.api.post('/notifications/$id/$action', {}),
+      'read' => await widget.api.post('/notifications/$id/read', {}),
+      _ => await widget.api.post('/notifications/$id/unread', {}),
     };
     if (!mounted) return;
     if (!response.ok) {

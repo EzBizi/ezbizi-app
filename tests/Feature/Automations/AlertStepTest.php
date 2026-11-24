@@ -39,6 +39,10 @@ class AlertStepTest extends TestCase
             $alert = Alert::query()->sole();
             $this->assertSame('Complaint call +15550001111', $alert->message);
             $this->assertEqualsCanonicalizing([$one->id, $two->id], Notification::query()->where('source', 'alert')->pluck('user_id')->all());
+            // Shown as the rule, not its creator (Adeline 11-24); the creator stays the sender for audit.
+            $this->assertSame('EzBizi AI · Complaint call', $alert->sender_label);
+            $this->assertSame($t['admin']->id, $alert->sender_id);
+            $this->assertNull(\App\Support\Automations\AutomationVoice::label());
 
             // A rule made by somebody who may not send alerts by hand sends none.
             $theirs = Automation::create(['name' => 'X', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $one->id]);
@@ -46,6 +50,8 @@ class AlertStepTest extends TestCase
             $this->assertFalse($refused['ok']);
             $this->assertSame(1, Alert::query()->count());
         });
+
+        $this->assertSame('EzBizi AI · Complaint call', $this->actingAs($one)->getJson('/api/v1/notifications')->json('meta.alerts.0.sender'));
     }
 
     public function test_a_long_alert_is_cut_in_the_title_and_whole_in_the_body(): void

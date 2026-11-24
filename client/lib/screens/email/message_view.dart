@@ -96,7 +96,7 @@ class MailMessageView extends StatelessWidget {
               // The header scrolls on its own past its cap, so a long subject
               // and the From picker never push the mail off a phone.
               constraints: BoxConstraints(
-                maxHeight: constraints.maxHeight * (compact ? 0.3 : 0.35),
+                maxHeight: constraints.maxHeight * 0.3,
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
