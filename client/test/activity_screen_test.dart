@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/settings/activity_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
@@ -25,6 +26,70 @@ void main() {
     expect(find.text('new  →  follow_up'), findsOneWidget);
     expect(find.byKey(const ValueKey('value:tags')), findsOneWidget);
     expect(find.text('phone'), findsOneWidget);
+  });
+
+  // Eve Sarfaty's suggestion 01a20df7 (2026-11-24): the time clock logs the
+  // whole shift twice; it reads as labelled fields, local times, only what
+  // changed, '—' for nothing, and never JSON.
+  testWidgets('a whole-record before and after reads as changed fields', (
+    tester,
+  ) async {
+    const formats = DisplayFormats.platform;
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => _json({
+          'data': {
+            'id': 'e-9',
+            'occurred_at': '2026-11-23T15:00:00Z',
+            'source': 'user',
+            'actor': 'Analorena Ventoso',
+            'action': 'time_clock.corrected',
+            'changes': {
+              'before': {
+                'clocked_in_at': '2026-11-23T13:00:00Z',
+                'clocked_out_at': null,
+                'note': 'same',
+              },
+              'after': {
+                'clocked_in_at': '2026-11-23T14:00:00Z',
+                'clocked_out_at': '2026-11-23T22:30:00Z',
+                'note': 'same',
+              },
+            },
+          },
+        }),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActivityDetail(
+            api: api,
+            row: const {'id': 'e-9'},
+            sourceWord: null,
+            formats: formats,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    String at(String iso) => formatStamp(iso, '', formats: formats);
+    expect(find.text('Clocked in'), findsOneWidget);
+    expect(find.text('Clocked out'), findsOneWidget);
+    expect(
+      find.text(
+        '${at('2026-11-23T13:00:00Z')}  →  ${at('2026-11-23T14:00:00Z')}',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('—  →  ${at('2026-11-23T22:30:00Z')}'),
+      findsOneWidget,
+    );
+    expect(find.text('Note'), findsNothing);
+    expect(find.textContaining('{'), findsNothing);
+    expect(find.textContaining('_at'), findsNothing);
   });
 
   // UI queue 110: a sentence, never the server's code.
