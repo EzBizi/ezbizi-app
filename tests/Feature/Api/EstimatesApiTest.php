@@ -107,7 +107,9 @@ class EstimatesApiTest extends TestCase
 
         $this->assertSame([$theirs['id']], $search('crown'));
         $this->assertSame([$theirs['id']], $search('C-900'));
-        $this->assertSame([$mine['id']], $search($mine['number']));
+        // A number is a substring search, so another estimate whose number contains this one
+        // (E-7 inside E-17) also matches; the claim is that the number finds its estimate.
+        $this->assertContains($mine['id'], $search($mine['number']));
         $this->assertCount(2, $search(''), 'The control: an empty search filters nothing.');
     }
 
