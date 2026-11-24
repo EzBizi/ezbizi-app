@@ -400,83 +400,110 @@ class _OrderListState extends State<OrderList> {
 
   Widget _list() {
     final rows = _visible();
+    final phone = MediaQuery.sizeOf(context).width < 600;
 
-    // On a phone the tiles and search scroll away with the orders (and float
-    // back): on an iPhone Duo's cover screen they overflowed by 80 px
-    // (mobile review 11-24).
-    return HeaderAboveList(
-      header: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            key: const ValueKey('tour-inventory-orders-tiles'),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: _poTiles == null || _saleTiles == null
-                ? Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final (key, label) in const [
-                        ('receive', 'To receive'),
-                        ('open', 'Open POs'),
-                        ('issues', 'Issues'),
-                        ('sales', 'Sales'),
-                      ])
-                        FilterChip(
-                          label: Text(label),
-                          selected: _tile == key,
-                          onSelected: (on) => _pick(on ? key : null),
-                        ),
-                    ],
-                  )
-                : LayoutBuilder(
-                    builder: (context, box) => inventoryTiles(
-                      context,
-                      prefix: 'orders',
-                      tiles: _tileList(),
-                      picked: _tile,
-                      onPick: _pick,
-                      twoByTwo: box.maxWidth < 760,
+    final top = [
+      Padding(
+        key: const ValueKey('tour-inventory-orders-tiles'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: _poTiles == null || _saleTiles == null
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (key, label) in const [
+                    ('receive', 'To receive'),
+                    ('open', 'Open POs'),
+                    ('issues', 'Issues'),
+                    ('sales', 'Sales'),
+                  ])
+                    FilterChip(
+                      label: Text(label),
+                      selected: _tile == key,
+                      onSelected: (on) => _pick(on ? key : null),
                     ),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: ListSearch(
-                key: const Key('inventory-orders-search'),
-                controller: _search,
-                onChanged: _searched,
-                hint: 'Number, vendor, customer or item',
+                ],
+              )
+            : LayoutBuilder(
+                builder: (context, box) => inventoryTiles(
+                  context,
+                  prefix: 'orders',
+                  tiles: _tileList(),
+                  picked: _tile,
+                  onPick: _pick,
+                  twoByTwo: box.maxWidth < 760,
+                ),
               ),
-            ),
-          ),
-        ],
       ),
-      list: rows.isEmpty
-          ? _q.isEmpty
-                ? const EmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'No orders yet',
-                    message: 'There are no orders or sales.',
-                  )
-                : EmptyState(
-                    icon: Icons.search_off,
-                    title: 'No matches',
-                    message: 'No order, sale or issue matches "$_q".',
-                  )
-          : LayoutBuilder(
-              builder: (context, box) => box.maxWidth >= 760 && !_hasPane
-                  ? _table(context, rows)
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      itemCount: rows.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) => _row(context, rows[i]),
-                    ),
-            ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ListSearch(
+            key: const Key('inventory-orders-search'),
+            controller: _search,
+            onChanged: _searched,
+            hint: 'Number, vendor, customer or item',
+          ),
+        ),
+      ),
+    ];
+    final empty = rows.isEmpty
+        ? (_q.isEmpty
+              ? const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No orders yet',
+                  message: 'There are no orders or sales.',
+                )
+              : EmptyState(
+                  icon: Icons.search_off,
+                  title: 'No matches',
+                  message: 'No order, sale or issue matches "$_q".',
+                ))
+        : null;
+
+    // On a phone the tiles and the search are the first rows of the one
+    // list, inside InventorySplitScaffold's HeaderAboveList: as a fixed
+    // column they overflowed an iPhone Duo's cover screen by 80 px, and a
+    // second HeaderAboveList here nested two NestedScrollViews and
+    // overflowed the stack (mobile review 11-24).
+    if (phone) {
+      return ListView(
+        key: const ValueKey('inventory-orders-phone-list'),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          ...top,
+          if (empty != null)
+            empty
+          else
+            for (var i = 0; i < rows.length; i++)
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, i == 0 ? 0 : 8, 16, 0),
+                child: _row(context, rows[i]),
+              ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...top,
+        Expanded(
+          child:
+              empty ??
+              LayoutBuilder(
+                builder: (context, box) => box.maxWidth >= 760 && !_hasPane
+                    ? _table(context, rows)
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        itemCount: rows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) => _row(context, rows[i]),
+                      ),
+              ),
+        ),
+      ],
     );
   }
 
