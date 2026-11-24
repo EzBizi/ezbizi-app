@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0630', date: '24 Nov 2026', items: [
+      'iPhone and Mac: the iOS 27 build for the iPhone Duo goes out (the 0.0.0629 phone build was held back)',
+    ]),
     VersionRelease(version: '0.0.0629', date: '23 Nov 2026', items: [
       'Roles: each role gets its own phone bottom bar, up to 4 tabs or sub-tabs, set in Roles and permissions with a live phone preview',
       'Project Management: the project manager is alerted 3 days before a job when ordered parts have not arrived',
