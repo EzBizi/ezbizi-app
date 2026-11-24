@@ -5,6 +5,7 @@ namespace Tests\Feature\Financials;
 use App\Models\BankAccount;
 use App\Models\BankTransaction;
 use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Financials\Plaid\PlaidSync;
 use App\Support\Social\PlaidOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -231,6 +232,105 @@ class PlaidBankTest extends TestCase
         $t = $this->provisionTenant('Alpha');
         $this->signedInAs($t['admin'])->postJson('/api/v1/social/plaid/start')->assertStatus(501)
             ->assertJsonFragment(['message' => app(PlaidOAuth::class)->notReadyBecause()]);
+    }
+
+    public function test_money_in_matches_a_recorded_payment_on_its_own_only_when_one_fits(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $miami = $this->extraFranchise($t, 'Miami');
+        $c = $this->bank($t, 'franchise', $t['franchise']->id);
+        $this->inTenant($t['org'], function () use ($t, $miami) {
+            $here = $this->invoice($t['franchise']->id, 'INV-1', 50000);
+            \App\Models\InvoicePayment::create(['invoice_id' => $here->id, 'paid_on' => '2026-11-19', 'amount_cents' => 48000, 'tip_cents' => 2000, 'method' => 'card']);
+            // The same money at a sibling branch: never offered to this branch's bank.
+            $there = $this->invoice($miami->id, 'INV-2', 50000);
+            \App\Models\InvoicePayment::create(['invoice_id' => $there->id, 'paid_on' => '2026-11-20', 'amount_cents' => 50000, 'method' => 'card']);
+        });
+        $this->plaid['pages'][''] = $this->page('c1', [$this->txn('t1', 'a1', -500, 'Deposit'), $this->txn('t2', 'a1', -77, 'Unknown deposit')]);
+
+        $this->inTenant($t['org'], fn () => app(PlaidSync::class)->run($c->fresh()));
+
+        $matched = $this->inTenant($t['org'], fn () => BankTransaction::query()->where('plaid_transaction_id', 't1')->sole());
+        $this->assertSame(['invoice_payment', 'auto'], [$matched->matched_type, $matched->matched_by], 'charge plus tip equals the deposit, and it is the only one in this branch');
+        $this->assertNull($this->inTenant($t['org'], fn () => BankTransaction::query()->where('plaid_transaction_id', 't2')->value('matched_type')));
+
+        $view = 'franchise:'.$t['franchise']->id;
+        $rows = $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', $view)
+            ->getJson('/api/v1/financials/bank/transactions?unmatched=1')->assertOk()->json('data');
+        $this->assertSame(['Unknown deposit'], array_column($rows, 'name'), 'unmatched shows the money in nothing accounts for');
+        $all = collect($this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', $view)
+            ->getJson('/api/v1/financials/bank/transactions')->json('data'))->keyBy('name');
+        $this->assertSame('Invoice INV-1 · Ann', $all['Deposit']['match']['label']);
+    }
+
+    public function test_a_person_matches_to_an_offered_invoice_and_can_undo_it(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $c = $this->bank($t, 'company', $t['company']->id);
+        [$txn, $open, $foreign] = $this->inTenant($t['org'], function () use ($t, $c) {
+            $a = BankAccount::query()->create(['social_connection_id' => $c->id, 'plaid_account_id' => 'a1', 'name' => 'Checking']);
+            $txn = BankTransaction::query()->create(['social_connection_id' => $c->id, 'bank_account_id' => $a->id, 'plaid_transaction_id' => 't1', 'date' => '2026-11-20', 'amount_cents' => -12500, 'name' => 'Check deposit']);
+            $other = \App\Models\Company::create(['name' => 'Other Co']);
+
+            return [$txn, $this->invoice($t['franchise']->id, 'INV-7', 12500), $this->invoice(null, 'INV-8', 12500, $other->id)];
+        });
+        $as = fn () => $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', 'company:'.$t['company']->id);
+
+        $offered = $as()->getJson("/api/v1/financials/bank/transactions/{$txn->id}/candidates")->assertOk()->json('data.candidates');
+        $this->assertSame([['invoice', $open->id]], array_map(fn ($o) => [$o['type'], $o['id']], $offered), 'only this company\'s open invoice for that amount');
+
+        $as()->postJson("/api/v1/financials/bank/transactions/{$txn->id}/match", ['type' => 'invoice', 'id' => $foreign->id])->assertUnprocessable();
+        $as()->postJson("/api/v1/financials/bank/transactions/{$txn->id}/match", ['type' => 'invoice', 'id' => $open->id])
+            ->assertOk()->assertJsonPath('data.match.label', 'Invoice INV-7 · Ann');
+        $this->assertSame(['invoice', 'person'], $this->inTenant($t['org'], fn () => [$txn->fresh()->matched_type, $txn->fresh()->matched_by]));
+
+        $reader = $this->userWithRole($t, 'Reader', ['financials.view', 'financials.bank.view']);
+        $this->signedInAs($reader)->deleteJson("/api/v1/financials/bank/transactions/{$txn->id}/match")->assertForbidden();
+        $as()->deleteJson("/api/v1/financials/bank/transactions/{$txn->id}/match")->assertOk();
+        $this->assertNull($this->inTenant($t['org'], fn () => $txn->fresh()->matched_type));
+    }
+
+    public function test_the_dashboard_glance_says_cash_cards_and_unmatched_deposits(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $glance = function (User $u) {
+            $this->signedInAs($u);   // the view and timezone are read from the signed-in person
+
+            return app(\App\Support\Dashboard\Glances\FinancialsGlance::class)
+                ->resolve($u->fresh(), \App\Support\Dashboard\DashboardPeriod::for($u->fresh(), 'month'), [])->toArray()['data'];
+        };
+        $this->assertSame([\App\Support\Dashboard\Glances\FinancialsGlance::PLACEHOLDER], $this->sentencesOf($glance($t['admin'])), 'no bank yet: the old sentence');
+
+        $c = $this->bank($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], function () use ($c) {
+            $a = BankAccount::query()->create(['social_connection_id' => $c->id, 'plaid_account_id' => 'a1', 'name' => 'Checking', 'type' => 'depository', 'current_cents' => 123456]);
+            BankAccount::query()->create(['social_connection_id' => $c->id, 'plaid_account_id' => 'a2', 'name' => 'Card', 'type' => 'credit', 'current_cents' => 4000]);
+            foreach (['t1' => null, 't2' => 'invoice'] as $id => $type) {
+                BankTransaction::query()->create(['social_connection_id' => $c->id, 'bank_account_id' => $a->id, 'plaid_transaction_id' => $id,
+                    'date' => now()->toDateString(), 'amount_cents' => -1000, 'name' => $id, 'matched_type' => $type, 'matched_id' => $type ? (string) \Illuminate\Support\Str::uuid() : null]);
+            }
+        });
+
+        $this->assertSame([
+            '$1,234.56 in 1 bank account.',
+            '$40.00 owed on 1 card.',
+            '1 of 2 deposits this month not matched to a payment or invoice.',
+        ], $this->sentencesOf($glance($t['admin'])));
+    }
+
+    private function sentencesOf(?array $glance): array
+    {
+        $this->assertNotNull($glance, 'the Financials glance is on the dashboard');
+
+        return $glance['sentences'] ?? [$glance['sentence']];
+    }
+
+    private function invoice(?string $franchiseId, string $number, int $cents, ?string $companyId = null): \App\Models\Invoice
+    {
+        return \App\Models\Invoice::create([
+            'franchise_id' => $franchiseId, 'company_id' => $companyId, 'number' => $number, 'issued_on' => '2026-11-10',
+            'status' => 'sent', 'currency' => 'USD', 'bill_to_type' => 'customer', 'bill_to_name' => 'Ann', 'total_cents' => $cents,
+        ]);
     }
 
     private function bank(array $t, string $scope, string $scopeId, ?string $cursor = null, string $item = 'item-1', string $name = 'First Platypus Bank'): SocialConnection

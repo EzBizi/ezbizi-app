@@ -31,7 +31,7 @@ final class PlaidSync
 
     private const RESTARTS = 3;
 
-    public function __construct(private readonly PlaidClient $client) {}
+    public function __construct(private readonly PlaidClient $client, private readonly BankMatcher $matcher) {}
 
     /** @return array{added: int, modified: int, removed: int, accounts: int} */
     public function run(SocialConnection $c): array
@@ -78,7 +78,11 @@ final class PlaidSync
 
             foreach (['added', 'modified'] as $kind) {
                 foreach ((array) ($page[$kind] ?? []) as $t) {
-                    $out[$kind] += $this->upsert($c, $accounts, (array) $t);
+                    $row = $this->upsert($c, $accounts, (array) $t);
+                    if ($row !== null) {
+                        $out[$kind]++;
+                        $this->matcher->autoMatch($row, $c);   // money in, one recorded payment fits
+                    }
                 }
             }
             $removed = array_values(array_filter(array_map(fn ($r) => $r['transaction_id'] ?? null, (array) ($page['removed'] ?? [])), 'is_string'));
@@ -130,16 +134,16 @@ final class PlaidSync
     }
 
     /** @param  array<string, string>  $accounts */
-    private function upsert(SocialConnection $c, array $accounts, array $t): int
+    private function upsert(SocialConnection $c, array $accounts, array $t): ?BankTransaction
     {
         $id = $t['transaction_id'] ?? null;
         $account = $accounts[$t['account_id'] ?? ''] ?? null;
         if (! is_string($id) || $id === '' || $account === null || ! isset($t['date'], $t['amount'])) {
-            return 0;
+            return null;
         }
         $pfc = (array) ($t['personal_finance_category'] ?? []);
 
-        BankTransaction::query()->updateOrCreate(
+        return BankTransaction::query()->updateOrCreate(
             ['social_connection_id' => $c->getKey(), 'plaid_transaction_id' => $id],
             [
                 'bank_account_id' => $account,
@@ -155,8 +159,6 @@ final class PlaidSync
                 'pending' => (bool) ($t['pending'] ?? false),
             ],
         );
-
-        return 1;
     }
 
     private static function cents(mixed $amount): ?int

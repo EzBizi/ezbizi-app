@@ -3967,3 +3967,21 @@ numbers resolving to a group 6 of 15. **Scheduled Jobs now excludes soft-deleted
 — the 785 of 11-19..21 counted deleted jobs and is not comparable; 80 is the new baseline, still one tenant, so the
 scheduling row stays unwritten. LSA leads 55,898 all with `remote_id`. No new publisher class. invite_links 0,
 technician review codes 2, view_as_sessions 1.
+
+## 2026-11-25: `/privacy/` names Plaid (Financials › Bank)
+
+Plaid Integration session, one edit to **WP page 8 `/privacy/`** body (pre-edit copy
+`~/ezb-wp-bak-20261124/page-8-before-plaid.html` on the websites box; +1,610 bytes; live on www, bare 301s to it;
+`wp-cache-purge` both hosts):
+- New `<h3>Bank and card accounts (Plaid)</h3>` under Connected social accounts: bank sign-in happens on Plaid's
+  page (EzBizi never sees the password), link to the Plaid End User Privacy Policy; what is read (account name, type,
+  last four digits, balances, up to two years of transactions: date, amount, merchant, category); no full account or
+  routing numbers, no money movement; shown only in the company or branch where the bank was connected or above;
+  stored with the encrypted Plaid key until disconnected; disconnect calls Plaid `/item/remove` and deletes what was
+  read; my.plaid.com named.
+- "Who we rely on" gains **Plaid**.
+
+Unlike QuickBooks (11-20, deliberately absent), Plaid runs on EzBizi's own client id (dashboard team EzBizi), so it
+is a service we rely on, and Plaid's developer policy asks apps to disclose it. Code: `af8f6b65d` (Bank tab) and the
+matching/glance follow-up. **Trigger:** if EzBizi ever adds Plaid Auth, Identity, payments or transfers, this
+section says "cannot move money" and "no full account numbers" and goes false.

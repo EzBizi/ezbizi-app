@@ -181,6 +181,7 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/leads/{lead}/workiz-choices' => '422: needs a specific record state or query value',
         'GET api/v1/leads/{lead}/booking/days' => '404: needs a child row ("No query results for model [App\Models\WebBooking) the builder does not create',
         'GET api/v1/financials/views/{view}/split' => '422: needs a specific record state or query value',
+        'GET api/v1/financials/bank/transactions/{transaction}/candidates' => '404: a bank transaction is seen only through a Plaid connection in view (BankView); the builder creates none',
         'GET api/v1/task-boards/{taskBoard}/search' => '422: needs a specific record state or query value',
         'GET api/v1/web/sites/{site}/seo-helper' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
         'GET api/v1/web/sites/{site}/seo-helper/{page}' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
