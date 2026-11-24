@@ -21,6 +21,7 @@ import '../core/device_key_store_io.dart'
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/files.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/colour_field.dart';
@@ -1167,7 +1168,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ],
   );
 
+  /// Monday's Export to Excel (gap review P1): the board, one group or the
+  /// picked tasks, as an .xlsx the browser or the desktop saves.
+  Future<void> _export({String? groupId, List<String>? ids}) async {
+    final board = _board;
+    if (board == null) return;
+    final res = await widget.api.getBytesResponse(
+      '/task-boards/${board['id']}/export',
+      {
+        'group_id': ?groupId,
+        for (final (i, id) in (ids ?? const <String>[]).indexed) 'ids[$i]': id,
+      },
+    );
+    if (!mounted) return;
+    final bytes = res.bytes;
+    if (bytes == null) return _say(res.message ?? 'The export failed.');
+    final name = '${board['name']}'.replaceAll(RegExp(r'[^\w\- ]+'), '').trim();
+    Files.download('${name.isEmpty ? 'Board' : name}.xlsx', bytes);
+  }
+
   Future<void> _bulk(String op) async {
+    if (op == 'export') return _export(ids: _picked.toList());
     final ids = _picked.toList();
     Map<String, Object?>? extra;
     switch (op) {
@@ -1261,6 +1282,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ('duplicate', 'Duplicate'),
               ('status', 'Status'),
               ('assign', 'Assign'),
+              ('export', 'Export'),
               ('delete', 'Delete'),
             ])
               TextButton(
@@ -1628,6 +1650,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             _groupName.text = '${group['name']}';
           }),
           child: const Text('Rename'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-export-$id'),
+          leadingIcon: const Icon(Icons.download_outlined, size: 18),
+          onPressed: () => _export(groupId: id),
+          child: const Text('Export to Excel'),
         ),
         // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
         MenuItemButton(
@@ -3412,6 +3440,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           ),
         ),
         child: const Text('Activity Log'),
+      ),
+      MenuItemButton(
+        key: const Key('tasks-board-export'),
+        leadingIcon: const Icon(Icons.download_outlined, size: 18),
+        onPressed: _export,
+        child: const Text('Export to Excel'),
       ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(

@@ -319,6 +319,9 @@ void main() {
             },
           });
         }
+        if (path == '/task-boards/b-1/export') {
+          return http.Response.bytes([80, 75, 3, 4], 200);
+        }
         if (path == '/tasks/t1/updates' && multipart) {
           return json({
             'data': {
@@ -628,12 +631,23 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
-    expect(
-      log.where((e) => e.$1 == 'PATCH').map((e) => e.$3),
-      [
-        {'name': 'Waiting'},
-      ],
-    );
+    expect(log.where((e) => e.$1 == 'PATCH').map((e) => e.$3), [
+      {'name': 'Waiting'},
+    ]);
+  });
+
+  testWidgets('gap review P1: the board menu exports the board to Excel', (
+    tester,
+  ) async {
+    final saved = <String>[];
+    Files.debugOnDownload = (name, _) => saved.add(name);
+    addTearDown(() => Files.debugOnDownload = null);
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-board-export')));
+    await tester.pumpAndSettle();
+    expect(saved.single, endsWith('.xlsx'));
   });
 
   testWidgets('a group is added at the foot of the board and renamed from '
