@@ -538,6 +538,17 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials/Bank': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-bank',
+        title: 'Bank',
+        body:
+            'Connect your business bank and card accounts through Plaid. See balances and search every transaction. EzBizi only reads; it never moves money.',
+      ),
+    ],
+  ),
   'financials/Settings': Tour(
     version: 1,
     steps: [

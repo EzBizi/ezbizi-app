@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Plaid">
+  <circle cx="24" cy="24" r="20.5" fill="#111111"/>
+  <path d="M24 12.5 12.5 18.5v2.5h23v-2.5z" fill="#FFFFFF"/>
+  <rect x="15" y="22.5" width="3" height="9" fill="#FFFFFF"/>
+  <rect x="22.5" y="22.5" width="3" height="9" fill="#FFFFFF"/>
+  <rect x="30" y="22.5" width="3" height="9" fill="#FFFFFF"/>
+  <rect x="12.5" y="33" width="23" height="2.5" fill="#FFFFFF"/>
+</svg>

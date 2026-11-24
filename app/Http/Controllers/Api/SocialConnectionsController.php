@@ -19,6 +19,7 @@ use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\PlaidOAuth;
 use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\SocialProviderRegistry;
@@ -792,6 +793,14 @@ class SocialConnectionsController extends Controller
             && is_string($token = $row->credentials['refresh_token'] ?? null)
             && ! app(QuickBooksOAuth::class)->revoke($token)) {
             $problems[] = 'QuickBooks still lists EzBizi as connected. Remove it in QuickBooks > Settings > Apps.';
+        }
+
+        // Plaid forgets the bank login and stops billing it (best effort). Its
+        // accounts and transactions go with the row (foreign keys cascade).
+        if ($revoke && $row->provider === SocialProvider::Plaid->value
+            && is_string($token = $row->credentials['access_token'] ?? null)
+            && ! app(PlaidOAuth::class)->remove($token)) {
+            $problems[] = 'Plaid did not confirm the bank was removed. Remove EzBizi at my.plaid.com if it still shows.';
         }
 
         // A Telegram bot stops calling EzBizi (best effort). Its staff links
