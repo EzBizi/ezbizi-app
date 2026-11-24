@@ -154,7 +154,7 @@ class AutomationEventErasureTest extends TestCase
 
             $kept = AutomationEvent::find($acted->id);
             $this->assertNotNull($kept, 'An event they only triggered was deleted.');
-            $this->assertSame('Removed account', $kept->actor_label);
+            $this->assertSame('Former staff', $kept->actor_label);
             $this->assertSame(['after' => ['name' => 'Alpha Co']], $kept->payload);
         });
     }

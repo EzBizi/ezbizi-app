@@ -242,7 +242,7 @@ class PersonalDataPurgeTest extends TestCase
 
         $fresh = User::withoutGlobalScopes()->findOrFail($employee->getKey());
 
-        $this->assertSame('Removed account', $fresh->name);
+        $this->assertSame('Former staff', $fresh->name);
         $this->assertNull($fresh->first_name);
         $this->assertNull($fresh->last_name);
         $this->assertNull($fresh->phone);
@@ -416,7 +416,7 @@ class PersonalDataPurgeTest extends TestCase
         $this->assertCount($before, $after, 'Audit entries were deleted rather than anonymised.');
 
         foreach ($after as $event) {
-            $this->assertSame('Removed account', $event->actor_label);
+            $this->assertSame('Former staff', $event->actor_label);
         }
     }
 
@@ -586,7 +586,7 @@ class PersonalDataPurgeTest extends TestCase
         // both are past the refusal in the walk.
         $fresh = User::withoutGlobalScopes()->findOrFail($employee->getKey());
 
-        $this->assertSame('Removed account', $fresh->name);
+        $this->assertSame('Former staff', $fresh->name);
 
         $this->inTenant($alpha['org'], function () use ($onboardingId) {
             foreach (OnboardingAnswer::where('onboarding_id', $onboardingId)->get() as $answer) {
@@ -773,7 +773,7 @@ class PersonalDataPurgeTest extends TestCase
             }
         });
 
-        $this->assertSame('Removed account',
+        $this->assertSame('Former staff',
             User::withoutGlobalScopes()->findOrFail($employee->getKey())->name,
             'The table after the refused one was never reached, so one guarded row still '
             .'stops the walk — which is the failure the try/catch was added to prevent.');
