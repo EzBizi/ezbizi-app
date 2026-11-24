@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 
@@ -644,6 +645,49 @@ void main() {
     expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
   });
 
+  testWidgets('row 37: a visible rule under every row, painted over the '
+      'row fill so no cell hides it, in light and dark', (tester) async {
+    await pump(tester);
+    // The rule paints over the row (foreground), so no fill hides it.
+    final rule = EzBiziTheme.boardRowLine(
+      tester.element(find.byType(TaskBoardScreen)),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is DecoratedBox &&
+            w.position == DecorationPosition.foreground &&
+            (w.decoration as BoxDecoration?)?.border?.top.color == rule,
+      ),
+      findsWidgets,
+    );
+    double ratio(Color a, Color b) {
+      final (x, y) = (a.computeLuminance(), b.computeLuminance());
+      return (max(x, y) + 0.05) / (min(x, y) + 0.05);
+    }
+
+    for (final b in Brightness.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: b),
+          home: Builder(
+            builder: (context) {
+              expect(
+                ratio(
+                  EzBiziTheme.boardRowLine(context),
+                  EzBiziTheme.boardRow(context),
+                ),
+                greaterThanOrEqualTo(1.3),
+                reason: '$b',
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+    }
+  });
+
   testWidgets('Adeline 11-24: opening a task clears its red unread count at '
       'once and tells the server', (tester) async {
     unread = 2;
@@ -657,6 +701,8 @@ void main() {
       find.byKey(const ValueKey('task-unread-t1')),
     );
     expect(badge.isLabelVisible, isFalse);
+    // Jose 11-24: read, it shows the plain total; never the badge and a number.
+    expect(find.byKey(const ValueKey('task-updates-count-t1')), findsOneWidget);
   });
 
   testWidgets('Chaim 11-24: replies sit under their update, a long one reads '

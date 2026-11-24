@@ -433,14 +433,14 @@ void main() {
 
     await tapKey(tester, find.byKey(const ValueKey('task-attachment-a-img')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('task-attachment-viewer')), findsOneWidget);
-    expect(find.byKey(const Key('task-attachment-image')), findsOneWidget);
-    await tapKey(tester, find.byKey(const Key('task-attachment-download')));
+    // Adeline 11-24: an image opens in Monday's centred lightbox.
+    expect(find.byKey(const Key('task-image-lightbox')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lightbox-image-a-img')), findsOneWidget);
+    await tapKey(tester, find.byKey(const Key('lightbox-download')));
     expect(saved, ['roof.jpg']);
-    Navigator.of(
-      tester.element(find.byKey(const Key('task-attachment-viewer'))),
-    ).pop();
+    await tapKey(tester, find.byKey(const Key('lightbox-close')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('task-image-lightbox')), findsNothing);
 
     await tapKey(tester, find.byKey(const ValueKey('task-attachment-a-pdf')));
     await tester.pumpAndSettle();

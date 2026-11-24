@@ -4010,27 +4010,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   header,
-                  // A role group says what it is for (management's board rules, Jose 11-17).
-                  if (group['purpose'] case final String purpose)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Text(
-                        purpose,
-                        key: ValueKey('group-purpose-$fold'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                  // Jose 11-24: the group's colour runs unbroken from under its
+                  // title to its last line: description, headings, every row.
+                  _strip(
+                    colour,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // A role group says what it is for (management's board rules, Jose 11-17).
+                        if (group['purpose'] case final String purpose)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                            child: Text(
+                              purpose,
+                              key: ValueKey('group-purpose-$fold'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        if (!folded) ...[
+                          // An empty group drew a full column-header row for nothing;
+                          // but a board with no task at all keeps them, or there is
+                          // nowhere to add a column (hands-on QA 11-16).
+                          if (shown.isNotEmpty || _tasks.isEmpty)
+                            _headings(context, id),
+                          if (_renaming case final r? when r.group == id)
+                            _columnNameField(r.key),
+                        ],
+                      ],
                     ),
-                  if (!folded) ...[
-                    // An empty group drew a full column-header row for nothing;
-                    // but a board with no task at all keeps them, or there is
-                    // nowhere to add a column (hands-on QA 11-16).
-                    if (shown.isNotEmpty || _tasks.isEmpty)
-                      _headings(context, id),
-                    if (_renaming case final r? when r.group == id)
-                      _columnNameField(r.key),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -4134,10 +4144,24 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         radius: i == last
             ? const BorderRadius.vertical(bottom: Radius.circular(12))
             : null,
-        child: lines[i](),
+        child: _strip(colour, lines[i]()),
       ),
     );
   }
+
+  /// The group's colour down the left of [child], edge to edge.
+  Widget _strip(Color colour, Widget child) => Stack(
+    children: [
+      child,
+      Positioned(
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: ColoredBox(color: colour),
+      ),
+    ],
+  );
 
   /// A group's outline round its headings and round each of its rows: the
   /// one box both sit in, so their columns start at the same x. A Container
@@ -4306,6 +4330,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       boardColumns(_board).fold(0.0, (sum, c) => sum + _w('c:${c.id}'));
 
   Widget _cellBorder(BuildContext context, Widget child) => DecoratedBox(
+    // Over the row, not under it: the row's own fill and label cells painted
+    // across a background rule and hid it (Jose 11-24, row 37 again).
+    position: DecorationPosition.foreground,
     decoration: BoxDecoration(
       border: Border(top: BorderSide(color: rowLine(context))),
     ),
@@ -4868,8 +4895,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                       t['unread_notes'],
                                       key: ValueKey('task-unread-${t['id']}'),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text('$updates'),
+                                    // Jose 11-24: the red unread count or the
+                                    // plain total, never both.
+                                    if ((t['unread_notes'] as num? ?? 0) ==
+                                        0) ...[
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '$updates',
+                                        key: ValueKey(
+                                          'task-updates-count-${t['id']}',
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                         ),
