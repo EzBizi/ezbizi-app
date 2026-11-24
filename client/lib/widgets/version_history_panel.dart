@@ -157,7 +157,10 @@ class _ReleaseBlock extends StatelessWidget {
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                Text(release.date, style: theme.textTheme.bodySmall),
+                Text(
+                  _when(context, release, current),
+                  style: theme.textTheme.bodySmall,
+                ),
                 if (current) const Tag('This build'),
               ],
             ),
@@ -181,4 +184,33 @@ class _ReleaseBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// "24 Nov 2026 · 2:28 PM": the deploy time in the viewer's own zone and
+/// 12/24-hour setting (Jose 11-24). A row with no recorded time keeps its date;
+/// the build you are running knows its own compile time.
+String _when(BuildContext context, VersionRelease release, bool current) {
+  final utc =
+      release.deployed ??
+      (current && BuildInfo.builtAt.isNotEmpty ? BuildInfo.builtAt : null);
+  final at = utc == null
+      ? null
+      : DateTime.tryParse('${utc.replaceFirst(' ', 'T')}:00Z')?.toLocal();
+  if (at == null) return release.date;
+  return '${at.day} ${_months[at.month - 1]} ${at.year} · ${TimeOfDay.fromDateTime(at).format(context)}';
 }
