@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
+      'Task Board: the Calendar shows the scheduled jobs (it plots Schedule Date on Project Management boards), with a Date column picker',
+      'Email: Compose Send from is a searchable list',
+    ]),
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
       'Everywhere: people whose accounts were removed now read Former staff, and reports group them in one row',
       'Theme: the button switches between light and dark only; Match my device is gone',
