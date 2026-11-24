@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0631', date: '24 Nov 2026', items: [
+      'Task Board: Updates sit right after the task name',
+      'Task Board: a job title shows the client name (and the tech after the number), e.g. "Marianne Baab · Artem"',
+      'Task Board: Monday replies that mention you now reach you, including guests and viewers',
+      'Task Board: Job Status carried over from Monday on 330 Project Management tasks',
+    ]),
     VersionRelease(version: '0.0.0630', date: '24 Nov 2026', items: [
       'iPhone and Mac: the iOS 27 build for the iPhone Duo goes out (the 0.0.0629 phone build was held back)',
     ]),
