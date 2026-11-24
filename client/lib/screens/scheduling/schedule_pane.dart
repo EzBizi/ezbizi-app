@@ -519,6 +519,7 @@ class _SchedulePaneState extends State<SchedulePane> {
                   avatar: id == null
                       ? null
                       : CircleAvatar(backgroundColor: colourOf(id), radius: 5),
+                  showCheckmark: false,
                   selected: _phoneTech == id,
                   onSelected: (_) => setState(() => _phoneTech = id),
                 ),
