@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -246,6 +247,10 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
           color: theme.colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-scheduling-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('scheduling', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: _select,
