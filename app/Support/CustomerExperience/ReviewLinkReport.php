@@ -87,12 +87,23 @@ final class ReviewLinkReport
 
         $names = Franchise::query()->whereIn('id', $rows->pluck('franchise_id')->unique())->pluck('name', 'id');
         $people = User::query()->whereIn('id', $rows->pluck('performed_by_user_id')->filter()->unique())->pluck('name', 'id');
+        // Erased people fold into one "Former staff" row (Jose, 2026-11-24).
+        $gone = $people->filter(fn ($n) => User::isErasedName($n))->keys()->flip();
+        $people = $people->map(fn ($n) => User::isErasedName($n) ? 'Former staff' : $n);
+        $byPerson = $rows->map(function ($r) use ($gone) {
+            $r = clone $r;
+            if (isset($gone[$r->performed_by_user_id])) {
+                $r->performed_by_user_id = 'former';
+            }
+
+            return $r;
+        });
 
         return [
             'totals'        => $this->tally($rows),
             'reviewed'      => $this->detail,
             'by_branch'     => $this->split($rows, 'franchise_id', fn ($id) => $names[$id] ?? null),
-            'by_person'     => $this->split($rows, 'performed_by_user_id', fn ($id) => $id === null ? null : ($people[$id] ?? null)),
+            'by_person'     => $this->split($byPerson, 'performed_by_user_id', fn ($id) => $id === null ? null : ($id === 'former' ? 'Former staff' : ($people[$id] ?? null))),
             'tracked_since' => ReviewLinkEvent::query()->min('occurred_at'),
         ];
     }
