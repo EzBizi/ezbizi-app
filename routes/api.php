@@ -1427,6 +1427,10 @@ Route::prefix('v1')
             Route::get('financials/bank/transactions', [FinancialBankController::class, 'transactions']);
             Route::post('financials/bank/{connection}/reconnect', [FinancialBankController::class, 'reconnect']);
             Route::post('financials/bank/{connection}/refresh', [FinancialBankController::class, 'refresh']);
+            // What a deposit was for: a recorded invoice payment or an open invoice (BankMatcher).
+            Route::get('financials/bank/transactions/{transaction}/candidates', [FinancialBankController::class, 'candidates']);
+            Route::post('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'match']);
+            Route::delete('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'unmatch']);
         });
         // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
         Route::middleware('permission:financials.markets.view')->group(function (): void {

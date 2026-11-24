@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/list_search.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import '../email/consent_window.dart';
 import 'financial_cells.dart';
 
@@ -86,7 +87,8 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
     final r = await widget.api.get('/financials/bank/transactions', {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'account_id': ?_accountId,
-      if (_direction != 'all') 'direction': _direction,
+      if (_direction == 'in' || _direction == 'out') 'direction': _direction,
+      if (_direction == 'unmatched') 'unmatched': '1',
       'page': '$_page',
     });
     if (!mounted) return;
@@ -130,6 +132,20 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
           .where((b) => b['id'] == bank['id']);
       if (now.isNotEmpty && now.first['status'] == 'connected') t.cancel();
     });
+  }
+
+  /// What this money in was for: the recorded payments and open invoices
+  /// that fit, and the current match with a way to undo it.
+  Future<void> _openMatch(Map t) async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => _MatchPanel(
+        api: widget.api,
+        t: t,
+        canEdit: widget.me.can('financials.edit'),
+      ),
+    );
+    if (changed == true) await _loadTxns(reset: true);
   }
 
   Future<void> _refresh(Map bank) async {
@@ -250,6 +266,7 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
                     SearchOption(value: 'all', label: 'In and out'),
                     SearchOption(value: 'out', label: 'Money out'),
                     SearchOption(value: 'in', label: 'Money in'),
+                    SearchOption(value: 'unmatched', label: 'Money in, not matched'),
                   ],
                   onChanged: (v) {
                     setState(() => _direction = v ?? 'all');
@@ -276,7 +293,11 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
             Card(
               child: Column(
                 children: [
-                  for (final t in _txns) _TxnRow(t: t),
+                  for (final t in _txns)
+                    _TxnRow(
+                      t: t,
+                      onTap: (t['amount_cents'] as num? ?? 0) < 0 ? () => _openMatch(t) : null,
+                    ),
                   if (_page < _lastPage)
                     TextButton(
                       key: const Key('financials-bank-more'),
@@ -436,9 +457,10 @@ class _BankCard extends StatelessWidget {
 }
 
 class _TxnRow extends StatelessWidget {
-  const _TxnRow({required this.t});
+  const _TxnRow({required this.t, this.onTap});
 
   final Map t;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -448,6 +470,7 @@ class _TxnRow extends StatelessWidget {
     final category = '${t['category'] ?? ''}'.replaceAll('_', ' ').toLowerCase();
     return ListTile(
       dense: true,
+      onTap: onTap,
       title: Text('${t['merchant_name'] ?? t['name']}', overflow: TextOverflow.ellipsis),
       subtitle: Text(
         [
@@ -455,6 +478,7 @@ class _TxnRow extends StatelessWidget {
           if (account != null) _accountLabel(account),
           if (category.isNotEmpty) category,
           if (t['pending'] == true) 'pending',
+          if (t['match'] != null) '→ ${t['match']['label']}',
         ].join(' · '),
         overflow: TextOverflow.ellipsis,
       ),
@@ -465,6 +489,115 @@ class _TxnRow extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+class _MatchPanel extends StatefulWidget {
+  const _MatchPanel({required this.api, required this.t, required this.canEdit});
+
+  final ApiClient api;
+  final Map t;
+  final bool canEdit;
+
+  @override
+  State<_MatchPanel> createState() => _MatchPanelState();
+}
+
+class _MatchPanelState extends State<_MatchPanel> {
+  Map? _match;
+  List<Map> _candidates = const [];
+  String? _error;
+  bool _loading = true;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final r = await widget.api.get('/financials/bank/transactions/${widget.t['id']}/candidates');
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _error = r.ok ? null : r.message;
+      if (r.ok) {
+        final data = r.body['data'] as Map;
+        _match = data['match'] as Map?;
+        _candidates = (data['candidates'] as List).cast<Map>();
+      }
+    });
+  }
+
+  Future<void> _choose(Map c) async {
+    final r = await widget.api.post('/financials/bank/transactions/${widget.t['id']}/match', {'type': c['type'], 'id': c['id']});
+    if (!mounted) return;
+    if (!r.ok) return setState(() => _error = r.reason);
+    _changed = true;
+    await _load();
+  }
+
+  Future<void> _undo() async {
+    final r = await widget.api.delete('/financials/bank/transactions/${widget.t['id']}/match');
+    if (!mounted) return;
+    if (!r.ok) return setState(() => _error = r.reason);
+    _changed = true;
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SidePanel(
+        title: 'What was this for?',
+        subtitle: '${widget.t['merchant_name'] ?? widget.t['name']} · ${widget.t['date']} · ${bankAmount(widget.t['amount_cents'] as num? ?? 0)}',
+        onClose: () => Navigator.of(context).pop(_changed),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_error != null)
+                    Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+                  if (_match != null) ...[
+                    Text('Matched to', style: theme.textTheme.labelLarge),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${_match!['label']}'),
+                      subtitle: Text(_match!['by'] == 'auto' ? 'Matched by EzBizi' : 'Matched by a person'),
+                      trailing: widget.canEdit
+                          ? TextButton(
+                              key: const Key('financials-bank-unmatch'),
+                              onPressed: _undo,
+                              child: const Text('Unmatch'),
+                            )
+                          : null,
+                    ),
+                    const Divider(),
+                  ],
+                  Text(
+                    _candidates.isEmpty
+                        ? 'Nothing in EzBizi fits this deposit: no recorded payment for this amount within a week, and no open invoice for it.'
+                        : 'Payments and open invoices for this amount',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  for (final c in _candidates)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${c['label']}'),
+                      subtitle: Text([c['detail'], c['date']].whereType<Object>().where((x) => '$x'.isNotEmpty).join(' · ')),
+                      trailing: widget.canEdit
+                          ? FilledButton.tonal(
+                              key: Key('financials-bank-match-${c['id']}'),
+                              onPressed: () => _choose(c),
+                              child: const Text('Match'),
+                            )
+                          : null,
+                    ),
+                ],
+              ),
     );
   }
 }

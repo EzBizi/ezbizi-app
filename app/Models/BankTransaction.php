@@ -27,6 +27,7 @@ class BankTransaction extends Model implements StatesRetention
             'authorized_date' => 'date:Y-m-d',
             'amount_cents' => 'integer',
             'pending' => 'boolean',
+            'matched_at' => 'datetime',
         ];
     }
 
