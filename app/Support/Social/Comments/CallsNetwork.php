@@ -33,8 +33,18 @@ trait CallsNetwork
             $why = $response->json('error.error_user_msg')
                 ?? $response->json('error.message')
                 ?? $response->json('detail');
+            $why = is_string($why) ? $why : '';
+            $code = (int) $response->json('error.code');
 
-            throw new RuntimeException(is_string($why) && $why !== '' ? $why : "{$network} refused that (HTTP ".$response->status().').');
+            // The screen shows this sentence as is (Jose 11-24: no raw Graph errors).
+            // ponytail: once Meta approves, an old token still gets #10 until the Page is reconnected; reword then.
+            throw new RuntimeException(match (true) {
+                $code === 10 || ($code >= 200 && $code < 300) => "{$network} comments need a Meta permission that EzBizi is still getting approved.",
+                $code === 190 => "{$network} signed this account out. Reconnect it from Integrations.",
+                $response->status() === 402 || str_contains(strtolower($why), 'credits') => "{$network} comments are paused: the {$network} API credits ran out.",
+                $why !== '' && ! str_starts_with($why, '(#') => $why,
+                default => "{$network} refused that (HTTP ".$response->status().').',
+            });
         }
 
         return $response;
