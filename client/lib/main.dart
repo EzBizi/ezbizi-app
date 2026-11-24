@@ -630,6 +630,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       Callouts.seen.value.toList(),
     );
 
+    // No "match my device" any more (Jose 11-24): whoever is still on it, or
+    // never chose, keeps what their device shows now. After the frame, since
+    // a preference write rebuilds the app above this shell.
+    final theme = widget.session.me;
+    if (theme != null && !theme.themeChosen && !AppWindow.secondary) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.session.setPreference('appearance.theme', theme.theme);
+        }
+      });
+    }
+
     // SECURITY exemption: the Lead Developer's own device still beats (online)
     // and reports specs, but never captures, live-views or is remote-driven —
     // so the heartbeat starts unconditionally while the three capture services
@@ -1600,9 +1612,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // second setting. Two places that both claim to control the theme and
               // disagree is worse than one place that is hard to find.
               //
-              // Cycles system -> light -> dark rather than toggling two states: the
-              // default is "match my device", and a two-way switch would silently
-              // throw that away the first time anybody touched it.
+              // Two states, light and dark (Jose 11-24: "get rid of the middle
+              // matching your device mode"). A mixed theme flips by its page.
               // Desktop only, by Jose's word (2026-09-10): "we can get rid of
               // the light-dark mode switcher and have it only managed via your
               // account on mobile". It was always a shortcut to the account
@@ -1610,29 +1621,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               // path and never a capability -- which is the only reason it is
               // safe to drop rather than relocate.
               if (wide)
-                IconButton(
-                  tooltip: switch (me.theme) {
-                    'light' => 'Light — switch to dark',
-                    'dark' => 'Dark — match my device',
-                    _ => 'Matching your device — switch to light',
+                Builder(
+                  builder: (context) {
+                    final light =
+                        EzBiziTheme.modeFor(me.theme) == ThemeMode.light;
+                    return IconButton(
+                      tooltip: light
+                          ? 'Light — switch to dark'
+                          : 'Dark — switch to light',
+                      icon: Icon(
+                        light
+                            ? Icons.wb_sunny_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
+                      onPressed: () => widget.session.setPreference(
+                        'appearance.theme',
+                        light ? 'dark' : 'light',
+                      ),
+                    );
                   },
-                  icon: Icon(switch (me.theme) {
-                    'light' => Icons.wb_sunny_outlined,
-                    'dark' => Icons.dark_mode_outlined,
-                    // Not brightness_auto: that glyph is a sun with an A, and
-                    // it sits next to the two-factor shield that also carries
-                    // an A. Contrast is the half-and-half circle — light and
-                    // dark in one mark, no letter.
-                    _ => Icons.contrast,
-                  }),
-                  onPressed: () => widget.session.setPreference(
-                    'appearance.theme',
-                    switch (me.theme) {
-                      'system' => 'light',
-                      'light' => 'dark',
-                      _ => 'system',
-                    },
-                  ),
                 ),
               // "View as" a role or person (design 205): developers who are
               // Administrators; lit while on, so it can be switched or left.

@@ -979,15 +979,27 @@ class Me {
     mobileBar: mobileBar,
   );
 
-  /// Never null and never unknown — an unrecognised stored value falls back to
-  /// following the device rather than leaving the app with no theme at all.
+  /// Never null and never unknown. There is no "match my device" any more
+  /// (Jose 11-24: "just leave dark and light mode"): an old `system`, or no
+  /// choice yet, reads as whatever the device shows now, and [themeChosen]
+  /// tells the shell to save that once so it stays put.
   String get theme => switch (preferences['appearance.theme']) {
     'light' => 'light',
     'dark' => 'dark',
     'mixed_dark_nav' => 'mixed_dark_nav',
     'mixed_light_nav' => 'mixed_light_nav',
-    _ => 'system',
+    _ =>
+      PlatformDispatcher.instance.platformBrightness == Brightness.dark
+          ? 'dark'
+          : 'light',
   };
+
+  bool get themeChosen => const {
+    'light',
+    'dark',
+    'mixed_dark_nav',
+    'mixed_light_nav',
+  }.contains(preferences['appearance.theme']);
 
   String get navigationStyle =>
       preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
