@@ -186,6 +186,16 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/follow')) {
+          return json({
+            'data': {'following': true},
+          });
+        }
+        if (path.endsWith('/check')) {
+          return json({
+            'data': {'id': 'u1', 'body': 'Steps\n☑ Order the liner'},
+          });
+        }
         if (path.endsWith('/like')) {
           return json({
             'data': {'likes': 1, 'liked': true},
@@ -709,6 +719,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Files · 1'), findsOneWidget);
     expect(find.textContaining('quote.pdf'), findsWidgets);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('Chaim 11-24: checklist lines tick, the bell follows, bold '
+      'shows, and the composer has its tools', (tester) async {
+    thread = [
+      {
+        'id': 'u1',
+        'parent_id': null,
+        'body': 'Steps **now**\n☐ Order the liner',
+        'author': {'id': 'u-2', 'name': 'Shoval Ohayon'},
+        'created_at': '2026-11-20T10:00:00Z',
+        'likes': 0,
+        'seen': 0,
+        'attachments': const [],
+      },
+    ];
+    addTearDown(() => thread = const []);
+    await pump(tester);
+
+    final box = find.byKey(const ValueKey('task-update-check-u1-1'));
+    expect(tester.widget<CheckboxListTile>(box).value, isFalse);
+    await tester.ensureVisible(box);
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+    expect(log.last.$2, '/tasks/t1/updates/u1/check');
+    expect(tester.widget<CheckboxListTile>(box).value, isTrue);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('task-update-follow-u1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('task-update-follow-u1')));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('task-update-tool-checklist')),
+    );
+    await tester.tap(find.byKey(const Key('task-update-tool-checklist')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('task-update-body')))
+          .controller!
+          .text,
+      '☐ ',
+    );
     await tester.pump(const Duration(seconds: 3));
   });
 

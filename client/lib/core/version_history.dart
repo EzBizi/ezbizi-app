@@ -17,14 +17,21 @@ class VersionHistory {
       'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
       'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
       'Task Board: label text is slightly bigger, matching Monday',
+      "What's been built: each version shows the time it went live, in your own time zone",
+      'Task Board: Activity Log for the whole board, with filters by time, group, column and person',
+      'Task Board: Export to Excel for a board, a group or the selected tasks',
+      'Task Board: an Updates feed of every board in one list, with mentions, unread only and mark all as read',
+      'Task Board: My Work lists your open tasks on every board by Past dates, Today, This week, Next week and Later',
+      'Task Board: status labels can be reordered, given a default for new tasks, and retired',
+      'Task Board: updates can carry a checklist, be followed with the bell, bookmarked, or scheduled to post later; the composer has bold, checklist, emoji and @ tools',
       'Phones: opening a picker or form no longer pops up the keyboard; tap the field to type',
-      'Phones: while typing, the company picker, page title and banners fold away so the screen stays readable',
+      'Phones: while typing, the company picker, page title, banners, money tiles and floating buttons fold away so the screen stays readable',
       'Project Management: the Technician column shows the technician by name, never Removed account',
       'Project Management › Inbox: a client who replied STOP shows Opted out and the reply box closes; the filter chips fit on a phone',
       'Notifications: each one can be marked read or unread, liked or deleted (swipe on a phone), and there is Delete all',
       'Windows and web: right-click a module or tab for Open in new window, to keep two EzBizi screens side by side; the tray menu has New window',
     ]),
-    VersionRelease(version: '0.0.0635', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0635', date: '24 Nov 2026', deployed: '2026-11-24 19:28', items: [
       'Task Board: group title rows are tinted in the group colour with a bigger title',
       'Task Board: a status name saves as you type, and a name already in use says so',
       'Task Board: people search also matches the start of an email and the Monday name, so Chris finds Kristopher',
@@ -54,25 +61,25 @@ class VersionHistory {
     VersionRelease(version: '0.0.0633', date: '24 Nov 2026', items: [
       'Automations: when a rule cannot change a task board, the run log names the board and the reason',
     ]),
-    VersionRelease(version: '0.0.0632', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0632', date: '24 Nov 2026', deployed: '2026-11-24 15:56', items: [
       'Automations: a text to a number saved like 860.329.1234 now goes out; a number that is incomplete shows "not a complete phone number" in the run log instead of failing',
     ]),
-    VersionRelease(version: '0.0.0631', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0631', date: '24 Nov 2026', deployed: '2026-11-24 08:22', items: [
       'Task Board: Updates sit right after the task name',
       'Task Board: a job title shows the client name (and the tech after the number), e.g. "Marianne Baab · Artem"',
       'Task Board: Monday replies that mention you now reach you, including guests and viewers',
       'Task Board: Job Status carried over from Monday on 330 Project Management tasks',
     ]),
-    VersionRelease(version: '0.0.0630', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0630', date: '24 Nov 2026', deployed: '2026-11-24 06:20', items: [
       'iPhone and Mac: the iOS 27 build for the iPhone Duo goes out (the 0.0.0629 phone build was held back)',
     ]),
-    VersionRelease(version: '0.0.0629', date: '23 Nov 2026', items: [
+    VersionRelease(version: '0.0.0629', date: '23 Nov 2026', deployed: '2026-11-24 04:27', items: [
       'Roles: each role gets its own phone bottom bar, up to 4 tabs or sub-tabs, set in Roles and permissions with a live phone preview',
       'Project Management: the project manager is alerted 3 days before a job when ordered parts have not arrived',
       'Project Management: new texts ready for approval, a 3-day reminder and the crew work order the day before, all off until switched on',
       'iPhone: built with the iOS 27 SDK, so the iPhone Duo uses its whole inner screen',
     ]),
-    VersionRelease(version: '0.0.0628', date: '23 Nov 2026', items: [
+    VersionRelease(version: '0.0.0628', date: '23 Nov 2026', deployed: '2026-11-24 01:46', items: [
       'Project Management: a job tagged Project cannot be completed without parts and labor costs; the board gets a Project Costs column',
       'Project Management: the status colour counts days in the current stage, 1 green, 2 yellow, 3 or more red',
       'Scheduling on a phone: a week strip, technician chips and the day in time order',
@@ -86,7 +93,7 @@ class VersionHistory {
       'Reviews: a review Google removed, an eKomi review, or one whose company has no connected Business Profile says why it cannot be answered and is not counted as Unanswered',
       'Human Resources: saving a field a person record does not take is refused by name',
     ]),
-    VersionRelease(version: '0.0.0626', date: '23 Nov 2026', items: [
+    VersionRelease(version: '0.0.0626', date: '23 Nov 2026', deployed: '2026-11-23 22:04', items: [
       'Human Resources: invite links. Pick a role and a place, share the link or QR, and people create their own account straight into it',
       'Sign-in no longer shows Create an account; staff join by invite link',
       'Reports: calls on other companies lines wait in Awaiting review and stay out of booking rates until somebody reviews them',
@@ -103,7 +110,7 @@ class VersionHistory {
       'Task Board: edit or delete your own update, marked Edited and kept in step with Monday',
       'Task Board: uses the same font as Monday',
     ]),
-    VersionRelease(version: '0.0.0625', date: '23 Nov 2026', items: [
+    VersionRelease(version: '0.0.0625', date: '23 Nov 2026', deployed: '2026-11-23 19:03', items: [
       'View as: Administrators who are developers can see and use the app as a role or a person, with a banner and Exit, and every change logged as them',
       'Task Board: the Updates column sits right after Status on every board',
       'Task Board: tagging somebody on a shared board adds them to it; private boards stay members only',
@@ -113,7 +120,7 @@ class VersionHistory {
       'Jobs: the list opens on All, so a search finds past jobs too',
       'Task Board: personal boards of removed accounts no longer show in the board list',
     ]),
-    VersionRelease(version: '0.0.0624', date: '23 Nov 2026', items: [
+    VersionRelease(version: '0.0.0624', date: '23 Nov 2026', deployed: '2026-11-23 16:20', items: [
       'Inspection: the emailed report no longer fails in the queue',
       'Inspection: report templates can use {{company_name}}, and notes keep their line breaks',
       'Inspection: approve before/after photo pairs for the website, after a privacy check (no faces or house numbers)',
@@ -123,18 +130,18 @@ class VersionHistory {
       'Customer Experience: review replies show the reason Google refused them, and an unverified listing no longer switches the auto-reply rule off',
       'Task Board: clicking the Updates cell opens only the updates',
     ]),
-    VersionRelease(version: '0.0.0623', date: '21 Nov 2026', items: [
+    VersionRelease(version: '0.0.0623', date: '21 Nov 2026', deployed: '2026-11-21 05:16', items: [
       'Workiz: a re-read that meets the Workiz rate limit waits and retries instead of failing',
     ]),
-    VersionRelease(version: '0.0.0622', date: '21 Nov 2026', items: [
+    VersionRelease(version: '0.0.0622', date: '21 Nov 2026', deployed: '2026-11-21 02:12', items: [
       'Workiz: job photos and files are read only for jobs scheduled in the last 30 days',
     ]),
-    VersionRelease(version: '0.0.0621', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0621', date: '20 Nov 2026', deployed: '2026-11-21 00:46', items: [
       'Workiz: photos and files of finished jobs are read every 10 minutes, so reports and AI checks see them',
       'Reports: AI checks show Not checked when the photos or calls of a job were never read, instead of counting a miss',
       'Reports: the AI checks drill-down says photos not read instead of 0 photos for those jobs',
     ]),
-    VersionRelease(version: '0.0.0620', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0620', date: '20 Nov 2026', deployed: '2026-11-20 22:08', items: [
       'Reports: Estimates under Jobs, and new Office (Tasks, Complaints, Dispatch, Accounting weekly, Recruiting) and Technicians (Tech report, AI checks) tabs',
       'Newsletter: Custom HTML and Blocks are kept as two separate designs; switching views never loses either one, and Use this design picks which one is sent',
       'Newsletter: the two previews in Create editable copy are framed',
@@ -142,13 +149,13 @@ class VersionHistory {
       'Grok: photo search finds jobs by every word across job type, title and description (for example chimney crown repair)',
       'Roles: an Administrator can change roles from any company view, not only the organization view',
     ]),
-    VersionRelease(version: '0.0.0619', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0619', date: '20 Nov 2026', deployed: '2026-11-20 20:28', items: [
       'Reviews: each Google review is stored and counted once, even when two Google accounts can see the same location',
       'Reviews: EzBizi keeps the review total and rating of each Google listing exactly as Google reports them',
       'Task Board: flag tasks (address to fix, overbooked) go to the person who booked the job; the field manager only when the booker has no account',
       'Task Board: client, phone, address and job numbers fill from any detail a task has (job number, Workiz id, phone, name and address), every 10 minutes, for open and done tasks',
     ]),
-    VersionRelease(version: '0.0.0618', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0618', date: '20 Nov 2026', deployed: '2026-11-20 19:06', items: [
       'Complaints appear on a Task Board board, Reviews & Complaints, grouped by market and kept in sync both ways',
       'Customer Experience: Complaints is now Reviews & Complaints, with a Due within 24 h strip, a Client or Not a client badge, + New complaint, and Report on Google for reviews from non-clients',
       'Reports: new Cancelled jobs tab (cancelled share by reason, source and technician) and Pending jobs tab (every waiting job, oldest first); Settings › Lists sets which statuses count',
@@ -185,23 +192,23 @@ class VersionHistory {
       'Task Board: every task about a job fills client, phone, address and job numbers when it is created, and a blank Monday status gets ours',
       'Marketing: QR codes can carry the company logo or any picture in the middle, in the preview and the downloads',
     ]),
-    VersionRelease(version: '0.0.0614', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0614', date: '20 Nov 2026', deployed: '2026-11-20 14:58', items: [
       'Task Board: drag a group header onto another group to reorder the board; Monday follows',
       'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
     ]),
-    VersionRelease(version: '0.0.0613', date: '20 Nov 2026', items: [
+    VersionRelease(version: '0.0.0613', date: '20 Nov 2026', deployed: '2026-11-20 13:27', items: [
       'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
       'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
     ]),
-    VersionRelease(version: '0.0.0612', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0612', date: '19 Nov 2026', deployed: '2026-11-20 00:54', items: [
       'Reviews: the walkthrough says 1-3 stars, matching the filter',
       'Task Board: a missed-call task fills the caller details from the number even when there is no lead yet; a job date is only filled on Customer Relations tasks',
       'Background jobs that run every half hour or nightly (like the Monday check) now always run on time instead of only when the clock lines up',
     ]),
-    VersionRelease(version: '0.0.0611', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0611', date: '19 Nov 2026', deployed: '2026-11-19 23:55', items: [
       'Task Board: a big Monday board syncs a bit each run and picks up where it stopped, so one busy board never holds up the rest',
     ]),
-    VersionRelease(version: '0.0.0610', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0610', date: '19 Nov 2026', deployed: '2026-11-19 23:34', items: [
       'Task Board: clicking a linked job or customer on a task opens it, and so does Linked to in the side panel',
       'Reviews: the Unanswered count matches your filters; the low-rating filter is now 1-3 stars',
       'Task Board: missed-call tasks fill the caller client, phone, address and job numbers from the number in the title',
@@ -211,7 +218,7 @@ class VersionHistory {
       'Phone: calls and texts keep working while numbers move to a new Twilio account (both accounts accepted)',
       'Task Board: the half-hourly Monday check always gets its turn, even when a long sync is running',
     ]),
-    VersionRelease(version: '0.0.0607', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0607', date: '19 Nov 2026', deployed: '2026-11-19 19:59', items: [
       'Passwords now need at least 8 characters (was 12)',
       'Task Board: select several attachments on an update and download them together',
       'Task Board: the text of updates can be selected and copied',
@@ -227,13 +234,13 @@ class VersionHistory {
       'Task Board: a new task that Monday asks to retry still goes to Monday ahead of any large update',
       'Work Hours: weekly payroll sheet per branch with bonus, deductions, tech expenses and approvals (screen coming)',
     ]),
-    VersionRelease(version: '0.0.0606', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0606', date: '19 Nov 2026', deployed: '2026-11-19 17:29', items: [
       'Task Board: Move up and Move down work on boards and now on groups too, and the group order matches on Monday',
       'Task Board: deleting a group or a board asks for your authenticator code first',
       'Notifications: Assigned to me and Mentioned show task assignments and mentions, including ones made on Monday',
       'Task Board: changes made on Monday are no longer recorded as made by the account that connects Monday',
     ]),
-    VersionRelease(version: '0.0.0605', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0605', date: '19 Nov 2026', deployed: '2026-11-19 16:20', items: [
       'Task Board: a task without a job finds the caller job by phone and fills its EzBizi and Workiz job numbers, client, phone, address and area',
       'Task Board: Date Received, Last Contact Date, Booked by, Technician and Notes are filled from the call, review or job too',
       'Task Board: the Date column on Customer Relations tasks shows the job booked visit',
@@ -255,26 +262,26 @@ class VersionHistory {
       'Task Board: a deleted task notice with Undo now closes by itself instead of staying on screen',
       'Task Board: a new Monday column is made once per board, even when several updates need it at the same moment',
     ]),
-    VersionRelease(version: '0.0.0602', date: '19 Nov 2026', items: [
+    VersionRelease(version: '0.0.0602', date: '19 Nov 2026', deployed: '2026-11-19 14:10', items: [
       'Task Board: when Monday asks EzBizi to slow down, the sync picks up where it left off a minute later instead of stopping with an error',
     ]),
-    VersionRelease(version: '0.0.0601', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0601', date: '18 Nov 2026', deployed: '2026-11-19 05:11', items: [
       'Task Board: changes made on Monday by people show here within a couple of minutes, even while EzBizi is sending a large update to Monday',
       'Task Board: a title or group changed here is no longer put back to the old Monday value before Monday has received the change',
       'Task Board: the Monday sync no longer logs false failures while it sends large updates',
     ]),
-    VersionRelease(version: '0.0.0600', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0600', date: '18 Nov 2026', deployed: '2026-11-19 03:05', items: [
       'Task Board: new tasks such as missed calls reach Monday within about a minute, even while a large update is still being sent',
       'Task Board: a personal board no longer adds its own person to Monday a second time',
     ]),
-    VersionRelease(version: '0.0.0599', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0599', date: '18 Nov 2026', deployed: '2026-11-19 00:46', items: [
       'Task Board: the company board shows first in Team boards for everyone who can already open it',
       'Project Management: the Inbox shows how long ago each recent message came in, as Leads does',
       'Phone: the company and branch picker has its own row under the top bar, so it is never squeezed',
       'Task Board: a task deleted on Monday right after it was created there now leaves EzBizi too',
       'Task Board: every 30 minutes, moves and deletions made on Monday are checked on every board except the largest, so nothing stays out of step for long',
     ]),
-    VersionRelease(version: '0.0.0598', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0598', date: '18 Nov 2026', deployed: '2026-11-18 23:16', items: [
       'Task Board: the weekly misfiled report names the rule or automation that filed a task, not the person who made the rule',
       'Task Board: complaint and bad-review tasks stay in Customer Relations until a person approves a refund or files a chargeback',
       'Leads: a Local Services reply no longer shows twice (once as sent outside EzBizi)',
@@ -284,7 +291,7 @@ class VersionHistory {
       'Leads: missed-call alerts arrive about a minute after the call ends instead of five to seven',
       'Newsletter: starter templates bring their pictures into the company library, so they show in the web app, and the booking button goes to the market site of the branch',
     ]),
-    VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0597', date: '18 Nov 2026', deployed: '2026-11-18 21:46', items: [
       'Task Board: a task moved or closed on Monday moves the same way in EzBizi within minutes',
       'Google Ads: the account picker shows campaign accounts only, each figure says when it was read, missing access says what to do, and budget or bid changes show a before and after review first',
       'Social: the planner shows the real state of each post, Approve says whether it posts at the planned time or now, and each account shows its company and a reconnect note when needed',
@@ -317,7 +324,7 @@ class VersionHistory {
       'Marketing: the Scheduled count counts only approved posts with a send time; posts waiting for approval are counted on their own',
       'Task Board: overbooking warnings go in their own Overbooked group and name who booked the job',
     ]),
-    VersionRelease(version: '0.0.0596', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0596', date: '18 Nov 2026', deployed: '2026-11-18 17:29', items: [
       'Project Management: the Inbox lists texts and the conversation scroll separately, with a pinned reply box, a header with the client, job, phone, stage, Call and Open job, Waiting / Replied by us / All filters with counts, and client vs team vs automatic messages in their own colours',
       'Project Management: the work order PDF opens inside the app with zoom, Print, Share and Download',
       'Automations: a Create task step finds the board group whose name contains the one given, and the Area set from the branch now uses the branch of the record itself',
@@ -331,19 +338,19 @@ class VersionHistory {
       'Task Board: Workiz Job ID and EzBizi Job number columns on every task about a job',
       'Task Board: address, Friday and full-window tasks show EzBizi as the maker, belong to the booker (or the field managers, or the General Manager), and say what to do',
     ]),
-    VersionRelease(version: '0.0.0594', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0594', date: '18 Nov 2026', deployed: '2026-11-18 09:11', items: [
       'Jobs › Book: a priced services list with a total, tags sent to Workiz, and a duplicate-customer check that offers Use this customer or Create anyway',
     ]),
-    VersionRelease(version: '0.0.0593', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0593', date: '18 Nov 2026', deployed: '2026-11-18 07:41', items: [
       'Scheduling: the full-window alert works on days that also hold a Workiz job not yet linked or a web booking',
     ]),
-    VersionRelease(version: '0.0.0592', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0592', date: '18 Nov 2026', deployed: '2026-11-18 06:02', items: [
       'Jobs: booking refuses a full or late time window and offers the next 3 open ones; an admin can override with a reason, which goes to the field managers; approving an online booking re-checks the window and assigns a technician',
       'Jobs › Book: book a job in one place, with a live grid of days and time windows where full or late windows cannot be picked; every Book button opens the same panel',
       'Scheduling: a job booked or moved into a time window that was already full alerts whoever booked it and the branch field manager at once, naming the next open window',
       'Newsletter import: Save as new draft opens the draft, and the artwork step also takes PNG, JPEG, GIF and WebP pictures',
     ]),
-    VersionRelease(version: '0.0.0591', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0591', date: '18 Nov 2026', deployed: '2026-11-18 03:34', items: [
       'Newsletter: save your company brand (logo, colors, font, button style, footer note) and apply it to any newsletter',
       'Newsletter: save any block as a reusable section or start from five ready-made ones, inserted as a copy or linked',
       'Newsletter: a Mobile design mode with phone-only text size, spacing, alignment, button width, hiding and column stacking',
@@ -352,12 +359,12 @@ class VersionHistory {
       'Project Management: the Inbox opens quickly',
       'Task Board: a change Monday refuses (an archived or deleted item) is noted once on the task instead of retried',
     ]),
-    VersionRelease(version: '0.0.0590', date: '18 Nov 2026', items: [
+    VersionRelease(version: '0.0.0590', date: '18 Nov 2026', deployed: '2026-11-18 02:02', items: [
       'Newsletter: the editor centres on the email; click a block to type and format it, with its settings beside it, a small toolbar, drag or keyboard moves, and undo and redo',
       'Newsletter: every save is kept in Version history and can be restored; an internal name and an inbox preheader; if someone else edits at the same time you can compare, reload or keep your copy; pictures can be cropped without changing the original',
       'Task Board: people get the boards they belong to in Monday automatically, and someone removed from a board in EzBizi stays off it',
     ]),
-    VersionRelease(version: '0.0.0589', date: '17 Nov 2026', items: [
+    VersionRelease(version: '0.0.0589', date: '17 Nov 2026', deployed: '2026-11-18 00:33', items: [
       'Project Management: a Dashboard tab with jobs and items waiting for parts, parts 3+ days late in red, and reminders per part; alerts for late parts and due reminders',
       'Project Management: an Inbox with one conversation per client, replying from the branch line',
       'Project Management: four client texts (project link, scheduled with the work order to the crew, day-before reminder, thank-you), each off until switched on in Settings',
@@ -367,7 +374,7 @@ class VersionHistory {
       'Security: admins are alerted when one person or API key opens an unusual number of customers, leads or jobs in 10 minutes, and busy list screens are rate-limited per person',
       'Security: an email inbox outside your reach answers as not found, and inspection report photos follow the report access',
     ]),
-    VersionRelease(version: '0.0.0588', date: '17 Nov 2026', items: [
+    VersionRelease(version: '0.0.0588', date: '17 Nov 2026', deployed: '2026-11-17 22:18', items: [
       'Missed-call tasks close themselves when the caller replies to the text or books online',
       'Complaints: a complaint already on the board gets the AI review as a note instead of a second task',
       'Task Board: the sections are named Personal Task Board, Team boards and All markets',
@@ -420,13 +427,13 @@ class VersionHistory {
       'Web: two open tabs no longer overwrite each other sign-in every minute',
       'Signup verification emails retry instead of being lost when the mail server times out',
     ]),
-    VersionRelease(version: '0.0.0582', date: '17 Nov 2026', items: [
+    VersionRelease(version: '0.0.0582', date: '17 Nov 2026', deployed: '2026-11-17 15:37', items: [
       'Leads: a lead we texted after their call now shows Replied, not Awaiting reply',
     ]),
-    VersionRelease(version: '0.0.0581', date: '17 Nov 2026', items: [
+    VersionRelease(version: '0.0.0581', date: '17 Nov 2026', deployed: '2026-11-17 05:36', items: [
       'Marketing Reports: Angi Sweep Connecticut ad cost no longer also shows on Everdoors Connecticut; a sub company account named for a branch goes only to a branch that books that source',
     ]),
-    VersionRelease(version: '0.0.0580', date: '17 Nov 2026', items: [
+    VersionRelease(version: '0.0.0580', date: '17 Nov 2026', deployed: '2026-11-17 03:53', items: [
       'On a phone, Jobs, Customers and CX Reviews start the list much higher: search, Filters and a menu share one toolbar line',
       'On a phone, module headers keep their full title, and the Communication › Phone tabs and the HR Day to Year range fit on one line',
       'Task Board on a phone: search has its own line and New task is back on the toolbar',
@@ -435,7 +442,7 @@ class VersionHistory {
       'Fleet: each vehicle card says how many fields are missing',
       'Task Board: Recurring Tasks and Guidelines groups are teal and brown instead of purple, and the colour picker no longer offers purple',
     ]),
-    VersionRelease(version: '0.0.0579', date: '16 Nov 2026', items: [
+    VersionRelease(version: '0.0.0579', date: '16 Nov 2026', deployed: '2026-11-17 02:16', items: [
       'Leads: What they asked gets More and Less when the AI summary is cut short, and in a short window the lead header folds its details behind one Details line',
       'Reports: pin the heading row on any table (your choice is remembered)',
       'Reports › Jobs: a Without duplicates box next to Jobs created leaves out the Workiz copies and the PAID - ESTIMATED tags, and Marketing Reports shows the same count',
@@ -6496,9 +6503,16 @@ class VersionRelease {
     required this.version,
     required this.date,
     required this.items,
+    this.deployed,
   });
 
   final String version;
   final String date;
   final List<String> items;
+
+  /// When it went live, UTC `yyyy-MM-dd HH:mm` (Jose 11-24: show the time of
+  /// deployment, in the viewer's local time). The desk fills it in after the
+  /// cut, so the newest row usually has none and the panel falls back to this
+  /// build's own BUILT_AT.
+  final String? deployed;
 }

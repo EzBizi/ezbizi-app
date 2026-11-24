@@ -59,6 +59,39 @@ void main() {
     expect(await searchFocusedOnOpen(tester), isTrue);
   });
 
+  // FoldWhileTyping: summaries and floating buttons step aside while a phone
+  // types. A Scaffold body sees no inset, so the test puts it in one.
+  for (final (width, folds) in [(390.0, true), (1200.0, false)]) {
+    testWidgets('FoldWhileTyping at $width ${folds ? 'folds' : 'stays'}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                FoldWhileTyping(child: Text('Billed')),
+                TextField(),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Billed'), findsOneWidget);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      expect(find.text('Billed'), folds ? findsNothing : findsOneWidget);
+
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.text('Billed'), findsOneWidget);
+    });
+  }
+
   /// A literal `autofocus: true` raises the keyboard on a phone. Each one left
   /// is a box whose only purpose is typing, opened by asking to type, or a
   /// Focus that is not a text box at all. Anything new uses `autofocusOnOpen`,
@@ -96,6 +129,7 @@ void main() {
       'screens/settings/integration_provider_screen.dart': 1,
       'screens/task_board_columns.dart': 1,
       'screens/task_board_screen.dart': 8, // + the update reply box
+      'screens/task_board_feed.dart': 1, // the feed's reply box, opened by Reply to type in
       'screens/task_board_sidebar.dart': 1,
       'screens/web/widgets_tab.dart': 1,
       // A reply, note or reason, after tapping Reply / Note / Deny.

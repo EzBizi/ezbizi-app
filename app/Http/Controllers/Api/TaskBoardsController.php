@@ -21,6 +21,7 @@ use App\Models\TaskStatus;
 use App\Models\User;
 use App\Support\Integrations\DisconnectCode;
 use App\Support\Notes\NoteActivity;
+use App\Support\Reports\Xlsx;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Tasks\PeopleAliases;
 use App\Support\Tasks\SensitiveTasks;
@@ -488,6 +489,56 @@ class TaskBoardsController extends Controller
             ->limit(200)->get();
 
         return response()->json(['data' => $tasks->map(fn (Task $t) => TasksController::present($t))->all()]);
+    }
+
+    /**
+     * GET task-boards/{board}/export (Monday's Export to Excel, gap review P1):
+     * the whole board, one group (group_id) or the chosen tasks (ids[]), one
+     * row per task as the board shows it: labels by name, people by name.
+     */
+    public function export(Request $request, TaskBoard $taskBoard): Response
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'ids' => ['sometimes', 'array', 'max:5000'],
+            'ids.*' => ['uuid'],
+        ]);
+        $columns = $taskBoard->columns()->orderBy('position')->get();
+        $tasks = $this->ownTasks($taskBoard, SensitiveTasks::machineReader($request->user()))
+            ->with(['group', 'values'])
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('group_id', $g))
+            ->when($input['ids'] ?? null, fn ($q, $ids) => $q->whereIn('id', $ids))
+            ->get();
+        $names = User::query()->pluck('name', 'id')->mapWithKeys(fn ($n, $id) => [(string) $id => (string) $n])->all();
+        $text = function (mixed $v, TaskColumn $c) use ($names): mixed {
+            $labels = collect($c->options())->pluck('label', 'id')->all();
+            $one = fn ($x) => is_scalar($x) ? ($labels[(string) $x] ?? $names[(string) $x] ?? $x) : json_encode($x);
+
+            return match (true) {
+                $v === null => '',
+                is_array($v) && isset($v['label']) => (string) $v['label'],
+                is_array($v) && isset($v['from']) => trim(($v['from'] ?? '').' – '.($v['to'] ?? ''), ' –'),
+                is_array($v) => implode(', ', array_map($one, $v)),
+                default => $one($v),
+            };
+        };
+        $rows = [['Task', 'Group', 'Status', 'Owners', 'Due', ...$columns->pluck('name')->all()]];
+        foreach ($tasks as $t) {
+            $byColumn = $t->values->keyBy('column_id');
+            $rows[] = [
+                (string) $t->title, (string) $t->group?->name, (string) $t->statusRow?->name,
+                $t->owners->map(fn ($o) => $o->user?->name)->filter()->implode(', '),
+                $t->due_on?->toDateString() ?? '',
+                ...$columns->map(fn (TaskColumn $c) => $t->sensitive ? '' : $text(isset($byColumn[$c->id]) ? TasksController::valueOf($byColumn[$c->id]) : null, $c))->all(),
+            ];
+        }
+        $name = trim((string) preg_replace('/[^\w\- ]+/u', '', $taskBoard->name)) ?: 'Board';
+
+        return response(Xlsx::write([mb_substr($name, 0, 31) => $rows]), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$name.'.xlsx"',
+        ]);
     }
 
     /** POST task-boards {name, visibility, company_id?, franchise_id?}: a custom board, filed on the current view. */

@@ -175,6 +175,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /// Mobile review 11-24: typing, the status / Book / details row folds away,
+  /// so the conversation keeps the room. Read from the window: a Scaffold body
+  /// sees no keyboard inset, which is why the details rule never fired.
+  testWidgets('on a phone the moves row folds while the keyboard is up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+    );
+    final moves = find.byKey(const ValueKey('phone-bar-moves'));
+    expect(moves, findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(moves, findsNothing);
+    expect(find.byKey(const ValueKey('phone-bar-title')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(moves, findsOneWidget);
+  });
+
   /// Jose, 2026-11-19: "+1 (267) 55..." cut by status, Book and ... on one
   /// line, and no copy. The number has its own line, whole, with a copy
   /// button; the controls sit under it.

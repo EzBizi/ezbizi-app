@@ -241,6 +241,8 @@ Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2
 Schedule::command('ezbizi:monday-parity --values')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Desk 11-24: a Monday board nobody mirrored (DMV NEW) is reported within the hour.
 Schedule::command('ezbizi:monday-unmirrored')->hourly()->withoutOverlapping(30);
+// Gap review 11-24: scheduled task updates post on their minute.
+Schedule::command('ezbizi:tasks-post-scheduled-updates')->everyMinute()->withoutOverlapping(5);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
