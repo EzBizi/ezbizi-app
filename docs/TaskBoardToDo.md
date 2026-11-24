@@ -68,6 +68,7 @@ Last updated: 2026-11-19 10:05 ET (desk)
 | 42 | Chaim: **Task Board uses Monday's font** (Figtree) (11-23 suggestion 01a209a5) | Task Board / UI | ROUTED | Sent 11-23 |
 | 43 | Sheryl: **edit (and delete) your own update** after posting, like Monday ("Edited" mark, pushed to Monday) (11-23 suggestion 01a209f0) | Task Board | ROUTED | Sent 11-23 |
 | 44 | **Monday parity before Thu 11-26 shutdown** (desk sweep 11-24, all 39 boards): backfill 330 PM "Job Status" values (Ohio 290, IL 40); ~400 tasks missing a real assignee (Jeanette 351, Shoval/Bar/Chaim etc.); 9 Ohio PM status mismatches; decide whether ~8,900 "Deleted member" assignees are kept as names. Columns, groups, items, due dates, members: clean | Task Board | DONE | 0.0.0631 live 11-24: Job Status 330 filled (re-measured 0 left); Monday-only assignees kept as "Assigned in Monday: <name>" in Activity |
+| 45 | **Search finds any column value** (Natalie Escobar suggestion 01a20df2, Jose approved 11-24): the board search reads every column (job numbers, phones, labels) and also asks the server, so done tasks are found too | Task Board | ROUTED | Sent 11-24 |
 
 ## Other asks from Jose (not Task Board, kept here so nothing is lost)
 
