@@ -14,6 +14,9 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Task Board: a line under every row again, in light and dark',
+      'Task Board: images open in a viewer in the middle of the screen, with zoom and next/previous; downloads keep their file type',
+      'Task Board: the Updates column shows the red unread count or the total, never both; the group colour strip runs the full height of the group',
       'Comments: a Facebook or X account that cannot load says why in one plain line, and the other accounts keep loading',
       'Automations: alerts, task updates and task changes an automation makes now say EzBizi AI and the rule name, not the person who made the rule',
       'Email: on phones, tablets and small windows an email opens full screen with Back; on short desktop windows the reading pane sits beside the list',
