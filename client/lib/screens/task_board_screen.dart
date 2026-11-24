@@ -331,6 +331,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// The task in the panel docked beside the board, on a wide screen.
   _Json? _dockTask;
   bool _dockUpdatesOnly = false;
+  String? _dockFocusUpdate;
   List<Future<void>> _dockSaves = [];
 
   /// Set by the layout: wide enough to dock the task panel (1100, as the
@@ -364,8 +365,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// The task being dragged: its row stays behind as a faint ghost.
   String? _draggingId;
-  String? _renamingId;
-  final _renameText = TextEditingController();
 
   /// The groups that were folded before a group drag folded them all.
   Set<String?>? _foldedBeforeDrag;
@@ -480,7 +479,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   @override
   void dispose() {
-    _renameText.dispose();
     _live?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
@@ -544,7 +542,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final boardId = (res.body['data'] as Map?)?['board_id'];
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
-    if (mounted) _openTaskById(link.id);
+    // A mention or reply's bell opens the thread at that update (Jennine 11-24).
+    if (mounted) _openTaskById(link.id, update: link.update);
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -1484,6 +1483,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Map<String, String> _peopleNow() {
     final assignable = _board?['assignable'];
     if (assignable is List) {
+      for (final p in assignable.whereType<Map>()) {
+        if (p['also'] is String) {
+          PeopleSearchList.aliases['${p['id']}'] = p['also'] as String;
+        }
+      }
       // Faces without a photo are not asked for one.
       UserAvatar.knownPhotos({
         for (final p in assignable.whereType<Map>())
@@ -2371,24 +2375,34 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   /// The Gallery's "Go to task": false when this board's list lacks it.
-  bool _openTaskById(String id) {
+  bool _openTaskById(String id, {String? update}) {
     for (final t in _tasks) {
       if (t['id'] == id) {
-        _openTask(t);
+        _openTask(t, updatesOnly: update != null, focusUpdate: update);
         return true;
       }
     }
     return false;
   }
 
-  Future<void> _openTask(_Json task, {bool updatesOnly = false}) async {
+  Future<void> _openTask(
+    _Json task, {
+    bool updatesOnly = false,
+    String? focusUpdate,
+  }) async {
     setState(() => _openId = task['id'] as String?);
+    // Adeline 11-24: opening a task reads its updates (the panel tells the
+    // server); the row's red count clears now, not at the next reload.
+    if ((task['unread_notes'] as num? ?? 0) > 0) {
+      _replace({...task, 'unread_notes': 0});
+    }
     if (_dockWide && _view == 'table') {
       // Beside the board, which stays live (no scrim); another row swaps it.
       final before = _dockSaves;
       setState(() {
         _dockTask = task;
         _dockUpdatesOnly = updatesOnly;
+        _dockFocusUpdate = focusUpdate;
         _dockSaves = [];
       });
       unawaited(
@@ -2420,6 +2434,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         subtasks: _subtasksOf(task),
         saves: saves,
         updatesOnly: updatesOnly,
+        focusUpdate: focusUpdate,
       ),
     );
     // What was still typed is saved as the panel closes: read the board
@@ -2471,6 +2486,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             subtasks: _subtasksOf(task),
             saves: _dockSaves,
             updatesOnly: _dockUpdatesOnly,
+            focusUpdate: _dockFocusUpdate,
             docked: true,
             onClose: () => unawaited(_closeDock()),
           ),
@@ -2925,7 +2941,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       builder: (context, box) {
         // Each control on the line, with what stands in for it in the ⋯
         // when it does not fit.
+        // Chevel 11-24: the search is first, so it is the last thing a
+        // narrow line gives up; narrower there rather than gone.
         final line = <(Widget, List<Widget>)>[
+          if (searchOnLine)
+            (
+              box.maxWidth < 900
+                  ? SizedBox(width: phone ? 140 : 170, child: _search())
+                  : search,
+              const [],
+            ),
           (
             _viewSwitch(
               segments: !phone && box.maxWidth >= 1200,
@@ -2934,7 +2959,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             ),
             const [],
           ),
-          if (searchOnLine) (search, const []),
           if (_canEdit) (_newTaskButton(compact: phone), [_newTaskItem()]),
           if (!phone) ...[
             for (final a in actions) (actionButton(a), [actionItem(a)]),
@@ -3703,6 +3727,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final virtual = group['virtual'] == true;
     final id = virtual ? null : group['id'] as String?;
     final fold = group['id'] as String?;
+    final fill = EzBiziTheme.groupTitleFill(context, colour);
+    final ink = EzBiziTheme.inkOn(fill);
 
     final header = _groupDropTarget(
       id,
@@ -3710,86 +3736,103 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _dropOn(
         id,
         null,
-        InkWell(
-          key: ValueKey('task-group-$fold'),
-          onTap: () =>
-              setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              children: [
-                // The name and count take the row; the menu sits at its end.
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Drag the header onto another to reorder (row 15, Jose 11-19).
-                      if (_canEdit && id != null)
-                        Draggable<_GroupDrag>(
-                          key: ValueKey('group-drag-$id'),
-                          data: _GroupDrag(id),
-                          // Every group folds to its header while one moves,
-                          // so the whole board fits; what was open opens
-                          // again after (design 200, 4; Jose 11-20).
-                          onDragStarted: _foldAllForDrag,
-                          onDragEnd: (_) => _unfoldAfterDrag(),
-                          feedback: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Text('${group['name']}'),
+        DecoratedBox(
+          key: ValueKey('task-group-head-$fold'),
+          // Gallery 210 (Jose 11-24, option 3): the row tinted in the group's
+          // colour, a 4 px rule in it, the words in whichever ink reads.
+          decoration: BoxDecoration(
+            color: fill,
+            border: Border(bottom: BorderSide(color: colour, width: 4)),
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(color: ink),
+            child: InkWell(
+              key: ValueKey('task-group-$fold'),
+              onTap: () => setState(
+                () => folded ? _folded.remove(fold) : _folded.add(fold),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    // The name and count take the row; the menu sits at its end.
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Drag the header onto another to reorder (row 15, Jose 11-19).
+                          if (_canEdit && id != null)
+                            Draggable<_GroupDrag>(
+                              key: ValueKey('group-drag-$id'),
+                              data: _GroupDrag(id),
+                              // Every group folds to its header while one moves,
+                              // so the whole board fits; what was open opens
+                              // again after (design 200, 4; Jose 11-20).
+                              onDragStarted: _foldAllForDrag,
+                              onDragEnd: (_) => _unfoldAfterDrag(),
+                              feedback: Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text('${group['name']}'),
+                                ),
+                              ),
+                              child: const MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: Icon(Icons.drag_indicator, size: 18),
+                              ),
+                            ),
+                          Icon(
+                            folded ? Icons.chevron_right : Icons.expand_more,
+                            color: ink,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          if (id != null && _naming == id)
+                            _groupNameField(id)
+                          else
+                            Flexible(
+                              child: Text(
+                                '${group['name']}',
+                                key: ValueKey('task-group-title-$fold'),
+                                // A phone wraps a long name to two lines (phone 6).
+                                maxLines: cards ? 2 : 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: ink,
+                                  fontSize: cards ? 18 : 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          Text(
+                            // What is shown (Jose 11-20: CT › Company Info said
+                            // "5 tasks" with a filter hiding all five); the
+                            // server's whole count only while nothing is hidden.
+                            switch (shown.length < all.length
+                                ? shown.length
+                                : (_totalsOf(id)?['count'] as num?)?.toInt() ??
+                                      all.length) {
+                              1 => '1 task',
+                              final n => '$n tasks',
+                            },
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: ink,
                             ),
                           ),
-                          child: const MouseRegion(
-                            cursor: SystemMouseCursors.grab,
-                            child: Icon(Icons.drag_indicator, size: 18),
-                          ),
-                        ),
-                      Icon(
-                        folded ? Icons.chevron_right : Icons.expand_more,
-                        color: colour,
-                        size: 20,
+                          // Beside the name, Monday's place: at the row's end it sat
+                          // past the screen's edge on a wide board (QA 11-16).
+                          if (_canEdit && id != null) ...[
+                            const SizedBox(width: 4),
+                            _groupMenu(group, all.length),
+                          ],
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      if (id != null && _naming == id)
-                        _groupNameField(id)
-                      else
-                        Flexible(
-                          child: Text(
-                            '${group['name']}',
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: colour,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      Text(
-                        // What is shown (Jose 11-20: CT › Company Info said
-                        // "5 tasks" with a filter hiding all five); the
-                        // server's whole count only while nothing is hidden.
-                        switch (shown.length < all.length
-                            ? shown.length
-                            : (_totalsOf(id)?['count'] as num?)?.toInt() ??
-                                  all.length) {
-                          1 => '1 task',
-                          final n => '$n tasks',
-                        },
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      // Beside the name, Monday's place: at the row's end it sat
-                      // past the screen's edge on a wide board (QA 11-16).
-                      if (_canEdit && id != null) ...[
-                        const SizedBox(width: 4),
-                        _groupMenu(group, all.length),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -4538,32 +4581,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                           if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
-                            child: _renamingId == t['id']
-                                ? _renameField(t)
-                                // Click the name to edit it in place, as on
-                                // Monday (row 40, Chaim); the rest of the row
-                                // still opens the panel.
-                                : GestureDetector(
-                                    key: ValueKey('task-name-${t['id']}'),
-                                    onTap: _canEdit
-                                        ? () => setState(() {
-                                            _renameText.text =
-                                                '${t['title'] ?? ''}';
-                                            _renamingId = t['id'] as String?;
-                                          })
-                                        : null,
-                                    child: Text(
-                                      taskTitle(t),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: sub
-                                                ? FontWeight.w500
-                                                : FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
+                            // Jose 11-24: the name edits in the same card as
+                            // every other cell, not in a field in the row.
+                            child: _nameCell(t, theme, sub: sub),
                           ),
                           IconButton(
                             key: ValueKey('task-open-${t['id']}'),
@@ -4625,16 +4645,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                         _w('due'),
                         _dueCell(
                           t,
-                          Text(
-                            _dueLabel(t['due_on'], _formats),
-                            maxLines: 1,
-                            style: late
-                                ? TextStyle(
-                                    color: theme.colorScheme.error,
-                                    fontWeight: FontWeight.w700,
-                                  )
-                                : null,
-                          ),
+                          t['due_on'] == null
+                              ? const EmptyCellIcon(
+                                  Icons.calendar_today_outlined,
+                                )
+                              : Text(
+                                  _dueLabel(t['due_on'], _formats),
+                                  maxLines: 1,
+                                  style: late
+                                      ? TextStyle(
+                                          color: theme.colorScheme.error,
+                                          fontWeight: FontWeight.w700,
+                                        )
+                                      : null,
+                                ),
                         ),
                       ),
                     for (final c in boardColumns(_board))
@@ -5535,11 +5559,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       _statusLabel(_board!, _statusOf(t)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: labelInk(colours.fill),
-        fontWeight: FontWeight.w700,
-        fontSize: 12,
-      ),
+      // Chaim 11-24: Monday's regular weight at 14 px (measured off his screenshot).
+      style: TextStyle(color: labelInk(colours.fill), fontSize: 14),
     );
 
     final editable = (_board?['statuses'] as List? ?? const []).any(
@@ -5733,7 +5754,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
                                     color: colours.ink,
                                   ),
                                 ),
@@ -5875,39 +5895,44 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Color _planColour(_Json t) =>
       _statusColours(context, _statusFor(_board, _statusOf(t))).fill;
 
-  Widget _renameField(_Json t) {
-    var done = false;
-    void finish(String? to) {
-      if (done) return;
-      done = true;
-      setState(() => _renamingId = null);
-      final name = to?.trim() ?? '';
-      if (name.isNotEmpty && name != '${t['title']}') {
-        _patchTask(t, {'title': name});
-      }
-    }
+  static const BoardColumn _nameColumn = (
+    id: 'title',
+    name: 'Task',
+    type: 'text',
+    unit: null,
+    max: null,
+    options: [],
+    format: 'plain',
+    footer: 'none',
+    formula: null,
+  );
 
-    return Focus(
-      onKeyEvent: (_, e) {
-        if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.escape) {
-          finish(null);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: TextField(
-        key: ValueKey('task-rename-${t['id']}'),
-        controller: _renameText,
-        autofocus: true,
-        style: Theme.of(context).textTheme.bodyMedium,
-        decoration: const InputDecoration(
-          isDense: true,
-          border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        ),
-        onSubmitted: finish,
-        onTapOutside: (_) => finish(_renameText.text),
+  Widget _nameCell(_Json t, ThemeData theme, {required bool sub}) {
+    final shown = Text(
+      taskTitle(t),
+      key: ValueKey('task-name-${t['id']}'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        fontWeight: sub ? FontWeight.w500 : FontWeight.w600,
       ),
+    );
+    if (!_canEdit) return shown;
+    return InlineCellEditor(
+      key: ValueKey('task-rename-${t['id']}'),
+      api: widget.api,
+      column: _nameColumn,
+      cellMenu: false,
+      value: '${t['title'] ?? ''}',
+      people: const {},
+      formats: _formats,
+      onChanged: (v) {
+        final name = '${v ?? ''}'.trim();
+        if (name.isNotEmpty && name != '${t['title']}') {
+          _patchTask(t, {'title': name});
+        }
+      },
+      child: shown,
     );
   }
 
@@ -6026,24 +6051,35 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Row(
-                children: [
-                  _statusDot(context, status),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      '${status.name} · ${tasks.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+            // Gallery 210: the status colour's tint, its 4 px rule, 16 px.
+            Builder(
+              builder: (context) {
+                final colour = _statusColours(context, status).fill;
+                final fill = EzBiziTheme.groupTitleFill(context, colour);
+                final ink = EzBiziTheme.inkOn(fill);
+                return Container(
+                  key: ValueKey('kanban-head-${status.id}'),
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                    border: Border(bottom: BorderSide(color: colour, width: 4)),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Text(
+                    '${status.name} · ${tasks.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
             Expanded(
               child: ListView(
@@ -6120,10 +6156,14 @@ class _TaskPanel extends StatefulWidget {
     this.subtasks = const [],
     this.saves,
     this.updatesOnly = false,
+    this.focusUpdate,
   });
 
   /// Opened from the Updates cell: the name and the thread only.
   final bool updatesOnly;
+
+  /// The update a bell pointed at: scrolled to and marked (Jennine 11-24).
+  final String? focusUpdate;
 
   /// Every save the panel makes, so the board reads after the last one.
   final List<Future<void>>? saves;
@@ -6154,6 +6194,24 @@ class _TaskPanel extends StatefulWidget {
 }
 
 class _TaskPanelState extends State<_TaskPanel> {
+  /// On the update a bell pointed at; scrolled into view once it is drawn.
+  final _focusKey = GlobalKey();
+  bool _focused = false;
+
+  void _scrollToFocus() {
+    if (_focused || widget.focusUpdate == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final at = _focusKey.currentContext;
+      if (_focused || at == null || !at.mounted) return;
+      _focused = true;
+      Scrollable.ensureVisible(
+        at,
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 250),
+      );
+    });
+  }
+
   _Json? _task;
   bool _loading = true;
   String? _error;
@@ -6209,6 +6267,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   @override
   void dispose() {
+    _reply.dispose();
     _disposing = true;
     _flushAll();
     _relock?.cancel();
@@ -6479,6 +6538,330 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// JSON with words only, as before; multipart once a file is attached,
   /// `files[]` and the body only if there is one.
+  /// One update as Monday's card (Chaim 11-24): its words (long ones folded
+  /// to six lines, Read more), Like, Reply and the seen count; its replies
+  /// under it, each with the same card, and a reply box when Reply is open.
+  Widget _updateCard(BuildContext context, _Json u) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Container(
+      key: u['id'] == widget.focusUpdate ? _focusKey : null,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: u['id'] == widget.focusUpdate
+          ? const EdgeInsets.all(6)
+          : EdgeInsets.zero,
+      decoration: u['id'] == widget.focusUpdate
+          ? BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _avatar(
+            context,
+            '${(u['author'] as Map?)?['name'] ?? '?'}',
+            api: widget.api,
+            userId: (u['author'] as Map?)?['id'],
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text:
+                            '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(
+                        text: formatStamp(
+                          u['created_at'],
+                          '',
+                          formats: widget.formats,
+                        ),
+                        style: muted,
+                      ),
+                      if (u['edited_at'] != null)
+                        TextSpan(text: '  · Edited', style: muted),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // Selectable, to copy as is (Merav via Jose 11-19).
+                if ('${u['body'] ?? ''}'.isNotEmpty)
+                  _clamped(
+                    u,
+                    linkedText(
+                      context,
+                      '${u['body']}',
+                      key: ValueKey('task-update-body-${u['id']}'),
+                    ),
+                  ),
+                TaskAttachments(
+                  api: widget.api,
+                  attachments: [
+                    for (final a in (u['attachments'] as List? ?? const []))
+                      if (a is Map) Map<String, dynamic>.from(a),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (u['can_edit'] == true || u['can_delete'] == true)
+            PopupMenuButton<String>(
+              key: ValueKey('task-update-menu-${u['id']}'),
+              tooltip: 'More',
+              icon: const Icon(Icons.more_horiz, size: 18),
+              onSelected: (v) =>
+                  v == 'edit' ? _editUpdate(u) : _deleteUpdate(u),
+              itemBuilder: (_) => [
+                if (u['can_edit'] == true)
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                if (u['can_delete'] == true)
+                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Chaim 11-24 (Monday's panel): which update's reply box is open, what
+  /// is typed in it, and which long updates are read in full.
+  String? _replyTo;
+  final _reply = TextEditingController();
+  bool _replying = false;
+  final Set<String> _readMore = {};
+
+  /// A long update shows six lines and "Read more"; "Show less" folds it.
+  Widget _clamped(_Json u, Widget body) {
+    final text = '${u['body'] ?? ''}';
+    final long = '\n'.allMatches(text).length >= 6 || text.length > 600;
+    final id = '${u['id']}';
+    if (!long) return body;
+    final open = _readMore.contains(id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (open)
+          body
+        else
+          ClipRect(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 6 * 20),
+              child: body,
+            ),
+          ),
+        TextButton(
+          key: ValueKey('task-update-more-$id'),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: () =>
+              setState(() => open ? _readMore.remove(id) : _readMore.add(id)),
+          child: Text(open ? 'Show less' : 'Read more'),
+        ),
+      ],
+    );
+  }
+
+  /// Like · Reply on the left, the seen count on the right.
+  Widget _updateFooter(BuildContext context, _Json u, {bool reply = false}) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final likes = (u['likes'] as num? ?? 0).toInt();
+    final liked = u['liked'] == true;
+    final seen = (u['seen'] as num? ?? 0).toInt();
+    return Padding(
+      padding: const EdgeInsets.only(left: 40, bottom: 8),
+      child: Row(
+        children: [
+          TextButton.icon(
+            key: ValueKey('task-update-like-${u['id']}'),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            onPressed: () => _like(u),
+            icon: Icon(
+              liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+              size: 16,
+            ),
+            label: Text(likes > 0 ? 'Like · $likes' : 'Like'),
+          ),
+          if (!reply && _canEdit)
+            TextButton.icon(
+              key: ValueKey('task-update-reply-${u['id']}'),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => setState(() {
+                _replyTo = _replyTo == u['id'] ? null : u['id'] as String?;
+                _reply.clear();
+              }),
+              icon: const Icon(Icons.reply, size: 16),
+              label: const Text('Reply'),
+            ),
+          const Spacer(),
+          if (seen > 0)
+            Tooltip(
+              message: 'Seen by $seen',
+              child: Row(
+                key: ValueKey('task-update-seen-${u['id']}'),
+                children: [
+                  Icon(
+                    Icons.visibility_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text('$seen', style: muted),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// "Write a reply and mention others with @" under the update.
+  Widget _replyBox(BuildContext context, _Json u) => Padding(
+    padding: const EdgeInsets.only(left: 36, bottom: 10),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: MentionField(
+            api: widget.api,
+            type: 'task',
+            id: widget.taskId,
+            controller: _reply,
+            mentions: _mentions,
+            child: TextField(
+              key: ValueKey('task-update-reply-box-${u['id']}'),
+              controller: _reply,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Write a reply and mention others with @',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          key: ValueKey('task-update-reply-send-${u['id']}'),
+          onPressed: _replying ? null : () => _sendReply(u),
+          child: const Text('Reply'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _sendReply(_Json u) async {
+    final body = _reply.text.trim();
+    if (body.isEmpty) return;
+    setState(() => _replying = true);
+    final mentions = _mentions.ids(body);
+    final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
+      'body': body,
+      'parent_id': u['id'],
+      if (mentions.isNotEmpty) 'mentions': mentions,
+    });
+    if (!mounted) return;
+    setState(() {
+      _replying = false;
+      if (!res.ok) {
+        _postError = res.reason;
+        return;
+      }
+      _reply.clear();
+      _replyTo = null;
+      _task = {
+        ..._task!,
+        'updates': [
+          ...(_task!['updates'] as List? ?? const []),
+          res.body['data'],
+        ],
+      };
+    });
+  }
+
+  Future<void> _like(_Json u) async {
+    final res = await widget.api.post(
+      '/tasks/${widget.taskId}/updates/${u['id']}/like',
+      const {},
+    );
+    if (!mounted || !res.ok) return;
+    final data = res.body['data'] as Map;
+    setState(() {
+      _task = {
+        ..._task!,
+        'updates': [
+          for (final x
+              in (_task!['updates'] as List? ?? const []).cast<_Json>())
+            if (x['id'] == u['id'])
+              {...x, 'likes': data['likes'], 'liked': data['liked']}
+            else
+              x,
+        ],
+      };
+    });
+  }
+
+  /// Which tab is over the thread: updates, files or activity.
+  String _thread = 'updates';
+
+  /// Every file on the task's updates, newest first (Monday's Files tab).
+  List<Map<String, dynamic>> _taskFiles(List<_Json> updates) => [
+    for (final u in updates.reversed)
+      for (final a in (u['attachments'] as List? ?? const []))
+        if (a is Map) a.cast<String, dynamic>(),
+  ];
+
+  /// The task's changes, newest first (Monday's Activity Log).
+  Widget _activityList(TextStyle? muted) {
+    final activity = _activity;
+    if (activity == null) return const LinearProgressIndicator();
+    if (activity.isEmpty) return Text('No changes yet.', style: muted);
+    return Column(
+      key: const Key('task-activity'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final a in activity)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${a['who'] ?? 'An automation'}  ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(
+                    text:
+                        '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                  ),
+                  TextSpan(
+                    text: formatStamp(a['at'], '', formats: widget.formats),
+                    style: muted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Future<void> _post() async {
     final body = _update.text.trim();
     if (body.isEmpty && _files.isEmpty) return;
@@ -6601,6 +6984,7 @@ class _TaskPanelState extends State<_TaskPanel> {
       withBoardFont(context, Builder(builder: _build));
 
   Widget _build(BuildContext context) {
+    _scrollToFocus();
     // Closing saves what is still typed, before the board reads again.
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -6707,11 +7091,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               _statusLabel(widget.board, _statusOf(task)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colours.ink,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: colours.ink, fontSize: 14),
             ),
           ),
         ),
@@ -6831,7 +7211,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               focusNode: _titleFocus,
               enabled: _canEdit,
               minLines: 1,
-              maxLines: 3,
+              maxLines: null, // Natalie 11-24: the whole title, however long.
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
               style: theme.textTheme.bodyLarge?.copyWith(
@@ -7001,221 +7381,134 @@ class _TaskPanelState extends State<_TaskPanel> {
             ),
             const Divider(height: 24),
           ],
-          Text(
-            updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          // Chaim 11-24: Monday's tabs over the thread.
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final (key, label) in [
+                (
+                  'updates',
+                  updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
+                ),
+                (
+                  'files',
+                  _taskFiles(updates).isEmpty
+                      ? 'Files'
+                      : 'Files · ${_taskFiles(updates).length}',
+                ),
+                ('activity', 'Activity Log'),
+              ])
+                ChoiceChip(
+                  key: ValueKey('task-thread-$key'),
+                  label: Text(label),
+                  selected: _thread == key,
+                  onSelected: (_) {
+                    setState(() => _thread = key);
+                    if (key == 'activity' && _activity == null) _loadActivity();
+                  },
+                ),
+            ],
           ),
           const SizedBox(height: 8),
-          if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
-          for (final u in updates)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _avatar(
-                    context,
-                    '${(u['author'] as Map?)?['name'] ?? '?'}',
+          if (_thread == 'files')
+            _taskFiles(updates).isEmpty
+                ? Text('No files on this task yet.', style: muted)
+                : TaskAttachments(
                     api: widget.api,
-                    userId: (u['author'] as Map?)?['id'],
+                    attachments: _taskFiles(updates),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text:
-                                    '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              TextSpan(
-                                text: formatStamp(
-                                  u['created_at'],
-                                  '',
-                                  formats: widget.formats,
-                                ),
-                                style: muted,
-                              ),
-                              if (u['edited_at'] != null)
-                                TextSpan(text: '  · Edited', style: muted),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        // Selectable, to copy as is (Merav via Jose 11-19).
-                        if ('${u['body'] ?? ''}'.isNotEmpty)
-                          linkedText(
-                            context,
-                            '${u['body']}',
-                            key: ValueKey('task-update-body-${u['id']}'),
-                          ),
-                        TaskAttachments(
-                          api: widget.api,
-                          attachments: [
-                            for (final a
-                                in (u['attachments'] as List? ?? const []))
-                              if (a is Map) Map<String, dynamic>.from(a),
-                          ],
-                        ),
-                      ],
-                    ),
+          if (_thread == 'activity') _activityList(muted),
+          if (_thread == 'updates') ...[
+            if (updates.isEmpty)
+              Text('Nothing written here yet.', style: muted),
+            for (final u in updates.where((x) => x['parent_id'] == null)) ...[
+              _updateCard(context, u),
+              _updateFooter(context, u),
+              for (final r in updates.where((x) => x['parent_id'] == u['id']))
+                Padding(
+                  padding: const EdgeInsets.only(left: 36),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _updateCard(context, r),
+                      _updateFooter(context, r, reply: true),
+                    ],
                   ),
-                  if (u['can_edit'] == true || u['can_delete'] == true)
-                    PopupMenuButton<String>(
-                      key: ValueKey('task-update-menu-${u['id']}'),
-                      tooltip: 'More',
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      onSelected: (v) =>
-                          v == 'edit' ? _editUpdate(u) : _deleteUpdate(u),
-                      itemBuilder: (_) => [
-                        if (u['can_edit'] == true)
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Edit'),
-                          ),
-                        if (u['can_delete'] == true)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-          if (_canEdit) ...[
-            const SizedBox(height: 4),
-            MentionField(
-              api: widget.api,
-              type: 'task',
-              id: widget.taskId,
-              controller: _update,
-              mentions: _mentions,
-              child: TextField(
-                key: const Key('task-update-body'),
+                ),
+              if (_replyTo == u['id']) _replyBox(context, u),
+            ],
+            if (_canEdit) ...[
+              const SizedBox(height: 4),
+              MentionField(
+                api: widget.api,
+                type: 'task',
+                id: widget.taskId,
                 controller: _update,
-                minLines: 2,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  hintText: 'Write an update… (@ to mention)',
-                  border: OutlineInputBorder(),
+                mentions: _mentions,
+                child: TextField(
+                  key: const Key('task-update-body'),
+                  controller: _update,
+                  minLines: 2,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    hintText: 'Write an update… (@ to mention)',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
-            ),
-            if (_files.isNotEmpty) ...[
+              if (_files.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (i, f) in _files.indexed)
+                      TaskFileChip(
+                        key: ValueKey('task-update-file-$i'),
+                        name: f.name,
+                        size: f.bytes.length,
+                        onDeleted: _posting
+                            ? null
+                            : () => setState(() => _files.removeAt(i)),
+                      ),
+                  ],
+                ),
+              ],
+              if (_postError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _postError!,
+                  key: const Key('task-update-error'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Wrap(
-                spacing: 6,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
                 runSpacing: 6,
                 children: [
-                  for (final (i, f) in _files.indexed)
-                    TaskFileChip(
-                      key: ValueKey('task-update-file-$i'),
-                      name: f.name,
-                      size: f.bytes.length,
-                      onDeleted: _posting
-                          ? null
-                          : () => setState(() => _files.removeAt(i)),
-                    ),
+                  TextButton.icon(
+                    key: const Key('task-update-attach'),
+                    onPressed: _posting || _files.length >= taskUpdateMaxFiles
+                        ? null
+                        : _attach,
+                    icon: const Icon(Icons.attach_file, size: 18),
+                    label: const Text('Attach'),
+                  ),
+                  FilledButton(
+                    key: const Key('task-update-post'),
+                    onPressed: _posting ? null : _post,
+                    child: Text(_posting ? 'Posting…' : 'Post update'),
+                  ),
                 ],
               ),
             ],
-            if (_postError != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _postError!,
-                key: const Key('task-update-error'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                TextButton.icon(
-                  key: const Key('task-update-attach'),
-                  onPressed: _posting || _files.length >= taskUpdateMaxFiles
-                      ? null
-                      : _attach,
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('Attach'),
-                ),
-                FilledButton(
-                  key: const Key('task-update-post'),
-                  onPressed: _posting ? null : _post,
-                  child: Text(_posting ? 'Posting…' : 'Post update'),
-                ),
-              ],
-            ),
           ],
           if (!widget.updatesOnly) ...[
-            const Divider(height: 24),
-            // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
-            ExpansionTile(
-              key: const Key('task-activity'),
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'Activity',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onExpansionChanged: (open) {
-                if (open && _activity == null) _loadActivity();
-              },
-              children: [
-                if (_activity == null)
-                  const LinearProgressIndicator()
-                else if (_activity!.isEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('No changes yet.', style: muted),
-                  )
-                else
-                  for (final a in _activity!)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '${a['who'] ?? 'An automation'}  ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            TextSpan(
-                              text:
-                                  '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
-                            ),
-                            TextSpan(
-                              text: formatStamp(
-                                a['at'],
-                                '',
-                                formats: widget.formats,
-                              ),
-                              style: muted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-              ],
-            ),
             // Who made it is a field above; the footer keeps when.
             if (task['created_at'] != null)
               Padding(

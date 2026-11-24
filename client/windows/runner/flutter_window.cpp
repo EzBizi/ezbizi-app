@@ -137,6 +137,11 @@ bool FlutterWindow::OnCreate() {
 
   watchdog_channel_ = RegisterWatchdogChannel(flutter_controller_->engine());
 
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "com.ezbizi.app/window",
+          &flutter::StandardMethodCodec::GetInstance());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -196,6 +201,12 @@ void PumpUntil(const std::function<bool()>& done, ULONGLONG timeout_ms) {
  *  4. Unregister every channel handler of ours while the engine is alive.
  *  5. Only then destroy the controller, and with it the engine.
  */
+void FlutterWindow::OnNewWindowRequested() {
+  if (window_channel_) {
+    window_channel_->InvokeMethod("newWindow", nullptr);
+  }
+}
+
 void FlutterWindow::OnDestroy() {
   // Only a window that has an engine is shutting down. Create() calls
   // Destroy() before it builds anything, which runs this at every launch:

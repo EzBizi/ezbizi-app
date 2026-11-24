@@ -615,6 +615,27 @@ void main() {
     expect(confirm.onPressed, isNull);
   });
 
+  testWidgets('Natalie 11-24: a status name saves as it is typed, '
+      'without Enter', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-statuses')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('status-name-s-wait')),
+      'Waiting',
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(
+      log.where((e) => e.$1 == 'PATCH').map((e) => e.$3),
+      [
+        {'name': 'Waiting'},
+      ],
+    );
+  });
+
   testWidgets('a group is added at the foot of the board and renamed from '
       'its heading', (tester) async {
     await pump(tester);

@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Support\Integrations\DisconnectCode;
 use App\Support\Notes\NoteActivity;
 use App\Support\Scoping\OwnedScope;
+use App\Support\Tasks\PeopleAliases;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Time\ViewTimezone;
@@ -229,6 +230,8 @@ class TaskBoardsController extends Controller
         $assignable = $this->boards->assignable($taskBoard);
         $withPhoto = User::query()->whereIn('id', $assignable->pluck('id'))
             ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
+        // Other words each is found by in the picker (Adeline 11-24: "Chris").
+        $also = PeopleAliases::of($assignable);
 
         return response()->json(['data' => [
             'id' => $taskBoard->id,
@@ -272,6 +275,7 @@ class TaskBoardsController extends Controller
                 'name' => $assignable->where('name', $u->name)->count() > 1
                     ? $u->name.' · '.User::query()->whereKey($u->id)->value('email') : $u->name,
                 'has_avatar' => isset($withPhoto[(string) $u->id]),
+                'also' => $also[(string) $u->id] ?? null,
             ])->all(),
             'tasks' => $tasks->map($present)
                 ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [

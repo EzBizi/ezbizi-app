@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/job_money.dart';
@@ -1404,6 +1405,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: TabBarLike(
             key: const Key('project-board-tabs'),
+            windowPaths: [
+              for (final (key, _, _) in shown)
+                AppWindow.pathFor('project_board', tab: key),
+            ],
             labels: [
               for (final (key, name, icon) in shown)
                 (_counts[key] is int ? '$name · ${_counts[key]}' : name, icon),

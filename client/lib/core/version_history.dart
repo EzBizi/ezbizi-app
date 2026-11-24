@@ -13,12 +13,36 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0636', date: '24 Nov 2026', items: [
+      'Task Board: the task panel has Updates, Files and Activity Log tabs, like on Monday',
+      'Task Board: reply under any update, like updates, see how many have read it, and long updates fold with Read more',
+      'Task Board: label text is slightly bigger, matching Monday',
+      'Notifications: each one can be marked read or unread, liked or deleted (swipe on a phone), and there is Delete all',
+      'Windows and web: right-click a module or tab for Open in new window, to keep two EzBizi screens side by side; the tray menu has New window',
+    ]),
+    VersionRelease(version: '0.0.0635', date: '24 Nov 2026', items: [
+      'Task Board: group title rows are tinted in the group colour with a bigger title',
+      'Task Board: a status name saves as you type, and a name already in use says so',
+      'Task Board: people search also matches the start of an email and the Monday name, so Chris finds Kristopher',
+      'Task Board: 7 more Monday boards are mirrored, including DMV NEW and the New Location, Brand and Franchise templates',
+      'Email: with the reading pane below, an open email gets most of the screen, and Open full shows it on the whole pane',
+      'Scheduling: Report wrong ZIP flags a ZIP that lands in the wrong area; Settings › Wrong ZIPs lists them to move or dismiss',
+      'Notifications: tapping a mention or reply opens the task on that exact update',
+      'Task Board: the search stays visible on narrow windows, and the task title field shows the whole title',
+      'Task Board: opening a task clears its unread badge at once',
+      'Task Board: labels use the regular weight and exact colours that Monday uses, on every board',
+    ]),
     VersionRelease(version: '0.0.0634', date: '24 Nov 2026', items: [
       'Reports › Performance › Calls: No result is split into No result · incoming and No result · outgoing, each with its own count and list',
       'Settings › Activity: What changed shows one line per changed field, with plain names and local times, instead of raw data',
       'Task Board: the search finds any column value, such as a job number, phone or label, on open and done tasks',
       'Task Board: picking a person opens a search box; removed and inactive accounts are no longer listed',
       'Task Board: you only see the folders that lead to a board you can open',
+      'Task Board: Team boards are now called Franchise boards',
+      'Task Board: web addresses in cells are clickable; EzBizi links open the record inside the app',
+      'Task Board: every field, the task name included, is edited in the same pop-up card',
+      'Task Board: empty date, link, phone and email cells show an icon to click instead of a dash',
+      'HR › Invitations: an accepted invitation has no Revoke button; remove the person from their HR record instead',
       'Activity: changes the Monday sync makes are shown as Monday sync, not as the person who connected Monday',
       'Scheduling › Locations: a new Address column shows the address of each branch',
       "Work Hours: an Administrator's own clock-ins, clock-outs and edits are no longer kept in the activity log",

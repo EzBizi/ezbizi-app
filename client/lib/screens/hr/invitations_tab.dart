@@ -443,10 +443,11 @@ class _InvitationsTabState extends State<InvitationsTab> {
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
     // A revoked one is a decision somebody made, and the server refuses to
-    // resend it. An accepted one has nothing to resend but can still be
-    // revoked (Jose, 2026-10-05: "regardless of anything"). Expired is NOT
-    // settled: chasing one that lapsed is the most useful thing Resend does.
-    final settled = status == 'revoked';
+    // resend it. An accepted one has an account now: removing that person is
+    // their HR record's job, so no Revoke either (Jose, 2026-11-24, replacing
+    // 2026-10-05's "regardless of anything"). Expired is NOT settled: chasing
+    // one that lapsed is the most useful thing Resend does.
+    final settled = status == 'revoked' || status == 'completed';
     // Accepted: nothing to resend. Held: it goes out when the paperwork is
     // signed, not before.
     final accepted = status == 'completed' || invitation['held'] == true;

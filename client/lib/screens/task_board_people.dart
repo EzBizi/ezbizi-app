@@ -121,7 +121,7 @@ class _BoardPeoplePanelState extends State<BoardPeoplePanel> {
               ),
               child: Text(
                 'Adding someone shares your board with them: they see it in '
-                'Team boards and can work its tasks.',
+                'Franchise boards and can work its tasks.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onPrimaryContainer,
                 ),

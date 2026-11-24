@@ -7,6 +7,7 @@ use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\NoteRead;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
@@ -90,8 +91,15 @@ class TasksController extends Controller
     {
         $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'updates.attachments', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
+        // Monday's seen count: who has read the task since each update was written.
+        $reads = NoteRead::query()->where('subject_type', 'task')->where('subject_id', $task->id)->pluck('last_read_at', 'user_id');
+        $seen = [];
+        foreach ($task->updates as $u) {
+            $seen[(string) $u->id] = $reads->filter(fn ($at, $who) => (string) $who !== (string) $u->user_id && $u->created_at !== null && $at >= $u->created_at)->keys()->all();
+        }
+
         return self::present($task, $reveal) + [
-            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all() : [],
+            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u, $seen))->all() : [],
         ];
     }
 
@@ -100,16 +108,27 @@ class TasksController extends Controller
      * (GET attachments/{id}, same bearer token, board `view` decides);
      * `?inline=1` opens an image or a PDF in place.
      */
-    public static function presentUpdate(TaskUpdate $u): array
+    /**
+     * @param  array<string, list<string>>  $seen  update id => who (besides its author) has read the task since it was written
+     */
+    public static function presentUpdate(TaskUpdate $u, array $seen = []): array
     {
+        $likes = array_values((array) ($u->likes ?? []));
+
         return [
             'id' => $u->id,
-            'body' => (string) SensitiveTasks::open($u->body),
+            // Chaim 11-24 (Monday's panel): a reply hangs under its update.
+            'parent_id' => $u->parent_update_id,
+            'likes' => count($likes),
+            'liked' => ($me = request()->user()) !== null && in_array((string) $me->id, $likes, true),
+            'seen' => count($seen[(string) $u->id] ?? []),
+            // A reply threaded under its update needs no "↳ " mark of its own.
+            'body' => $u->parent_update_id !== null ? (string) preg_replace('/^↳ /u', '', (string) SensitiveTasks::open($u->body)) : (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
             'edited_at' => $u->edited_at?->toIso8601String(),
             // Row 43: its author edits; its author or an Administrator deletes.
-            'can_edit' => ($me = request()->user()) !== null && $u->user_id === $me->id,
+            'can_edit' => $me !== null && $u->user_id === $me->id,
             'can_delete' => $me !== null && ($u->user_id === $me->id || $me->isAdministrator()),
             'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
                 $url = url("/api/v1/attachments/{$a->id}");
@@ -457,6 +476,19 @@ class TasksController extends Controller
         return response()->noContent();
     }
 
+    /** POST tasks/{task}/updates/{update}/like: like it, or take the like back (Monday's thumbs up). */
+    public function likeUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $likes = array_values((array) ($update->likes ?? []));
+        $likes = in_array($me, $likes, true) ? array_values(array_diff($likes, [$me])) : [...$likes, $me];
+        $update->forceFill(['likes' => $likes ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['likes' => count($likes), 'liked' => in_array($me, $likes, true)]]);
+    }
+
     public function storeUpdate(Request $request, Task $task): JsonResponse
     {
         $this->authorize('update', $task);
@@ -477,6 +509,7 @@ class TasksController extends Controller
             'files.*' => ['file', 'mimes:'.implode(',', $extensions), 'max:'.self::UPDATE_MAX_KB],
             'mentions' => ['sometimes', 'array', 'max:50'],
             'mentions.*' => ['uuid'],
+            'parent_id' => ['sometimes', 'nullable', 'uuid'],
         ], [
             'body.required_without' => 'Write something or attach a file.',
             'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
@@ -494,7 +527,9 @@ class TasksController extends Controller
             app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
             $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
                 $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
-            $update = $this->writer->comment($task, $request->user(), $body, $mentions);
+            // A reply hangs under a top update of this same task.
+            $parent = empty($input['parent_id']) ? null : TaskUpdate::query()->where('task_id', $task->id)->whereNull('parent_update_id')->findOrFail($input['parent_id']);
+            $update = $this->writer->comment($task, $request->user(), $body, $mentions, $parent);
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
             }

@@ -120,15 +120,39 @@ final class PushBoardMembers implements ShouldBeUnique, ShouldQueue
             }
             $writer = new MondayWriter($token);
             $mondayId = substr($board->external_ref, 7);
-            foreach (['owner', 'subscriber'] as $kind) {
-                $ids = array_values(array_map(fn ($a) => $a[0], array_filter($diff['add'], fn ($a) => $a[1] === $kind)));
-                if ($ids !== []) {
-                    $writer->mutate('mutation($b:ID!,$u:[ID!]!){ add_users_to_board(board_id:$b, user_ids:$u, kind:'.$kind.') { id } }', ['b' => $mondayId, 'u' => $ids]);
+            try {
+                $this->apply($writer, $mondayId, $diff);
+            } catch (\Throwable $e) {
+                // Desk 11-24: Monday lets only a board's owners change its people. A board
+                // the connection does not own (DMV NEW, the templates) is a known state:
+                // said once, kept on the board, never retried into failed_jobs.
+                if (! str_contains($e->getMessage(), 'USER_UNAUTHORIZED') && ! str_contains($e->getMessage(), '403')) {
+                    throw $e;
                 }
-            }
-            if ($diff['remove'] !== []) {
-                $writer->mutate('mutation($b:ID!,$u:[ID!]!){ delete_subscribers_from_board(board_id:$b, user_ids:$u) { id } }', ['b' => $mondayId, 'u' => $diff['remove']]);
+                $settings = (array) ($board->builtin_columns ?? []);
+                if (! isset($settings['_monday_members_refused'])) {
+                    report(new \RuntimeException("Monday refused member changes on {$board->name} (monday {$mondayId}): the connection is not an owner there."));
+                }
+                $settings['_monday_members_refused'] = now()->toIso8601String();
+                $board->forceFill(['builtin_columns' => $settings])->saveQuietly();
             }
         });
+    }
+
+    /** @param array{add: list<array{0: string, 1: string}>, remove: list<string>} $diff */
+    private function apply(MondayWriter $writer, string $mondayId, array $diff): void
+    {
+
+        // ponytail: the inner block keeps the moved lines' indentation; flatten when next touched.
+        foreach (['owner', 'subscriber'] as $kind) {
+            $ids = array_values(array_map(fn ($a) => $a[0], array_filter($diff['add'], fn ($a) => $a[1] === $kind)));
+            if ($ids !== []) {
+                $writer->mutate('mutation($b:ID!,$u:[ID!]!){ add_users_to_board(board_id:$b, user_ids:$u, kind:'.$kind.') { id } }', ['b' => $mondayId, 'u' => $ids]);
+            }
+        }
+        if ($diff['remove'] !== []) {
+            $writer->mutate('mutation($b:ID!,$u:[ID!]!){ delete_subscribers_from_board(board_id:$b, user_ids:$u) { id } }', ['b' => $mondayId, 'u' => $diff['remove']]);
+        }
+
     }
 }

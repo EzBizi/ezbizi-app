@@ -38,6 +38,8 @@ void main() {
   );
 
   String? textValue;
+  int unread = 0;
+  List<dynamic> thread = const [];
 
   ApiClient fakeServer() {
     log = [];
@@ -58,7 +60,8 @@ void main() {
       'created_at': '2026-11-06T19:54:00+00:00',
       'due_on': '2099-11-16',
       'about': null,
-      'updates_count': 0,
+      'updates_count': unread,
+      'unread_notes': unread,
       'values': {
         'c-time': {'from': '2099-11-10', 'to': '2099-11-16'},
         'c-text': textValue,
@@ -183,6 +186,11 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/like')) {
+          return json({
+            'data': {'likes': 1, 'liked': true},
+          });
+        }
         if (path == '/task-boards/b-1/search') {
           // Natalie 11-24: a task the board has not loaded.
           return json({
@@ -211,7 +219,7 @@ void main() {
         }
         if (path == '/tasks/t1') {
           return json({
-            'data': {...task, 'updates': <dynamic>[]},
+            'data': {...task, 'updates': thread},
           });
         }
         if (path == '/tasks/t1/reminders' && request.method == 'GET') {
@@ -512,27 +520,26 @@ void main() {
     expect(top.color, const Color(0xFFD0D4E4));
   });
 
-  testWidgets('clicking the name edits it in place; Enter saves, Esc '
-      'cancels (row 40, Chaim)', (tester) async {
+  testWidgets('clicking the name edits it in the same card as every cell; '
+      'Enter saves, Esc cancels (Jose 11-24, row 40)', (tester) async {
     await pump(tester, width: 1700);
     await tester.tap(find.byTooltip('Close Lakeview'));
     await settle(tester);
     final name = find.byKey(const ValueKey('task-name-t1'));
     await tester.tap(name);
-    await tester.pump();
-    final field = find.byKey(const ValueKey('task-rename-t1'));
-    expect(field, findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cell-card')), findsOneWidget);
     expect(find.byTooltip('Close Lakeview'), findsNothing, reason: 'no panel');
 
-    await tester.enterText(field, 'Gutter guard');
+    await tester.enterText(find.byType(EditableText).last, 'Gutter guard');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pump();
-    expect(field, findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cell-card')), findsNothing);
     expect(log.where((e) => e.$1 == 'PATCH'), isEmpty, reason: 'Esc');
 
     await tester.tap(name);
-    await tester.pump();
-    await tester.enterText(field, 'Gutter guard');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(EditableText).last, 'Gutter guard');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(
@@ -541,6 +548,7 @@ void main() {
         {'title': 'Gutter guard'},
       ],
     );
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('the board and its panel are in Figtree, the Monday font '
@@ -624,6 +632,84 @@ void main() {
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
     await search('harbor');
     expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
+  });
+
+  testWidgets('Adeline 11-24: opening a task clears its red unread count at '
+      'once and tells the server', (tester) async {
+    unread = 2;
+    addTearDown(() => unread = 0);
+    await pump(tester);
+    expect(
+      log.where((e) => e.$1 == 'POST' && e.$2 == '/note-reads'),
+      isNotEmpty,
+    );
+    final badge = tester.widget<Badge>(
+      find.byKey(const ValueKey('task-unread-t1')),
+    );
+    expect(badge.isLabelVisible, isFalse);
+  });
+
+  testWidgets('Chaim 11-24: replies sit under their update, a long one reads '
+      'more, Like counts, and Files lists the thread files', (tester) async {
+    Map<String, dynamic> u(String id, String body, {String? parent}) => {
+      'id': id,
+      'parent_id': parent,
+      'body': body,
+      'author': {'id': 'u-2', 'name': 'Shoval Ohayon'},
+      'created_at': '2026-11-20T10:00:00Z',
+      'likes': 0,
+      'liked': false,
+      'seen': 3,
+      'attachments': id == 'u1'
+          ? [
+              {
+                'id': 'a1',
+                'name': 'quote.pdf',
+                'mime': 'application/pdf',
+                'size': 10,
+                'url': 'https://x.test/a1',
+              },
+            ]
+          : const [],
+    };
+    thread = [
+      u('u1', List.filled(9, 'A long line of the update').join('\n')),
+      u('r1', 'Thanks', parent: 'u1'),
+    ];
+    addTearDown(() => thread = const []);
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('task-update-more-u1')), findsOneWidget);
+    expect(find.text('Read more'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-update-seen-u1')), findsOneWidget);
+    // The reply is drawn after its update, indented.
+    final top = tester.getTopLeft(
+      find.byKey(const ValueKey('task-update-body-u1')),
+    );
+    final reply = tester.getTopLeft(
+      find.byKey(const ValueKey('task-update-body-r1')),
+    );
+    expect(reply.dy, greaterThan(top.dy));
+    expect(reply.dx, greaterThan(top.dx));
+    expect(
+      find.byKey(const ValueKey('task-update-reply-r1')),
+      findsNothing,
+      reason: 'one level of replies',
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('task-update-like-u1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('task-update-like-u1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Like · 1'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('task-thread-files')));
+    await tester.tap(find.byKey(const ValueKey('task-thread-files')));
+    await tester.pumpAndSettle();
+    expect(find.text('Files · 1'), findsOneWidget);
+    expect(find.textContaining('quote.pdf'), findsWidgets);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('a group header counts the tasks it shows: a search that hides '

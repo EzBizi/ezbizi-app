@@ -425,6 +425,15 @@ class HrInvitationsController extends Controller
     {
         $this->authorize('delete', $invitation);
 
+        // Accepted: there is an account now, and removing that person is done
+        // on their HR record, not by withdrawing the link (Jose, 2026-11-24:
+        // "if an invitation has been completed ... the revoke button is
+        // unnecesary"). Refused here too so no API client does it either.
+        if ($invitation->accepted_at !== null) {
+            throw ValidationException::withMessages(['invitation' => 'This invitation was accepted, so there is '
+                .'nothing to withdraw. To remove the person, make them inactive on their HR record.']);
+        }
+
         // Idempotent, and the state rules travel with it — see
         // InvitationActions::revoke. A rule withdraws stale invitations on the
         // same path this button does. Converted to the refusal shape this

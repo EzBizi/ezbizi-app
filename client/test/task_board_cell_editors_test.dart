@@ -283,6 +283,25 @@ void main() {
     );
   });
 
+  testWidgets('Jose 11-24: a number edits in the card, and an empty date '
+      'shows a calendar, not a dash', (tester) async {
+    await pumpBoard(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('column-cell-edit-c-cost')).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cell-card')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('column-cell-edit-c-date')).first,
+        matching: find.byIcon(Icons.calendar_today_outlined),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('notes edit in a card wide and tall enough to read', (
     tester,
   ) async {
