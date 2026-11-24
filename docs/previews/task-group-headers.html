@@ -56,8 +56,8 @@ h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-widt
 </style></head>
 <body>
 <button class="theme-btn" onclick="flip()">Page light / dark</button>
-<h1>210 · Task Board: bigger group titles, the group's colour across its header</h1>
-<p class="lead">Jose 11-24: <i>"make these titles a bit bigger, and… give the entire group top column a color."</i> Each option is drawn in the app's light and dark themes side by side. The groups and colours are real Triplex ones (Ohio Project Management, Ohio, a personal board). Every option shows the open group, a collapsed group, kanban, and (4, 5, 6) the phone. Under each pane is the measured contrast of the title text against what it sits on; 4.5 is the bar. Today's title is 14px in the group colour on grey, with the column headings on grey.</p>
+<h1>210 · Task Board: bigger group titles, the title row in the group's colour</h1>
+<p class="lead">Jose 11-24: <i>"make these titles a bit bigger, and… give the entire group top column a color"</i>, then <i>"the title row"</i>. So every option colours the whole title row, edge to edge ("Company Files · 11 tasks ···"), and leaves the column headings as they are. Each option is drawn in the app's light and dark themes side by side. The groups and colours are real Triplex ones (Ohio Project Management, Ohio, a personal board). Every option shows the open group, a collapsed group, kanban, and (4, 5, 6) the phone. Under each pane is the measured contrast of the title text against what it sits on; 4.5 is the bar. Today's title is 14px in the group colour on grey, with the column headings on grey.</p>
 
 <div id="out"></div>
 
@@ -84,9 +84,9 @@ function badge(fg,bg){const r=ratio(fg,bg);return`<b class="${r>=4.5?'ok':'no'}"
 
 /* Each style: how the title row, the column row and a collapsed group look. */
 const S={
- band(g,t){const fg=onFill(g.c);return{ttl:`background:${g.c};color:${fg}`,cols:`background:${mix(P[t].gp,g.c,t=='l'?.16:.26)};color:inherit`,fg,bg:g.c,size:18,fold:`background:${g.c};color:${fg}`}},
- wash(g,t){const bg=mix(P[t].gp,g.c,t=='l'?.18:.28);const fg=inkOn(g.c,bg,t=='d');return{ttl:`background:${bg};color:${fg};box-shadow:inset 6px 0 ${g.c}`,cols:`background:${bg};box-shadow:inset 6px 0 ${g.c}`,fg,bg,size:18,fold:`background:${bg};color:${fg};box-shadow:inset 6px 0 ${g.c}`}},
- rule(g,t){const fg=inkOn(g.c,P[t].gp,t=='d');return{ttl:`color:${fg};border-bottom:4px solid ${g.c}`,cols:``,fg,bg:P[t].gp,size:20,fold:`color:${fg};border-bottom:4px solid ${g.c}`}},
+ band(g,t){const fg=onFill(g.c);const x=`background:${g.c};color:${fg}`;return{ttl:x,cols:``,fg,bg:g.c,size:18,fold:x}},
+ wash(g,t){const bg=mix(P[t].gp,g.c,t=='l'?.18:.28);const fg=inkOn(g.c,bg,t=='d');const x=`background:${bg};color:${fg};box-shadow:inset 6px 0 ${g.c}`;return{ttl:x,cols:``,fg,bg,size:18,fold:x}},
+ rule(g,t){const bg=mix(P[t].gp,g.c,.5);const fg=onFill(bg);const x=`background:${bg};color:${fg};border-bottom:4px solid ${g.c}`;return{ttl:x,cols:``,fg,bg,size:20,fold:x}},
 };
 
 function title(g,s,size,open,extra=''){return`<div class="ttl" style="${extra}"><span class="chev">${open?'▾':'▸'}</span><span class="nm" style="font-size:${size}px">${ESC(g.n)}</span><span class="ct">· ${g.k} tasks</span><span class="dots">···</span></div>`}
@@ -112,18 +112,18 @@ function phone(style,t){
  return h+`</div><div class="fab">+</div></div>`;
 }
 const OPTS=[
- ['1','band','Solid title band, light wash under it',' <span class="rec">(recommended)</span>','The title row is filled with the group colour, the title is 18px, and white or black text is picked by measured contrast (yellow gets black). The column-heading row under it carries a light wash of the same colour, so the whole top of the group reads as one coloured block. Collapsed, a group is just its coloured bar. Closest to monday, which the managers know.'],
- ['2','wash','Light wash across both rows, solid edge','','Both the title row and the column headings get a soft tint of the group colour, with a 6px solid edge on the left. The 18px title is the group colour, darkened (light theme) or lightened (dark theme) until it passes 4.5. Calmer than 1 on a board with 12 groups.'],
- ['3','rule','Bigger coloured title, thick colour rule','','No fill. The title goes to 20px in the group colour (contrast-corrected), with a 4px colour rule under the title row across the whole width; the column headings stay grey. The smallest change from today.'],
+ ['1','band','Title row in the full group colour',' <span class="rec">(recommended)</span>','The whole title row, edge to edge, is filled with the group colour. The title is 18px, in white or black, whichever measures better (yellow, pink and blue get black). The column headings under it stay as they are. Collapsed, a group is just its coloured bar. This is the closest to monday, which the managers know.'],
+ ['2','wash','Title row in a light wash, solid edge','','The whole title row gets a soft tint of the group colour, with a 6px solid edge on the left. The 18px title is in the group colour, darkened (light theme) or lightened (dark theme) until it passes 4.5. Calmer than 1 on a board with 12 groups.'],
+ ['3','rule','Title row half-tinted, solid rule under it','','The whole title row is a half-strength tint of the group colour, with a 4px rule of the full colour along its bottom edge. The title is 20px in white or black, whichever measures better. A middle ground between 1 and 2.'],
 ];
 let out='';
 for(const [n,st,h,rec,p] of OPTS){
  out+=`<div class="opt"><h2>${n} · ${h}${rec}</h2><p>${p}</p><div class="pair"><div class="pane l"><div class="tag">Light</div>${table(st,'l')}</div><div class="pane d"><div class="tag">Dark</div>${table(st,'d')}</div></div></div>`;
 }
 const PH=[
- ['4','band','Phone with 1: coloured section bands',' <span class="rec">(recommended, goes with 1)</span>','Each group is a full-colour band at 17px over its cards; collapsed groups are just the band. The + adds to the open group.'],
- ['5','wash','Phone with 2: washed bands with an edge','','The same tint and edge as 2, so phone and desktop match.'],
- ['6','rule','Phone with 3: coloured title and rule','','An 18px coloured title with a 4px rule; cards sit on the plain grey.'],
+ ['4','band','Phone with 1: full-colour title bands',' <span class="rec">(recommended, goes with 1)</span>','Each group title is a full-colour band, at 17px, over its cards; a collapsed group is just its band. The + adds to the open group.'],
+ ['5','wash','Phone with 2: washed title bands with an edge','','The same tint and edge as 2, so the phone and the desktop match.'],
+ ['6','rule','Phone with 3: half-tinted title bands with a rule','','The same half-tint and rule as 3.'],
 ];
 for(const [n,st,h,rec,p] of PH){
  out+=`<div class="opt"><h2>${n} · ${h}${rec}</h2><p>${p}</p><div class="phones">${phone(st,'l')}${phone(st,'d')}</div></div>`;
