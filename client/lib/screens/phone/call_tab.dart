@@ -1063,18 +1063,37 @@ class _CallTabState extends State<CallTab> {
           : LayoutBuilder(
               builder: (context, constraints) {
                 final wide = constraints.maxWidth >= CallTab.splitAbove;
+                final banners = [
+                  if (_incomingFrom != null) _banner(),
+                  if (_deskDown) _deskDownBanner(),
+
+                  // Only when somebody is actually waiting. A permanent
+                  // empty "Parked calls" panel is a box that teaches people
+                  // to stop looking at it, and the whole value of this one
+                  // is being noticed on the rare day it has somebody in it.
+                  if (_parked.isNotEmpty || _ringing.isNotEmpty)
+                    _waitingBanner(),
+                ];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_incomingFrom != null) _banner(),
-                    if (_deskDown) _deskDownBanner(),
-
-                    // Only when somebody is actually waiting. A permanent
-                    // empty "Parked calls" panel is a box that teaches people
-                    // to stop looking at it, and the whole value of this one
-                    // is being noticed on the rare day it has somebody in it.
-                    if (_parked.isNotEmpty || _ringing.isNotEmpty)
-                      _waitingBanner(),
+                    // At most 40% of the pane, scrolling inside: at iOS
+                    // accessibility text sizes the desk-down banner pushed
+                    // the dial pad 127 px off the screen (mobile review 11-24).
+                    if (banners.isNotEmpty)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: constraints.maxHeight * 0.4,
+                        ),
+                        child: SingleChildScrollView(
+                          primary: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: banners,
+                          ),
+                        ),
+                      ),
                     Expanded(child: wide ? _wide() : _narrow()),
 
                     // The zero-sized WebView2 host moved to the shell with

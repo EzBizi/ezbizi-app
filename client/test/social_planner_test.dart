@@ -284,6 +284,15 @@ void main() {
     );
   });
 
+  // Mobile review 11-24: at iOS extra-extra-large text a phone day cell's
+  // three lines overflowed its fixed 52 px. The cell grows with the text.
+  testWidgets('a phone week fits at a large text size', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pump(tester, const Size(390, 844));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a phone gets the week and the day, and a post opens over it', (
     tester,
   ) async {

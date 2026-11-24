@@ -364,7 +364,9 @@ class _ServiceListState extends State<ServiceList> {
                                             mainAxisSpacing: 12,
                                             mainAxisExtent:
                                                 cell * 0.75 +
-                                                ServiceCard.textHeight,
+                                                ServiceCard.textHeightOf(
+                                                  context,
+                                                ),
                                           ),
                                       itemCount: entry.value.length,
                                       itemBuilder: (context, i) => ServiceCard(
@@ -534,6 +536,11 @@ class ServiceCard extends StatelessWidget {
   /// Height of the words under the photo; every card is the same size.
   static const double textHeight = 118;
 
+  /// [textHeight] at the reader's text size: at iOS accessibility sizes the
+  /// fixed 118 overflowed by 24 px (mobile review 11-24).
+  static double textHeightOf(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(textHeight);
+
   final ApiClient api;
   final Map<String, dynamic> service;
   final String organizationName;
@@ -611,7 +618,7 @@ class ServiceCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              height: textHeight,
+              height: textHeightOf(context),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                 child: Column(

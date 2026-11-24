@@ -6223,7 +6223,9 @@ class _PhoneDay extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: SizedBox(
-          height: 52,
+          // Grows with the reader's text size: at iOS extra-extra-large the
+          // three lines overflowed 52 by 2 px (mobile review 11-24).
+          height: MediaQuery.textScalerOf(context).scale(52),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

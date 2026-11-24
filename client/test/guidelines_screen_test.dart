@@ -35,6 +35,20 @@ void main() {
     expect(posted, isEmpty);
   });
 
+  // Mobile review 11-24: at iOS extra-extra-large text the card overflowed its
+  // fixed 220 px tile by 6 px. The text part of the tile grows with the text.
+  testWidgets('cards fit at a large text size', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(
+      tester,
+      grants: ['guidelines.guidelines.view'],
+      size: const Size(400, 900),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Chimney fire'), findsOneWidget);
+  });
+
   testWidgets('on a phone the card opens inside the tab, with a way back', (
     tester,
   ) async {
