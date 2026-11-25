@@ -3938,6 +3938,10 @@ class ActionRunner
                 ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
                     ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
             $text = is_scalar($value) ? (string) $value : '';
+            // {{note}} / {{notes}}: the bold/italic/underline tags never leave the app (Jose 11-25).
+            if (preg_match('/notes?$/i', $m[1])) {
+                $text = \App\Support\NotesMarkup::plain($text);
+            }
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
         }, $template);
