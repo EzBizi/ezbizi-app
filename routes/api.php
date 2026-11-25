@@ -2887,6 +2887,7 @@ Route::prefix('v1')
             Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
             Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
             Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::patch('chat/chats/{chat}/job', [ChatController::class, 'setJob']);
             Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
             Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
             Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
