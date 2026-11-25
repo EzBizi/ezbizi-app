@@ -2792,6 +2792,17 @@ class AutomationsController extends Controller
      *
      * @return array{boards: list<string>, every: bool, label: string}|null
      */
+    /** A Monday copy's raw "monday:<id> (Monday, active) — off: not here: …" in words (Mobile UI-UX 11-25). */
+    public static function descriptionShown(?string $description): ?string
+    {
+        if ($description === null || ! preg_match('/^monday:\d+ \(Monday, ([^)]*)\)(?: — off: not here: (.*))?$/su', $description, $m)) {
+            return $description;
+        }
+
+        return "Copied from Monday ({$m[1]} there)."
+            .(($m[2] ?? '') !== '' ? ' Off here: this board has no '.str_replace('(gone on Monday)', '(removed on Monday)', $m[2]).'.' : '');
+    }
+
     public static function taskBoardsOf(Automation $automation): ?array
     {
         $actions = $automation->activeVersion?->actions ?? [];
@@ -2839,6 +2850,8 @@ class AutomationsController extends Controller
             'id' => $automation->id,
             'name' => $automation->name,
             'description' => $automation->description,
+            // What a reader sees; `description` stays as stored, for editing (monday:<id> is the import's key).
+            'description_shown' => self::descriptionShown($automation->description),
             'trigger_key' => $automation->trigger_key,
             'is_active' => $automation->is_active,
             'is_live' => $automation->isLive(),
