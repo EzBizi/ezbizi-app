@@ -1607,6 +1607,43 @@ void main() {
     );
   });
 
+  testWidgets('row 69: quick filters show each value with its count, a chip '
+      'filters, Clear all lets go', (tester) async {
+    await pump(tester);
+    final button = find.byKey(const Key('list-toolbar-quick'));
+    if (button.evaluate().isEmpty) {
+      await tester.tap(find.byKey(const Key('tasks-toolbar-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('tasks-more-quick')));
+    } else {
+      tester.widget<ButtonStyleButton>(button).onPressed!();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quick-filters')), findsOneWidget);
+    final showing = RegExp(r'Showing (\d+) of (\d+)');
+    String line() => tester
+        .widgetList<Text>(find.textContaining('Showing '))
+        .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
+        .firstWhere(showing.hasMatch);
+    final before = showing.firstMatch(line())!;
+    expect(before.group(1), before.group(2));
+    final chip = find.byWidgetPredicate(
+      (w) => w is FilterChip && '${w.key}'.contains('quick-status'),
+    );
+    expect(chip, findsWidgets);
+    await tester.tap(chip.first);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(chip.first).selected, isTrue);
+    expect(
+      tester.widget<TextButton>(find.byKey(const Key('quick-clear'))).onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const Key('quick-clear')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(chip.first).selected, isFalse);
+    expect(showing.firstMatch(line())!.group(1), before.group(2));
+  });
+
   testWidgets('Esc closes a status menu opened from its cell', (tester) async {
     await pump(tester);
 

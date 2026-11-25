@@ -2216,6 +2216,104 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ),
   );
 
+  /// The values a rule on [field] holds now (a list for labels and people).
+  Set<String> _ruleValues(String field) {
+    final r = _filter.filters.where((r) => r.field == field).firstOrNull;
+    final v = r?.value;
+    return v is List ? {for (final x in v) '$x'} : (v == null ? {} : {'$v'});
+  }
+
+  /// A chip toggled: labels and people keep several values ("is any of"); a text one value.
+  void _toggleQuick(String field, String value) {
+    final kind = _filterFields[field]?.kind;
+    final multi = kind == 'options' || kind == 'people';
+    final now = _ruleValues(field);
+    final next = now.contains(value)
+        ? (now..remove(value))
+        : (multi ? (now..add(value)) : {value});
+    setState(
+      () => _filter = _filter.copyWith(
+        filters: [
+          for (final r in _filter.filters)
+            if (r.field != field) r,
+          if (next.isNotEmpty)
+            (
+              field: field,
+              op: 'is',
+              value: multi
+                  ? next.toList()
+                  : (kind == 'checkbox' ? next.first == 'true' : next.first),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quickFilters() => showSidePanel<void>(
+    context,
+    builder: (panel) => StatefulBuilder(
+      builder: (context, set) {
+        final all = _tasks.where((t) => t['parent_task_id'] == null).length;
+        final shown = _shownTasks
+            .where((t) => t['parent_task_id'] == null)
+            .length;
+        final theme = Theme.of(context);
+        return SidePanel(
+          title: 'Quick filters',
+          subtitle: 'Showing $shown of $all',
+          actions: [
+            TextButton(
+              key: const Key('quick-clear'),
+              onPressed: _filter.filters.isEmpty
+                  ? null
+                  : () {
+                      setState(
+                        () => _filter = _filter.copyWith(filters: const []),
+                      );
+                      set(() {});
+                    },
+              child: const Text('Clear all'),
+            ),
+          ],
+          child: ListView(
+            key: const Key('quick-filters'),
+            shrinkWrap: true,
+            children: [
+              for (final f in _filterFields.entries)
+                if (_valuesIn(f.key).isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                    child: Text(
+                      f.value.label,
+                      style: theme.textTheme.labelLarge,
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final (v, label) in _valuesIn(f.key))
+                        FilterChip(
+                          key: ValueKey('quick-${f.key}-$v'),
+                          selected: _ruleValues(f.key).contains(v),
+                          label: Text(
+                            '$label · ${_tasks.where((t) => t['parent_task_id'] == null && _valueOf(f.key, t) == v).length}',
+                          ),
+                          onSelected: (_) {
+                            _toggleQuick(f.key, v);
+                            set(() {});
+                          },
+                        ),
+                    ],
+                  ),
+                ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
   bool _filteredOn(String field) =>
       _filter.filters.any((r) => r.field == field);
 
@@ -3363,7 +3461,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Widget _toolbar(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
     final toolbar = _board == null ? null : _listToolbar();
-    final actions = toolbar?.actions(context) ?? const <ListToolbarAction>[];
+    final actions = [
+      ...?toolbar?.actions(context),
+      // Monday's quick filters (row 69): each column's values as chips with counts.
+      if (_board != null)
+        (
+          key: 'quick',
+          icon: Icons.bolt_outlined,
+          label: 'Quick filters',
+          count: 0,
+          onTap: _quickFilters,
+        ),
+    ];
     MenuItemButton actionItem(ListToolbarAction a) => MenuItemButton(
       key: ValueKey('tasks-more-${a.key}'),
       leadingIcon: Icon(a.icon, size: 18),
