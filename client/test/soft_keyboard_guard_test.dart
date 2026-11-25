@@ -60,12 +60,18 @@ void main() {
   });
 
   // FoldWhileTyping: summaries and floating buttons step aside while a phone
-  // types. A Scaffold body sees no inset, so the test puts it in one.
-  for (final (width, folds) in [(390.0, true), (1200.0, false)]) {
-    testWidgets('FoldWhileTyping at $width ${folds ? 'folds' : 'stays'}', (
+  // types, and on a wide screen left under 560 above the keyboard (an iPad on
+  // its side, the unfolded Duo). A Scaffold body sees no inset, so the test
+  // puts it in one.
+  for (final (width, height, folds) in [
+    (390.0, 844.0, true),
+    (1200.0, 844.0, true),
+    (1200.0, 1000.0, false),
+  ]) {
+    testWidgets('FoldWhileTyping at ${width}x$height ${folds ? 'folds' : 'stays'}', (
       tester,
     ) async {
-      tester.view.physicalSize = Size(width, 844);
+      tester.view.physicalSize = Size(width, height);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(

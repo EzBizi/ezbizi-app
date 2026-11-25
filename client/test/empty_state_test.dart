@@ -125,4 +125,40 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(NestedScrollView), findsOneWidget);
   });
+
+  // Mobile review 11-25: the unfolded Duo is 951 wide and keeps 405 above its
+  // keyboard. Customers' header took it all: the list got 0 and overflowed.
+  // The header scrolls within what leaves the list two rows, and the box
+  // being typed in keeps its focus (the tree is the same either way).
+  testWidgets('typing on a wide window still leaves the list rows', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(951, 669);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HeaderAboveList(
+            header: const Column(
+              children: [
+                TextField(key: Key('search')),
+                SizedBox(height: 380),
+              ],
+            ),
+            list: ListView(children: const [Text('row')]),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('search')));
+    await tester.pump();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 264);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('row').hitTestable(), findsOneWidget);
+    final field = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(field.widget.focusNode.hasFocus, isTrue);
+  });
 }

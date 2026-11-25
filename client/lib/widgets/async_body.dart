@@ -115,6 +115,9 @@ class AsyncBody extends StatelessWidget {
 class HeaderAboveList extends StatelessWidget {
   const HeaderAboveList({super.key, required this.header, required this.list});
 
+  /// What a fixed header always leaves its list: two rows.
+  static const double _listFloor = 120;
+
   final Widget header;
   final Widget list;
 
@@ -134,12 +137,26 @@ class HeaderAboveList extends StatelessWidget {
     final nested = context.getInheritedWidgetOfExactType<_ScrollingHeader>();
     final size = MediaQuery.sizeOf(context);
     if ((size.width >= 600 && size.height >= 560) || nested != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          header,
-          Expanded(child: list),
-        ],
+      // The window keeps its size when the keyboard comes up: on the unfolded
+      // Duo (951 wide, 405 left above the keyboard) Customers' header took it
+      // all and the list got 0 (mobile review 11-25). So the header always
+      // sits in a scroll view that leaves the list [_listFloor]: always, so
+      // the keyboard coming up never rebuilds the box being typed in.
+      return LayoutBuilder(
+        builder: (context, box) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: box.maxHeight.isFinite
+                    ? (box.maxHeight - _listFloor).clamp(0, box.maxHeight)
+                    : double.infinity,
+              ),
+              child: SingleChildScrollView(primary: false, child: header),
+            ),
+            Expanded(child: list),
+          ],
+        ),
       );
     }
 

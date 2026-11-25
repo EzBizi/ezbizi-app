@@ -147,6 +147,19 @@ void main() {
       expect(find.byType(ModulePageHeader), findsOneWidget);
     });
 
+    // The unfolded Duo: 951 wide, so the sidebar shell, and 405 left above
+    // its keyboard. The page title folds there too.
+    testWidgets('a wide but short window folds the header while typing', (
+      tester,
+    ) async {
+      await _pump(tester, width: 951, height: 669);
+      expect(find.byType(ModulePageHeader), findsOneWidget);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 264);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(find.byType(ModulePageHeader), findsNothing);
+    });
+
     testWidgets('a computer keeps its header with the keyboard up', (
       tester,
     ) async {
