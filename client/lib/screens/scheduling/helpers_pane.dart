@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 
@@ -847,14 +848,22 @@ class _HelpersPaneState extends State<HelpersPane> {
                   '${(b['technician'] as Map?)?['name'] ?? ''}',
                   style: theme.textTheme.bodyMedium,
                 ),
-                if (job.isNotEmpty || note.isNotEmpty)
+                if (job.isNotEmpty ||
+                    found?['customer'] != null ||
+                    found?['address'] != null)
                   Text(
                     [
                       if (job.isNotEmpty) 'Job $job',
                       if (found?['customer'] != null) '${found!['customer']}',
                       if (found?['address'] != null) '${found!['address']}',
-                      if (note.isNotEmpty) note,
                     ].join(' · '),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                if (note.isNotEmpty)
+                  FormattedNotesText(
+                    note,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -914,7 +923,7 @@ class _BookFormState extends State<_BookForm> {
   String _slot = 'full';
   String? _for;
   final _job = TextEditingController();
-  final _note = TextEditingController();
+  late final FormattedNotesController _note;
   bool _saving = false;
   String? _slotError;
   String? _error;
@@ -931,7 +940,7 @@ class _BookFormState extends State<_BookForm> {
     _slot = b?['slot'] as String? ?? 'full';
     _for = (b?['technician'] as Map?)?['id'] as String? ?? widget.me.id;
     _job.text = '${b?['job_number'] ?? ''}';
-    _note.text = '${b?['note'] ?? ''}';
+    _note = FormattedNotesController(markup: '${b?['note'] ?? ''}');
   }
 
   @override
@@ -948,7 +957,7 @@ class _BookFormState extends State<_BookForm> {
     }
     final booking = widget.booking;
     final job = _job.text.trim();
-    final note = _note.text.trim();
+    final note = _note.markup.trim();
     final body = <String, dynamic>{
       'helper_id': _helper,
       'slot': _slot,
@@ -1073,13 +1082,11 @@ class _BookFormState extends State<_BookForm> {
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          key: const Key('helpers-form-note'),
+        FormattedNotesField(
+          fieldKey: const Key('helpers-form-note'),
           controller: _note,
-          decoration: const InputDecoration(
-            labelText: 'Note (optional)',
-            isDense: true,
-          ),
+          label: 'Note (optional)',
+          minLines: 1,
         ),
         if (_error != null) ...[const SizedBox(height: 10), ErrorNote(_error!)],
         const SizedBox(height: 14),
@@ -1128,9 +1135,9 @@ class _Roster extends StatefulWidget {
 class _RosterState extends State<_Roster> {
   late List<_Row> _rows = List.of(widget.helpers);
   final _name = TextEditingController();
-  final _notes = TextEditingController();
+  final _notes = FormattedNotesController();
   final _editName = TextEditingController();
-  final _editNotes = TextEditingController();
+  var _editNotes = FormattedNotesController();
   String? _editing;
   bool _busy = false;
   String? _error;
@@ -1181,7 +1188,7 @@ class _RosterState extends State<_Roster> {
       setState(() => _error = 'Give the helper a name.');
       return;
     }
-    final notes = _notes.text.trim();
+    final notes = _notes.markup.trim();
     await _write(
       () => widget.api.post('/scheduling/helpers', {
         'franchise_id': widget.franchise,
@@ -1201,7 +1208,7 @@ class _RosterState extends State<_Roster> {
       setState(() => _error = 'Give the helper a name.');
       return;
     }
-    final notes = _editNotes.text.trim();
+    final notes = _editNotes.markup.trim();
     await _write(
       () => widget.api.patch('/scheduling/helpers/${row['id']}', {
         'name': name,
@@ -1253,7 +1260,7 @@ class _RosterState extends State<_Roster> {
                           ),
                         ),
                         if ('${row['notes'] ?? ''}'.trim().isNotEmpty)
-                          Text(
+                          FormattedNotesText(
                             '${row['notes']}',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: muted,
@@ -1272,7 +1279,10 @@ class _RosterState extends State<_Roster> {
                           : () => setState(() {
                               _editing = row['id'] as String?;
                               _editName.text = '${row['name'] ?? ''}';
-                              _editNotes.text = '${row['notes'] ?? ''}';
+                              _editNotes.dispose();
+                              _editNotes = FormattedNotesController(
+                                markup: '${row['notes'] ?? ''}',
+                              );
                             }),
                     ),
                     Switch(
@@ -1302,13 +1312,11 @@ class _RosterState extends State<_Roster> {
             decoration: const InputDecoration(labelText: 'Name', isDense: true),
           ),
           const SizedBox(height: 10),
-          TextField(
-            key: const Key('helpers-roster-notes'),
+          FormattedNotesField(
+            fieldKey: const Key('helpers-roster-notes'),
             controller: _notes,
-            decoration: const InputDecoration(
-              labelText: 'Notes (optional)',
-              isDense: true,
-            ),
+            label: 'Notes (optional)',
+            minLines: 1,
           ),
           const SizedBox(height: 12),
           Align(
@@ -1335,10 +1343,10 @@ class _RosterState extends State<_Roster> {
           decoration: const InputDecoration(labelText: 'Name', isDense: true),
         ),
         const SizedBox(height: 8),
-        TextField(
-          key: const Key('helpers-roster-edit-notes'),
+        FormattedNotesField(
+          fieldKey: const Key('helpers-roster-edit-notes'),
           controller: _editNotes,
-          decoration: const InputDecoration(labelText: 'Notes', isDense: true),
+          minLines: 1,
         ),
         const SizedBox(height: 8),
         Wrap(
