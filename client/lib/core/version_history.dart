@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+      'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
+      'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
       'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',
       'Desktop Monitoring: swipe the large screenshot to step through captures; past days no longer show a false "capture stopped"; the people list stays in name order',
     ]),
