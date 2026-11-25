@@ -308,7 +308,9 @@ class RolesController extends Controller
                     ...$this->catalogue->preservedFor($role, $actor),
                 ];
 
-                $this->catalogue->assertRequirementsMet($wantedPermissions);
+                // A key the role already held is not refused over a requirement
+                // declared after it was ticked; only new ticks are.
+                $this->catalogue->assertRequirementsMet($wantedPermissions, $role->permissionKeys());
 
                 $changed = $role->syncPermissionKeys($wantedPermissions);
 

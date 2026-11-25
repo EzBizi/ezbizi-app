@@ -4993,11 +4993,18 @@ class _Planner extends StatefulWidget {
   /// Below this a phone's week strip and day list replace the grid.
   static const double phoneBelow = 600;
 
+  /// ...and below this tall too: a phone on its side is wide, but the month
+  /// grid got ~220 px and overflowed (iPhone landscape, mobile review 11-24).
+  static const double shortBelow = 480;
+
   @override
   State<_Planner> createState() => _PlannerState();
 }
 
 class _PlannerState extends State<_Planner> {
+  /// Which shape the last layout drew, so a post opens the way it shows.
+  bool _phoneShape = false;
+
   _PlanView _view = _PlanView.month;
   late DateTime _anchor = _day(widget.focusDay ?? DateTime.now());
   late DateTime _phoneDay = _anchor;
@@ -5167,9 +5174,7 @@ class _PlannerState extends State<_Planner> {
               formats: widget.formats,
               onTap: () {
                 Navigator.of(panel).pop();
-                MediaQuery.sizeOf(context).width < _Planner.phoneBelow
-                    ? widget.openPost(p)
-                    : _select(p);
+                _phoneShape ? widget.openPost(p) : _select(p);
               },
             ),
         ],
@@ -5189,7 +5194,10 @@ class _PlannerState extends State<_Planner> {
 
     return LayoutBuilder(
       builder: (context, box) {
-        if (box.maxWidth < _Planner.phoneBelow) {
+        _phoneShape =
+            box.maxWidth < _Planner.phoneBelow ||
+            box.maxHeight < _Planner.shortBelow;
+        if (_phoneShape) {
           return _phone(context, byDay, attention);
         }
         final (from, to) = _span;
@@ -6223,7 +6231,9 @@ class _PhoneDay extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: SizedBox(
-          height: 52,
+          // Grows with the reader's text size: at iOS extra-extra-large the
+          // three lines overflowed 52 by 2 px (mobile review 11-24).
+          height: MediaQuery.textScalerOf(context).scale(52),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

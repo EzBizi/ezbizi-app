@@ -1427,6 +1427,10 @@ Route::prefix('v1')
             Route::get('financials/bank/transactions', [FinancialBankController::class, 'transactions']);
             Route::post('financials/bank/{connection}/reconnect', [FinancialBankController::class, 'reconnect']);
             Route::post('financials/bank/{connection}/refresh', [FinancialBankController::class, 'refresh']);
+            // What a deposit was for: a recorded invoice payment or an open invoice (BankMatcher).
+            Route::get('financials/bank/transactions/{transaction}/candidates', [FinancialBankController::class, 'candidates']);
+            Route::post('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'match']);
+            Route::delete('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'unmatch']);
         });
         // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
         Route::middleware('permission:financials.markets.view')->group(function (): void {
@@ -2023,8 +2027,13 @@ Route::prefix('v1')
             Route::post('scheduling/zip-reports/{report}/move', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'move']);
             Route::post('scheduling/zip-reports/{report}/dismiss', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'dismiss']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+                ->except('index')
                 ->parameters(['areas' => 'area']);
         });
+        // The areas list is also Routing's first read (roles audit 2026-11-24):
+        // a role with Routing and not Settings got a 403 before any route.
+        Route::get('scheduling/areas', [SchedulingAreasController::class, 'index'])
+            ->middleware('permission:scheduling.routing.view,scheduling.settings.view');
 
         // Field — docs/superpowers/specs/2026-09-25-field-module-design.md.
         // `me` answers anybody (a phone asks before it knows its role); the

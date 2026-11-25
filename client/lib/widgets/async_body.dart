@@ -122,7 +122,18 @@ class HeaderAboveList extends StatelessWidget {
   Widget build(BuildContext context) {
     // The window's width, not this widget's: a desktop screen beside the
     // navigation rail is narrower than 600 and is not short of height.
-    if (MediaQuery.sizeOf(context).width >= 600) {
+    //
+    // Never a NestedScrollView inside another one's body: the inner one takes
+    // the outer's inner controller as its parent and the two overflowed the
+    // stack (Inventory > Orders on a phone, mobile review 11-24). Nested, it
+    // is a plain column; the outer one already scrolls.
+    //
+    // And short windows scroll too: a phone on its side is 923 wide but ~250
+    // tall under the bars, and the fixed header overflowed by 136 px
+    // (Android landscape, mobile review 11-24).
+    final nested = context.getInheritedWidgetOfExactType<_ScrollingHeader>();
+    final size = MediaQuery.sizeOf(context);
+    if ((size.width >= 600 && size.height >= 560) || nested != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -136,20 +147,30 @@ class HeaderAboveList extends StatelessWidget {
     // body alone, a short section (HR's Pay, one card) left an empty screen
     // with the name, Back and the section tabs all gone (phone audit
     // 2026-11-04, Section 3 #5).
-    return NestedScrollView(
-      floatHeaderSlivers: true,
-      headerSliverBuilder: (context, _) => [
-        SliverFloatingHeader(child: header),
-      ],
-      body: Builder(
-        builder: (context) => PrimaryScrollController(
-          controller: PrimaryScrollController.of(context),
-          automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
-          child: list,
+    return _ScrollingHeader(
+      child: NestedScrollView(
+        floatHeaderSlivers: true,
+        headerSliverBuilder: (context, _) => [
+          SliverFloatingHeader(child: header),
+        ],
+        body: Builder(
+          builder: (context) => PrimaryScrollController(
+            controller: PrimaryScrollController.of(context),
+            automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+            child: list,
+          ),
         ),
       ),
     );
   }
+}
+
+/// Marks the body of a HeaderAboveList that scrolls its header.
+class _ScrollingHeader extends InheritedWidget {
+  const _ScrollingHeader({required super.child});
+
+  @override
+  bool updateShouldNotify(_ScrollingHeader oldWidget) => false;
 }
 
 /// A screen heading with an optional action on the right.

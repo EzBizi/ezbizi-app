@@ -2469,16 +2469,31 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (leadNameIsAi(lead)) ...[
+                            if (leadNameIsAi(lead) || nameMarks.isNotEmpty) ...[
                               const SizedBox(width: 4),
-                              AiMark(
-                                key: ValueKey('lead-ai-name-${lead['id']}'),
-                                tooltip: aiNameTooltip,
+                              // Capped and clipped: in a phone-landscape list
+                              // the AI and "viewing" marks took the whole line
+                              // and the name got 0 px (mobile review 11-24).
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: box.maxWidth * 0.4,
+                                ),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  child: _spaced([
+                                    if (leadNameIsAi(lead))
+                                      AiMark(
+                                        key: ValueKey(
+                                          'lead-ai-name-${lead['id']}',
+                                        ),
+                                        tooltip: aiNameTooltip,
+                                      ),
+                                    ...nameMarks,
+                                  ]),
+                                ),
                               ),
-                            ],
-                            if (nameMarks.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              _spaced(nameMarks),
                             ],
                           ],
                         ),

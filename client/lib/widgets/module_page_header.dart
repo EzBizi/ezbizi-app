@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../core/theme.dart';
 
@@ -155,21 +158,30 @@ class ModulePageHeader extends StatelessWidget {
 
         // UI pass 11-16: beside a long title ("Automations", "Fleet
         // Management") the action would shrink past reading, so a phone
-        // gives it its own line under the title instead.
-        if (phone && actions.isNotEmpty && room < 140 && toolbar == null) {
+        // gives it its own line under the title instead. Decided by the
+        // action's own width (mobile review 11-24, finding 15): beside the
+        // title only if it fits there at 90% or more; "Add purchase order"
+        // was drawn at ~75% beside "Inventory".
+        if (phone && actions.isNotEmpty && toolbar == null) {
           return Padding(
             padding: padding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: _TitleThenActions(
+              room: room,
               children: [
                 titleRow,
-                const SizedBox(height: 6),
-                Wrap(
+                FittedBox(
                   key: const ValueKey('module-header-actions'),
-                  alignment: WrapAlignment.end,
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: actions,
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < actions.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        actions[i],
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -275,6 +287,93 @@ class ModuleToolbarScope extends InheritedWidget {
 /// button). Inside the shell it draws nothing where it is written and hands
 /// [child] to the header; outside it (a test, a screen opened alone) it draws
 /// [child] in place.
+/// A phone header: the title, and the actions beside it when they fit [room]
+/// at 90% of their own width or more, else on a line of their own, right.
+class _TitleThenActions extends MultiChildRenderObjectWidget {
+  const _TitleThenActions({required this.room, required super.children});
+
+  final double room;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderTitleThenActions(room);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderTitleThenActions renderObject,
+  ) => renderObject.room = room;
+}
+
+class _RenderTitleThenActions extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, MultiChildLayoutParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, MultiChildLayoutParentData> {
+  _RenderTitleThenActions(this._room);
+
+  static const _gap = 12.0;
+  static const _line = 6.0;
+
+  double _room;
+  set room(double value) {
+    if (value == _room) return;
+    _room = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! MultiChildLayoutParentData) {
+      child.parentData = MultiChildLayoutParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final title = firstChild!;
+    final actions = lastChild!;
+    final width = constraints.maxWidth;
+    actions.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
+    final beside = actions.size.width * 0.9 <= _room;
+    if (beside) {
+      actions.layout(
+        BoxConstraints(maxWidth: math.max(0, _room)),
+        parentUsesSize: true,
+      );
+    }
+    title.layout(
+      BoxConstraints.tightFor(
+        width: beside ? math.max(0, width - _gap - actions.size.width) : width,
+      ),
+      parentUsesSize: true,
+    );
+    final t = title.parentData! as MultiChildLayoutParentData;
+    final a = actions.parentData! as MultiChildLayoutParentData;
+    final double height;
+    if (beside) {
+      height = math.max(title.size.height, actions.size.height);
+      t.offset = Offset(0, (height - title.size.height) / 2);
+      a.offset = Offset(
+        width - actions.size.width,
+        (height - actions.size.height) / 2,
+      );
+    } else {
+      height = title.size.height + _line + actions.size.height;
+      t.offset = Offset.zero;
+      a.offset = Offset(width - actions.size.width, title.size.height + _line);
+    }
+    size = constraints.constrain(Size(width, height));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
 class ModuleAction extends StatefulWidget {
   const ModuleAction({super.key, required this.child});
 

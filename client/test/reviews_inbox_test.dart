@@ -326,6 +326,19 @@ void main() {
     expect(find.byKey(const ValueKey('review-unanswered-rev-1')), findsOne);
   });
 
+  /// Android landscape 11-24: 923 wide and ~330 tall under the module title,
+  /// the strip and the full band overflowed by 138 px and left no list.
+  testWidgets('a wide but short pane keeps its list', (tester) async {
+    final server = _Server();
+    await server.pump(tester, size: const Size(923, 330));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('reviews-tile-average')), findsNothing);
+    final row = find.byKey(const ValueKey('review-row-rev-1'));
+    expect(row, findsOneWidget);
+    expect(tester.getTopLeft(row).dy, lessThan(330));
+  });
+
   testWidgets('on a phone a review opens in place, with back', (tester) async {
     final server = _Server();
     await server.pump(tester, size: const Size(390, 844));

@@ -42,6 +42,7 @@ Future<List<http.Request>> _pump(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   final seen = <http.Request>[];
+  var matched = false;
   http.Response json(Object body) => http.Response(
     jsonEncode(body),
     200,
@@ -55,6 +56,22 @@ Future<List<http.Request>> _pump(
         return json({
           'data': {'ready': true, 'can_connect': canConnect, 'banks': banks},
         });
+      }
+      if (path.endsWith('/candidates')) {
+        return json({
+          'data': {
+            'match': matched ? {'type': 'invoice', 'id': 'i7', 'label': 'Invoice INV-7 · Ann', 'by': 'person'} : null,
+            'candidates': matched
+                ? <Map>[]
+                : [
+                    {'type': 'invoice', 'id': 'i7', 'label': 'Invoice INV-7', 'detail': 'Ann · sent', 'amount_cents': 50000, 'date': '2026-11-10'},
+                  ],
+          },
+        });
+      }
+      if (path.endsWith('/match')) {
+        matched = request.method == 'POST';
+        return json({'data': {'match': null}});
       }
       if (path.endsWith('/financials/bank/transactions')) {
         final q = request.url.queryParameters['search'] ?? '';
@@ -166,5 +183,28 @@ void main() {
     expect(find.text('First Platypus Bank'), findsOneWidget);
     expect(find.text('Refresh'), findsNothing);
     expect(find.text('Connect a bank'), findsNothing);
+  });
+
+  testWidgets('money in opens what it could be for, and matching posts the choice', (tester) async {
+    final seen = await _pump(tester, banks: [_bank]);
+    await tester.tap(find.text('Customer payment'));
+    await tester.pumpAndSettle();
+    expect(find.text('What was this for?'), findsOneWidget);
+    expect(find.text('Invoice INV-7'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('financials-bank-match-i7')));
+    await tester.pumpAndSettle();
+    final post = seen.lastWhere((r) => r.method == 'POST');
+    expect(post.url.path, endsWith('/financials/bank/transactions/t2/match'));
+    expect(jsonDecode(post.body), {'type': 'invoice', 'id': 'i7'});
+    expect(find.text('Invoice INV-7 · Ann'), findsOneWidget);
+    expect(find.text('Unmatch'), findsOneWidget);
+  });
+
+  testWidgets('money out is not offered for matching', (tester) async {
+    await _pump(tester, banks: [_bank]);
+    await tester.tap(find.text('Home Depot'));
+    await tester.pumpAndSettle();
+    expect(find.text('What was this for?'), findsNothing);
   });
 }

@@ -662,6 +662,69 @@ void main() {
       Destination(name, Icons.circle_outlined, const SizedBox()),
   ];
 
+  // Mobile, 11-24: with the whole tail (Settings, Suggestions, Development,
+  // Rearrange, version) a window under ~460px left the list negative room and
+  // the column overflowed by 54px. The tail now takes at most half and scrolls.
+  for (final height in [300.0, 420.0]) {
+    testWidgets('the full tail at ${height}px tall does not overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(1200, height);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: Row(
+              children: [
+                NavigationSidebar(
+                  expanded: true,
+                  width: 220,
+                  destinations: modules(),
+                  pinned: [
+                    for (final name in const ['Settings', 'Suggestions'])
+                      Destination(
+                        name,
+                        Icons.circle_outlined,
+                        const SizedBox(),
+                      ),
+                  ],
+                  staffOnly: [
+                    Destination('Development', Icons.code, const SizedBox()),
+                  ],
+                  selectedIndex: 0,
+                  pinnedIndex: null,
+                  staffIndex: null,
+                  onSelected: (_) {},
+                  onPinnedSelected: (_) {},
+                  onStaffSelected: (_) {},
+                  onArranged: (_) {},
+                ),
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      final tail = tester.getRect(find.byKey(const ValueKey('sidebar-tail')));
+      expect(tail.height, lessThanOrEqualTo(height / 2 + 0.5));
+      expect(
+        tester.getRect(find.byKey(const ValueKey('sidebar-list'))).height,
+        greaterThan(0),
+      );
+      // The tail scrolls to its last row rather than clipping it.
+      await tester.dragUntilVisible(
+        find.text('Rearrange'),
+        find.byKey(const ValueKey('sidebar-tail')),
+        const Offset(0, -40),
+      );
+      expect(find.text('Rearrange').hitTestable(), findsOneWidget);
+    });
+  }
+
   Widget sidebar({
     required bool expanded,
     required ValueChanged<int> onSelected,

@@ -284,6 +284,29 @@ void main() {
     );
   });
 
+  // Mobile review 11-24: at iOS extra-extra-large text a phone day cell's
+  // three lines overflowed its fixed 52 px. The cell grows with the text.
+  testWidgets('a phone week fits at a large text size', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pump(tester, const Size(390, 844));
+    expect(tester.takeException(), isNull);
+  });
+
+  // Mobile review 11-24, iPhone on its side: wide enough for the month grid
+  // but ~220 px tall, and the grid overflowed. A short pane gets the phone's.
+  testWidgets('a wide but short pane gets the week and the day', (
+    tester,
+  ) async {
+    await pump(tester, const Size(874, 330));
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('month-grid')), findsNothing);
+    expect(
+      find.byKey(Key('plan-phone-day-${now.month}-${now.day}')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a phone gets the week and the day, and a post opens over it', (
     tester,
   ) async {

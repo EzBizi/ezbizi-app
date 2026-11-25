@@ -28,6 +28,7 @@ void main() {
                 'project_board.view',
                 'jobs.view',
                 'organizations.edit',
+                'project_board.settings.view',
               ],
               'modules': <dynamic>[],
               'organization': {'id': 'org-1', 'name': 'Brightside'},

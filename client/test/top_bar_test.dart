@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/widgets/module_page_header.dart';
+import 'package:ezbizi_client/widgets/phone_bottom_bar.dart';
 import 'package:ezbizi_client/widgets/scope_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,75 @@ import 'package:http/testing.dart';
 /// The load-bearing test here is the overflow one. Everything else asserts what
 /// is on screen; only that asserts the bar FITS, which is the actual complaint.
 void main() {
+  // Mobile review 11-24: a phone turned sideways (923x411) got the desktop
+  // shell, whose sidebar left the module list -54 px. A touch device under 560
+  // tall keeps the phone shape; a desktop-sized window keeps the sidebar.
+  testWidgets('a phone on its side keeps the phone shape', (tester) async {
+    await _pump(tester, width: 923, height: 411);
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('phone-bottom-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-list')), findsNothing);
+  });
+
+  /// Android landscape 11-24: the page was ~200 px and a module's fixed header
+  /// left its list 0 px. Now the page keeps 420 and scrolls as a whole.
+  testWidgets('a phone on its side scrolls a page that keeps its height', (
+    tester,
+  ) async {
+    await _pump(tester, width: 923, height: 411);
+    double page() =>
+        tester.getBottomLeft(find.byType(ModuleToolbarScope)).dy -
+        tester.getTopLeft(find.byType(ModulePageHeader)).dy;
+    expect(page(), greaterThanOrEqualTo(420));
+    final top = tester.getTopLeft(find.byType(ModulePageHeader)).dy;
+    await tester.drag(find.byType(ModulePageHeader), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byType(ModulePageHeader)).dy, lessThan(top));
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Landscape chrome took ~160 of 411 px: the company picker moves into the
+  /// bar, which has room, and the bottom bar draws its labels beside the icons.
+  testWidgets('a phone on its side gives the chrome back to the page', (
+    tester,
+  ) async {
+    await _pump(tester, width: 923, height: 411, choices: true);
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('top-bar-scope-row')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(ScopeSwitcher),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('phone-bottom-bar'))).height,
+      lessThanOrEqualTo(PhoneBottomBar.sidewaysHeight),
+    );
+
+    await _pump(tester, width: 375, height: 812, choices: true);
+    expect(find.byKey(const Key('top-bar-scope-row')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('phone-bottom-bar'))).height,
+      PhoneBottomBar.height,
+    );
+  });
+
+  testWidgets('a portrait phone page fits and does not scroll', (tester) async {
+    await _pump(tester, width: 375, height: 812);
+    final top = tester.getTopLeft(find.byType(ModulePageHeader)).dy;
+    await tester.drag(find.byType(ModulePageHeader), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byType(ModulePageHeader)).dy, top);
+  });
+
+  testWidgets('a tall wide window keeps the sidebar', (tester) async {
+    await _pump(tester, width: 1200, height: 900);
+    expect(find.byKey(const ValueKey('sidebar-list')), findsOneWidget);
+    expect(find.byKey(const Key('phone-bottom-bar')), findsNothing);
+  });
+
   group('phone', () {
     /// Jose 11-24: "when the keyboard is on, you can barely see stuff". With
     /// the keyboard up a phone keeps the toolbar only: no company row, no
@@ -199,12 +269,13 @@ void main() {
 Future<void> _pump(
   WidgetTester tester, {
   required double width,
+  double height = 900,
   bool clock = false,
   bool twoFactor = false,
   bool readOnly = false,
   bool choices = false,
 }) async {
-  tester.view.physicalSize = Size(width, 900);
+  tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 

@@ -37,8 +37,14 @@ class _CustomersWithMembershipsState extends State<CustomersWithMemberships> {
   @override
   Widget build(BuildContext context) {
     final customers = CustomersScreen(api: widget.api, session: widget.session);
-    if (!(widget.session.me?.can('memberships.view') ?? false)) {
+    final me = widget.session.me;
+    if (!(me?.reaches('memberships') ?? false)) {
       return customers;
+    }
+    // Here through Memberships alone (roles audit 2026-11-24): the sidebar
+    // draws Customers for a reachable child, and the customer list refused.
+    if (!(me?.reaches('customers') ?? false)) {
+      return MembershipsScreen(api: widget.api, session: widget.session);
     }
 
     return Column(

@@ -748,10 +748,14 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           content = body;
         }
 
+        final short = box.maxHeight < 560;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (box.maxWidth >= 700) _summaryStrip(theme),
+            // A phone on its side is wide but short: the strip and the full
+            // band left the list nothing (138 px over, landscape 11-24), so a
+            // short pane gets the phone's compact band only.
+            if (box.maxWidth >= 700 && !short) _summaryStrip(theme),
             if (_stats case final stats?)
               ReviewStatsBand(
                 stats: stats,
@@ -759,7 +763,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 drafting: _drafting,
                 onDraftAll: _can('reviews.manage') ? _draftAll : null,
                 onSendWindow: _openSendWindow,
-                compact: box.maxWidth < 600,
+                compact: box.maxWidth < 600 || short,
               ),
             _toolbar(theme, box.maxWidth),
             if (_profile != null && box.maxWidth < 1200)

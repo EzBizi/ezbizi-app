@@ -236,6 +236,44 @@ void main() {
 
   // Financials › Home: a card's figure is a sentence and was cut to one line
   // on every card ("This week: $0.00 refunded · 0 …"). It now has two.
+  // Mobile review 11-24: at an iOS accessibility text size the phone tiles'
+  // fixed 104 px overflowed by 21 px. The tile height grows with the text.
+  testWidgets('financial tiles fit at a large text size on a phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FinancialHome(
+            areas: const [
+              FinancialCard(
+                id: 'disputes',
+                name: 'Disputes & Refunds',
+                figure: 'This week: \$0.00 refunded · 0 disputes',
+              ),
+              FinancialCard(
+                id: 'deposits',
+                name: 'Deposits',
+                figure: 'This week: 85 new rows',
+              ),
+            ],
+            bases: const [],
+            onArea: (_) {},
+            onBase: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a financial card gives its figure two lines', (tester) async {
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;

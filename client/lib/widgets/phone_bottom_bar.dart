@@ -76,12 +76,17 @@ class PhoneBottomBar extends StatelessWidget {
 
   static const height = 72.0;
 
+  /// A phone on its side: the label beside the icon, as iOS draws a compact
+  /// tab bar, so the bar gives the ~250 px page 24 px back.
+  static const sidewaysHeight = 48.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final base = theme.textTheme.labelSmall ?? const TextStyle();
     final size = (base.fontSize ?? 11) < 11 ? 11.0 : base.fontSize!;
+    final sideways = MediaQuery.sizeOf(context).height < 500;
 
     Widget item(int i, PhoneBarItem it) {
       final on = i == selected;
@@ -104,10 +109,14 @@ class PhoneBottomBar extends StatelessWidget {
             onTap: onTap == null ? null : () => onTap!(i),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
-              child: Column(
+              child: Flex(
+                direction: sideways ? Axis.horizontal : Axis.vertical,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 52,
+                    // Sideways the pill narrows so a 118 px slot keeps
+                    // "Scheduling" whole (it read "Schedu…" on the Duo).
+                    width: sideways ? 36 : 52,
                     height: 28,
                     decoration: BoxDecoration(
                       color: on ? scheme.secondaryContainer : null,
@@ -115,15 +124,19 @@ class PhoneBottomBar extends StatelessWidget {
                     ),
                     child: icon,
                   ),
-                  const SizedBox(height: 3),
-                  Expanded(
+                  if (sideways)
+                    const SizedBox(width: 4)
+                  else
+                    const SizedBox(height: 3),
+                  Flexible(
+                    fit: sideways ? FlexFit.loose : FlexFit.tight,
                     child: Text(
                       label,
                       textAlign: TextAlign.center,
                       // Words may wrap to a second line; one word never
                       // breaks in the middle.
-                      maxLines: label.contains(' ') ? 2 : 1,
-                      softWrap: label.contains(' '),
+                      maxLines: !sideways && label.contains(' ') ? 2 : 1,
+                      softWrap: !sideways && label.contains(' '),
                       overflow: TextOverflow.ellipsis,
                       style: base.copyWith(
                         fontSize: size,
@@ -147,7 +160,7 @@ class PhoneBottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: height,
+          height: sideways ? sidewaysHeight : height,
           // Text scale is capped so two lines always fit the bar's height.
           child: MediaQuery.withClampedTextScaling(
             maxScaleFactor: 1.15,
