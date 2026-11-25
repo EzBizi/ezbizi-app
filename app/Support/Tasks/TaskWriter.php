@@ -603,9 +603,22 @@ class TaskWriter
                 ->whereBetween('deleted_at', [$at->copy()->subSeconds(5), $at])->get()
                 ->each(fn (Task $c) => $c->restore());
             $task->restore();
+            if ($task->archived_at !== null) {
+                $task->forceFill(['archived_at' => null])->saveQuietly();
+            }
             $this->audit->log('task.restored', $task, actor: $actor);
 
             return $task;
+        });
+    }
+
+    /** Monday's Archive item (row 69): off the board into its Archive, archived on Monday, restorable. */
+    public function archive(Task $task, ?User $actor): void
+    {
+        DB::transaction(function () use ($task, $actor) {
+            $task->forceFill(['archived_at' => now()])->saveQuietly();
+            $this->audit->log('task.archived', $task, actor: $actor);
+            $this->delete($task, $actor);
         });
     }
 

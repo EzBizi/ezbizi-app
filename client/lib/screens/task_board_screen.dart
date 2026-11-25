@@ -1017,9 +1017,140 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (mounted) await _load();
       case 'delete':
         await _delete([id]);
+      case 'archive':
+        // Monday's Archive item (row 69): off the board into its Archive, restorable.
+        final res = await widget.api.post('/tasks/$id/archive', const {});
+        if (!mounted) return;
+        if (!res.ok) return _say(res.reason);
+        _say('Archived; restore it from the board menu › Archived items');
+        await _load();
+      case 'top':
+        await widget.api.patch('/tasks/$id/move', {
+          'group_id': t['group_id'],
+          'position': 0,
+        });
+        if (mounted) await _load();
       case 'sensitive':
         await _toggleSensitive(t);
     }
+  }
+
+  /// The board's Archive (row 69): archived tasks, newest first, each restorable.
+  Future<void> _archivedItems() async {
+    final res = await widget.api.get('/task-boards/${_board!['id']}/archived');
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final rows = (res.data as List? ?? const []).whereType<Map>().toList();
+    await showSidePanel<void>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Archived items',
+        child: rows.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Nothing archived on this board.'),
+              )
+            : ListView(
+                key: const Key('tasks-archived-list'),
+                shrinkWrap: true,
+                children: [
+                  for (final r in rows)
+                    ListTile(
+                      dense: true,
+                      title: Text('${r['title']}'),
+                      subtitle: Text(
+                        formatStamp(
+                          '${r['archived_at']}',
+                          '',
+                          formats: _formats,
+                        ),
+                      ),
+                      trailing: TextButton(
+                        key: ValueKey('task-restore-${r['id']}'),
+                        onPressed: () async {
+                          final ok = await widget.api.post(
+                            '/tasks/${r['id']}/restore',
+                            const {},
+                          );
+                          if (!panel.mounted) return;
+                          Navigator.of(panel).pop();
+                          if (!ok.ok) return _say(ok.reason);
+                          _say('${r['title']} restored');
+                          await _load();
+                        },
+                        child: const Text('Restore'),
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Monday's bulk "Set column value" (row 69): one column, one value, every picked task.
+  Future<Map<String, Object?>?> _pickColumnValue() async {
+    final columns = boardColumns(_board)
+        .where(
+          (c) => !const {
+            'formula',
+            'mirror',
+            'files',
+            'last_updated',
+            'creation_log',
+          }.contains(c.type),
+        )
+        .toList();
+    if (columns.isEmpty) return null;
+    BoardColumn column = columns.first;
+    Object? value;
+    return showSidePanel<Map<String, Object?>>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (context, set) => SidePanel(
+          title: 'Set column value',
+          actions: [
+            FilledButton(
+              key: const Key('bulk-values-go'),
+              onPressed: () => Navigator.of(panel).pop({column.id: value}),
+              child: const Text('Set'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownMenu<String>(
+                key: const Key('bulk-values-column'),
+                initialSelection: column.id,
+                enableFilter: true,
+                requestFocusOnTap: true,
+                label: const Text('Column'),
+                expandedInsets: EdgeInsets.zero,
+                dropdownMenuEntries: [
+                  for (final c in columns)
+                    DropdownMenuEntry(value: c.id, label: c.name),
+                ],
+                onSelected: (id) => set(() {
+                  column = columns.firstWhere((c) => c.id == id);
+                  value = null;
+                }),
+              ),
+              const SizedBox(height: 12),
+              ColumnEditor(
+                key: ValueKey('bulk-values-editor-${column.id}'),
+                api: widget.api,
+                column: column,
+                value: value,
+                people: _people,
+                formats: _formats,
+                framed: true,
+                onChanged: (v) => value = v,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Mark: anyone who can edit it. Unmark opens everything, so the server
@@ -1080,6 +1211,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 item('duplicate', 'Duplicate', Icons.copy_all_outlined),
                 item('status', 'Set status…', Icons.flag_outlined),
                 item('assign', 'Assign…', Icons.person_add_alt),
+                item('values', 'Set column value…', Icons.edit_note),
+                item('archive', 'Archive', Icons.archive_outlined),
                 item('delete', 'Delete', Icons.delete_outline),
               ],
               item('clear', 'Clear selection', Icons.close),
@@ -1094,7 +1227,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 item('duplicate', 'Duplicate', Icons.copy_all_outlined),
                 item('below', 'Create new task below', Icons.add),
                 item('subtask', 'Add subtask', Icons.subdirectory_arrow_right),
+                item('top', 'Move to top', Icons.vertical_align_top),
                 const PopupMenuDivider(),
+                item('archive', 'Archive', Icons.archive_outlined),
                 item('delete', 'Delete', Icons.delete_outline),
               ],
             ],
@@ -1176,7 +1311,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             taskIsSensitive(t) ? 'Unmark sensitive' : 'Mark sensitive',
           ),
         ),
-      if (_canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      if (_canEdit) ...[
+        const PopupMenuItem(value: 'top', child: Text('Move to top')),
+        const PopupMenuItem(value: 'archive', child: Text('Archive')),
+        const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ],
     ],
   );
 
@@ -1206,6 +1345,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     switch (op) {
       case 'delete':
         return _delete(ids);
+      case 'archive':
+        break;
+      case 'values':
+        final values = await _pickColumnValue();
+        if (values == null) return;
+        extra = {'values': values};
       case 'duplicate':
         for (final id in ids) {
           await widget.api.post('/tasks/$id/copy', const {});
@@ -1294,7 +1439,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ('duplicate', 'Duplicate'),
               ('status', 'Status'),
               ('assign', 'Assign'),
+              ('values', 'Set value'),
               ('export', 'Export'),
+              ('archive', 'Archive'),
               ('delete', 'Delete'),
             ])
               TextButton(
@@ -3762,6 +3909,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         leadingIcon: const Icon(Icons.download_outlined, size: 18),
         onPressed: _export,
         child: const Text('Export to Excel'),
+      ),
+      MenuItemButton(
+        key: const Key('tasks-archived-items'),
+        leadingIcon: const Icon(Icons.archive_outlined, size: 18),
+        onPressed: _archivedItems,
+        child: const Text('Archived items'),
       ),
       // Row 69: Monday's archived groups, each restorable with its tasks.
       if (_canEdit &&

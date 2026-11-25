@@ -1576,6 +1576,37 @@ void main() {
     });
   });
 
+  testWidgets('row 69: bulk Archive, and a row archived or moved to top', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-bulk-values')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('task-bulk-archive')));
+    await tester.pumpAndSettle();
+    expect(log.where((c) => c.$2 == '/tasks/bulk').single.$3, {
+      'ids': ['t1'],
+      'op': 'archive',
+    });
+
+    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to top').last);
+    await tester.pumpAndSettle();
+    expect(log.any((c) => c.$1 == 'PATCH' && c.$2 == '/tasks/t1/move'), isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive').last);
+    await tester.pumpAndSettle();
+    expect(
+      log.any((c) => c.$1 == 'POST' && c.$2 == '/tasks/t1/archive'),
+      isTrue,
+    );
+  });
+
   testWidgets('Esc closes a status menu opened from its cell', (tester) async {
     await pump(tester);
 

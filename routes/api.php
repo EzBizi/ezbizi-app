@@ -1153,6 +1153,9 @@ Route::prefix('v1')
         Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);
         Route::post('tasks/bulk', [TasksController::class, 'bulk']);
+        // Monday's Archive item and the board's Archive (row 69).
+        Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
+        Route::get('task-boards/{taskBoard}/archived', [TasksController::class, 'archived']);
         // Sensitive tasks: an authenticator code opens them on this session for 5 minutes.
         Route::delete('tasks/unlock', [TasksController::class, 'lock']);
         Route::post('tasks/{task}/unlock', [TasksController::class, 'unlock']);
