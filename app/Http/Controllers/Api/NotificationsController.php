@@ -162,6 +162,12 @@ class NotificationsController extends Controller
         return response()->json(['data' => ['id' => $notification->id, 'read_at' => $notification->read_at]]);
     }
 
+    /** GET /api/v1/notifications/kinds — the grouped list the settings screen draws. */
+    public function kinds(): JsonResponse
+    {
+        return response()->json(['data' => NotificationDispatcher::kindCatalogue()]);
+    }
+
     /** POST /api/v1/notifications/{id}/unread — Monday parity (desk, 2026-11-24). */
     public function markUnread(Request $request, Notification $notification): JsonResponse
     {

@@ -31,6 +31,7 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 Schedule::command('ezbizi:purge-deleted-task-boards')->dailyAt('03:55')->withoutOverlapping(30);
 // Expired, never-accepted invitations are withdrawn (Jose, 2026-11-03).
 Schedule::command('ezbizi:revoke-expired-invitations')->dailyAt('06:20')->withoutOverlapping(30);
+Schedule::command('ezbizi:notify-invitation-follow-ups')->dailyAt('14:10')->withoutOverlapping(30);
 // Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).
 Schedule::command('ezbizi:meta-access-check')->dailyAt('07:15')->withoutOverlapping(30);
 // Every connected token gets one cheap read; a refused one turns red (Jose, 2026-11-03).
