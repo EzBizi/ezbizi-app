@@ -1144,6 +1144,11 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/groups', [TaskBoardSettingsController::class, 'storeGroup']);
         Route::patch('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'updateGroup']);
         Route::delete('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'destroyGroup']);
+        // Monday's group menu (row 69).
+        Route::post('task-boards/{taskBoard}/groups/{group}/duplicate', [TaskBoardSettingsController::class, 'duplicateGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/move', [TaskBoardSettingsController::class, 'moveGroupToBoard']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/archive', [TaskBoardSettingsController::class, 'archiveGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/restore', [TaskBoardSettingsController::class, 'restoreGroup']);
         Route::post('task-boards/{taskBoard}/views', [TaskBoardViewsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);

@@ -692,6 +692,62 @@ void main() {
     sent(log.last, 'PATCH', '/task-boards/b-1/groups/g2', {'name': 'Soon'});
   });
 
+  testWidgets('row 69: the group menu is Monday\'s: colour, duplicate, '
+      'archive, collapse all and select all', (tester) async {
+    await pump(tester);
+    Future<void> menu() async {
+      await tester.tap(find.byKey(const ValueKey('group-menu-g1')));
+      await tester.pumpAndSettle();
+    }
+
+    await menu();
+    for (final k in [
+      'group-collapse-g1',
+      'group-collapse-all-g1',
+      'group-expand-all-g1',
+      'group-select-all-g1',
+      'group-add-above-g1',
+      'group-add-below-g1',
+      'group-duplicate-g1',
+      'group-rename-g1',
+      'group-colour-g1',
+      'group-export-g1',
+      'group-archive-g1',
+      'group-delete-g1',
+    ]) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+    }
+    await tester.tap(find.byKey(const ValueKey('group-colour-g1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-colour-g1-#ff642e')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1/groups/g1', {
+      'colour': '#ff642e',
+    });
+
+    await menu();
+    await tester.tap(find.byKey(const ValueKey('group-duplicate-g1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-duplicate-g1-false')));
+    await tester.pumpAndSettle();
+    expect(
+      log.any(
+        (l) => l.$1 == 'POST' && l.$2 == '/task-boards/b-1/groups/g1/duplicate',
+      ),
+      isTrue,
+    );
+
+    await menu();
+    await tester.tap(find.byKey(const ValueKey('group-archive-g1')));
+    await tester.pumpAndSettle();
+    expect(
+      log.any(
+        (l) => l.$1 == 'POST' && l.$2 == '/task-boards/b-1/groups/g1/archive',
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('a group with tasks is deleted only by moving them first', (
     tester,
   ) async {

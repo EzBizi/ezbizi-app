@@ -282,6 +282,9 @@ class TaskBoardsController extends Controller
             // Saved views: the board's shared ones and this person's own.
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
+            // Row 69: archived groups, for the board menu's Restore.
+            'archived_groups' => TaskGroup::query()->where('board_id', $taskBoard->id)->whereNotNull('archived_at')->orderByDesc('archived_at')
+                ->get()->map(fn (TaskGroup $g) => ['id' => $g->id, 'name' => $g->name, 'archived_at' => $g->archived_at?->toIso8601String()])->all(),
             // has_avatar: a face without a photo is not asked for one (each was a 404).
             // Two active accounts of one name (Artem Maliuk, Jose 11-24) say which is which.
             'assignable' => $assignable->map(fn ($u) => [

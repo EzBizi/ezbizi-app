@@ -872,7 +872,10 @@ final class MondayBoardReader
         }
         $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
             // A link to a Monday person is a mention however it is marked: its name alone (Cristine 11-25).
-            fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2])) : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
+            fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2]))
+                // A Monday file link dies with Monday (11-26): the name; the file itself is the update's attachment.
+                : (preg_match('#monday\.com/(?:protected_static/\d+/)?resources/\d+#', html_entity_decode($m[1])) ? '📎 '.trim(strip_tags($m[2]))
+                    : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')'), $html);
         $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html), '<b><i><u>');
         $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
 

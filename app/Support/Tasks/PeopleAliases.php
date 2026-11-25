@@ -25,11 +25,12 @@ class PeopleAliases
         if ($people->isEmpty()) {
             return [];
         }
-        $users = User::query()->whereKey($people->pluck('id'))->get(['id', 'email', 'organization_id']);
-        $monday = self::mondayNames((string) $users->first()?->organization_id);
+        $users = User::query()->whereKey($people->pluck('id'))->get(['id', 'email', 'organization_id', 'also_known_as']);
+        // Kept here (Monday off 11-26); read live from Monday only while a connection still answers.
+        $monday = $users->contains(fn ($u) => $u->also_known_as !== null) ? [] : self::mondayNames((string) $users->first()?->organization_id);
         $out = [];
         foreach ($users as $u) {
-            $words = array_filter([strstr((string) $u->email, '@', true) ?: null, $monday[(string) $u->id] ?? null]);
+            $words = array_filter([strstr((string) $u->email, '@', true) ?: null, $u->also_known_as ?? $monday[(string) $u->id] ?? null]);
             if ($words !== []) {
                 $out[(string) $u->id] = implode(' ', $words);
             }
@@ -39,7 +40,7 @@ class PeopleAliases
     }
 
     /** @return array<string, string> EzBizi user id => Monday name, read at most every six hours */
-    private static function mondayNames(string $org): array
+    public static function mondayNames(string $org): array
     {
         if ($org === '') {
             return [];
