@@ -49,6 +49,29 @@ void main() {
     expect(find.text('Chimney fire'), findsOneWidget);
   });
 
+  // Mobile review 11-24, iPhone on its side: three across, a two-line title
+  // and a two-line summary overflowed the card by 14 px.
+  testWidgets('a narrow card holds two lines of title and of summary', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      grants: ['guidelines.guidelines.view'],
+      size: const Size(700, 900),
+      cards: [
+        {
+          'id': 'g-1',
+          'title': 'Carbon monoxide alarm sounding in the customer home',
+          'summary': 'Leave the house, call 911 and the office, do not relight',
+          'color': '#D93025',
+          'steps': ['Get out'],
+          'has_image': false,
+        },
+      ],
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('on a phone the card opens inside the tab, with a way back', (
     tester,
   ) async {
@@ -110,6 +133,7 @@ Future<List<Map<String, dynamic>>> _pump(
   WidgetTester tester, {
   required List<String> grants,
   Size size = const Size(1200, 1400),
+  List<Map<String, dynamic>>? cards,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -129,7 +153,7 @@ Future<List<Map<String, dynamic>>> _pump(
       }
       if (path.endsWith('/guidelines')) {
         return _json({
-          'data': [
+          'data': cards ?? [
             {
               'id': 'g-1',
               'title': 'Chimney fire',

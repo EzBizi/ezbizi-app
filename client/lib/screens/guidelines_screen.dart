@@ -318,9 +318,11 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                       : 280,
                   // The text part grows with the reader's text size (iOS
                   // extra-extra-large overflowed the card by 6 px; mobile
-                  // review 11-24); the 102 px picture strip does not.
+                  // review 11-24); the 102 px picture strip does not. 132
+                  // holds a two-line title AND a two-line summary, which a
+                  // 3-across grid (iPhone on its side) gave 14 px too little.
                   mainAxisExtent:
-                      102 + MediaQuery.textScalerOf(context).scale(118),
+                      102 + MediaQuery.textScalerOf(context).scale(132),
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
