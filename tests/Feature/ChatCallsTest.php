@@ -175,7 +175,14 @@ class ChatCallsTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $call)
             ->assertJsonPath('data.0.meta.video', true)
-            ->assertJsonPath('data.0.chat.name', $this->bar->name);
+            ->assertJsonPath('data.0.chat.name', $this->bar->name)
+            ->assertJsonPath('data.0.chat_name', $this->bar->name)
+            ->assertJsonPath('data.0.other.user_id', $this->bar->id)
+            ->assertJsonPath('data.0.direction', 'in')
+            ->assertJsonPath('data.0.missed', false)
+            ->assertJsonPath('data.0.video', true)
+            ->assertJsonPath('data.0.duration_s', 0);
+        $this->signedInAs($this->bar)->getJson('/api/v1/chat/calls')->assertJsonPath('data.0.direction', 'out');
         $this->signedInAs($this->eve)->getJson('/api/v1/chat/calls')->assertJsonCount(0, 'data');
     }
 }

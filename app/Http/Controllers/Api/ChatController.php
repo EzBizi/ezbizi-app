@@ -84,7 +84,7 @@ class ChatController extends Controller
     {
         $me = $request->user();
         $mine = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->get()->keyBy('chat_id');
-        $chats = Chat::query()->whereIn('id', $mine->keys())->with('activeMembers.user:id,name')->get();
+        $chats = Chat::query()->whereIn('id', $mine->keys())->with(['activeMembers.user:id,name', 'job.customer:id,city'])->get();
 
         $unread = ChatMessage::query()
             ->join('chat_members as m', fn ($j) => $j->on('m.chat_id', '=', 'chat_messages.chat_id')->where('m.user_id', $me->id))
@@ -128,7 +128,9 @@ class ChatController extends Controller
             'description' => ['nullable', 'string', 'max:500'],
             'user_ids' => ['nullable', 'array', 'max:256'],
             'user_ids.*' => ['uuid'],
+            'job_id' => ['nullable', 'uuid'],
         ]);
+        $job = $this->jobFor($request, $input['job_id'] ?? null);
 
         if (! empty($input['user_id'])) {
             $other = $this->colleague($input['user_id']);
@@ -153,6 +155,10 @@ class ChatController extends Controller
                 return $chat;
             });
 
+            if ($job !== null) {
+                $chat->forceFill(['job_id' => $job->id])->save();
+            }
+
             return response()->json(['data' => $this->chatRow($chat->fresh('activeMembers.user'), $me)], Response::HTTP_CREATED);
         }
 
@@ -163,12 +169,13 @@ class ChatController extends Controller
         $people = collect($input['user_ids'] ?? [])->unique()->reject(fn ($id) => $id === $me->id)
             ->map(fn ($id) => $this->colleague($id));
 
-        $chat = DB::transaction(function () use ($me, $name, $input, $people) {
+        $chat = DB::transaction(function () use ($me, $name, $input, $people, $job) {
             $chat = Chat::query()->create([
                 'organization_id' => $this->tenant->idOrFail(),
                 'type' => 'group',
                 'name' => $name,
                 'description' => $input['description'] ?? null,
+                'job_id' => $job?->id,
                 'created_by' => $me->id,
             ]);
             ChatMember::query()->create(['organization_id' => $chat->organization_id, 'chat_id' => $chat->id, 'user_id' => $me->id, 'is_admin' => true]);
@@ -241,6 +248,31 @@ class ChatController extends Controller
         $this->pulse->bump($chat);
 
         return $this->show($request, $chat);
+    }
+
+    /** PATCH chat/chats/{chat}/job {job_id|null} — tie the chat to a job, or untie it. Any member. */
+    public function setJob(Request $request, Chat $chat): JsonResponse
+    {
+        $me = $request->user();
+        $this->member($chat, $me);
+        $input = $request->validate(['job_id' => ['present', 'nullable', 'uuid']]);
+        $job = $this->jobFor($request, $input['job_id']);
+        $chat->forceFill(['job_id' => $job?->id])->save();
+        $this->pulse->bump($chat);
+
+        return response()->json(['data' => $this->chatRow($chat->fresh(), $me)]);
+    }
+
+    /** A job the caller may see, by id; 404 for one they may not. */
+    private function jobFor(Request $request, ?string $id): ?\App\Models\Job
+    {
+        if ($id === null || $id === '') {
+            return null;
+        }
+        $job = \App\Models\Job::query()->find($id);
+        abort_if($job === null || $request->user()->cannot('view', $job), Response::HTTP_NOT_FOUND, 'That job is not one you can see.');
+
+        return $job;
     }
 
     /** POST chat/chats/{chat}/members — add people to a group (admins). */
@@ -665,7 +697,21 @@ class ChatController extends Controller
     /** GET chat/calls — my recent calls across every chat, newest first (the Calls tab). */
     public function recentCalls(Request $request): JsonResponse
     {
-        return $this->across($request, fn ($q) => $q->where('chat_messages.kind', 'call'));
+        $rows = $this->across($request, fn ($q) => $q->where('chat_messages.kind', 'call'))->getData(true)['data'];
+
+        return response()->json(['data' => array_map(fn (array $row) => [
+            ...$row,
+            'chat_name' => $row['chat']['name'] ?? null,
+            // The other party: the colleague in a direct chat, the group otherwise.
+            'other' => ($row['chat']['type'] ?? null) === 'direct'
+                ? ['user_id' => $row['chat']['user_id'] ?? null, 'name' => $row['chat']['name'] ?? null]
+                : ['user_id' => null, 'name' => $row['chat']['name'] ?? null],
+            'direction' => $row['mine'] ? 'out' : 'in',
+            'missed' => in_array($row['meta']['status'] ?? null, ['missed', 'declined'], true),
+            'video' => (bool) ($row['meta']['video'] ?? false),
+            'started_at' => $row['meta']['started_at'] ?? $row['sent_at'],
+            'duration_s' => (int) ($row['meta']['duration'] ?? 0),
+        ], $rows)]);
     }
 
     /** GET chat/search?q= — messages across every chat I am in. */
@@ -1011,6 +1057,13 @@ class ChatController extends Controller
             'member_names' => $chat->type === 'group' ? $members->map(fn ($m) => $m->user_id === $me->id ? 'You' : $m->user?->name)->filter()->values() : [],
             'online' => $other ? in_array($other->user_id, $this->pulse->online([$other->user_id]), true) : false,
             'last_seen' => $other ? $this->pulse->lastSeen($other->user_id) : null,
+            // EzChat's job line: "JOB-05112 · Hartford". Number and city only,
+            // shown to every member; opening the job is still the job's policy.
+            'job' => $chat->job_id === null ? null : (function () use ($chat) {
+                $job = $chat->relationLoaded('job') ? $chat->job : $chat->job()->with('customer:id,city')->first();
+
+                return $job === null ? null : ['id' => $job->id, 'number' => $job->number, 'city' => $job->customer?->city];
+            })(),
         ];
     }
 
