@@ -74,6 +74,92 @@ void main() {
     expect(find.byKey(const ValueKey('chat-row-c-1')), findsOneWidget);
   });
 
+  // Design 213 B1: a technician's hands are busy. On a phone the thread
+  // offers one-tap replies and a hold-to-talk mic; a desk keeps its plain
+  // composer.
+  for (final phone in [true, false]) {
+    testWidgets(
+      'quick replies ${phone ? 'send in one tap on a phone' : 'stay off a desk'}',
+      (tester) async {
+        final fake = _Fake();
+        await _pump(
+          tester,
+          fake,
+          size: phone ? const Size(390, 800) : const Size(1280, 900),
+        );
+        await tester.tap(find.byKey(const ValueKey('chat-row-c-1')));
+        await tester.pumpAndSettle();
+        final onMyWay = find.byKey(const ValueKey('chat-quick-On my way'));
+        expect(onMyWay, phone ? findsOneWidget : findsNothing);
+        expect(find.byKey(const ValueKey('chat-mic-hold')), findsOneWidget);
+        if (!phone) return;
+        await tester.tap(onMyWay);
+        await tester.pumpAndSettle();
+        expect(fake.sent.last['body'], 'On my way');
+        // Typing hides them; the field is the message.
+        await tester.enterText(find.byKey(const ValueKey('chat-input')), 'Hi');
+        await tester.pump();
+        expect(onMyWay, findsNothing);
+      },
+    );
+  }
+
+  // Design 213 B1 (Chat 9820ac23a): a chat tied to a job says which, and
+  // the Jobs chip keeps only those.
+  for (final tied in [true, false]) {
+    testWidgets(
+      'a chat ${tied ? 'tied to a job shows it and stays' : 'of no job leaves'} '
+      'under the Jobs chip',
+      (tester) async {
+        final fake = _Fake();
+        fake.chats.first['job'] = tied
+            ? {'id': 'j-1', 'number': 'JOB-05112', 'city': 'Hartford'}
+            : null;
+        await _pump(tester, fake, size: const Size(390, 800));
+        expect(
+          find.text('JOB-05112 · Hartford'),
+          tied ? findsOneWidget : findsNothing,
+        );
+        await tester.tap(find.byKey(const ValueKey('chat-filter-jobs')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('chat-row-c-1')),
+          tied ? findsOneWidget : findsNothing,
+        );
+      },
+    );
+  }
+
+  testWidgets('Link to job: search, pick, and the chat says its job', (
+    tester,
+  ) async {
+    final fake = _Fake()..jobsView = true;
+    await _pump(tester, fake, size: const Size(390, 800));
+    await tester.tap(find.byKey(const ValueKey('chat-row-c-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Menu').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-menu-job')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-job-picker')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('chat-job-j-1')));
+    await tester.pumpAndSettle();
+    expect(fake.jobLinks, ['j-1']);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('JOB-05112 · Hartford'), findsOneWidget);
+  });
+
+  testWidgets('without jobs.view there is no Link to job', (tester) async {
+    final fake = _Fake();
+    await _pump(tester, fake, size: const Size(390, 800));
+    await tester.tap(find.byKey(const ValueKey('chat-row-c-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Menu').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-menu-job')), findsNothing);
+  });
+
   testWidgets('a reply carries reply_to_id and the quote is drawn', (
     tester,
   ) async {
@@ -128,6 +214,8 @@ Finder _inThread(String text) =>
 class _Fake {
   final sent = <Map<String, dynamic>>[];
   final groups = <Map<String, dynamic>>[];
+  final jobLinks = <Object?>[];
+  var jobsView = false;
 
   final chats = <Map<String, Object?>>[
     {
@@ -207,13 +295,38 @@ class _Fake {
   ];
 
   Future<http.Response> handle(http.Request request) async {
+    if (request.url.path.endsWith('/jobs')) {
+      return _json({
+        'data': [
+          {
+            'id': 'j-1',
+            'number': 'JOB-05112',
+            'title': 'Chimney liner',
+            'status_label': 'Scheduled',
+            'customer': {'name': 'Pat Lee'},
+          },
+        ],
+      });
+    }
+    if (request.url.path.endsWith('/chat/chats/c-1/job')) {
+      final job = (jsonDecode(request.body) as Map)['job_id'];
+      jobLinks.add(job);
+      chats.first['job'] = job == null
+          ? null
+          : {'id': job, 'number': 'JOB-05112', 'city': 'Hartford'};
+      return _json({'data': chats.first});
+    }
     final path = request.url.path;
     final method = request.method;
     if (path.endsWith('/me')) {
       return _json({
         'data': {
           ..._me,
-          'permissions': ['phone.view', 'phone.chat.view'],
+          'permissions': [
+            'phone.view',
+            'phone.chat.view',
+            if (jobsView) 'jobs.view',
+          ],
         },
       });
     }

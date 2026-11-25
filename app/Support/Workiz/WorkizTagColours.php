@@ -3,6 +3,7 @@
 namespace App\Support\Workiz;
 
 use App\Models\WorkizRecord;
+use App\Support\Jobs\ProjectCosts;
 
 /**
  * A job tag's Workiz colour (Jose, 2026-11-10: tags in their Workiz colour,
@@ -21,6 +22,9 @@ final class WorkizTagColours
      */
     private ?array $map = null;
 
+    /** The colour Workiz gives PROJECT in every A-1 account. */
+    public const PROJECT_COLOUR = '#3D1C8B';
+
     /** @var array<string, array<string, string>> by franchise id: name as Workiz spells it => colour */
     private array $names = [];
 
@@ -35,7 +39,14 @@ final class WorkizTagColours
     {
         $this->map ??= $this->load();
 
-        return collect($this->names[(string) $franchiseId] ?? [])
+        // EzBizi is master (Jose, 2026-11-25): PROJECT, which gates project costs,
+        // is always offered, even where the Workiz list lacks it.
+        $names = $this->names[(string) $franchiseId] ?? [];
+        if (! collect($names)->keys()->contains(fn ($n) => mb_strtoupper(trim($n)) === ProjectCosts::TAG)) {
+            $names[ProjectCosts::TAG] = self::PROJECT_COLOUR;
+        }
+
+        return collect($names)
             ->map(fn (string $hex, string $name) => ['name' => $name, 'colour' => $hex])
             ->sortBy(fn ($t) => mb_strtolower($t['name']))->values()->all();
     }
@@ -47,7 +58,7 @@ final class WorkizTagColours
         $out = [];
         foreach ($tags as $tag) {
             $key = mb_strtolower(trim((string) $tag));
-            $hex = $this->map[(string) $franchiseId][$key] ?? null;
+            $hex = $this->map[(string) $franchiseId][$key] ?? ($key === mb_strtolower(ProjectCosts::TAG) ? self::PROJECT_COLOUR : null);
             if ($hex !== null) {
                 $out[(string) $tag] = $hex;
             }

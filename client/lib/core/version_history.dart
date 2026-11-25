@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0649', date: '25 Nov 2026', items: [
+      'This build carries everything listed under 0.0.0648 and 0.0.0647 (those releases were folded into this one)',
+      'Jobs: the Project tag is always offered when tagging a job, and you always find yourself in the technician picker',
+      'Chat on phones: one-tap replies (On my way, Running late, Done, Need parts), a camera beside the message box, and hold-to-talk voice notes',
+      'Chat: link a chat to a job, and it shows the job number and city at the top',
+      'EzChat: Chats, Calls and You tabs; recent calls with missed ones in red, call back or join',
+    ]),
     VersionRelease(version: '0.0.0648', date: '25 Nov 2026', items: [
       'Customer Experience: a branch task about a complaint links to that complaint, so its status, owner and updates show on Reviews and Complaints too, and the duplicate copies in A1 - Operation stop',
       'Task Board: you always find yourself in owner and assignee pickers, the person filter and @mentions, whatever company is picked',
