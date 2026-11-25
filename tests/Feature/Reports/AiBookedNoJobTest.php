@@ -53,7 +53,7 @@ class AiBookedNoJobTest extends TestCase
             // A reschedule: an open job booked the week before.
             WorkizJob::query()->create(['franchise_id' => $t['franchise']->id, 'connection_id' => $c->id,
                 'remote_id' => 'JOB-2', 'booked_at' => '2026-09-29 10:00:00', 'synced_at' => now(),
-                'payload' => ['UUID' => 'JOB-2', 'Phone' => '2342014951', 'CreatedDate' => '2026-09-29 10:00:00', 'Status' => 'Submitted']]);
+                'payload' => ['UUID' => 'JOB-2', 'Phone' => '2345550100', 'CreatedDate' => '2026-09-29 10:00:00', 'Status' => 'Submitted']]);
 
             foreach (['has-job', 'no-job', 'reschedule'] as $id) {
                 CallReportLabel::query()->create(['call_id' => $id, 'provider' => 'grok', 'label' => 'booked']);
@@ -65,8 +65,8 @@ class AiBookedNoJobTest extends TestCase
             '*/phone-number*' => Http::response(['records' => []]),
             '*/call-log*' => Http::response(['records' => [
                 $this->rc('has-job', '+12145550001', '14:00'),
-                $this->rc('no-job', '+12147948797', '17:55'),
-                $this->rc('reschedule', '+12342014951', '18:20'),
+                $this->rc('no-job', '+12145550101', '17:55'),
+                $this->rc('reschedule', '+12345550100', '18:20'),
             ], 'paging' => ['page' => 1]]),
         ]);
 
@@ -77,7 +77,7 @@ class AiBookedNoJobTest extends TestCase
         $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'reports.ai_booked_no_job')->sole();
         $this->assertSame(1, $event->payload['after']['count'] ?? $event->payload['count'] ?? null);
         $summary = (string) ($event->payload['after']['summary'] ?? $event->payload['summary'] ?? '');
-        $this->assertStringContainsString('1:55pm · A1 - New Client · +12147948797 · answered by Trey Brannan', $summary);
+        $this->assertStringContainsString('1:55pm · A1 - New Client · +12145550101 · answered by Trey Brannan', $summary);
         $this->assertStringNotContainsString('2145550001', $summary);
     }
 

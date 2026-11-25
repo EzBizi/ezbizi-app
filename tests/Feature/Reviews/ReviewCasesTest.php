@@ -125,7 +125,7 @@ class ReviewCasesTest extends TestCase
         $reported = $this->review(['loc' => '7']);
         $mine = $this->review(['loc' => '7', 'status' => 'done']);
         $customer = $this->inTenant($this->t['org'], fn () => Customer::create(['owning_franchise_id' => $this->t['franchise']->id,
-            'number' => 'C-9', 'name' => 'Sam Mull', 'phone' => '(937) 594-8944']));
+            'number' => 'C-9', 'name' => 'Sam Mott', 'phone' => '(937) 555-0101']));
         $card = fn (Review $r, array $c, int $seq) => \App\Models\A1LeadsReview::create([
             'organization_id' => $this->t['org']->id, 'seq' => $seq,
             // Rodrigo's grant names the account differently.
@@ -133,7 +133,7 @@ class ReviewCasesTest extends TestCase
             'card' => ['updated_at' => '2026-10-13T15:13:19Z', ...$c]]);
         $this->inTenant($this->t['org'], function () use ($card, $working, $reported, $mine) {
             $card($working, ['status' => 'Working on it', 'note' => 'Left a voicemail',
-                'customer' => ['matched' => true, 'phone' => '+19375948944']], 1);
+                'customer' => ['matched' => true, 'phone' => '+19375550101']], 1);
             $card($reported, ['status' => 'Reported - 2026-10-12'], 2);
             $card($mine, ['status' => "Can't locate", 'note' => 'Old note'], 3);
             \App\Models\A1LeadsReview::create(['organization_id' => $this->t['org']->id, 'seq' => 4,

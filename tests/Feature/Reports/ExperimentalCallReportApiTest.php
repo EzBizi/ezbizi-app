@@ -330,7 +330,7 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertCount(1, $calls);
         $this->assertSame('Trey Brannan', $calls[0]['answered_by']);
         $this->assertSame('rec-9', $calls[0]['recording_id']);
-        $this->assertSame('PERRON,NICOLE', $calls[0]['caller_label']);
+        $this->assertSame('PARKER,NICOLE', $calls[0]['caller_label']);
 
         // The names in the drill-down are canonicalised the same way the
         // columns are. Left raw, a call would sit under a row labelled with a
@@ -624,7 +624,7 @@ class ExperimentalCallReportApiTest extends TestCase
 
         // The job is booked in Workiz for the caller's number.
         $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
-        $this->syncedJob($tenant, $nationwide, '7579553189', 'Trey Brannan', '2026-09-14 10:00:00');
+        $this->syncedJob($tenant, $nationwide, '7575550100', 'Trey Brannan', '2026-09-14 10:00:00');
         $done = $day();
         $this->assertFalse($done['calls'][0]['needs_attention']);
         $this->assertTrue($done['calls'][0]['booked']);
@@ -646,7 +646,7 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->inTenant($tenant['org'], fn () => CallReportLabel::query()->create(['call_id' => '1', 'provider' => 'grok', 'label' => 'booked']));
         $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'client', 'value' => 'existing'])->assertOk();
         $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
-        $this->syncedJob($tenant, $nationwide, '7579553189', 'Trey Brannan', '2026-09-14 10:00:00');
+        $this->syncedJob($tenant, $nationwide, '7575550100', 'Trey Brannan', '2026-09-14 10:00:00');
 
         $open = $day();
         $person = fn (array $report) => collect($report['people'])->firstWhere('person', $open['calls'][0]['answered_by']);
@@ -716,7 +716,7 @@ class ExperimentalCallReportApiTest extends TestCase
                     'direction' => 'Inbound',
                     'result' => 'Accepted',
                     'startTime' => '2026-09-14T13:21:11.795Z',
-                    'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
+                    'from' => ['phoneNumber' => '+17575550100', 'name' => 'PARKER,NICOLE'],
                     'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
                     // Present on 175 of 250 real inbound calls, measured
                     // 2026-09-17. Its ABSENCE is equally ordinary, which is why

@@ -107,7 +107,7 @@ class PhoneBridgeCallTest extends TestCase
         $this->signedInAs($caller)
             ->postJson('/api/v1/phone/calls/bridge', [
                 'number_id' => $number->id,
-                'to' => '+13057242199',
+                'to' => '+13055550107',
             ])
             ->assertCreated();
 
@@ -122,7 +122,7 @@ class PhoneBridgeCallTest extends TestCase
         // And the customer, on the inner Dial, sees the company line.
         $twiml = $args[3];
         $this->assertStringContainsString('callerId="+12035554000"', $twiml);
-        $this->assertStringContainsString('+13057242199', $twiml);
+        $this->assertStringContainsString('+13055550107', $twiml);
         $this->assertStringNotContainsString(
             '+17865550001',
             $twiml,
@@ -146,7 +146,7 @@ class PhoneBridgeCallTest extends TestCase
         $this->signedInAs($caller)
             ->postJson('/api/v1/phone/calls/bridge', [
                 'number_id' => $number->id,
-                'to' => '+13057242199',
+                'to' => '+13055550107',
             ])
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'your own phone number'));
@@ -160,7 +160,7 @@ class PhoneBridgeCallTest extends TestCase
      * ── What this check can and cannot see ──────────────────────────
      *
      * It sees SHAPE. It does not see that `+305` is not a country, because
-     * `+3057242199` is structurally valid E.164 — ten digits behind a plus —
+     * `+3055550107` is structurally valid E.164 — ten digits behind a plus —
      * which is exactly why it went unchallenged for weeks. Catching that needs
      * a table of real country codes, and pretending a regex does it would be
      * the same overclaim in a new place.
@@ -175,7 +175,7 @@ class PhoneBridgeCallTest extends TestCase
 
         $caller = $this->deskWithPhone($t, $number, 'bad@t.test', '+17865550001');
 
-        foreach (['3057242199', '+1', 'not a number', ''] as $bad) {
+        foreach (['3055550107', '+1', 'not a number', ''] as $bad) {
             $this->signedInAs($caller)
                 ->postJson('/api/v1/phone/calls/bridge', [
                     'number_id' => $number->id,

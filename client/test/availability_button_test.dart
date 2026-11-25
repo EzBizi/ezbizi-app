@@ -43,7 +43,7 @@ void main() {
 
     // A call arrives and is answered — no screen involved, as happens when
     // somebody answers from the app-wide bar.
-    device.ring('+13057242199');
+    device.ring('+13055550107');
     service.accept();
     await tester.pump();
 
@@ -64,7 +64,7 @@ void main() {
 
     await _pump(tester, state: 'registered');
 
-    device.ring('+13057242199');
+    device.ring('+13055550107');
     service.accept();
     await tester.pump();
 
@@ -111,7 +111,7 @@ void main() {
 
     // A call arrives, is answered, and the server is told — which is what the
     // webhook does on a real call.
-    device.ring('+13057242199');
+    device.ring('+13055550107');
     started.accept();
     server.state = 'on_call';
     await tester.pump();

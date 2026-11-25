@@ -367,7 +367,7 @@ class PhoneBlockedCallerTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057240001',
+                'e164' => '+13055550104',
                 'ring_group_id' => $group->id,
             ]);
 
@@ -391,7 +391,7 @@ class PhoneBlockedCallerTest extends TestCase
             'AccountSid' => 'AC'.str_repeat('a', 32),
             'Direction' => 'inbound',
             'From' => $from,
-            'To' => '+13057240001',
+            'To' => '+13055550104',
             'CallStatus' => 'ringing',
         ];
 

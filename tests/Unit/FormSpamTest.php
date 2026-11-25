@@ -13,7 +13,7 @@ class FormSpamTest extends TestCase
         $this->assertTrue(WebsiteEnquiries::looksLikeSpam(['email' => 'muflzmnawsr@victoria-photographer.ru'], ['Message' => 'hello']));
         $this->assertTrue(WebsiteEnquiries::looksLikeSpam(['email' => 'x@bazavodolazov.store'], ['Message' => 'Заказ оформляется по ссылке']));
         $this->assertFalse(WebsiteEnquiries::looksLikeSpam(
-            ['name' => 'Tammy Sarro', 'email' => 'tlsarro@gmail.com'],
+            ['name' => 'Tammy Selby', 'email' => 'tsample@gmail.com'],
             ['Message' => 'Chimney sweep and inspection please, 12 Hillcrest Ct'],
         ));
     }

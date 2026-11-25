@@ -561,8 +561,8 @@ void main() {
         size: Size(width, 900),
         leads: [
           {
-            ..._lead('lead-1', 'Dave Malkowski with a long surname'),
-            'phone': '+12196692720',
+            ..._lead('lead-1', 'Dave Mapleford with a long surname'),
+            'phone': '+12195550100',
             'can_reply': true,
             'reply_overdue': true,
             'customer': {'id': 'cu-1', 'number': 'C-0042', 'name': 'Dave'},
@@ -915,7 +915,7 @@ void main() {
         {
           'id': 'c3',
           'provider': 'google_ads',
-          'display_name': '772-410-3388',
+          'display_name': '772-555-0100',
           'status': 'connected',
           'leads_franchise_id': null,
           'leads_count': 0,

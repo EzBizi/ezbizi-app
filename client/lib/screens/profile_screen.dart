@@ -262,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Phone number',
             // Formatted here, raw in the field this opens. The row is being
             // READ — checking a number you already know is the commonest
-            // reason to come here at all — and +13057242199 is not something
+            // reason to come here at all — and +13055550107 is not something
             // anybody reads back.
             formatPhoneNumber(_profile['phone'] as String? ?? ''),
             () => _open(context, 'Who you are', _identity()),

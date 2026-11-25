@@ -8,7 +8,7 @@ Everything under "Today" was read from the Twilio API and the production databas
 
 ## Today (measured)
 
-**Old parent account:** ACbfccaca6da66d0b542a51ab89d306fe4. Its primary profile is BU1cddd… "A1 Chimney HQ LLC", which is the problem being escaped.
+**Old parent account:** ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. Its primary profile is BU1cddd… "A1 Chimney HQ LLC", which is the problem being escaped.
 
 | Twilio account | EzBizi connection (Triplex Group org) | Numbers on Twilio | In EzBizi? |
 |---|---|---|---|
@@ -127,7 +127,7 @@ After step 3 we do everything else through the API and tell him only if Twilio n
 - **Parent extras,** only if Jose wants them: +18774508572 "Reports" and +18778536971 "WhatsApp Business".
 
 **Order:**
-1. **Test first:** +19544538774 (AngiSweep), a single line with no texting registration. Move it, switch its connection, then make a test call and text to Jose's +13057242199 and check line health.
+1. **Test first:** +19544538774 (AngiSweep), a single line with no texting registration. Move it, switch its connection, then make a test call and text to Jose's +13055550107 and check line health.
 2. **EzBizi App:** +17864086862, then +18777373929, then switch PlatformSms.
 3. **EverDoors:** +18884974794 (+18888599924).
 4. **A-1:** the 11 locals together, so the campaign covers them all at once. Then 855. Then switch the platform credentials (§3.1).

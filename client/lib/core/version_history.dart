@@ -296,7 +296,7 @@ class VersionHistory {
       'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
     ]),
     VersionRelease(version: '0.0.0613', date: '20 Nov 2026', deployed: '2026-11-20 13:27', items: [
-      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
+      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 555-0100',
       'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
     ]),
     VersionRelease(version: '0.0.0612', date: '19 Nov 2026', deployed: '2026-11-20 00:54', items: [
@@ -1645,7 +1645,7 @@ class VersionHistory {
         'Workiz: each Workiz estimate on a job carries its customer link to view and pay, and {{estimate_link}} works in rules. The signed-in Workiz login files its accounts to branches by itself, and a login sent before logins were per company can be moved to its company in one click.',
         'Jobs: a job opened from Project Management or a customer shows its type, sub-status and tags in the pickers.',
         'Project Management has its own place in the sidebar, with a search across job numbers, customers, addresses, phones and technicians. Who could see it in Jobs still can.',
-        'Phone notifications say whose they are ("EzBizi - A-1 Chimney - Connecticut"), then what happened, then the details. Phone numbers read (219) 670-6463 and empty brackets are gone; a missed call names the line and the caller when known.',
+        'Phone notifications say whose they are ("EzBizi - A-1 Chimney - Connecticut"), then what happened, then the details. Phone numbers read (219) 555-0101 and empty brackets are gone; a missed call names the line and the caller when known.',
         'Branch pickers read company first: "A-1 Chimney · Texas".',
         'Automations: a notification can also go to the job\'s technicians.',
       ],
@@ -2519,7 +2519,7 @@ class VersionHistory {
       version: '0.0.0380',
       date: '7 Oct 2026',
       items: [
-        'A1 Leads GBP: phone numbers in the Contact column and on the card now read (513) 390-5722.',
+        'A1 Leads GBP: phone numbers in the Contact column and on the card now read (513) 555-0101.',
       ],
     ),
     VersionRelease(
@@ -3769,7 +3769,7 @@ class VersionHistory {
       version: '0.0.0252',
       date: '23 Sep 2026',
       items: [
-        'Customer phone numbers read as phone numbers again. Everything imported from Workiz was stored as ten bare digits, so a customer showed 4242095909 rather than +1 (424) 209-5909 - and because the whole app keys on the full form, those numbers were also the wrong thing to call or text. The 617 already in the book have been corrected.',
+        'Customer phone numbers read as phone numbers again. Everything imported from Workiz was stored as ten bare digits, so a customer showed 4245550100 rather than +1 (424) 555-0100 - and because the whole app keys on the full form, those numbers were also the wrong thing to call or text. The 617 already in the book have been corrected.',
         'Settings has an Extensions tab, so an extension can be assigned to a person, a ring group or an IVR menu. A caller can now type the extension they want, which the prompt had been promising for weeks.',
         'A1Leads GBP has A1 Tools Board and Table toggle, and the table carries the columns that can be filled honestly: the matched customer with the city under it, the review at three lines, date, rating and reply.',
       ],
@@ -5002,7 +5002,7 @@ class VersionHistory {
         'Business profile: a revoked Google permission says it was revoked, '
             'instead of telling you to wait for a quota approval that was '
             'never coming.',
-        'Phone numbers read the same way everywhere - +1 (305) 724-2199 - on '
+        'Phone numbers read the same way everywhere - +1 (305) 555-0107 - on '
             'every screen and in every module, instead of the stored form. '
             'Typing ten digits into any phone field formats it as you go.',
       ],
@@ -5390,7 +5390,7 @@ class VersionHistory {
             'phone, such as an email arriving.',
         'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
             '2199 - were losing their country code and being dialled as '
-            '+3057242199, which is not a phone number, so no outgoing call '
+            '+3055550107, which is not a phone number, so no outgoing call '
             'has ever connected. The same applied to text messages.',
         'Phone: the Call tab is now called Dial, and you ring a colleague from '
             'their own row in the Team list rather than from an Internal '

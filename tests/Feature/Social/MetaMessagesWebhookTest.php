@@ -304,14 +304,14 @@ class MetaMessagesWebhookTest extends TestCase
         // feature this app does not hold and refused every real customer.
         Http::fake(['graph.facebook.com/*/'.self::PAGE_ID.'/conversations*' => Http::response(['data' => [[
             'participants' => ['data' => [
-                ['name' => 'Scarllet Peter', 'id' => self::SENDER],
+                ['name' => 'Scarllet Pryor', 'id' => self::SENDER],
                 ['name' => 'A-1 Chimney', 'id' => self::PAGE_ID],
             ]],
         ]]])]);
 
         $this->deliver($this->body(['mid' => 'm_N', 'text' => 'hi']))->assertOk();
 
-        $this->assertSame('Scarllet Peter', Lead::query()->withoutGlobalScopes()->firstOrFail()->contact_name);
+        $this->assertSame('Scarllet Pryor', Lead::query()->withoutGlobalScopes()->firstOrFail()->contact_name);
     }
 
     public function test_an_instagram_lead_without_a_name_is_named_by_username(): void

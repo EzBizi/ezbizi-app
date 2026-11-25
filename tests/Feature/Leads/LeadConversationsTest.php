@@ -1144,7 +1144,7 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
-     * "609", "(609)" and "609-246" all find +1 216 555 0100's neighbour; the
+     * "609", "(609)" and "609-555" all find +1 216 555 0100's neighbour; the
      * four-digit floor made the short form find nothing (Jose, 2026-09-09).
      * Words in the last message count too.
      */
@@ -1154,11 +1154,11 @@ class LeadConversationsTest extends TestCase
         $connection = $this->connected($t);
 
         $lead = $this->leadRow('111', 'Jane Doe');
-        $lead['localServicesLead']['contactDetails']['phoneNumber'] = '+1 (609) 246-1458';
+        $lead['localServicesLead']['contactDetails']['phoneNumber'] = '+1 (609) 555-0101';
         $this->fakeGoogle([$lead], array_slice($this->threadRows('111'), 1, 1));
         $this->sync($t, $connection);
 
-        foreach (['609', '(609)', '609-246', '609 246 1', '2461458', 'Saturday'] as $needle) {
+        foreach (['609', '(609)', '609-555', '609 555 0', '5550101', 'Saturday'] as $needle) {
             $names = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?search='.urlencode($needle))->assertOk()->json('data.*.contact_name');
             $this->assertSame(['Jane Doe'], $names, "'$needle' must find the lead");
         }

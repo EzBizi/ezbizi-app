@@ -9,7 +9,7 @@ use App\Support\Notifications\LeadNotificationText;
 
 /**
  * Leads matching a name, email, ZIP or phone number, for another module's
- * search box (Customers, 2026-10-16: a dispatcher searched for James Quinn and
+ * search box (Customers, 2026-10-16: a dispatcher searched for James Quill and
  * found nothing because he was only an LS Call lead).
  *
  * The reader's own leads only, by the rules the Leads list uses: the

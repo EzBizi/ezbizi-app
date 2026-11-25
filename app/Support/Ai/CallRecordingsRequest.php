@@ -7,7 +7,7 @@ use RuntimeException;
 
 /**
  * Reads a staff WhatsApp message asking for a caller's calls ("please send me
- * all the calls w this number 9524572594") into a number and a date range
+ * all the calls w this number 9525550100") into a number and a date range
  * (Jose, 2026-10-13: Grok interprets it; today unless a date is asked; "grok
  * can also reply asking for clarifications").
  */

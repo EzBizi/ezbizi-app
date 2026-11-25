@@ -101,7 +101,7 @@ class CallsController extends Controller
 
         // SHAPE only, and it is worth being clear what that does not cover.
         //
-        // `+3057242199` — the number every outbound call went to for weeks —
+        // `+3055550107` — the number every outbound call went to for weeks —
         // passes this, because it IS structurally valid E.164. What was wrong
         // with it is that +305 is not a country, and seeing that needs a table
         // of real country codes rather than a pattern. The country code is

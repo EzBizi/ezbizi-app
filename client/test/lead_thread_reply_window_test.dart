@@ -89,7 +89,7 @@ void main() {
             player: FakeRecordingPlayer(),
             lead: const {
               'id': 'lead-1',
-              'contact_name': 'Saman Shafqat',
+              'contact_name': 'Saman Shelton',
               'status': 'new',
             },
             onStatusChanged: (_) async {},

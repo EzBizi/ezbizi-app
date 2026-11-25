@@ -819,7 +819,7 @@ class AutomationEngineTest extends TestCase
             'organization_id' => $this->org['organization']->id,
             'event_key'       => 'email.received',
             'payload'         => [
-                'subject'      => 'New Call from CBUS (614) 597-4999',
+                'subject'      => 'New Call from CBUS (614) 555-0101',
                 'from_address' => 'notify@ringcentral.com',
             ],
             'occurred_at'     => now(),
@@ -1712,7 +1712,7 @@ class AutomationEngineTest extends TestCase
         $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
             'type'     => 'whatsapp.send',
             'template' => 'job_booked',
-            'to_field' => '+1 305 724 2199',
+            'to_field' => '+1 305 555 0107',
             // A VARIABLE, resolved off the event. This arm passed null for the
             // record too, so every {{...}} in a template parameter went out
             // blank — a template whose whole job is to carry the specifics.
@@ -1901,7 +1901,7 @@ class AutomationEngineTest extends TestCase
         $ran = $this->inTenant(fn () => app(ActionRunner::class)->run([
             'type'      => 'sms.send',
             'number_id' => $number->id,
-            'to'        => '+13057242199',
+            'to'        => '+13055550107',
             'body'      => 'Missed call, see {{from_address}}',
         ], $event, null, false, $this->automation('email.received', null, [])));
 

@@ -30,6 +30,6 @@ class CustomerRealContactTest extends TestCase
 
         // Handed back as given: this decides WHETHER to keep a number, not how
         // to write it.
-        $this->assertSame('(347) 724-5006', Customer::realPhone(' (347) 724-5006 '));
+        $this->assertSame('(347) 555-0100', Customer::realPhone(' (347) 555-0100 '));
     }
 }

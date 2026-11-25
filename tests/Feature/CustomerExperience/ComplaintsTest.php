@@ -155,7 +155,7 @@ class ComplaintsTest extends TestCase
     {
         $caller = $this->inTenant($this->t['org'], fn () => Lead::create(['organization_id' => $this->t['org']->id,
             'company_id' => $this->t['company']->id, 'franchise_id' => $this->t['franchise']->id, 'source' => 'phone',
-            'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145340603']));
+            'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145550101']));
         $this->event('lead.call_complaint', $caller);
         $review = $this->review(1);
         $this->event('review.received', $review);
@@ -165,7 +165,7 @@ class ComplaintsTest extends TestCase
         $rows = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/complaints?status=all')->assertOk()->json('data'))->keyBy('kind');
 
         $this->assertNull($rows['call_complaint']['title']);
-        $this->assertSame('+14145340603', $rows['call_complaint']['phone']);
+        $this->assertSame('+14145550101', $rows['call_complaint']['phone']);
         $this->assertFalse($rows['call_complaint']['source_missing']);
         $this->assertTrue($rows['bad_review']['source_missing']);
     }
@@ -175,7 +175,7 @@ class ComplaintsTest extends TestCase
     {
         $caller = $this->inTenant($this->t['org'], fn () => Lead::create(['organization_id' => $this->t['org']->id,
             'company_id' => $this->t['company']->id, 'franchise_id' => $this->t['franchise']->id, 'source' => 'phone',
-            'remote_id' => 'call-9', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145340699',
+            'remote_id' => 'call-9', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145550102',
             'summary' => 'Dana booked a chimney sweep for Tuesday.']));
         $this->event('lead.call_complaint', $caller, ['summary' => 'Dana says nobody showed for Tuesday.']);
         $this->intake();

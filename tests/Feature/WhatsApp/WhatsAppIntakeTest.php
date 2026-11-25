@@ -311,8 +311,8 @@ class WhatsAppIntakeTest extends TestCase
         $this->assertSame('Kel', $lead->contact_name);
 
         $this->change(['state_sync' => [['type' => 'contact', 'action' => 'add',
-            'contact' => ['full_name' => 'Kelvin Badger', 'phone_number' => '+'.self::STRANGER]]]]);
-        $this->assertSame('Kelvin Badger', $lead->fresh()->contact_name);
+            'contact' => ['full_name' => 'Kelvin Bishop', 'phone_number' => '+'.self::STRANGER]]]]);
+        $this->assertSame('Kelvin Bishop', $lead->fresh()->contact_name);
         $this->assertSame('42', DB::table('whatsapp_contacts')->value('referral') ? json_decode(DB::table('whatsapp_contacts')->value('referral'), true)['source_id'] : null);
 
         $this->change(['message_echoes' => [['id' => 'wamid.OUT1', 'from' => '18885195311', 'to' => self::STRANGER,
