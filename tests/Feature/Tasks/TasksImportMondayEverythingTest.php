@@ -169,6 +169,28 @@ class TasksImportMondayEverythingTest extends TestCase
         });
     }
 
+    /** Health sweep 11-25: a download inside the item's transaction held task_updates locks; staff posts got 1205. */
+    public function test_a_file_downloads_before_the_items_transaction_opens_and_only_once(): void
+    {
+        $base = \Illuminate\Support\Facades\DB::transactionLevel();
+        $levels = [];
+        \Illuminate\Support\Facades\Http::fake(['files.monday.test/*' => function () use (&$levels) {
+            $levels[] = \Illuminate\Support\Facades\DB::transactionLevel();
+
+            return \Illuminate\Support\Facades\Http::response('PDFDATA', 200);
+        }]);
+        $items = [$this->item('31', 'Quote', ['updates' => [[
+            'monday_id' => 'u3', 'author_email' => 'jose@a-1chimney.com', 'created_at' => '2026-10-02T09:00:00Z', 'body' => 'see',
+            'files' => [['monday_id' => 'f1', 'name' => 'quote.pdf', 'ext' => '.pdf', 'size' => 7, 'url' => 'https://files.monday.test/quote.pdf']],
+            'replies' => [],
+        ]]])];
+        $this->import($items);
+        $this->import($items);
+
+        $this->assertSame([$base], $levels, 'fetched once, with no transaction of the import open');
+        $this->inTenant($this->tenant['org'], fn () => $this->assertSame(['quote.pdf'], Attachment::query()->pluck('original_name')->all()));
+    }
+
     public function test_the_earlier_runs_deleted_rows_are_restored_onto_the_personal_board(): void
     {
         [$oldId, $oldSubId] = $this->inTenant($this->tenant['org'], function () {
