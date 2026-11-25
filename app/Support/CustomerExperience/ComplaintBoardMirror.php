@@ -37,7 +37,7 @@ final class ComplaintBoardMirror
                 ['Kind' => array_values(self::KIND), 'Client' => ['Client', 'Not a client'], 'Priority' => ['Priority', 'Normal'],
                     'Rating' => 'number', 'Link' => 'text']);
 
-            return $mirror->upsert($board, 'complaint:'.$c->id, [
+            $card = $mirror->upsert($board, 'complaint:'.$c->id, [
                 'title' => self::title($c),
                 'group' => $c->franchise?->name ?? 'No market',
                 'status' => self::STATUS[$c->status] ?? 'New',
@@ -51,6 +51,12 @@ final class ComplaintBoardMirror
                     'Link' => rtrim((string) config('app.url'), '/').'/app/#/customer_experience/complaints/'.$c->id,
                 ], fn ($v) => $v !== null),
             ]);
+            // Jose 11-25 (one source): a new complaint's card is joined to the branch task that is the same issue.
+            if ($card->wasRecentlyCreated) {
+                \App\Support\Tasks\ComplaintLink::link($c, $card);
+            }
+
+            return $card;
         } catch (Throwable $e) {
             report($e);
 

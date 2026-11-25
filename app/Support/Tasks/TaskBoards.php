@@ -389,7 +389,11 @@ class TaskBoards
     }
 
     /** @return Builder<TaskBoard> */
-    public function visibleTo(User $user): Builder
+    /**
+     * @param  bool  $byReach  the board LIST (Jose 11-25: "It should follow your own permissions and
+     *                         hierarchy"): every place the person reaches, not the Company·Branch picker's view.
+     */
+    public function visibleTo(User $user, bool $byReach = false): Builder
     {
         // My personal board, and any board I have been added to (of any kind,
         // even a place my reach does not cover).
@@ -406,7 +410,7 @@ class TaskBoards
             return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
         }
 
-        [$companyIds, $franchiseIds] = $this->placesInView($user);
+        [$companyIds, $franchiseIds] = $this->placesInView($user, $byReach);
         $all = $user->hasPermission('tasks.view_all');
 
         return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
@@ -430,7 +434,8 @@ class TaskBoards
     public function canView(User $user, TaskBoard $board): bool
     {
         return $board->organization_id === $user->organization_id
-            && $this->visibleTo($user)->whereKey($board->getKey())->exists();
+            // A listed board opens: the list follows reach, not the picker (Jose 11-25).
+            && $this->visibleTo($user, byReach: true)->whereKey($board->getKey())->exists();
     }
 
     /**
@@ -493,8 +498,16 @@ class TaskBoards
     }
 
     /** @return array{0: string[], 1: string[]} company ids, franchise ids */
-    private function placesInView(User $user): array
+    private function placesInView(User $user, bool $byReach = false): array
     {
+        if ($byReach) {
+            $franchises = $user->reachableFranchises();
+
+            return [
+                $user->reachableCompanies()->pluck('id')->merge($franchises->pluck('company_id'))->unique()->values()->all(),
+                $franchises->pluck('id')->values()->all(),
+            ];
+        }
         $view = ViewScope::forUser($user);
         $franchiseIds = $view->franchiseIds();
 

@@ -121,7 +121,7 @@ class ApnsSender
                 ->withOptions(['version' => 2.0])
                 ->withHeaders([
                     'authorization' => 'bearer '.$jwt,
-                    'apns-topic' => $this->settings()['topic'],
+                    'apns-topic' => $this->topicFor($device),
                     'apns-push-type' => 'alert',
                     'apns-priority' => '10',
                 ])
@@ -269,6 +269,18 @@ class ApnsSender
         $s = ltrim(substr($der, $offset, $sLength), "\x00");
 
         return str_pad($r, 32, "\x00", STR_PAD_LEFT).str_pad($s, 32, "\x00", STR_PAD_LEFT);
+    }
+
+    /**
+     * The bundle id the token was minted for: EzBizi's, or EzChat's. One team
+     * key signs for both; a token sent with the other app's topic is refused
+     * with DeviceTokenNotForTopic.
+     */
+    private function topicFor(DeviceToken $device): string
+    {
+        return $device->app === 'ezchat'
+            ? (string) config('services.apns.ezchat_topic', 'com.ezbizi.ezchat')
+            : (string) $this->settings()['topic'];
     }
 
     private function endpoint(): string

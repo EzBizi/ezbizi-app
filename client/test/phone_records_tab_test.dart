@@ -348,7 +348,7 @@ void _tileTests() {
     expect(find.text('Answered'), findsWidgets);
   });
 
-  /// Jose, 2026-10-09: rows read only "+1 (305) 724-2199" with "+(" in the
+  /// Jose, 2026-10-09: rows read only "+1 (305) 555-0107" with "+(" in the
   /// circle. The server's name for the number leads, the number sits under
   /// it, and a nameless number gets a phone icon rather than punctuation.
   testWidgets('a thread is named by whoever has the number', (tester) async {

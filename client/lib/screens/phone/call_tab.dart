@@ -225,7 +225,7 @@ class _CallTabState extends State<CallTab> {
   ///
   /// This used to strip the non-digits and put a `+` in front. So "305 724
   /// 2199" — how anybody in the United States writes a phone number — became
-  /// `+3057242199`, which is not that number. It is missing the country code,
+  /// `+3055550107`, which is not that number. It is missing the country code,
   /// and +305 is not a country. Every outbound call went to it.
   ///
   /// Nothing rejected it. It is well-formed enough to pass a length check, so
@@ -239,7 +239,7 @@ class _CallTabState extends State<CallTab> {
   ///
   /// Ten digits is the North American Numbering Plan and is unambiguous.
   /// Anything shorter is not a number we can complete, and guessing a country
-  /// code is exactly what produced +3057242199. A refusal is recoverable; a
+  /// code is exactly what produced +3055550107. A refusal is recoverable; a
   /// plausible wrong number is what cost the week.
   String? get _peer {
     final text = _destination.text.trim();
@@ -255,10 +255,10 @@ class _CallTabState extends State<CallTab> {
 
     final digits = text.replaceAll(RegExp(r'\D'), '');
 
-    // 1-305-724-2199, written out with its country code but no plus.
+    // 1-305-555-0107, written out with its country code but no plus.
     if (digits.length == 11 && digits.startsWith('1')) return '+$digits';
 
-    // 305 724 2199 — the ordinary way it is written here.
+    // 305 555 0107 — the ordinary way it is written here.
     if (digits.length == 10) return '+1$digits';
 
     // Anything else, including a bare 11+ digits that is not NANP, needs the
@@ -858,7 +858,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   /// A number chosen from the history or a suggestion, shown formatted:
-  /// the box read +13057242199 (Jose, 2026-09-30).
+  /// the box read +13055550107 (Jose, 2026-09-30).
   void _pick(String e164, {String? name}) {
     final shown = formatPhoneNumber(e164);
     setState(() {
@@ -1963,7 +1963,7 @@ class _CallTabState extends State<CallTab> {
                   onPressed: () => setState(() => _pane = _personFrom),
                 ),
               // Who it is, when anybody knows; the number, formatted, when
-              // not. The panel said "Customer" over a raw +13057242199.
+              // not. The panel said "Customer" over a raw +13055550107.
               Expanded(
                 child: Text(
                   _personTitle,

@@ -94,25 +94,25 @@ class RecoveryInboxTest extends TestCase
         $this->assertTrue($sent->is_automatic);
     }
 
-    /** Jose, 2026-11-16 (John Sczepanski): the same address spelled another way is not "a different address". */
+    /** Jose, 2026-11-16 (John Stonebrook): the same address spelled another way is not "a different address". */
     public function test_the_same_address_spelled_differently_is_not_offered(): void
     {
-        $this->assertTrue(Lead::sameAddress('1734 Hallman Dr, Blue bell PA 19422', '1734 Hallman Dr, Blue Bell, PA 19422, USA'));
-        $this->assertTrue(Lead::sameAddress('1734 Hallman Drive, Blue Bell, PA 19422-1234', '1734 Hallman Dr, Blue Bell, PA 19422, USA'));
-        $this->assertFalse(Lead::sameAddress('1736 Hallman Dr, Blue Bell PA 19422', '1734 Hallman Dr, Blue Bell, PA 19422, USA'), 'another house');
-        $this->assertFalse(Lead::sameAddress('1734 Hallman Dr, Ambler PA 19002', '1734 Hallman Dr, Blue Bell, PA 19422, USA'), 'another town');
+        $this->assertTrue(Lead::sameAddress('1734 Sampleton Dr, Blue bell PA 19422', '1734 Sampleton Dr, Blue Bell, PA 19422, USA'));
+        $this->assertTrue(Lead::sameAddress('1734 Sampleton Drive, Blue Bell, PA 19422-1234', '1734 Sampleton Dr, Blue Bell, PA 19422, USA'));
+        $this->assertFalse(Lead::sameAddress('1736 Sampleton Dr, Blue Bell PA 19422', '1734 Sampleton Dr, Blue Bell, PA 19422, USA'), 'another house');
+        $this->assertFalse(Lead::sameAddress('1734 Sampleton Dr, Ambler PA 19002', '1734 Sampleton Dr, Blue Bell, PA 19422, USA'), 'another town');
 
         $t = $this->provisionTenant('A1-Group');
         $lead = $this->inTenant($t['org'], fn () => Lead::create([
             'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'source' => Lead::SOURCE_WEBSITE_CHAT,
-            'remote_id' => uniqid(), 'contact_name' => 'John Sczepanski', 'phone' => '+16104202617', 'status' => Lead::STATUS_NEW,
-            'received_at' => now(), 'address' => '1734 Hallman Dr, Blue Bell, PA 19422, USA',
+            'remote_id' => uniqid(), 'contact_name' => 'John Stonebrook', 'phone' => '+16105550101', 'status' => Lead::STATUS_NEW,
+            'received_at' => now(), 'address' => '1734 Sampleton Dr, Blue Bell, PA 19422, USA',
         ]));
-        $contacts = \App\Console\Commands\LeadsRead::contacts($lead, ['address' => '1734 Hallman Dr, Blue bell PA 19422']);
+        $contacts = \App\Console\Commands\LeadsRead::contacts($lead, ['address' => '1734 Sampleton Dr, Blue bell PA 19422']);
         $this->assertSame([], $contacts['suggest']);
 
         // A reading saved before the fix still carries the offer: the lead no longer shows it.
-        $this->inTenant($t['org'], fn () => $lead->forceFill(['ai_set' => ['reading' => ['suggest' => ['address' => '1734 Hallman Dr, Blue bell PA 19422']]]])->save());
+        $this->inTenant($t['org'], fn () => $lead->forceFill(['ai_set' => ['reading' => ['suggest' => ['address' => '1734 Sampleton Dr, Blue bell PA 19422']]]])->save());
         $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()->assertJsonPath('data.reading.suggest', null);
     }
 }

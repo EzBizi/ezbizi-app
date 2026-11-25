@@ -2887,6 +2887,7 @@ Route::prefix('v1')
             Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
             Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
             Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::patch('chat/chats/{chat}/job', [ChatController::class, 'setJob']);
             Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
             Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
             Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
@@ -2900,6 +2901,7 @@ Route::prefix('v1')
             Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
             Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
             Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls', [ChatController::class, 'recentCalls']);
             Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
             Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
             Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);

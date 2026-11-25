@@ -117,7 +117,7 @@ void main() {
           return http.Response(
             jsonEncode({
               'data': {
-                'rows': [row('J1', ezbizi: '1042', dialed: '+12163077555')],
+                'rows': [row('J1', ezbizi: '1042', dialed: '+12165550103')],
                 'count': 1,
                 'total': 300.5,
                 'sources': [
@@ -126,12 +126,12 @@ void main() {
                 'areas': const [],
                 'dialed': [
                   {
-                    'value': '+12163077555',
+                    'value': '+12165550103',
                     'count': 11,
                     'name': 'CLE - LS Ads',
                   },
                   {'value': '+12162290000', 'count': 2, 'name': 'CLE - PPC'},
-                  {'value': '+18562908555', 'count': 3, 'name': 'NJ - PPC'},
+                  {'value': '+18565550100', 'count': 3, 'name': 'NJ - PPC'},
                   {'value': 'none', 'count': 62, 'name': null},
                 ],
                 'calls_read': true,
@@ -173,7 +173,7 @@ void main() {
 
       expect(
         asked.last['dialed[]'],
-        unorderedEquals(['+12163077555', '+12162290000', 'none']),
+        unorderedEquals(['+12165550103', '+12162290000', 'none']),
       );
       expect(asked.last['source[]'], isNull);
     },
@@ -191,9 +191,9 @@ void main() {
               'data': {
                 'rows': [
                   {
-                    ...row('J1', ezbizi: '1042', dialed: '+17324264555'),
+                    ...row('J1', ezbizi: '1042', dialed: '+17325550103'),
                     // As Workiz stores it: bare digits.
-                    'phone': '7326748312',
+                    'phone': '7325550105',
                   },
                 ],
                 'count': 61,
@@ -244,9 +244,9 @@ void main() {
       expect(find.text('GROSS, INCL. TAX'), findsOneWidget);
       expect(find.text('Job total'), findsOneWidget);
 
-      expect(find.text('+1 (732) 674-8312'), findsOneWidget);
-      expect(find.text('7326748312'), findsNothing);
-      expect(find.textContaining('+1 (732) 426-4555'), findsOneWidget);
+      expect(find.text('+1 (732) 555-0105'), findsOneWidget);
+      expect(find.text('7325550105'), findsNothing);
+      expect(find.textContaining('+1 (732) 555-0103'), findsOneWidget);
     },
   );
 }

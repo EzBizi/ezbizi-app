@@ -17,7 +17,7 @@ use Tests\TestCase;
  *
  * ── What happened ──
  *
- * The first real Thumbtack enquiry arrived on 2026-09-10 — Reinaldo Ortiz, a
+ * The first real Thumbtack enquiry arrived on 2026-09-10 — Reinaldo Oakes, a
  * message thread — and the composer was not drawn. In its place the screen
  * said "Google only accepts replies to text enquiries. This one came in as a
  * call, so it is answered by calling back": wrong provider, wrong channel,
@@ -72,7 +72,7 @@ class ThumbtackRepliesTest extends TestCase
             'source'          => Lead::SOURCE_THUMBTACK,
             'is_test'         => $test,
             'remote_id'       => 'neg-1',
-            'contact_name'    => 'Reinaldo Ortiz',
+            'contact_name'    => 'Reinaldo Oakes',
             'status'          => Lead::STATUS_NEW,
             'received_at'     => now()->subHour(),
         ]));

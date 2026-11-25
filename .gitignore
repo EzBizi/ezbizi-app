@@ -120,3 +120,31 @@ store-screenshots/
 # fixed with ServerAliveInterval. Revisit if the bin dir gets onto PATH and
 # DEV-ENVIRONMENT.md says so.
 /database/schema/
+
+# ── repo hygiene (2026-11-25): personal data and signing material ─────────
+# The repo is being prepared to go public. See docs/security/ and
+# scripts/hooks/pre-commit, which blocks the same things at commit time.
+# Signing keys and their property files (Android upload key, Apple .p8/.p12).
+key.properties
+**/android/key.properties
+*.jks
+*.keystore
+*.p8
+*.p12
+*.pem
+*.mobileprovision
+# Local credential folders, whatever their case (the F:\Credentials junction).
+[Cc]redentials/
+**/[Cc]redentials/
+# Spreadsheet and CSV exports dropped into docs/ are customer data until
+# proven otherwise. A canonical config CSV is tracked by name below.
+docs/**/*.xlsx
+docs/**/*.xls
+docs/**/*.csv
+docs/**/*.tsv
+!docs/agents/task-labels-canonical-2026-11-19.csv
+# Database dumps and call/recording exports.
+*.sql.gz
+*.dump
+# The CI scan's own workflow file matches the *secret* rule above; it holds no secret.
+!.github/workflows/secret-scan.yml

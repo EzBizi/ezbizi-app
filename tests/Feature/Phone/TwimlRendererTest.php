@@ -62,14 +62,14 @@ class TwimlRendererTest extends TestCase
                 // rather than making the attempt.
                 $renderer->inbound($number->fresh(), [
                     'outbound' => true,
-                    'dial_to' => '+13057242199',
+                    'dial_to' => '+13055550107',
                     'caller_id' => $number->e164,
                 ]),
 
                 // Destination, but nothing usable to call out from.
                 $renderer->inbound($number->fresh(), [
                     'outbound' => true,
-                    'dial_to' => '+13057242199',
+                    'dial_to' => '+13055550107',
                 ]),
             ];
         });
@@ -82,7 +82,7 @@ class TwimlRendererTest extends TestCase
 
         // And a real outbound call still dials.
         $this->assertStringContainsString('<Dial', $working);
-        $this->assertStringContainsString('+13057242199', $working);
+        $this->assertStringContainsString('+13055550107', $working);
         $this->assertStringNotContainsString('<Record', $working);
 
         // A caller ID this account does not hold is refused BEFORE the dial.
@@ -126,7 +126,7 @@ class TwimlRendererTest extends TestCase
                 ]),
                 $renderer->inbound($number->fresh(), [
                     'outbound' => true,
-                    'dial_to' => '+13057242199',
+                    'dial_to' => '+13055550107',
                     'caller_id' => $number->e164,
                 ]),
 
@@ -400,7 +400,7 @@ class TwimlRendererTest extends TestCase
             // No ring group: the steps above reach nobody.
             $number = $this->number($t, $connection, [
                 'ring_group_id' => null,
-                'fallback_number' => '+17867869060',
+                'fallback_number' => '+17865550103',
             ]);
 
             $bare = $this->number($t, $connection, ['ring_group_id' => null]);
@@ -413,12 +413,12 @@ class TwimlRendererTest extends TestCase
         });
 
         // First pass: the fallback is dialled, and no message is taken yet.
-        $this->assertStringContainsString('+17867869060', $first);
+        $this->assertStringContainsString('+17865550103', $first);
         $this->assertStringContainsString('<Dial', $first);
         $this->assertStringNotContainsString('<Record', $first);
 
         // Second pass: voicemail, and crucially NOT the fallback again.
-        $this->assertStringNotContainsString('+17867869060', $second);
+        $this->assertStringNotContainsString('+17865550103', $second);
         $this->assertStringNotContainsString('<Dial', $second);
         $this->assertStringContainsString('<Record', $second);
 

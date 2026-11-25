@@ -154,10 +154,10 @@ class TaskBoardCustomizationTest extends TestCase
         }
 
         $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [
-            $phone => '(305) 724-2199', $email => 'ann@example.com', $url => 'https://example.com', $when => '2026-11-09 14:30',
+            $phone => '(305) 555-0107', $email => 'ann@example.com', $url => 'https://example.com', $when => '2026-11-09 14:30',
             $money => '99.5', $long => str_repeat('a', 6000), $tags['id'] => [$a, $b], $link => 'customer:'.$customer->id,
         ]])->assertOk()
-            ->assertJsonPath("data.values.{$phone}", '(305) 724-2199')
+            ->assertJsonPath("data.values.{$phone}", '(305) 555-0107')
             ->assertJsonPath("data.values.{$money}", 99.5)
             ->assertJsonPath("data.values.{$tags['id']}", [$a, $b])
             ->assertJsonPath("data.values.{$link}.label", 'Ann Smith');

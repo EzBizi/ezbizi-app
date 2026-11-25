@@ -1068,7 +1068,7 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     );
 
-    // "Use (516) 404-1690?" on the row it would change; anything else the
+    // "Use (516) 555-0100?" on the row it would change; anything else the
     // customer wrote differently sits on the Address row.
     List<Widget> offers(bool Function(String field) here) => [
       if (widget.onStatusChanged != null)
@@ -1467,7 +1467,7 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
-  /// "Use (516) 404-1690?": the customer's own value replaces the lead's.
+  /// "Use (516) 555-0100?": the customer's own value replaces the lead's.
   Future<void> _useReading(String field) async {
     final response = await widget.api.post(
       '/leads/${widget.lead['id']}/reading/use',
@@ -3764,7 +3764,7 @@ class _LeadThreadState extends State<LeadThread> {
 
 /// The number on its own line under the title, unless the title IS the
 /// number. A title taken from the matched customer is a name too (Jose,
-/// 2026-09-30: Mark Morrow showed no number).
+/// 2026-09-30: Mark Mercer showed no number).
 bool showsNumberLine(Map<String, dynamic> lead) {
   final phone = lead['phone'] as String?;
   return phone != null &&

@@ -85,7 +85,7 @@ class InspectionRunsController extends Controller
             ]);
         }
 
-        // A phone number, typed any way ("(305) 724-2199", "305.724.2199"),
+        // A phone number, typed any way ("(305) 555-0107", "305.555.0107"),
         // matches on digits: phones are stored E.164, so the digits a person
         // types are a contiguous run of the stored ones. Jobs carry no phone
         // of their own — a job's phone is its customer's.

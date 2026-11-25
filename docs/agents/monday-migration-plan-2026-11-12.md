@@ -106,12 +106,12 @@ Matched by email first, then name; "?" = needs a yes from Jose/peer before the i
 | Eve Sarfaty 75968508 dismanager@ | Eve Sarfaty eve@a-1chimney.com | name | |
 | Merav Peretz 72081101 | Merav Perez | email | |
 | Menahem Maamari 71550546 | Menahem Maamari | email | |
-| Rotem Hadad 71550313 ben@ | Rotem Hay Hadad rotemhadadrop@gmail.com | name | |
+| Rotem Hadad 71550313 ben@ | Rotem Hay Hadad staff02.sample@example.com | name | |
 | Rodrigo Mena 76335844 | Rodrigo Mena rodrigo@ezbizi.com | name | |
-| Netanel mullakand 77278007 | Netanel Mullakand netanel14@gmail.com | name | probably "Nate" in "Project Manager - Nate" |
+| Netanel mullakand 77278007 | Netanel Mullakand staff01.sample@example.com | name | probably "Nate" in "Project Manager - Nate" |
 | Adeline Pierrelouis-Aghaji 85643017 dispatcher1@ | Adeline adeline@a-1chimney.com | name | |
 | Sasha Solano 85643548 dispatcher2@ | Sasha marie Solano | name | |
-| Jared Prescott 85643565 dispatcher3@ | Jared Prescott prescottj41@yahoo.com | name | |
+| Jared Prescott 85643565 dispatcher3@ | Jared Prescott staff03.sample@example.com | name | |
 | Trey Brannan 95492386 | Trey Brannan | email | |
 | Toula Elwell 97762119 | Toula Elwell toula@ezbizi.com | name | **inactive** in EzBizi |
 | Analorena Ventoso 98357372 ana@a-1chimney.com | Analorena ana@ezbizi.com | name | |
@@ -127,10 +127,10 @@ Matched by email first, then name; "?" = needs a yes from Jose/peer before the i
 | Tiara Maranon 114363462 | Tiara Marañon | email | |
 | Ranya Lara 114508955 | Ranya Lara | email | |
 | Nelly escobar 115062467 | Nelly escobar | email | |
-| Lunique Mazard 115188114 | Lunique Mazard lmazard@yahoo.com | name | |
+| Lunique Mazard 115188114 | Lunique Mazard staff04.sample@example.com | name | |
 | Stephen Deets 115203904 | Stephen Deets (gmail) | name | **inactive** |
 | Jovanni Martin 115297534 | Jovanni Martin | email | |
-| 27.10ayala@gmail.com 115835962 | Ayala Kenig | email | |
+| staff05.sample@example.com 115835962 | Ayala Kenig | email | |
 | Lenin Corrales 115879789 | Lenin Corrales (icloud) | name | |
 | Jennine Lizer 117383205 | Jennine Lizer (gmail) | name | |
 | Brian Scheets 117391389 | Brian Scheets | email | Recruiter |
@@ -143,11 +143,11 @@ Matched by email first, then name; "?" = needs a yes from Jose/peer before the i
 | Chris Restivo 119416853 | Kristopher Restivo | email | |
 | Eric Nelson Valdes 121241524 | Eric Nelson Valdes | email | COO |
 | James Forsythe 121515946 james@ | James Forsythe (gmail) | name | |
-| Liraz Sapir 102475856 liraz@ | **? Leroy Sapir** lirsap992@gmail.com | guess | confirm |
+| Liraz Sapir 102475856 liraz@ | **? Leroy Sapir** staff06.sample@example.com | guess | confirm |
 | BRI 113111180 briana@ | **? Briana montano** | guess | confirm |
-| gino@a-1chimney.com 119382561 | **? Gino Russo-Folco** grussofolco@gmail.com | guess | 66 Outgoing Calls items |
-| Shneor@a-1chimney.com 119418504 | **? shneor Cohen** ksn770@gmail.com | guess | OH "General Manager - Shneor" |
-| Melissa Oca 102074414 phoeberudd19@ | **? Melissa Lav** melissalav19@gmail.com | guess | CT "Tech Field Manager - Melissa"; 779 NW items |
+| gino@a-1chimney.com 119382561 | **? Gino Russo-Folco** staff07.sample@example.com | guess | 66 Outgoing Calls items |
+| Shneor@a-1chimney.com 119418504 | **? shneor Cohen** staff08.sample@example.com | guess | OH "General Manager - Shneor" |
+| Melissa Oca 102074414 phoeberudd19@ | **? Melissa Lav** staff09.sample@example.com | guess | CT "Tech Field Manager - Melissa"; 779 NW items |
 | **No EzBizi account:** Moshe Hay Zion 71549513 (moses@), Nehorai Maamari 71550764 (mike@), Yosef Abergel 101217584 (office@ma.everdoors.com), Tal Menahem 102151709, Ron Paz 102475875, Jeanette Del Rosario 102798762 (1,085 NW items), Criz Samson 121481405 (DMV "Field Manager - Crizzel"), Sharper Process agency x5 (michelle@, amandam@, austin@, aj@, charissa.a@; amsterdam@ pending), 2 pending invites | — | — | import unassigned, name kept in a note line ("Assigned in monday: X") |
 | monday AI agents: Elena, Dora, Daily WhatsApp Summary Agent, Aurora | — | — | not people; skip as subscribers |
 | ~37 "Deleted member" ids (≈10k NW items, 41 Analorena items, 15 Outgoing Calls items) | — | — | unassigned + note "former monday user #id"; Analorena's 41 → Analorena (her board) |

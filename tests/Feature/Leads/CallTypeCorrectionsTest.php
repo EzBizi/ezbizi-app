@@ -53,14 +53,14 @@ class CallTypeCorrectionsTest extends TestCase
 
         $this->inTenant($this->t['org'], function () {
             // Two customer rows for one person, in different spellings; the job is on the other one.
-            $c = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat', 'phone' => '(314) 409-1888']);
-            Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat S', 'phone' => '314.409.1888']);
+            $c = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat', 'phone' => '(314) 555-0100']);
+            Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat S', 'phone' => '314.555.0100']);
             Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $c->id, 'scheduled_for' => now()->subMonths(3)]);
             CallReportTranscript::query()->create(['organization_id' => $this->t['org']->id, 'call_id' => 'B', 'transcript' => 'Hi, you came out last winter...', 'source' => 'whisper']);
 
-            app(RingCentralLeadCalls::class)->file([self::rc('A', '+13144091888', self::NEW_Q)], [], $this->t['company']->id);
+            app(RingCentralLeadCalls::class)->file([self::rc('A', '+13145550100', self::NEW_Q)], [], $this->t['company']->id);
             $n = app(CallTypeCorrections::class)->decide([
-                self::rc('A', '+13144091888', self::NEW_Q),   // pressed New, has a job: existing
+                self::rc('A', '+13145550100', self::NEW_Q),   // pressed New, has a job: existing
                 self::rc('B', '+15550000002', self::NEW_Q),   // no job; the words say existing
                 self::rc('C', '+15550000003', self::OLD_Q),   // no job, no words: the key stands, no row
             ]);
@@ -71,10 +71,10 @@ class CallTypeCorrectionsTest extends TestCase
             $this->assertSame(['existing', 'job_match', self::NEW_Q], [$rows['A']['corrected_type'], $rows['A']['evidence'], $rows['A']['pressed_queue']]);
             $this->assertSame(['existing', 'transcript'], [$rows['B']['corrected_type'], $rows['B']['evidence']]);
             $this->assertStringContainsString('last winter', $rows['B']['reason']);
-            $this->assertSame(RingCentralLeadCalls::EXISTING_CLIENT, Lead::query()->where('phone', '+13144091888')->value('source_status'), 'the RC tag follows');
+            $this->assertSame(RingCentralLeadCalls::EXISTING_CLIENT, Lead::query()->where('phone', '+13145550100')->value('source_status'), 'the RC tag follows');
 
             // Decided once: a later run asks nothing again.
-            $this->assertSame(0, app(CallTypeCorrections::class)->decide([self::rc('A', '+13144091888', self::NEW_Q), self::rc('B', '+15550000002', self::NEW_Q)]));
+            $this->assertSame(0, app(CallTypeCorrections::class)->decide([self::rc('A', '+13145550100', self::NEW_Q), self::rc('B', '+15550000002', self::NEW_Q)]));
         });
         Process::assertRanTimes(fn () => true, 1);
     }
@@ -83,7 +83,7 @@ class CallTypeCorrectionsTest extends TestCase
     public function test_two_runs_deciding_one_call_keep_the_first_and_carry_on(): void
     {
         $this->inTenant($this->t['org'], function () {
-            $c = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat', 'phone' => '(314) 409-1888']);
+            $c = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat', 'phone' => '(314) 555-0100']);
             Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $c->id, 'scheduled_for' => now()->subMonth()]);
 
             // The other run writes its row in the instant before this one does.
@@ -99,7 +99,7 @@ class CallTypeCorrectionsTest extends TestCase
                 }
             });
 
-            app(CallTypeCorrections::class)->decide([self::rc('R1', '+13144091888', self::NEW_Q)]);
+            app(CallTypeCorrections::class)->decide([self::rc('R1', '+13145550100', self::NEW_Q)]);
             $this->assertSame(['the other run'], CallTypeCorrection::query()->where('call_id', 'R1')->pluck('reason')->all());
         });
     }

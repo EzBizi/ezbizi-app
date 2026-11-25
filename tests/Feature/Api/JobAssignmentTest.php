@@ -250,6 +250,8 @@ class JobAssignmentTest extends TestCase
         $ids = array_column($data, 'id');
         $this->assertContains($tech->id, $ids);
         $this->assertNotContains($dispatcher->id, $ids);
+        // You always find yourself, though no technician role is yours (Jose, 2026-11-25).
+        $this->assertContains($alpha['admin']->id, $ids);
 
         // Assigned by Workiz sync, not through the picker: still shown, flagged.
         $this->inTenant($alpha['org'], fn () => \App\Models\Job::whereKey($jobId)->update(['performed_by_user_id' => $dispatcher->id]));

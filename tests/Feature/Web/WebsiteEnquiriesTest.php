@@ -77,24 +77,24 @@ class WebsiteEnquiriesTest extends TestCase
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
         $send = fn (string $phone, string $what) => $this->postJson('/api/v1/web/form', [
-            'key' => $site->public_key, 'name' => 'Elizabeth Bell', 'phone' => $phone,
+            'key' => $site->public_key, 'name' => 'Elizabeth Bain', 'phone' => $phone,
             'fields' => ['Rating' => 'Not happy', 'What happened?' => $what],
         ])->assertCreated();
 
-        $send('(216) 392-9942', 'Late');
-        $send('216.392.9942', 'Still late');
+        $send('(216) 555-0104', 'Late');
+        $send('216.555.0104', 'Still late');
         $send('(216) 392-0000', 'Someone else');
 
         $this->inTenant($tenant['org'], function () {
             $this->assertSame(2, Lead::query()->count());
-            $first = Lead::query()->where('phone_digits', 'like', '%2163929942')->sole();
+            $first = Lead::query()->where('phone_digits', 'like', '%2165550104')->sole();
             $this->assertSame(2, $first->conversations()->count());
             $this->assertSame('BAD_RATING', $first->lead_type);
         });
 
         // A day later, a new lead.
         $this->travel(25)->hours();
-        $send('(216) 392-9942', 'Again');
+        $send('(216) 555-0104', 'Again');
         $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Lead::query()->count()));
     }
 
@@ -597,7 +597,7 @@ class WebsiteEnquiriesTest extends TestCase
             'Email Address' => 'john@test.com',
             'Last Name' => 'Vale',
             'First Name' => 'Nora',
-            'Phone Number' => '7542366981',
+            'Phone Number' => '7545550100',
             'Appointment Date' => '2026-10-20',
             'Appointment Time' => '13:00',
             'Address Line 1' => '123 Elm St',
@@ -612,7 +612,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->assertSame([
             '👤 Nora Vale',
-            '📞 (754) 236-6981',
+            '📞 (754) 555-0100',
             '✉️ john@test.com',
             '📅 2026-10-20 13:00',
             '📍 123 Elm St, Tempe, Arizona 85281',
@@ -629,7 +629,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
             'host' => 'a-1chimney.com',
-            'fields' => ['First Name' => 'Laura', 'Phone Number' => '2162245383', 'cf-turnstile-response' => '1.XE0gJwM-long-token'],
+            'fields' => ['First Name' => 'Laura', 'Phone Number' => '2165550101', 'cf-turnstile-response' => '1.XE0gJwM-long-token'],
         ])->assertCreated();
         $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
             'host' => 'a-1chimney.com',
@@ -638,7 +638,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->inTenant($tenant['org'], function () {
             $text = LeadConversation::query()->orderBy('created_at')->orderBy('id')->pluck('text')->all();
-            $this->assertContains("👤 Laura\n📞 (216) 224-5383", $text);
+            $this->assertContains("👤 Laura\n📞 (216) 555-0101", $text);
             $this->assertStringNotContainsString('turnstile', implode(' ', $text));
             $this->assertSame(['BAD_RATING'], Lead::query()->whereNotNull('lead_type')->pluck('lead_type')->all());
 

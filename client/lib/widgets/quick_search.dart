@@ -148,7 +148,7 @@ class _QuickSearchState extends State<QuickSearch> {
     return '#${row['id']}';
   }
 
-  /// "Lead · (202) 253-8040 · New Jersey · Oct 16": enough to tell two of
+  /// "Lead · (202) 555-0101 · New Jersey · Oct 16": enough to tell two of
   /// the same name apart.
   static String _detailOf(String module, String kind, Map row) {
     String? text(Object? v) =>

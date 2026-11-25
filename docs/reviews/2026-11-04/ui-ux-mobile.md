@@ -225,8 +225,8 @@ A caveat on load times: the tab ran in the background of the Browser pane, which
 
   "A1 Chimney · A1 Chimney" is repeated on Social posts.
 - **Raw numbers:**
-  - the call record title "Inbound · +15615773963" (the list formats it);
-  - alert titles "+15139059434 - I paid for an …";
+  - the call record title "Inbound · +15615550103" (the list formats it);
+  - alert titles "+15135550102 - I paid for an …";
   - ISO dates "2026-10-08" in the Reports table.
 - **The same count disagrees:** Call flow says "7 lines reach nobody"; Numbers says "8 lines are not reaching anybody".
 - **Duplicated titles:** the back bar and the H2 both say "Call flow" / "Numbers" / "Inbound · +1…".
@@ -379,7 +379,7 @@ Group 3 is HR, Work Hours, Field, Fleet, Inspection, Inventory, Training and Gui
   - Guide title field "Dispatcher Introductio".
   - "1 · We ar…".
 - Name shown twice: "Nick Frias" in the back bar and again in the header (Work Hours person). Duplicate names in the Person picker (Artem Maliuk ×2) with no branch to tell them apart.
-- Emergency contact phone unformatted: "8153289436".
+- Emergency contact phone unformatted: "8155550100".
 - Large duplicate "Settings" heading inside the Training › Settings tab.
 - Unlabelled Chapter/Section boxes in the guide editor.
 
@@ -492,7 +492,7 @@ Nothing that saves, sends, toggles or deletes was tapped. Forms were opened, the
   - "Ready for submission" vs the row chip "Done, pending approval" (PM-2 Ready tab).
 - **Activity sentences don't read as English:** "An automation phone sms sent by automation", "Ara Awe marked lead", "An automation replied automation lead" (Settings › Activity).
 - Lowercase platform names: "windows" (Monitoring › Files).
-- Raw phone format "+18559553322" (PM-1 › Logs) and "+14048243631" (task panel).
+- Raw phone format "+18559553322" (PM-1 › Logs) and "+14045550102" (task panel).
 - "?·?" placeholder and ✔️ / ✘ emoji on the Correct/Incorrect buttons (AI › Answers).
 - Two refresh times on one screen: "refreshed 23 min ago" in the header, "Refreshed 14 min ago" in the body (Financials › Deposits).
 - "Done" with an ✕ icon closes the field picker; ✕ reads as cancel (Reports › Report Builder).

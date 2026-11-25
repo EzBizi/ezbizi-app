@@ -136,7 +136,7 @@ class LeadInsights
         .'a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks '
         .'only for a service a chimney/fireplace/garage-door company does not do), or null. A real '
         .'customer who simply did not book is null.'."\n"
-        // The reply reader (Jose, 2026-11-13: Rose Wyka's email gave her cell,
+        // The reply reader (Jose, 2026-11-13: Rose Wynn's email gave her cell,
         // address and hours, and the lead picked up none of them).
         ."- phones / emails: every phone number and email the CUSTOMER gives as their own contact, as written; [] if none.\n"
         ."- address: the service address the customer gives (street, town, state, ZIP), else null.\n"
