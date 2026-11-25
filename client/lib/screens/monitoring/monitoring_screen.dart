@@ -82,7 +82,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         (_SubTab.general, 'General', Icons.account_tree_outlined),
       if (can('monitoring.map.view'))
         (_SubTab.map, 'Map', Icons.map_outlined),
-      (_SubTab.pcSpecs, 'PC Specs', Icons.computer_outlined),
+      // Activity and API activity open this screen without monitoring.view
+      // (2026-11-25), so PC Specs is no longer reached by everybody here.
+      if (can('monitoring.view'))
+        (_SubTab.pcSpecs, 'PC Specs', Icons.computer_outlined),
       if (can('monitoring.files.view'))
         (_SubTab.files, 'Files', Icons.folder_open_outlined),
       if (can('monitoring.cameras.view'))
@@ -116,6 +119,11 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   Widget build(BuildContext context) {
     final shown = _shownTabs;
+    if (shown.isEmpty) {
+      return const Center(
+        child: Text('Your role does not open any part of Monitoring.'),
+      );
+    }
     final active = _activeTab;
 
     return Column(

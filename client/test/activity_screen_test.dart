@@ -205,6 +205,11 @@ void main() {
       'monitoring.activity.view',
     ], [], shell: true);
     expect(find.text('Activity'), findsOneWidget);
+
+    // Activity alone opens Monitoring without monitoring.view: no PC Specs.
+    await _pump(tester, ['monitoring.activity.view'], [], shell: true);
+    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('PC Specs'), findsNothing);
   });
 }
 
