@@ -108,7 +108,7 @@ if [ "${1:-}" = "--remote" ]; then
   LOG=/tmp/store-screenshots.log
   EZBIZI_WINDOW=1440x900 flutter drive -d "${DEVICE:-macos}" \
     --driver=test_driver/screenshots.dart \
-    --target=integration_test/store_screenshots_test.dart \
+    --target="${SHOT_TARGET:-integration_test/store_screenshots_test.dart}" ${SHOT_EXTRA:-} \
     --dart-define=API_BASE=https://app.ezbizi.com \
     --dart-define=APP_FACE=customer \
     --dart-define=APP_VERSION="${APP_VERSION:-dev}" \
@@ -133,7 +133,11 @@ cd "$(dirname "$0")/.."
 MAC=mac
 MAC_PROJECT='~/ezbizi-build'
 PROBE=0; [ "${1:-}" = "--probe" ] && PROBE=1
-DEVICE=""; SET=macos
+DEVICE=""; SET=macos; SHOT_TARGET=""; SHOT_EXTRA=""
+if [ "${1:-}" = "--ezchat" ]; then
+  # EzChat, the chat sister app: its own harness and app flag.
+  SHOT_TARGET=integration_test/ezchat_screenshots_test.dart; SHOT_EXTRA=--dart-define=EZBIZI_APP=ezchat; shift
+fi
 if [ "${1:-}" = "--device" ]; then
   DEVICE="${2:?--device needs a simulator udid}"; SET="${3:?--device needs a set name, e.g. iphone69}"
 fi
@@ -181,7 +185,7 @@ tar -cz \
   | ssh "$MAC" "tar -xz -C ${MAC_PROJECT}"
 
 echo "→ $SET — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
-ssh "$MAC" "PROBE=$PROBE DEVICE=$DEVICE SET=$SET APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
+ssh "$MAC" "PROBE=$PROBE DEVICE=$DEVICE SET=$SET SHOT_TARGET=$SHOT_TARGET SHOT_EXTRA=$SHOT_EXTRA APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
 
 if [ -n "$DEVICE" ]; then
   scp -q "$MAC:ezbizi-build/store-screenshots/$SET/*.png" "$DIST/"
