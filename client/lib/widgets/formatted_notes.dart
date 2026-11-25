@@ -74,9 +74,7 @@ class NotesMarkup {
       while (j < text.length && masks[j] == masks[i]) {
         j++;
       }
-      out.add(
-        TextSpan(text: text.substring(i, j), style: styleFor(masks[i])),
-      );
+      out.add(TextSpan(text: text.substring(i, j), style: styleFor(masks[i])));
       i = j;
     }
     return out;
@@ -85,7 +83,8 @@ class NotesMarkup {
 
 /// A [TextEditingController] that keeps a style mask per character.
 class FormattedNotesController extends TextEditingController {
-  FormattedNotesController({String? markup}) : this._(NotesMarkup.parse(markup));
+  FormattedNotesController({String? markup})
+    : this._(NotesMarkup.parse(markup));
   FormattedNotesController._((String, List<int>) p)
     : _masks = p.$2,
       super(text: p.$1);
@@ -96,6 +95,15 @@ class FormattedNotesController extends TextEditingController {
   int typing = 0;
 
   String get markup => NotesMarkup.serialize(text, _masks);
+
+  /// Refill from stored markup, e.g. when a record reloads under a form
+  /// that is already open. Setting [text] would show the tags as letters.
+  set markup(String? markup) {
+    final (text, masks) = NotesMarkup.parse(markup);
+    _masks = masks;
+    typing = 0;
+    super.value = TextEditingValue(text: text);
+  }
 
   @override
   set value(TextEditingValue v) {
@@ -228,9 +236,9 @@ class FormattedNotesField extends StatelessWidget {
           minLines: minLines,
           maxLines: null,
           maxLength: maxLength,
-          scrollPadding: const EdgeInsets.all(20).copyWith(
-            bottom: 20 + (phone ? _toolbarHeight : 0),
-          ),
+          scrollPadding: const EdgeInsets.all(
+            20,
+          ).copyWith(bottom: 20 + (phone ? _toolbarHeight : 0)),
           decoration: InputDecoration(labelText: label),
         ),
       ),

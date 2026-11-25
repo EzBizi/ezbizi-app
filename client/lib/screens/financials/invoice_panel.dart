@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -787,7 +788,10 @@ class _InvoicePanelState extends State<InvoicePanel> {
           ),
           if ((invoice['notes'] ?? '') != '') ...[
             const SizedBox(height: 8),
-            Text('${invoice['notes']}', style: theme.textTheme.bodySmall),
+            FormattedNotesText(
+              '${invoice['notes']}',
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ],
       ),

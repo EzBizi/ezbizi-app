@@ -11,6 +11,7 @@ use App\Models\FinancialSource;
 use App\Models\Franchise;
 use App\Models\Invoice;
 use App\Support\Invoices\InvoiceChannels;
+use App\Support\Invoices\InvoicePdf;
 use App\Support\Mail\MailDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -247,5 +248,30 @@ class InvoicesTest extends TestCase
 
         // Control: the owning company's view still invoices it.
         $this->signedInAs($t['admin'])->postJson("{$base}/invoice")->assertCreated()->assertJsonCount(1, 'data.made');
+    }
+
+    public function test_a_bolded_invoice_note_prints_plain_on_the_pdf_and_in_the_email(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $t = $this->provisionTenant('Alpha');
+        $this->mailCanSend($t);
+        $as = $this->signedInAs($t['admin']);
+        $col = $as->putJson('/api/v1/invoices/charge-columns', ['columns' => [['name' => 'Royalties']]])->json('data.0.id');
+        $sheet = $as->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30'])->json('data');
+        $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 1000]]]])->assertOk();
+        $id = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.made.0.id');
+        $as->patchJson("/api/v1/invoices/{$id}", ['notes' => 'Pay by <b>Friday</b>, <i>please</i>', 'bill_to_emails' => ['f1@branch.test']])->assertOk()
+            ->assertJsonPath('data.notes', 'Pay by <b>Friday</b>, <i>please</i>');
+
+        $html = $this->inTenant($t['org'], fn () => app(InvoicePdf::class)->html(Invoice::with('lines', 'company')->find($id)));
+        $this->assertStringContainsString('Pay by Friday, please', $html);
+        $this->assertStringNotContainsString('&lt;b&gt;', $html);
+        $this->assertStringNotContainsString('<b>Friday', $html);
+
+        $as->postJson("/api/v1/invoices/{$id}/approve")->assertOk();
+        $as->postJson('/api/v1/invoices/send', ['ids' => [$id]])->assertOk();
+        $body = $this->sent[0]['mail']->content()->htmlString;
+        $this->assertStringNotContainsString('&lt;b&gt;', $body);
+        $this->assertStringNotContainsString('<b>Friday', $body);
     }
 }

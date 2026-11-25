@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\ReportEmail;
 use App\Models\User;
 use App\Observers\JobThumbtackObserver;
 use App\Services\Leads\LocalServicesLeads;
@@ -32,6 +33,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\MailManager;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Support\Facades\DB;
@@ -309,6 +311,9 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->defineRateLimiters();
+
+        // An emailed report, kept as it went (Reports › Reports, Jose 2026-11-25).
+        Event::listen(MessageSent::class, [ReportEmail::class, 'record']);
 
         /*
          * `/up` is already registered in bootstrap/app.php. Laravel's default

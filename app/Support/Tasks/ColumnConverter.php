@@ -69,6 +69,8 @@ class ColumnConverter
             'timeline' => is_array($value) ? $value['from'] : null,
             'link' => is_array($value) ? $value['label'] : null,
             'location' => is_array($value) ? ($value['address'] ?? null) : null,
+            // Notes' <b>/<i>/<u> are for the app; anything reading the words gets them plain (Jose 11-25).
+            'long_text' => is_scalar($value) ? \App\Support\NotesMarkup::plain((string) $value) : null,
             'number', 'currency', 'rating' => $value === null ? null : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.'),
             default => is_scalar($value) ? (string) $value : null,
         };

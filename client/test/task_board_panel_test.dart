@@ -8,6 +8,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:ezbizi_client/widgets/range_calendar.dart';
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -891,6 +892,17 @@ void main() {
           .text,
       '☐ ',
     );
+
+    // Jose 11-25: Bold, Italic, Underline as on Monday; saved as <b>.
+    final field = find.byKey(const Key('task-update-body'));
+    await tester.enterText(field, '');
+    await tester.tap(find.byKey(const Key('task-update-tool-bold')));
+    await tester.pump();
+    await tester.enterText(field, 'Call now');
+    await tester.pump();
+    final composer =
+        tester.widget<TextField>(field).controller! as FormattedNotesController;
+    expect(composer.markup, '<b>Call now</b>');
     await tester.pump(const Duration(seconds: 3));
   });
 

@@ -58,6 +58,56 @@ void main() {
     }
   });
 
+  testWidgets(
+    'a past day does not call a device that is capturing now "stopped"',
+    (tester) async {
+      // Mobile review 11-25: Nov 22 read "capture stopped 2d ago" while the
+      // same PC said "last capture 2m ago" on Today.
+      final now = DateTime.now().toUtc();
+      Map<String, dynamic> shot(String id, Duration ago) => {
+        'id': id,
+        'device_id': _capableDevice['id'],
+        'captured_at': now.subtract(ago).toIso8601String(),
+        'bytes': 1, 'width': 1, 'height': 1,
+      };
+      await _pumpTab(
+        tester,
+        devices: [_capableDevice],
+        shots: const [],
+        meta: {'in_range': 1, 'total': 2},
+        page: (u) => u.queryParameters['limit'] == '1'
+            ? [shot('newest', const Duration(minutes: 2))]
+            : u.queryParameters['from']!.compareTo(
+                    now.subtract(const Duration(hours: 30)).toIso8601String()) < 0
+                ? [shot('old', const Duration(days: 2))]
+                : [shot('newest', const Duration(minutes: 2))],
+      );
+      expect(find.textContaining('capture stopped'), findsNothing,
+          reason: 'the control: today is fresh');
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-day-back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('desktop-monitoring-day-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('capture stopped'), findsNothing);
+    },
+  );
+
+  testWidgets('a swipe left on the large view steps to an older capture', (
+    tester,
+  ) async {
+    await _pumpTab(tester, devices: [_capableDevice], shots: _freshShots);
+    final hero = find.byKey(const Key('desktop-monitoring-hero'));
+    expect(find.descendant(of: hero, matching: find.textContaining('2m ago')), findsOneWidget);
+
+    await tester.fling(hero, const Offset(-300, 0), 1000);
+    await tester.pumpAndSettle();
+
+    expect(find.descendant(of: hero, matching: find.textContaining('2m ago')), findsNothing,
+        reason: 'the hero moved off the newest capture');
+  });
+
   testWidgets('the day bar says how many captures exist, today and in 30 days', (
     tester,
   ) async {

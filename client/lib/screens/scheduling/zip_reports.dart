@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 
@@ -74,7 +75,7 @@ class _ReportDialog extends StatefulWidget {
 }
 
 class _ReportDialogState extends State<_ReportDialog> {
-  final _note = TextEditingController();
+  final _note = FormattedNotesController();
   List<Map<String, dynamic>> _areas = const [];
   String _should = '';
   String? _error;
@@ -107,7 +108,7 @@ class _ReportDialogState extends State<_ReportDialog> {
       'zip': widget.zip,
       if (widget.areaId != null) 'reported_area_id': widget.areaId,
       if (_should.isNotEmpty) 'suggested_area_id': _should,
-      if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
+      if (_note.markup.trim().isNotEmpty) 'note': _note.markup.trim(),
     });
     if (!mounted) return;
     if (!r.ok) {
@@ -159,11 +160,12 @@ class _ReportDialogState extends State<_ReportDialog> {
             onChanged: (v) => setState(() => _should = v ?? ''),
           ),
           const SizedBox(height: 12),
-          TextField(
-            key: const Key('report-zip-note'),
+          FormattedNotesField(
+            fieldKey: const Key('report-zip-note'),
             controller: _note,
             maxLength: 500,
-            decoration: const InputDecoration(labelText: 'Note (optional)'),
+            label: 'Note (optional)',
+            minLines: 1,
           ),
           if (_error != null) ErrorNote(_error!),
         ],
@@ -303,7 +305,8 @@ class _ZipReportsSettingsState extends State<ZipReportsSettings> {
                     ),
                   ),
                   Text(facts, style: theme.textTheme.bodySmall),
-                  if ('${r['note'] ?? ''}'.isNotEmpty) Text('"${r['note']}"'),
+                  if ('${r['note'] ?? ''}'.isNotEmpty)
+                    FormattedNotesText('${r['note']}'),
                 ],
               ),
             ),

@@ -21,6 +21,7 @@ import '../../widgets/open_destination.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/formatted_notes.dart';
 
 /// Customer Experience › Complaints (Jose, 2026-10-20): every bad review, bad
 /// rating and complaint call, and how far each got. UI queue: option 1 (a
@@ -139,7 +140,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
   String _boardStatus = 'new';
 
   Map<String, dynamic>? _open;
-  final _note = TextEditingController();
+  final _note = FormattedNotesController();
   final _search = TextEditingController();
   Timer? _debounce;
 
@@ -149,6 +150,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
 
   @override
   void initState() {
+    _note.addListener(() => setState(() {}));
     super.initState();
     _load();
     _takeLink();
@@ -1391,24 +1393,18 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
             for (final n in notes)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
+                child: FormattedNotesText(
                   '${_stamp(n['at'])}'
                   '${n['by'] == null ? '' : ' · ${n['by']}'}: ${n['text']}',
                   style: small,
                 ),
               ),
           if (manage) ...[
-            TextField(
-              key: const ValueKey('complaint-note'),
+            FormattedNotesField(
+              fieldKey: const ValueKey('complaint-note'),
               controller: _note,
-              minLines: 1,
-              maxLines: 4,
-              maxLength: 4000,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: 'Add a note',
-              ),
-              onChanged: (_) => setState(() {}),
+              label: 'Add a note',
+              minLines: 1, maxLength: 4000,
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -1417,7 +1413,7 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
                 onPressed: _busy || _note.text.trim().isEmpty
                     ? null
                     : () {
-                        final text = _note.text.trim();
+                        final text = _note.markup.trim();
                         _note.clear();
                         _write(
                           widget.api.post('/complaints/${row['id']}/notes', {

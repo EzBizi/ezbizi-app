@@ -108,6 +108,24 @@ class NoteActivityTest extends TestCase
         $this->assertNull($this->inTenant($alpha['org'], fn () => Lead::query()->find($lead)->note_mentions));
     }
 
+    /** Jose 11-25: notes may be bold/italic/underline; the tags never leave the app. */
+    public function test_a_bolded_lead_note_is_stored_with_its_tags_and_mentions_people_in_plain_text(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $reader = $this->userWithRole($alpha, 'Reader', ['leads.view', 'leads.edit', 'leads.'.Lead::SOURCE_WEBSITE_CHAT.'.view']);
+        $lead = $this->inTenant($alpha['org'], fn () => Lead::create([
+            'company_id' => $alpha['company']->getKey(), 'source' => Lead::SOURCE_WEBSITE_CHAT,
+            'remote_id' => 'chat-1', 'status' => Lead::STATUS_NEW, 'contact_name' => 'Ann', 'received_at' => now(),
+        ])->id);
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/leads/{$lead}", [
+            'note' => '<b>Call back</b> <i>before</i> <u>noon</u>', 'mentions' => [$reader->id],
+        ])->assertOk()->assertJsonPath('data.note', '<b>Call back</b> <i>before</i> <u>noon</u>');
+
+        $body = $this->inTenant($alpha['org'], fn () => Notification::query()->where('user_id', $reader->id)->value('body'));
+        $this->assertSame('Call back before noon', $body);
+    }
+
     public function test_reading_needs_sight_of_the_record(): void
     {
         $alpha = $this->provisionTenant('Alpha');

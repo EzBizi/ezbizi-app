@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/locations_pane.dart';
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -453,11 +454,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final box = tester.widget<TextField>(
-      find.byKey(const Key('dispatcher-note-co-1')),
+    // Read, not offered: the saved note as text, no field.
+    expect(
+      tester
+          .widget<FormattedNotesText>(
+            find.byKey(const Key('dispatcher-note-co-1')),
+          )
+          .markup,
+      'Office lead: Dana Kim, ext 204',
     );
-    expect(box.controller!.text, 'Office lead: Dana Kim, ext 204');
-    expect(box.readOnly, isTrue);
+    expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('dispatcher-note-save-co-1')), findsNothing);
     expect(
       find.text('Changing them takes the right to edit Scheduling.'),

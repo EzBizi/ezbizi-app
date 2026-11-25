@@ -517,6 +517,7 @@ class TaskBoardsController extends Controller
 
             return match (true) {
                 $v === null => '',
+                $c->type === 'long_text' && is_string($v) => (string) \App\Support\NotesMarkup::plain($v),
                 is_array($v) && isset($v['label']) => (string) $v['label'],
                 is_array($v) && isset($v['from']) => trim(($v['from'] ?? '').' – '.($v['to'] ?? ''), ' –'),
                 is_array($v) => implode(', ', array_map($one, $v)),

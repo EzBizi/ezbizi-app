@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/work_schedule_card.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
@@ -2758,7 +2759,7 @@ class _DetailKind {
       row['_when']?.toString(),
       row['basis'] == 'salary' ? 'Salary' : 'Hourly',
       'from ${_date(row['effective_on'], formats)}',
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -2858,7 +2859,7 @@ class _DetailKind {
     },
     subtitle: (row, formats) => _join([
       row['used_on'] == null ? 'before EzBizi' : _date(row['used_on'], formats),
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -3020,6 +3021,10 @@ class _DetailListState extends State<_DetailList> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [Text(widget.kind.title(row, widget.formats)), tag],
                 ),
+                // A note keeps its bold, italic and underline (Jose, 2026-11-25).
+                _ when widget.kind == _DetailKind.notes => FormattedNotesText(
+                  row['body']?.toString(),
+                ),
                 _ => Text(widget.kind.title(row, widget.formats)),
               },
               subtitle: Text(widget.kind.subtitle(row, widget.formats)),
@@ -3089,9 +3094,15 @@ class _DetailFormState extends State<_DetailForm> {
       if (f.type == _FieldType.text ||
           f.type == _FieldType.multiline ||
           f.type == _FieldType.number)
-        f.key: TextEditingController(
-          text: widget.initial?[f.key]?.toString() ?? '',
-        )..addListener(() => setState(() {})),
+        f.key:
+            (f.type == _FieldType.multiline
+                  ? FormattedNotesController(
+                      markup: widget.initial?[f.key]?.toString(),
+                    )
+                  : TextEditingController(
+                      text: widget.initial?[f.key]?.toString() ?? '',
+                    ))
+              ..addListener(() => setState(() {})),
   };
 
   late final Map<String, String?> _picked = {
@@ -3119,8 +3130,11 @@ class _DetailFormState extends State<_DetailForm> {
 
   Object? _value(_FieldSpec f) {
     if (_text.containsKey(f.key)) {
-      final text = _text[f.key]!.text.trim();
+      final box = _text[f.key]!;
+      final text = box.text.trim();
       if (text.isEmpty) return null;
+      // Notes keep their <b>/<i>/<u> (Jose, 2026-11-25).
+      if (box is FormattedNotesController) return box.markup.trim();
       return f.key == 'quantity' ? int.tryParse(text) : text;
     }
     return _picked[f.key];
@@ -3159,12 +3173,16 @@ class _DetailFormState extends State<_DetailForm> {
           onChanged: (v) =>
               setState(() => _picked[f.key] = v.isEmpty ? null : v),
         );
-      case _FieldType.text:
       case _FieldType.multiline:
+        return FormattedNotesField(
+          controller: _text[f.key]! as FormattedNotesController,
+          label: f.label,
+        );
+      case _FieldType.text:
       case _FieldType.number:
         return TextField(
           controller: _text[f.key],
-          maxLines: f.type == _FieldType.multiline ? 4 : 1,
+          maxLines: 1,
           keyboardType: f.type == _FieldType.number
               ? const TextInputType.numberWithOptions(decimal: true)
               : null,
