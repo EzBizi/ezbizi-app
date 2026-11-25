@@ -721,6 +721,7 @@
             "parent": null,
             "tabs": [
                 "Phone",
+                "Chat",
                 "Users",
                 "Records",
                 "Reports",
@@ -730,6 +731,10 @@
             "grants": {
                 "Phone": [
                     "phone.phone.view",
+                    "phone.view"
+                ],
+                "Chat": [
+                    "phone.chat.view",
                     "phone.view"
                 ],
                 "Users": [
@@ -1313,6 +1318,7 @@
         "organizations.settings.view",
         "organizations.view",
         "phone.alerts.view",
+        "phone.chat.view",
         "phone.edit",
         "phone.phone.view",
         "phone.records.view",

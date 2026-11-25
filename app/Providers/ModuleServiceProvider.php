@@ -2334,6 +2334,10 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('phone', 'Phone'),
+                    // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi
+                    // accounts. Messages never touch Twilio; calls ring the
+                    // colleague's Twilio identity like the Team roster.
+                    new TabDefinition('chat', 'Chat'),
                     new TabDefinition('users', 'Users'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('reports', 'Reports'),
@@ -2345,6 +2349,7 @@ class ModuleServiceProvider extends ServiceProvider
                 actionLabels: ['edit' => 'Change lines, flows and settings'],
                 actionDescriptions: [
                     'phone.view' => 'Dial, Messages, Team and Voicemail.',
+                    'chat.view' => 'Chat with colleagues: messages, groups, photos, files, voice notes and calls.',
                 ],
                 triggers: [
                     new TriggerDefinition(
