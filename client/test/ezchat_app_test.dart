@@ -85,6 +85,20 @@ void main() {
             'data': {'rev': 'r', 'typing': <String, Object>{}},
           });
         }
+        if (p.endsWith('/chat/calls')) {
+          return _json({
+            'data': [
+              {
+                'id': 'k1',
+                'kind': 'call',
+                'mine': false,
+                'sent_at': '2026-11-25T14:02:00Z',
+                'meta': {'status': 'missed', 'video': false},
+                'chat': {'id': 'c-1', 'type': 'direct', 'name': 'Dispatch'},
+              },
+            ],
+          });
+        }
         return _json({'data': <Object>[]});
       }),
     );
@@ -98,6 +112,16 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const ValueKey('ezchat-bar')), findsOneWidget);
+    await tester.tap(find.text('Calls'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ezchat-calls')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ezchat-call-k1')),
+      findsOneWidget,
+      reason: 'the call from GET chat/calls',
+    );
+    expect(find.textContaining('Missed'), findsOneWidget);
     await tester.tap(find.text('You'));
     await tester.pump();
     expect(find.byKey(const ValueKey('ezchat-you')), findsOneWidget);

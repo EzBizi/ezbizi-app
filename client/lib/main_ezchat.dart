@@ -20,6 +20,7 @@ import 'core/token_store.dart';
 import 'core/version_gate.dart';
 import 'screens/login_screen.dart';
 import 'screens/phone/chat/chat_calls.dart';
+import 'screens/phone/chat/chat_calls_list.dart';
 import 'screens/phone/chat/chat_tab.dart';
 import 'screens/update_required_screen.dart';
 
@@ -123,7 +124,7 @@ class _EzChatHomeState extends State<EzChatHome> {
     final theme = Theme.of(context);
     final me = widget.session.me!;
     final mayChat = me.permissions.contains('phone.chat.view');
-    // Chats · You (design 213 B1); Calls joins when GET chat/calls lands.
+    // Chats · Calls · You (design 213 B1).
     // The bar steps aside inside a chat, as WhatsApp's does.
     return Scaffold(
       bottomNavigationBar: !mayChat || _inChat
@@ -137,6 +138,11 @@ class _EzChatHomeState extends State<EzChatHome> {
                   icon: Icon(Icons.chat_bubble_outline),
                   selectedIcon: Icon(Icons.chat_bubble),
                   label: 'Chats',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.call_outlined),
+                  selectedIcon: Icon(Icons.call),
+                  label: 'Calls',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.person_outline),
@@ -155,6 +161,11 @@ class _EzChatHomeState extends State<EzChatHome> {
                     session: widget.session,
                     onOpenChanged: (open) => setState(() => _inChat = open),
                   ),
+                  // Built when first opened, so it reads fresh calls then.
+                  if (_tab == 1)
+                    ChatCallsList(api: widget.api)
+                  else
+                    const SizedBox(),
                   _You(session: widget.session),
                 ],
               )
