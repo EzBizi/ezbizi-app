@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0650', date: '25 Nov 2026', items: [
+      'Desktop app: zoom in and out with Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel; it remembers your level',
+    ]),
     VersionRelease(version: '0.0.0649', date: '25 Nov 2026', items: [
       'This build carries everything listed under 0.0.0648 and 0.0.0647 (those releases were folded into this one)',
       'Jobs: the Project tag is always offered when tagging a job, and you always find yourself in the technician picker',
