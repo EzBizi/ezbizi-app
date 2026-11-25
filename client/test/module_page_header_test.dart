@@ -67,7 +67,7 @@ void main() {
   });
 
   // UI pass 11-16: "Add customer" took the row and the title read "Custo…".
-  testWidgets('on a phone a wide action shrinks before the title is cut', (
+  testWidgets('on a phone a wide action never cuts the title', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -143,6 +143,39 @@ void main() {
     final title = tester.renderObject<RenderParagraph>(find.text('Agenda'));
     expect(title.didExceedMaxLines, isFalse, reason: 'the title was cut');
     final button = tester.getRect(find.byType(FilledButton));
+    expect(button.right, lessThanOrEqualTo(402));
+    expect(tester.takeException(), isNull);
+  });
+
+  // Mobile review 11-24, finding 15: beside a short title a long action was
+  // scaled to ~75% ("Add purchase order" beside "Inventory"). It goes to its
+  // own line at full size instead.
+  testWidgets('on a phone a long action is never drawn small', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 402,
+            child: ModulePageHeader(
+              title: 'Jobs',
+              actions: [
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add purchase order'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = tester.getRect(find.byType(FilledButton));
+    final natural = tester.getSize(find.byType(FilledButton));
+    expect(button.width, greaterThanOrEqualTo(natural.width * 0.9));
     expect(button.right, lessThanOrEqualTo(402));
     expect(tester.takeException(), isNull);
   });
