@@ -152,7 +152,12 @@ final class MondayImport
         // Monday hears about it (desk 11-19: Jose's bell never rang for Monday's assignments).
         $this->writer->quiet = ! $refresh;
 
-        DB::beginTransaction();
+        // Only a dry run is one transaction (to roll it back). A real run commits item by item:
+        // one transaction over a whole run held task_updates locks for minutes and staff posts
+        // failed with 1205 (health sweep 11-25: 21 between 00:00 and 00:35 UTC).
+        if ($this->dry) {
+            DB::beginTransaction();
+        }
         try {
             // What Monday already has is never written back to it (MondayOutbox).
             // Desk 11-24: Jose's Activity held 300k sync writes as his clicks. The sync is
@@ -168,6 +173,9 @@ final class MondayImport
                     foreach ($b['items'] as $item) {
                         // One bad item never stops the rest (desk 11-18: one item stopped 29 syncs).
                         try {
+                            // Files download before the transaction: a slow download inside it held
+                            // task_updates locks and staff posts timed out (health sweep 11-25, 21 x 1205).
+                            $this->prefetch($item);
                             DB::transaction(function () use ($board, $item, $actor) {
                                 $parent = $this->task($board, $item, null, $actor);
                                 foreach ($item['subitems'] ?? [] as $sub) {
@@ -182,6 +190,7 @@ final class MondayImport
                             report($e);
                             $this->counts['items failed'] = ($this->counts['items failed'] ?? 0) + 1;
                         }
+                        $this->dropPrefetched();
                     }
                 }
             })));
@@ -199,9 +208,13 @@ final class MondayImport
                     }
                 });
             }
-            $this->dry ? DB::rollBack() : DB::commit();
+            if ($this->dry) {
+                DB::rollBack();
+            }
         } catch (\Throwable $e) {
-            DB::rollBack();
+            if ($this->dry) {
+                DB::rollBack();
+            }
             throw $e;
         } finally {
             app()->forgetInstance(EventEmitter::class);
@@ -917,17 +930,76 @@ final class MondayImport
     }
 
     /** @return array{0: string, 1: bool}|null the file on disk, and whether it is a temporary copy */
+    /** @var array<string, array{0: string, 1: bool}|null> url => fetch() result, for the item being imported */
+    private array $prefetched = [];
+
+    /** Every file an item's updates carry, fetched now, outside any transaction. */
+    private function prefetch(array $item): void
+    {
+        if ($this->dry) {
+            return;
+        }
+        // Names the item's task already holds are not fetched again (files() skips them).
+        $held = [];
+        $refs = array_values(array_filter(array_map(fn ($i) => isset($i['monday_id']) ? 'monday:'.$i['monday_id'] : null, [$item, ...($item['subitems'] ?? [])])));
+        foreach (Task::query()->withTrashed()->whereIn('external_ref', $refs)->pluck('id') as $taskId) {
+            foreach (TaskUpdate::query()->where('task_id', $taskId)->get() as $u) {
+                foreach ($u->attachments()->get(['original_name', 'sealed_name']) as $a) {
+                    $held[$a->sealed_name !== null ? (string) SensitiveTasks::open($a->sealed_name) : (string) $a->original_name] = true;
+                }
+            }
+        }
+        $walk = function (array $node) use (&$walk, $held) {
+            foreach ($node['files'] ?? [] as $f) {
+                if (is_array($f) && ! empty($f['url']) && ! isset($held[(string) ($f['name'] ?? 'file')])
+                    && ! array_key_exists($f['url'], $this->prefetched) && $this->local($f) === null) {
+                    $this->prefetched[$f['url']] = $this->download($f['url']);
+                }
+            }
+            foreach ($node as $v) {
+                if (is_array($v)) {
+                    $walk($v);
+                }
+            }
+        };
+        $walk($item);
+    }
+
+    private function dropPrefetched(): void
+    {
+        foreach ($this->prefetched as $hit) {
+            if ($hit !== null && $hit[1] && is_file($hit[0])) {
+                @unlink($hit[0]);
+            }
+        }
+        $this->prefetched = [];
+    }
+
     private function fetch(array $f): ?array
     {
         if ($path = $this->local($f)) {
             return [$path, false];
         }
+        if (! empty($f['url']) && array_key_exists($f['url'], $this->prefetched)) {
+            $hit = $this->prefetched[$f['url']];
+            // Handed over once: the caller removes its temporary copy as before.
+            unset($this->prefetched[$f['url']]);
+
+            return $hit;
+        }
         if (empty($f['url'])) {
             return null;
         }
+
+        return $this->download($f['url']);
+    }
+
+    /** @return array{0: string, 1: bool}|null */
+    private function download(string $url): ?array
+    {
         $tmp = (string) tempnam(sys_get_temp_dir(), 'monday');
         try {
-            $response = Http::sink($tmp)->timeout(1800)->get($f['url']);
+            $response = Http::sink($tmp)->timeout(1800)->get($url);
             if ($response->successful() && filesize($tmp) > 0) {
                 return [$tmp, true];
             }
