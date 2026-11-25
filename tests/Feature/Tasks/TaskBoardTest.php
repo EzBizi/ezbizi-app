@@ -67,7 +67,8 @@ class TaskBoardTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->assertTrue(TaskBoard::query()->whereKey($old->id)->exists()));
     }
 
-    public function test_boards_follow_the_current_view_and_never_show_a_sibling_company(): void
+    /** Jose 11-25: "It should follow your own permissions and hierarchy": the list ignores the picker (was: followed it, 09-24). */
+    public function test_the_board_list_follows_reach_whatever_the_current_view(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         [$beta, $betaF1] = $this->inTenant($tenant['org'], function () use ($tenant) {
@@ -85,10 +86,11 @@ class TaskBoardTest extends TestCase
             ->assertOk()
             ->json('data'))->pluck('name')->sort()->values()->all();
 
-        $this->assertSame(['Alpha Co', 'Alpha F1', 'Viewer'], $names('company:'.$tenant['company']->id));
-        $this->assertSame(['Alpha Co', 'Alpha F1', 'Viewer'], $names('franchise:'.$tenant['franchise']->id));
-        $this->assertSame(['Beta Co', 'Beta F1', 'Viewer'], $names('company:'.$beta->id));
-        $this->assertNotContains('Beta F1', $names('franchise:'.$tenant['franchise']->id));
+        // Reached at organization level: both companies in every view.
+        $all = ['Alpha Co', 'Alpha F1', 'Beta Co', 'Beta F1', 'Viewer'];
+        $this->assertSame($all, $names('company:'.$tenant['company']->id));
+        $this->assertSame($all, $names('franchise:'.$tenant['franchise']->id));
+        $this->assertSame($all, $names('company:'.$beta->id));
 
         $f1 = collect($this->signedInAs($viewer)->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
             ->getJson('/api/v1/task-boards')->json('data'))->firstWhere('name', 'Alpha F1');
