@@ -70,6 +70,7 @@ use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\SendSavedReport;
 use App\Support\Reports\Texts\DailyTexts;
 use App\Support\Reports\Texts\ReportPdf as ReportTextPdf;
@@ -494,7 +495,8 @@ class ActionRunner
         }
 
         // Whatever the step writes speaks as the rule, never its creator (Adeline 11-24).
-        return AutomationVoice::speak($automation, fn () => match ($type) {
+        // A step sending staff a report names its rule on what it sends (Reports › Reports, Jose 2026-11-25).
+        return ReportSource::during(self::reportKey($type, $action, $automation), fn () => AutomationVoice::speak($automation, fn () => match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
@@ -551,8 +553,35 @@ class ActionRunner
                 "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
-        });
+        }));
     }
+
+    /**
+     * The report a step sends, "automation:<rule>", when it sends one: a report
+     * step, or a message to staff (a person, the branch's managers, a typed
+     * address). A message to the customer is not a report. Null otherwise.
+     */
+    public static function reportKey(string $type, array $action, ?Automation $automation): ?string
+    {
+        if ($automation === null) {
+            return null;
+        }
+        // A step's `to` can be a list (notify); only a single recipient field is read here.
+        $to = $action['to_field'] ?? $action['to'] ?? '';
+        $to = is_string($to) ? $to : '';
+        $staff = str_starts_with($to, self::RECIPIENT_USER) || str_starts_with($to, self::RECIPIENT_BRANCH_MANAGERS)
+            || (str_contains($to, '@') && ! str_contains($to, '{{'));
+
+        return in_array($type, self::REPORT_STEPS, true) || (in_array($type, self::MESSAGE_STEPS, true) && $staff)
+            ? 'automation:'.$automation->id
+            : null;
+    }
+
+    /** Steps that are a report whoever they go to. */
+    public const REPORT_STEPS = ['report.text', 'report.send', 'send_report', 'whatsapp.group_send'];
+
+    /** Steps that are a report when they go to staff. */
+    public const MESSAGE_STEPS = ['whatsapp.send', 'email.send', 'sms.send'];
 
     /**
      * The actor and scope an automation action runs as — its own creator,

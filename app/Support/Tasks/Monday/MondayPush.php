@@ -423,7 +423,7 @@ final class MondayPush
             'link' => ['url' => (string) $value, 'text' => (string) $value],
             'email' => ['email' => (string) $value, 'text' => (string) $value],
             'phone' => ['phone' => preg_replace('/[^\d+]/', '', (string) $value)],
-            'long_text', 'long-text' => ['text' => (string) $value],
+            'long_text', 'long-text' => ['text' => (string) \App\Support\NotesMarkup::plain((string) $value)],
             'text', 'name' => (string) (ColumnConverter::words($column, $v) ?? ''),
             default => false,
         };

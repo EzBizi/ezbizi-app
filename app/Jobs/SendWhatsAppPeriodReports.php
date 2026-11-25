@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppReportBatch;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Social\WhatsAppPeriodReports;
 use App\Support\Tenancy\TenantContext;
@@ -39,7 +40,7 @@ final class SendWhatsAppPeriodReports implements ShouldQueue
         // One PeriodReport per run: it caches the Airtable reads (Reports).
         $report = app(PeriodReport::class);
 
-        $tenant->run($organization, function () use ($reports, $batch, $report) {
+        $tenant->run($organization, fn () => ReportSource::during('period:'.$batch->period, function () use ($reports, $batch, $report) {
             if ($this->privateFor !== null) {
                 $to = User::query()->find($this->privateFor);
 
@@ -47,6 +48,6 @@ final class SendWhatsAppPeriodReports implements ShouldQueue
             }
 
             return $this->approvedBy !== null ? $reports->send($batch, $report) : $reports->preview($batch, $report);
-        });
+        }));
     }
 }
