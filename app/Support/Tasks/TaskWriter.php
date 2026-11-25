@@ -119,7 +119,9 @@ class TaskWriter
                 $this->syncOwners($task, $owners, $actor);
             }
 
-            $input['values'] = ($input['values'] ?? []) + $this->jobValues($task);
+            $jobValues = array_diff_key($this->jobValues($task), $input['values'] ?? []);
+            $input['values'] = ($input['values'] ?? []) + $jobValues;
+            MondayOutbox::owe($task->id, array_map(fn ($c) => 'values:'.$c, array_keys($jobValues)));
             if (! empty($input['values'])) {
                 $this->writeValues($task, $input['values'], $actor);
             }
@@ -129,7 +131,9 @@ class TaskWriter
             // Only empty cells; not while the Monday sync writes what Monday already has.
             if (! $this->syncing && $parent === null && $task->about_type === 'job' && $task->about_id !== null
                 && ($job = Job::query()->find($task->about_id)) !== null) {
-                app(TaskRecordFill::class)->fill($task, null, $actor, job: $job, writer: $this);
+                $filled = app(TaskRecordFill::class)->fill($task, null, $actor, job: $job, writer: $this);
+                // Made by the Monday import (recording off): Monday lacks these, so they are owed to it.
+                MondayOutbox::owe($task->id, array_map(fn ($c) => 'values:'.$c, array_keys($filled)));
             }
 
             if ($automationId !== null && $parent === null) {
