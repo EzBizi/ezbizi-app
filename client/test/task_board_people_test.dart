@@ -380,7 +380,7 @@ void main() {
       ],
     );
 
-    for (final header in ['MY BOARDS', 'FRANCHISE BOARDS', "EVERYONE'S BOARDS"]) {
+    for (final header in ['MY BOARDS', 'SHARED WITH ME', "EVERYONE'S BOARDS"]) {
       expect(find.text(header), findsOneWidget);
     }
     expect(find.text('Office move'), findsOneWidget);
