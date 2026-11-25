@@ -5756,14 +5756,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       ],
       onOpen: () => _statusMenu(true),
       onClose: () => _statusMenu(false),
-      builder: (context, menu, _) => ColoredBox(
-        color: colours.fill,
-        child: CellTap(
-          key: ValueKey('task-status-${t['id']}'),
-          onTap: _canEdit
-              ? () => menu.isOpen ? menu.close() : menu.open()
-              : null,
-          child: Center(child: label),
+      // 1 px short of each row line, as on Monday: two same-coloured rows
+      // never meet as one block (desk 11-24, row 37).
+      builder: (context, menu, _) => Padding(
+        padding: labelInset,
+        child: ColoredBox(
+          color: colours.fill,
+          child: CellTap(
+            key: ValueKey('task-status-${t['id']}'),
+            onTap: _canEdit
+                ? () => menu.isOpen ? menu.close() : menu.open()
+                : null,
+            child: Center(child: label),
+          ),
         ),
       ),
     );

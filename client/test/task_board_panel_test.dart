@@ -724,6 +724,19 @@ void main() {
       ),
       findsWidgets,
     );
+    // A status label stops short of the rule at both edges, so two rows of
+    // one colour show the row between them (desk 11-24).
+    final row = tester.getRect(find.byKey(const ValueKey('task-t1')));
+    final fill = tester.getRect(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey('task-status-t1')),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+    expect(fill.top, greaterThanOrEqualTo(row.top + 1));
+    expect(fill.bottom, lessThanOrEqualTo(row.bottom - 1));
     double ratio(Color a, Color b) {
       final (x, y) = (a.computeLuminance(), b.computeLuminance());
       return (max(x, y) + 0.05) / (min(x, y) + 0.05);

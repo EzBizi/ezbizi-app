@@ -292,6 +292,9 @@ class PlaidBankTest extends TestCase
 
     public function test_the_dashboard_glance_says_cash_cards_and_unmatched_deposits(): void
     {
+        // Mid-month, midday: the deposits are dated today in UTC and the period is the person's
+        // own month-to-date, so near midnight UTC "today" was still tomorrow for them (0639 gate).
+        \Illuminate\Support\Carbon::setTestNow('2026-11-15 17:00:00');
         $t = $this->provisionTenant('Alpha');
         $glance = function (User $u) {
             $this->signedInAs($u);   // the view and timezone are read from the signed-in person

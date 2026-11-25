@@ -468,3 +468,27 @@ what was found before it and what changed.
 | Route | `field.route.view` | `field.route.view` | `permission:field.route.view` | tab box | OK |  |
 | Recordings | `field.recordings.view` | `field.recordings.view` | GET field/recordings: no permission gate (looser); `field.listen` widens | tab box | OK |  |
 | Settings | `field.settings.view` | `field.settings.view` | SettingsController filter `field.settings.view` | tab box | OK |  |
+
+## View As pass, 0.0.0638 (2026-11-24)
+
+Read-only, on the app box: /var/www/ezbizi-current = release 3d930fce1f6b (Release 0.0.0638), which contains session/roles-audit @ 45f2e8302. Org: Triplex Group. Promise = PermissionCatalogue::keysGrantedBy(role) over available modules; a ticked tab counts as promised only when its `actionRequires` are all ticked (the rest the editor shows as "won't show"). Served = MeController payload pieces (PermissionCatalogue::heldBy, modulesFor()[reachable], MobileBar::forUser) for the first active user holding the role, built in tinker; Sales has no active user, so an unsaved in-memory User carrying the role was used. Client = every key in client/test/fixtures/module_tabs.json `grants` for each promised tab (local main) is in the served permissions. Nothing was written.
+
+| Role | Users (active) | Promised modules / tabs | Served modules / tabs | Mismatches | Mobile bar slots served |
+|---|---|---|---|---|---|
+| Administrator | 5 (5) | 46 / 147 | 46 / 147 | none | default (null) |
+| Dispatcher | 28 (18) | 22 / 43 | 22 / 43 | none | 4 of 4: Jobs, Scheduling, Task Board, Communication |
+| Marketing | 2 (1) | 22 / 52 | 22 / 52 | none (1 tab ticked but shown as won't show: reports > Marketing Reports needs profit_loss.view; not served to the client either, consistent) | default (null) |
+| Technician | 64 (54) | 8 / 9 | 8 / 9 | none | 4 of 4: Jobs, Inspection, Review QR, Task Board |
+| Lead Manager | 1 (1) | 27 / 73 | 27 / 73 | none | default (null) |
+| Local Manager | 18 (14) | 14 / 29 | 14 / 29 | none | default (null) |
+| Accounting | 2 (2) | 26 / 65 | 26 / 65 | none | default (null) |
+| Google API Reviewer | 1 (1) | 18 / 44 | 18 / 44 | none | default (null) |
+| Training | 12 (9) | 6 / 4 | 6 / 4 | none | default (null) |
+| Recruiter | 1 (1) | 14 / 28 | 14 / 28 | none | default (null) |
+| Remote Dispatcher | 39 (24) | 14 / 29 | 14 / 29 | none | default (null) |
+| Sales | 1 (0) | 19 / 29 | 19 / 29 | none (no active user; in-memory role check) | default (null) |
+| Dispatch Supervisor | 2 (2) | 22 / 52 | 22 / 52 | none | default (null) |
+| Chief Operating Officer | 1 (1) | 28 / 64 | 28 / 64 | none | default (null) |
+| Lead Accounting | 1 (1) | 28 / 82 | 28 / 82 | none | 4 of 4: Human Resources, Task Board, Reports, Work Hours |
+
+Result: all 15 roles match. Every promised module is reachable and nothing unpromised is; every promised tab key is served; every promised tab's client grants are held; no served key beyond the role's ticks (no personal inbox grants on the sampled users); every stored mobile-bar slot is served.

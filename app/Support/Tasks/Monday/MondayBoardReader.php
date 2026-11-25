@@ -836,6 +836,17 @@ final class MondayBoardReader
         return array_values(array_unique(array_map(fn ($x) => $x[1] !== '' ? $x[1] : $x[2], $m)));
     }
 
+    private static function isPersonLink(string $href): bool
+    {
+        return (bool) preg_match('#^https://[a-z0-9-]+\.monday\.com/users/\d+#i', html_entity_decode($href));
+    }
+
+    /** "[@Name](https://x.monday.com/users/1-name)" as stored before 11-25: "@Name". */
+    public static function cleanMentions(string $body): string
+    {
+        return (string) preg_replace('#\[([^\]]+)\]\(https://[a-z0-9-]+\.monday\.com/users/[^)\s]*\)?#i', '$1', $body);
+    }
+
     public static function bodyOf(array $u): string
     {
         // A @mention is a name, not a link (its href is the person's Monday profile).
@@ -844,7 +855,8 @@ final class MondayBoardReader
             return trim((string) ($u['text_body'] ?? ''));
         }
         $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
-            fn ($m) => '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
+            // A link to a Monday person is a mention however it is marked: its name alone (Cristine 11-25).
+            fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2])) : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
         $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html));
         $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
 

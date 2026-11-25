@@ -821,19 +821,22 @@ class ColumnCell extends StatelessWidget {
           ],
           onOpen: () => onMenu?.call(true),
           onClose: () => onMenu?.call(false),
-          builder: (context, menu, _) => ColoredBox(
-            color: fill,
-            child: CellTap(
-              key: ValueKey('column-cell-${column.id}'),
-              onTap: onChanged == null
-                  ? null
-                  : () => menu.isOpen ? menu.close() : menu.open(),
-              child: Center(
-                child: Text(
-                  picked?.label ?? '',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: labelInk(fill)),
+          builder: (context, menu, _) => Padding(
+            padding: labelInset,
+            child: ColoredBox(
+              color: fill,
+              child: CellTap(
+                key: ValueKey('column-cell-${column.id}'),
+                onTap: onChanged == null
+                    ? null
+                    : () => menu.isOpen ? menu.close() : menu.open(),
+                child: Center(
+                  child: Text(
+                    picked?.label ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, color: labelInk(fill)),
+                  ),
                 ),
               ),
             ),
@@ -2970,6 +2973,10 @@ Color labelInk(Color fill) =>
     : EzBiziTheme.fieldInkDark;
 
 /// The grey a blank label wears.
+/// A full-bleed label stops 1 px short of the row lines above and below, so
+/// rows of one colour still read as separate rows (desk 11-24, row 37).
+const labelInset = EdgeInsets.symmetric(vertical: 1);
+
 Color blankLabel(ThemeData theme) => theme.colorScheme.outline;
 
 /// Monday's label picker: solid colour blocks in one to three columns
