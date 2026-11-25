@@ -70,7 +70,7 @@ class TaskBoardsController extends Controller
         $switchedOn = fn ($q) => $q->whereDoesntHave('company', fn ($c) => $c->switchedOff())
             ->whereDoesntHave('franchise', fn ($f) => $f->switchedOff());
 
-        $boards = $this->boards->visibleTo($user)->where($switchedOn)
+        $boards = $this->boards->visibleTo($user, byReach: true)->where($switchedOn)
             ->when($archived, $ownerGone, fn ($q) => $q->whereNot($ownerGone))
             ->when($archived && ! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))
             ->withCount(['tasks as open_for_me' => fn ($q) => $q
@@ -124,7 +124,7 @@ class TaskBoardsController extends Controller
             ];
         })->concat($archived ? $this->deleted($user) : [])->all(), 'meta' => [
             // The Archived list's switch, with how many wait there.
-            'archived_count' => $archived ? null : $this->boards->visibleTo($user)->where($switchedOn)->where($ownerGone)
+            'archived_count' => $archived ? null : $this->boards->visibleTo($user, byReach: true)->where($switchedOn)->where($ownerGone)
                 ->when(! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))->count()
                 + $this->deleted($user)->count(),
         ]]);
@@ -138,7 +138,7 @@ class TaskBoardsController extends Controller
      */
     private function deleted(User $user): Collection
     {
-        return $this->boards->visibleTo($user)->onlyTrashed()
+        return $this->boards->visibleTo($user, byReach: true)->onlyTrashed()
             ->where('deleted_at', '>=', now()->subDays(PurgeDeletedTaskBoards::DAYS))
             ->get()->filter(fn (TaskBoard $b) => $this->canRestore($user, $b))
             ->map(fn (TaskBoard $b) => ['id' => $b->id, 'kind' => $b->kind, 'name' => $b->name, 'archived' => true,
@@ -168,7 +168,7 @@ class TaskBoardsController extends Controller
     public function restore(Request $request, string $id): JsonResponse
     {
         $user = $request->user();
-        $board = $this->boards->visibleTo($user)->onlyTrashed()->findOrFail($id);
+        $board = $this->boards->visibleTo($user, byReach: true)->onlyTrashed()->findOrFail($id);
         abort_unless($this->canRestore($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
         abort_if($board->deleted_at->lt(now()->subDays(PurgeDeletedTaskBoards::DAYS)), 404);
         $board->restore();
