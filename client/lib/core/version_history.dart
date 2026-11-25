@@ -22,7 +22,8 @@ class VersionHistory {
       'Jobs: photos on a job (from Workiz and added in EzBizi) show as pictures; tap one to open it full screen and swipe through them',
       'Jobs: job notes can be bold, italic or underlined',
     ]),
-    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', deployed: '2026-11-25 18:57',
+      items: [
       'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
       'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
       'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',
