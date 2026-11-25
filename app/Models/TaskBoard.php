@@ -92,7 +92,8 @@ class TaskBoard extends Model implements StatesRetention
 
     public function groups(): HasMany
     {
-        return $this->hasMany(TaskGroup::class, 'board_id')->orderBy('position');
+        // An archived group (row 69) is off the board until restored.
+        return $this->hasMany(TaskGroup::class, 'board_id')->whereNull('archived_at')->orderBy('position');
     }
 
     public function statuses(): HasMany

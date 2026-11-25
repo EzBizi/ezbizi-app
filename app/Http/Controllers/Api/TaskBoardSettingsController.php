@@ -219,8 +219,13 @@ class TaskBoardSettingsController extends Controller
         $moveTo = array_key_exists('position', $input) ? (int) $input['position'] : null;
         unset($input['position']);
         $row->fill($input);
+        $pushed = array_values(array_filter([$row->isDirty('name') ? 'title' : null, $row->isDirty('colour') ? 'color' : null]));
         $this->audit->logChange('task_board.group_updated', $row, $request->user());
         $row->save();
+        // Rename and colour go to Monday too (Jose 11-25: every setting, both ways).
+        if ($pushed !== [] && str_starts_with((string) $row->external_ref, 'monday:')) {
+            \App\Jobs\PushMondayGroup::dispatch((string) $taskBoard->id, (string) $row->id, $pushed);
+        }
         if ($moveTo !== null) {
             // A place in the board's order (Jose 11-19: groups could not be reordered): the others
             // renumbered around it, and Monday's twin moved after its new neighbour there.
@@ -277,6 +282,106 @@ class TaskBoardSettingsController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    /** Monday's "Duplicate this group": "Duplicate of …" just below, with or without its tasks. */
+    public function duplicateGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        $withItems = $request->boolean('with_items');
+        $copy = DB::transaction(function () use ($taskBoard, $row, $withItems, $request) {
+            TaskGroup::query()->where('board_id', $taskBoard->id)->where('position', '>', $row->position)->increment('position');
+            $copy = TaskGroup::query()->create(['organization_id' => $taskBoard->organization_id, 'board_id' => $taskBoard->id,
+                'name' => mb_substr('Duplicate of '.$row->name, 0, 100), 'colour' => $row->colour, 'position' => $row->position + 1]);
+            if ($withItems) {
+                $writer = app(TaskWriter::class);
+                foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->orderBy('position')->get() as $t) {
+                    $writer->create($taskBoard, [
+                        'title' => $t->title, 'group_id' => $copy->id, 'status_id' => $t->status_id, 'due_on' => $t->due_on?->toDateString(),
+                        'assignee_user_ids' => $t->owners()->pluck('user_id')->map(fn ($id) => (string) $id)->all(),
+                        'values' => $t->values()->get()->mapWithKeys(fn ($v) => [$v->column_id => \App\Http\Controllers\Api\TasksController::valueOf($v)])->filter(fn ($v) => $v !== null)->all(),
+                    ], $request->user());
+                }
+            }
+            $this->audit->log('task_board.group_duplicated', $copy, actor: $request->user());
+
+            return $copy;
+        });
+
+        return response()->json(['data' => self::presentGroup($copy)], 201);
+    }
+
+    /** Monday's "Move to board": the group and its tasks to another board (its group of that name, made if missing). */
+    public function moveGroupToBoard(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        $target = TaskBoard::query()->findOrFail($request->validate(['board_id' => ['required', 'uuid']])['board_id']);
+        $this->authorize('update', $target);
+        abort_if($target->id === $taskBoard->id, 422, 'That is this board.');
+        $to = TaskGroup::query()->where('board_id', $target->id)->whereNull('archived_at')->get()
+            ->first(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower(trim($row->name)))
+            ?? (function () use ($target, $row) {
+                // On top, as Monday puts a moved group.
+                TaskGroup::query()->where('board_id', $target->id)->increment('position');
+
+                return TaskGroup::query()->create(['organization_id' => $target->organization_id, 'board_id' => $target->id, 'name' => $row->name,
+                    'colour' => $row->colour, 'position' => 0]);
+            })();
+        $writer = app(TaskWriter::class);
+        $n = 0;
+        foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->orderBy('position')->get() as $t) {
+            $writer->move($t, $to, null, $request->user());
+            $n++;
+        }
+        if ($taskBoard->groups()->count() > 1 && ! Task::query()->withTrashed()->where('group_id', $row->id)->exists()) {
+            $this->audit->log('task_board.group_moved', $row, ['board_id' => $target->id], actor: $request->user());
+            $row->delete();
+        }
+
+        return response()->json(['data' => ['group_id' => $to->id, 'board_id' => $target->id, 'moved' => $n]]);
+    }
+
+    /** Monday's "Archive group": off the board with its tasks (archived on Monday too); Restore brings both back. */
+    public function archiveGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        if ($taskBoard->groups()->count() <= 1) {
+            throw ValidationException::withMessages(['group' => 'A board needs at least one group.']);
+        }
+        $at = now();
+        $writer = app(TaskWriter::class);
+        DB::transaction(function () use ($row, $at, $writer, $request) {
+            $row->forceFill(['archived_at' => $at])->save();
+            foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->get() as $t) {
+                $writer->delete($t, $request->user());
+            }
+            $this->audit->log('task_board.group_archived', $row, actor: $request->user());
+        });
+        if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+            ArchiveMondayGroup::dispatch((string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+        }
+
+        return response()->json(['data' => self::presentGroup($row) + ['archived_at' => $at->toIso8601String()]]);
+    }
+
+    public function restoreGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->whereNotNull('archived_at')->findOrFail($group);
+        $writer = app(TaskWriter::class);
+        DB::transaction(function () use ($row, $writer, $request) {
+            // The tasks the archive took, not ones deleted before it.
+            foreach (Task::onlyTrashed()->where('group_id', $row->id)->whereNull('parent_task_id')->where('deleted_at', '>=', $row->archived_at->copy()->subSecond())->get() as $t) {
+                $writer->restore($t, $request->user());
+            }
+            $row->forceFill(['archived_at' => null])->save();
+            $this->audit->log('task_board.group_restored', $row, actor: $request->user());
+        });
+
+        return response()->json(['data' => self::presentGroup($row)]);
     }
 
     // ── Shapes ───────────────────────────────────────────────────────────

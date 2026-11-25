@@ -1646,69 +1646,280 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     await _load();
   }
 
+  /// Monday's group colours, the same 20 (Jose 11-25: change a group's colour).
+  static const mondayGroupColours = [
+    '#037f4c',
+    '#00c875',
+    '#9cd326',
+    '#cab641',
+    '#ffcb00',
+    '#784bd1',
+    '#a25ddc',
+    '#0086c0',
+    '#579bfc',
+    '#66ccff',
+    '#bb3354',
+    '#df2f4a',
+    '#ff007f',
+    '#ff5ac4',
+    '#ff642e',
+    '#fdab3d',
+    '#7f5347',
+    '#c4c4c4',
+    '#757575',
+    '#333333',
+  ];
+
+  Future<void> _groupCall(Future<ApiResponse> call, {String? done}) async {
+    final res = await call;
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    if (done != null) _say(done);
+    await _load();
+  }
+
+  /// A new group just above or below [id], named "New Group" and open to rename.
+  Future<void> _groupBeside(String id, {required bool below}) async {
+    final at = _groupIndex(id) + (below ? 1 : 0);
+    final res = await widget.api.post(_groupsPath, {
+      'name': 'New Group',
+      'position': at < 0 ? 0 : at,
+    });
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    await _load();
+    if (!mounted) return;
+    setState(() {
+      _naming = (res.data as Map?)?['id'] as String?;
+      _groupName.text = 'New Group';
+    });
+  }
+
   Widget _groupMenu(_Json group, int tasks) {
     final id = group['id'] as String;
     final others = [
       for (final g in _groups(_board!))
         if (g['id'] != null && g['id'] != id) g,
     ];
+    final shownIds = [
+      for (final g in _groups(_board!))
+        if (g['id'] != null) g['id'] as String?,
+    ];
+    final mine = [
+      for (final t in _tasks)
+        if (t['group_id'] == id) t['id'] as String,
+    ];
+    final elsewhere = [
+      for (final b in _boards)
+        if (b['id'] != _board?['id'] && b['can_edit'] == true) b,
+    ];
+    final controller = MenuController();
     return MenuAnchor(
+      controller: controller,
       menuChildren: [
+        // Monday's group menu, in its order (Jose 11-25: every setting).
         MenuItemButton(
-          key: ValueKey('group-rename-$id'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => setState(() {
-            _naming = id;
-            _groupName.text = '${group['name']}';
-          }),
-          child: const Text('Rename'),
+          key: ValueKey('group-collapse-$id'),
+          leadingIcon: const Icon(Icons.unfold_less, size: 18),
+          onPressed: () => setState(
+            () => _folded.contains(id) ? _folded.remove(id) : _folded.add(id),
+          ),
+          child: Text(
+            _folded.contains(id) ? 'Expand this group' : 'Collapse this group',
+          ),
         ),
+        MenuItemButton(
+          key: ValueKey('group-collapse-all-$id'),
+          leadingIcon: const Icon(Icons.unfold_less_double, size: 18),
+          onPressed: () => setState(() => _folded.addAll(shownIds)),
+          child: const Text('Collapse all groups'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-expand-all-$id'),
+          leadingIcon: const Icon(Icons.unfold_more_double, size: 18),
+          onPressed: () => setState(_folded.clear),
+          child: const Text('Expand all groups'),
+        ),
+        const Divider(height: 1),
+        MenuItemButton(
+          key: ValueKey('group-select-all-$id'),
+          leadingIcon: const Icon(Icons.check_box_outlined, size: 18),
+          onPressed: mine.isEmpty
+              ? null
+              : () => setState(() => _picked.addAll(mine)),
+          child: const Text('Select all items'),
+        ),
+        if (_canEdit) ...[
+          MenuItemButton(
+            key: ValueKey('group-add-above-$id'),
+            leadingIcon: const Icon(Icons.vertical_align_top, size: 18),
+            onPressed: () => _groupBeside(id, below: false),
+            child: const Text('Add group above'),
+          ),
+          MenuItemButton(
+            key: ValueKey('group-add-below-$id'),
+            leadingIcon: const Icon(Icons.vertical_align_bottom, size: 18),
+            onPressed: () => _groupBeside(id, below: true),
+            child: const Text('Add group below'),
+          ),
+          SubmenuButton(
+            key: ValueKey('group-duplicate-$id'),
+            leadingIcon: const Icon(Icons.copy_outlined, size: 18),
+            menuChildren: [
+              for (final (items, label) in const [
+                (true, 'With items'),
+                (false, 'Without items'),
+              ])
+                MenuItemButton(
+                  key: ValueKey('group-duplicate-$id-$items'),
+                  onPressed: () => _groupCall(
+                    widget.api.post('$_groupsPath/$id/duplicate', {
+                      'with_items': items,
+                    }),
+                  ),
+                  child: Text(label),
+                ),
+            ],
+            child: const Text('Duplicate this group'),
+          ),
+          if (elsewhere.isNotEmpty)
+            SubmenuButton(
+              key: ValueKey('group-move-board-$id'),
+              leadingIcon: const Icon(Icons.drive_file_move_outline, size: 18),
+              menuChildren: [
+                for (final b in elsewhere)
+                  MenuItemButton(
+                    key: ValueKey('group-move-board-$id-${b['id']}'),
+                    onPressed: () => _groupCall(
+                      widget.api.post('$_groupsPath/$id/move', {
+                        'board_id': b['id'],
+                      }),
+                      done: 'Moved to ${b['name']}',
+                    ),
+                    child: Text('${b['name']}'),
+                  ),
+              ],
+              child: const Text('Move to board'),
+            ),
+          const Divider(height: 1),
+          MenuItemButton(
+            key: ValueKey('group-rename-$id'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => setState(() {
+              _naming = id;
+              _groupName.text = '${group['name']}';
+            }),
+            child: const Text('Rename group'),
+          ),
+          SubmenuButton(
+            key: ValueKey('group-colour-$id'),
+            leadingIcon: const Icon(Icons.palette_outlined, size: 18),
+            menuChildren: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: SizedBox(
+                  width: 5 * 30,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final hex in mondayGroupColours)
+                        InkWell(
+                          key: ValueKey('group-colour-$id-$hex'),
+                          onTap: () {
+                            controller.close();
+                            _groupCall(
+                              widget.api.patch('$_groupsPath/$id', {
+                                'colour': hex,
+                              }),
+                            );
+                          },
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: ColourField.parse(hex),
+                              shape: BoxShape.circle,
+                              border: group['colour'] == hex
+                                  ? Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                                      width: 2,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            child: const Text('Change group color'),
+          ),
+        ],
         MenuItemButton(
           key: ValueKey('group-export-$id'),
           leadingIcon: const Icon(Icons.download_outlined, size: 18),
           onPressed: () => _export(groupId: id),
           child: const Text('Export to Excel'),
         ),
-        // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
-        MenuItemButton(
-          key: ValueKey('group-up-$id'),
-          leadingIcon: const Icon(Icons.arrow_upward, size: 18),
-          onPressed: _groupIndex(id) <= 0 ? null : () => _moveGroup(id, -1),
-          child: const Text('Move up'),
-        ),
-        MenuItemButton(
-          key: ValueKey('group-down-$id'),
-          leadingIcon: const Icon(Icons.arrow_downward, size: 18),
-          onPressed:
-              _groupIndex(id) >=
-                  _groups(_board!).where((g) => g['id'] != null).length - 1
-              ? null
-              : () => _moveGroup(id, 1),
-          child: const Text('Move down'),
-        ),
-        if (tasks == 0)
+        if (_canEdit) ...[
+          // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
           MenuItemButton(
-            key: ValueKey('group-delete-$id'),
-            leadingIcon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: () => _deleteGroup(id),
-            child: const Text('Delete group'),
-          )
-        else if (others.isNotEmpty)
-          SubmenuButton(
-            key: ValueKey('group-delete-$id'),
-            leadingIcon: const Icon(Icons.delete_outline, size: 18),
-            menuChildren: [
-              for (final g in others)
-                MenuItemButton(
-                  key: ValueKey('group-delete-$id-to-${g['id']}'),
-                  onPressed: () => _deleteGroup(id, moveTo: g['id'] as String),
-                  child: Text('${g['name']}'),
-                ),
-            ],
-            child: Text(
-              'Delete, moving its ${tasks == 1 ? 'task' : '$tasks tasks'} to',
-            ),
+            key: ValueKey('group-up-$id'),
+            leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+            onPressed: _groupIndex(id) <= 0 ? null : () => _moveGroup(id, -1),
+            child: const Text('Move up'),
           ),
+          MenuItemButton(
+            key: ValueKey('group-down-$id'),
+            leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+            onPressed:
+                _groupIndex(id) >=
+                    _groups(_board!).where((g) => g['id'] != null).length - 1
+                ? null
+                : () => _moveGroup(id, 1),
+            child: const Text('Move down'),
+          ),
+          const Divider(height: 1),
+          if (others.isNotEmpty)
+            MenuItemButton(
+              key: ValueKey('group-archive-$id'),
+              leadingIcon: const Icon(Icons.archive_outlined, size: 18),
+              onPressed: () => _groupCall(
+                widget.api.post('$_groupsPath/$id/archive', const {}),
+                done:
+                    '${group['name']} archived; restore it from the board menu',
+              ),
+              child: const Text('Archive group'),
+            ),
+          if (tasks == 0)
+            MenuItemButton(
+              key: ValueKey('group-delete-$id'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: () => _deleteGroup(id),
+              child: const Text('Delete group'),
+            )
+          else if (others.isNotEmpty)
+            SubmenuButton(
+              key: ValueKey('group-delete-$id'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              menuChildren: [
+                for (final g in others)
+                  MenuItemButton(
+                    key: ValueKey('group-delete-$id-to-${g['id']}'),
+                    onPressed: () =>
+                        _deleteGroup(id, moveTo: g['id'] as String),
+                    child: Text('${g['name']}'),
+                  ),
+              ],
+              child: Text(
+                'Delete, moving its ${tasks == 1 ? 'task' : '$tasks tasks'} to',
+              ),
+            ),
+        ],
       ],
       builder: (context, menu, _) => IconButton(
         key: ValueKey('group-menu-$id'),
@@ -3552,6 +3763,26 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onPressed: _export,
         child: const Text('Export to Excel'),
       ),
+      // Row 69: Monday's archived groups, each restorable with its tasks.
+      if (_canEdit &&
+          (board['archived_groups'] as List? ?? const []).isNotEmpty)
+        SubmenuButton(
+          key: const Key('tasks-archived-groups'),
+          leadingIcon: const Icon(Icons.inventory_2_outlined, size: 18),
+          menuChildren: [
+            for (final g in (board['archived_groups'] as List).whereType<Map>())
+              MenuItemButton(
+                key: ValueKey('group-restore-${g['id']}'),
+                trailingIcon: const Icon(Icons.restore, size: 18),
+                onPressed: () => _groupCall(
+                  widget.api.post('$_groupsPath/${g['id']}/restore', const {}),
+                  done: '${g['name']} restored',
+                ),
+                child: Text('${g['name']}'),
+              ),
+          ],
+          child: const Text('Archived groups'),
+        ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(
             (s) => s is Map && s.containsKey('id'),
