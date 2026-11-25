@@ -17,6 +17,7 @@ class VersionHistory {
       'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
       'Phones turned on their side: with the keyboard up, pages no longer break and the box you type in stays in view',
+      'Task Board: Job Status on Project Management boards follows Monday again, and new tasks send their client, phone, address and job number to Monday',
     ]),
     VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
       'Automations: rules that change a Task Board have their own colour and a "Task Board" tag naming the board, and turning one on or off asks first and names the board it changes',
