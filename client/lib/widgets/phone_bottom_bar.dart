@@ -114,7 +114,9 @@ class PhoneBottomBar extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 52,
+                    // Sideways the pill narrows so a 118 px slot keeps
+                    // "Scheduling" whole (it read "Schedu…" on the Duo).
+                    width: sideways ? 36 : 52,
                     height: 28,
                     decoration: BoxDecoration(
                       color: on ? scheme.secondaryContainer : null,
