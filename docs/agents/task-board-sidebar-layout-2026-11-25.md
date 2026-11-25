@@ -89,3 +89,21 @@ Gone:
 - empty Monday "New Folder"s
 
 Search finds boards by board name AND company name ("ezb" → EzBizi and its boards).
+
+## Jose's pick and correction (11-25)
+
+He picked **layout 1, company tree** ("as you recommend then"), with a hierarchy fix: *"you put Triplex Group at the bottom, when it's actually the highest one."*
+
+Triplex Group is the organization: the top of the tree, holding every company. Final order:
+
+1. Search · Favorites · Personal Task Board
+2. **Triplex Group** (organization; level 1, nothing above it but personal):
+   - its own boards: Triplex Group - Files; Reviews & Complaints, Users, Job Roles, Sharper - Rise-OFFICE (the org-wide ones); folder Yosef (CT, MA, RI, ME, NH)
+   - **its companies** (level 2, indented under Triplex Group): A-1 Chimney, Everdoors, EzBizi, then the other companies A–Z, collapsed. Each one holds:
+     - **its company board, first**: A1 - Operation, Everdoors - Operation, EzBizi …
+     - **Branches** (level 3)
+     - **its folders** (level 3)
+3. Templates ▸
+4. Everyone's boards ▸ (one row per person's board)
+
+The indentation must show the hierarchy at a glance: org → company → branch/folder → board. Use the same indent step at every level and one style per level, so a row's depth says what it is.
