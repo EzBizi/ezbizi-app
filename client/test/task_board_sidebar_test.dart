@@ -985,4 +985,58 @@ void main() {
     expect(company, lessThan(y(folder)));
     expect(y(folder), lessThan(y(row('b-crew'))));
   });
+
+  // Jose 11-25 on the picker: "It should follow your own permissions and
+  // hierarchy". Everything reachable, a sub-company under its parent, and no
+  // line about the Company · Branch picker.
+  testWidgets('a sub-company sits one step under its parent company; the '
+      'picker is not mentioned', (tester) async {
+    final saved = companies;
+    companies = [
+      {'id': 'c-1', 'name': 'A-1 Chimney'},
+      {'id': 'c-3', 'name': 'AngiSweep', 'parent_company_id': 'c-1'},
+      {'id': 'c-2', 'name': 'Northside Chimney'},
+    ];
+    addTearDown(() => companies = saved);
+    Map<String, Object?> of(
+      String id,
+      String kind,
+      String name,
+      String co,
+      String coName,
+    ) => board(
+      id,
+      kind,
+      name,
+      section: 'place',
+      companyId: co,
+      companyName: coName,
+    );
+    await pumpBoard(
+      tester,
+      boards: [
+        of('b-a1', 'company', 'A-1 Chimney', 'c-1', 'A-1 Chimney'),
+        of('b-bos', 'franchise', 'Boston', 'c-1', 'A-1 Chimney'),
+        of('b-as', 'company', 'AngiSweep', 'c-3', 'AngiSweep'),
+        of('b-as2', 'franchise', 'Texas', 'c-3', 'AngiSweep'),
+        of('b-ns', 'company', 'Northside Chimney', 'c-2', 'Northside Chimney'),
+      ],
+    );
+    expect(find.byKey(const ValueKey('tasks-boards-in-view')), findsNothing);
+    expect(inTree('Company · Branch picker'), findsNothing);
+    final a1 = find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney'));
+    final angi = find.byKey(const ValueKey('tasks-fold-company:AngiSweep'));
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    double x(Finder f) => tester
+        .getTopLeft(find.descendant(of: f, matching: find.byType(Text)).first)
+        .dx;
+    // Under A-1 Chimney, after its own boards, before the next company.
+    expect(y(a1), lessThan(y(row('b-bos'))));
+    expect(y(row('b-bos')), lessThan(y(angi)));
+    expect(y(angi), lessThan(y(row('b-as2'))));
+    expect(y(row('b-as2')), lessThan(y(row('b-ns'))));
+    // One step in, and its boards one more.
+    expect(x(angi) - x(a1), x(row('b-a1')) - x(a1));
+    expect(x(row('b-as')) - x(angi), x(row('b-a1')) - x(a1));
+  });
 }
