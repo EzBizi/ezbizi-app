@@ -38,6 +38,7 @@ import 'task_board_gallery.dart';
 import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/mention_field.dart';
 import '../widgets/open_destination.dart';
 import 'task_board_move.dart';
@@ -6495,7 +6496,8 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// Set while the panel is torn down: no setState from a flush.
   bool _disposing = false;
-  final _update = TextEditingController();
+  // Bold, italic, underline as on Monday's updates (Jose 11-25), saved as <b>/<i>/<u>.
+  final _update = FormattedNotesController();
   final _mentions = MentionController();
 
   /// Locks an unlocked sensitive task again when its 5 minutes are up.
@@ -6586,7 +6588,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// Row 43 (Sheryl): an update's author corrects it, as on Monday.
   Future<void> _editUpdate(Map u) async {
-    final text = TextEditingController(text: '${u['body'] ?? ''}');
+    final text = FormattedNotesController(markup: '${u['body'] ?? ''}');
     final body = await showSidePanel<String>(
       context,
       builder: (panel) => SidePanel(
@@ -6598,17 +6600,14 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
           FilledButton(
             key: const Key('task-update-edit-save'),
-            onPressed: () => Navigator.of(panel).pop(text.text.trim()),
+            onPressed: () => Navigator.of(panel).pop(text.markup.trim()),
             child: const Text('Save'),
           ),
         ],
-        child: TextField(
-          key: const Key('task-update-edit-field'),
+        child: FormattedNotesField(
           controller: text,
-          minLines: 3,
-          maxLines: 12,
-          autofocus: true,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          fieldKey: const Key('task-update-edit-field'),
+          label: 'Update',
         ),
       ),
     );
@@ -7227,8 +7226,8 @@ class _TaskPanelState extends State<_TaskPanel> {
     );
     if (time == null || !mounted) return;
     final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
-    final body = _update.text.trim();
-    final mentions = _mentions.ids(body);
+    final body = _update.markup.trim();
+    final mentions = _mentions.ids(_update.text);
     final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
       'body': body,
       'post_at': at.toUtc().toIso8601String(),
@@ -7307,12 +7306,26 @@ class _TaskPanelState extends State<_TaskPanel> {
           _update.text.isEmpty || _update.text.endsWith('\n') ? '☐ ' : '\n☐ ',
         ),
       ),
-      IconButton(
-        key: const Key('task-update-tool-bold'),
-        tooltip: 'Bold',
-        icon: const Icon(Icons.format_bold, size: 18),
-        onPressed: () => _insert('**', '**'),
-      ),
+      for (final (bit, icon, tip, name) in const [
+        (NotesMarkup.bold, Icons.format_bold, 'Bold', 'bold'),
+        (NotesMarkup.italic, Icons.format_italic, 'Italic', 'italic'),
+        (
+          NotesMarkup.underline,
+          Icons.format_underlined,
+          'Underline',
+          'underline',
+        ),
+      ])
+        ListenableBuilder(
+          listenable: _update,
+          builder: (context, _) => IconButton(
+            key: Key('task-update-tool-$name'),
+            tooltip: tip,
+            isSelected: _update.has(bit),
+            icon: Icon(icon, size: 18),
+            onPressed: () => _update.toggle(bit),
+          ),
+        ),
       MenuAnchor(
         menuChildren: [
           Wrap(
@@ -7337,14 +7350,14 @@ class _TaskPanelState extends State<_TaskPanel> {
   );
 
   Future<void> _post() async {
-    final body = _update.text.trim();
-    if (body.isEmpty && _files.isEmpty) return;
+    final body = _update.markup.trim();
+    if (_update.text.trim().isEmpty && _files.isEmpty) return;
     setState(() {
       _posting = true;
       _postError = null;
     });
     final path = '/tasks/${widget.taskId}/updates';
-    final mentions = _mentions.ids(body);
+    final mentions = _mentions.ids(_update.text);
     final res = _files.isEmpty
         ? await widget.api.post(path, {
             'body': body,
@@ -7920,14 +7933,17 @@ class _TaskPanelState extends State<_TaskPanel> {
                 id: widget.taskId,
                 controller: _update,
                 mentions: _mentions,
-                child: TextField(
-                  key: const Key('task-update-body'),
-                  controller: _update,
-                  minLines: 2,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    hintText: 'Write an update… (@ to mention)',
-                    border: OutlineInputBorder(),
+                child: _formatShortcuts(
+                  _update,
+                  TextField(
+                    key: const Key('task-update-body'),
+                    controller: _update,
+                    minLines: 2,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Write an update… (@ to mention)',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ),
@@ -8252,6 +8268,11 @@ class _RowShadeState extends State<_RowShade> {
 /// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
 @visibleForTesting
 Widget linkedText(BuildContext context, String body, {Key? key}) {
+  // <b>/<i>/<u> (Jose 11-25): plain text plus a style per character.
+  final (plain, masks) = NotesMarkup.parse(body);
+  body = plain;
+  List<InlineSpan> styled(int from, int to) =>
+      NotesMarkup.spans(body.substring(from, to), masks.sublist(from, to));
   // Links, bare addresses, and **bold** (the composer's Bold, Chaim 11-24).
   final link = RegExp(
     r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)|\*\*([^*\n]+)\*\*',
@@ -8263,7 +8284,7 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
   final spans = <InlineSpan>[];
   var at = 0;
   for (final m in link.allMatches(body)) {
-    spans.add(TextSpan(text: body.substring(at, m.start)));
+    spans.addAll(styled(at, m.start));
     if (m.group(4) case final bold?) {
       spans.add(
         TextSpan(
@@ -8286,7 +8307,7 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
     );
     at = m.end;
   }
-  spans.add(TextSpan(text: body.substring(at)));
+  spans.addAll(styled(at, body.length));
   return SelectableText.rich(TextSpan(children: spans), key: key);
 }
 
@@ -8305,3 +8326,20 @@ Widget withBoardFont(BuildContext context, Widget child) {
     ),
   );
 }
+
+/// Ctrl/Cmd+B, I, U on a formatted box that keeps its own field (the
+/// update composer, whose @mentions wrap the TextField).
+Widget _formatShortcuts(FormattedNotesController c, Widget child) =>
+    CallbackShortcuts(
+      bindings: {
+        for (final (key, bit) in [
+          (LogicalKeyboardKey.keyB, NotesMarkup.bold),
+          (LogicalKeyboardKey.keyI, NotesMarkup.italic),
+          (LogicalKeyboardKey.keyU, NotesMarkup.underline),
+        ]) ...{
+          SingleActivator(key, control: true): () => c.toggle(bit),
+          SingleActivator(key, meta: true): () => c.toggle(bit),
+        },
+      },
+      child: child,
+    );
