@@ -9,6 +9,8 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:ezbizi_client/widgets/range_calendar.dart';
 import 'package:ezbizi_client/widgets/formatted_notes.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -574,6 +576,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(dock).width, 320, reason: 'never narrower than 320');
     await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('Adeline 11-25: Ctrl+A, Ctrl+C and Ctrl+V work in a cell '
+      'editor on the board', (tester) async {
+    textValue = '400596049';
+    addTearDown(() => textValue = null);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': '123'};
+        if (call.method == 'Clipboard.hasStrings') return {'value': true};
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await pump(tester);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    final cell = find.byKey(const ValueKey('column-cell-edit-c-text')).first;
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byKey(const Key('cell-card')),
+      matching: find.byType(EditableText),
+    );
+    expect(field, findsOneWidget);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+    await tester.pump();
+    expect(copied, '400596049');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+    await tester.pumpAndSettle();
+    expect(tester.widget<EditableText>(field).controller.text, '123');
+
+    // The right-click menu inside the box is the text's own: Cut, Copy, Paste
+    // (as on Windows, Adeline's).
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.tapAt(
+      tester.getCenter(field),
+      buttons: kSecondaryButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Filter by this value'), findsNothing);
+    expect(find.text('Paste'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('the Updates cell opens the thread alone; the row opens the '

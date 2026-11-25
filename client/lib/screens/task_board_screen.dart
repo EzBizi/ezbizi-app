@@ -5279,7 +5279,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// Ctrl+C copies the range's first value; Ctrl+V writes the clipboard to
   /// every cell in it; Esc lets go.
   KeyEventResult _rangeKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent || _range.isEmpty) return KeyEventResult.ignored;
+    // A box open inside the range keeps its own Ctrl+C/V (Adeline 11-25).
+    if (e is! KeyDownEvent || _range.isEmpty || !_rangeFocus.hasPrimaryFocus) {
+      return KeyEventResult.ignored;
+    }
     final keys = HardwareKeyboard.instance;
     final mod = keys.isControlPressed || keys.isMetaPressed;
     if (e.logicalKey == LogicalKeyboardKey.escape) {
