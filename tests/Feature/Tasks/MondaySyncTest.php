@@ -349,6 +349,10 @@ class MondaySyncTest extends TestCase
         $queued = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->whereJsonContains('kinds', 'values:'.$client->id)->pluck('task_id')->all());
         $this->assertSame([$this->task('11')->id], $queued, 'only the one Monday lacks');
         $this->assertNotContains($same, $queued);
+
+        // Desk 11-25: a sensitive task is never sent to Monday, so its gap is not drift.
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['sensitive' => true]));
+        $this->artisan('ezbizi:monday-parity', ['--values' => true])->expectsOutputToContain('values differ 0')->assertSuccessful();
     }
 
     /** Desk 11-18: missing from Monday's board listing is not proof; an item Monday says is active is never trashed. */

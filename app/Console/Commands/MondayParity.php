@@ -202,11 +202,16 @@ class MondayParity extends Command
             if ($type === 'date') {
                 $s = substr($s, 0, 10);
             }
+            if ($type === 'checkbox') {
+                $s = in_array($s, ['v', 'yes', 'true', '1'], true) ? 'yes' : ''; // Monday's text for a ticked box is "v"
+            }
 
             return $s;
         };
         $tasks = Task::query()->where('board_id', $board->id)->whereNull('parent_task_id')->where('external_ref', 'like', 'monday:%')
             ->when(! $this->option('done'), fn ($q) => $q->whereNull('completed_at'))
+            // A sensitive task is never sent to Monday, by design (desk 11-25): not drift.
+            ->where('sensitive', false)
             ->with(['values.column', 'statusRow'])->get();
         $n = 0;
         foreach ($tasks as $task) {

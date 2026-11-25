@@ -315,6 +315,9 @@ class MondayImportTypesTest extends TestCase
         $this->assertSame('Scheduled', $task->statusRow->name);
         $this->assertFalse($task->statusRow->is_done, 'Cincinnati is a place, not done');
         $this->assertSame('monday-1', $this->values()['Area'], 'Area is a label column');
+        // Desk 11-25: the board's Job Status column follows Monday too, not only the status.
+        $this->assertSame('Scheduled', $this->inTenant($this->tenant['org'], fn () => \App\Support\Tasks\ColumnConverter::words(
+            ($v = \App\Models\TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->firstWhere('column.name', 'Job Status'))?->column, $v)));
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => TaskStatus::query()->where('board_id', $task->board_id)->where('name', 'Done & Paid')->value('is_done')));
     }
 
