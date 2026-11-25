@@ -773,10 +773,13 @@ void main() {
       log.where((e) => e.$1 == 'POST' && e.$2 == '/note-reads'),
       isNotEmpty,
     );
-    final badge = tester.widget<Badge>(
-      find.byKey(const ValueKey('task-unread-t1')),
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('task-unread-t1')),
+        matching: find.byType(Badge),
+      ),
+      findsNothing,
     );
-    expect(badge.isLabelVisible, isFalse);
     // Jose 11-24: read, it shows the plain total; never the badge and a number.
     expect(find.byKey(const ValueKey('task-updates-count-t1')), findsOneWidget);
   });
