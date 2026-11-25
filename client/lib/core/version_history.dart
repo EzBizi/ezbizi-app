@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Task Board, Jobs and Leads: the unread updates count sits next to the chat icon (in red while unread), like the read ones, instead of on top of it',
       'Monitoring: Activity (who changed what) and API activity moved here from Settings, between Desktop Monitoring and Lighting; everyone who could see them before still can',
     ]),
     VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
