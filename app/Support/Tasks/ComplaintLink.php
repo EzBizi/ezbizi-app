@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
+use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Models\TaskUpdate;
 use App\Models\User;
@@ -29,6 +30,17 @@ final class ComplaintLink
     public const COLUMN = 'Complaint';
 
     private const CARD = 'complaint:';
+
+    /**
+     * Only a task in a customer-relations group is a complaint's copy (11-25 backfill: matching by phone alone also
+     * took every job task of that customer, 1,418 of 1,711 links).
+     */
+    public const GROUPS = '/customer|relations|complaint|review|experience/i';
+
+    public static function inCxGroup(Task $task): bool
+    {
+        return (bool) preg_match(self::GROUPS, (string) TaskGroup::query()->whereKey($task->group_id)->value('name'));
+    }
 
     /** Days either side of the complaint in which a branch task can be its copy. */
     private const WINDOW_DAYS = 30;
@@ -138,7 +150,7 @@ final class ComplaintLink
         }
         $n = 0;
         foreach (Task::query()->whereIn('id', $taskIds->unique())->whereBetween('created_at', [$at->copy()->subDays(self::WINDOW_DAYS), $at->copy()->addDays(self::WINDOW_DAYS)])->get() as $task) {
-            $n += self::join($task, $card) ? 1 : 0;
+            $n += self::inCxGroup($task) && self::join($task, $card) ? 1 : 0;
         }
 
         return $n;
@@ -150,7 +162,7 @@ final class ComplaintLink
      */
     public static function linkTask(Task $task): int
     {
-        if (self::$writing > 0 || ! TaskBoard::query()->whereKey($task->board_id)->where('kind', TaskBoard::KIND_FRANCHISE)->exists()) {
+        if (self::$writing > 0 || ! self::inCxGroup($task) || ! TaskBoard::query()->whereKey($task->board_id)->where('kind', TaskBoard::KIND_FRANCHISE)->exists()) {
             return 0;
         }
         $values = TaskColumnValue::query()->join('task_columns as c', 'c.id', '=', 'task_column_values.column_id')
