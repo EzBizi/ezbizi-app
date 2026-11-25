@@ -13,7 +13,8 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0640', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0640', date: '25 Nov 2026', deployed: '2026-11-25 01:51',
+      items: [
       'iPhone and Android: this build carries the phone fixes from 0.0.0639 (that release was folded into this one)',
       'Task Board: status and label cells show the line between rows too, so every row is separated in every column',
       'Notifications and updates: mentions that came from Monday read @Name instead of a long link',
