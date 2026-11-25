@@ -73,8 +73,9 @@ class EzBiziTheme {
   /// EzChat, the chat companion app (Jose 2026-11-25: "a green version of the
   /// icon"): this theme with a green accent in place of the cyan. Primary
   /// keeps the same contrast rule as above — #15803D on white is 5.0:1, ink on
-  /// #4ADE80 is 12:1.
-  static const ezChatGreen = Color(0xFF16A34A);
+  /// #4ADE80 is 12:1. [ezChatGreen] is the brand green of the icon and large
+  /// fills (UI-UX design 213), as the bright cyan is EzBizi's; never text.
+  static const ezChatGreen = Color(0xFF00C875);
 
   static ThemeData ezChat(Brightness brightness) {
     final base = _build(brightness);
