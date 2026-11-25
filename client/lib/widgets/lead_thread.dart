@@ -22,6 +22,7 @@ import 'leads_hidden.dart';
 import '../screens/scheduling/availability_pane.dart';
 import 'ai_mark.dart';
 import 'call_text.dart';
+import 'formatted_notes.dart';
 import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
@@ -201,7 +202,14 @@ class _LeadThreadState extends State<LeadThread> {
 
   bool _editingNote = false;
   bool _savingNote = false;
-  final _note = TextEditingController();
+  // Bold, italic, underline (Eric's suggestion 01a21365, Jose 11-25).
+  var _note = FormattedNotesController();
+
+  void _openNoteEditor([String? markup]) {
+    _note.dispose();
+    _note = FormattedNotesController(markup: markup);
+    setState(() => _editingNote = true);
+  }
 
   bool _loading = true;
   String? _error;
@@ -363,8 +371,9 @@ class _LeadThreadState extends State<LeadThread> {
 
   Future<void> _saveNote() async {
     setState(() => _savingNote = true);
-    final text = _note.text.trim();
-    final fresh = await widget.onNote?.call(text.isEmpty ? null : text);
+    final fresh = await widget.onNote?.call(
+      _note.text.trim().isEmpty ? null : _note.markup,
+    );
     if (!mounted) return;
     setState(() {
       _savingNote = false;
@@ -798,10 +807,7 @@ class _LeadThreadState extends State<LeadThread> {
             key: const ValueKey('note-add'),
             icon: Icons.edit_outlined,
             label: 'Add a note',
-            onTap: () {
-              _note.clear();
-              setState(() => _editingNote = true);
-            },
+            onTap: _openNoteEditor,
           ),
       ],
     );
@@ -2424,18 +2430,12 @@ class _LeadThreadState extends State<LeadThread> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _withMentions(
-              TextField(
-                key: const ValueKey('note-box'),
+              FormattedNotesField(
+                fieldKey: const ValueKey('note-box'),
                 controller: _note,
                 minLines: 1,
-                maxLines: 4,
-                autofocus: true,
-                enabled: !_savingNote,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: 'A note for whoever picks this up next (@ to mention)',
-                  border: OutlineInputBorder(),
-                ),
+                maxLength: 4000,
+                label: 'A note for whoever picks this up next (@ to mention)',
               ),
             ),
             const SizedBox(height: 6),
@@ -2501,15 +2501,12 @@ class _LeadThreadState extends State<LeadThread> {
               if (canEdit)
                 TextButton(
                   key: const ValueKey('note-edit'),
-                  onPressed: () {
-                    _note.text = note;
-                    setState(() => _editingNote = true);
-                  },
+                  onPressed: () => _openNoteEditor(note),
                   child: const Text('Edit'),
                 ),
             ],
           ),
-          Text(
+          FormattedNotesText(
             note,
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSecondaryContainer,

@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../core/us_states.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
@@ -426,7 +427,10 @@ class _LocationsPaneState extends State<LocationsPane> {
             style: theme.textTheme.titleSmall?.copyWith(color: c.ink),
           ),
           const SizedBox(height: 4),
-          Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: c.ink)),
+          FormattedNotesText(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(color: c.ink),
+          ),
         ],
       ),
     );
@@ -1021,7 +1025,7 @@ class DispatcherNotesSettings extends StatefulWidget {
 }
 
 class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
-  final _boxes = <String, TextEditingController>{};
+  final _boxes = <String, FormattedNotesController>{};
   final _saved = <String, String>{};
   String? _saving;
   final _said = <String, String>{};
@@ -1059,16 +1063,24 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
         if (n is! Map) continue;
         final id = '${n['company_id']}';
         _saved[id] = '${n['text'] ?? ''}';
-        _box(id).text = _saved[id]!;
+        _boxes.remove(id)?.dispose();
+        _box(id, _saved[id]);
       }
     });
   }
 
-  TextEditingController _box(String id) =>
-      _boxes.putIfAbsent(id, TextEditingController.new);
+  // Eric, suggestion 01a21365 (Jose 11-25): bold, italic, underline.
+  FormattedNotesController _box(String id, [String? markup]) =>
+      _boxes.putIfAbsent(
+        id,
+        () => FormattedNotesController(markup: markup)
+          ..addListener(() {
+            if (mounted) setState(() => _said.remove(id));
+          }),
+      );
 
   Future<void> _save(String id) async {
-    final text = _box(id).text.trim();
+    final text = _box(id).markup.trim();
     setState(() {
       _saving = id;
       _said.remove(id);
@@ -1122,18 +1134,17 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
           for (final c in companies) ...[
             Text(c.name, style: theme.textTheme.titleSmall),
             const SizedBox(height: 6),
-            TextField(
-              key: Key('dispatcher-note-${c.id}'),
-              controller: _box(c.id),
-              readOnly: !canEdit,
-              minLines: 3,
-              maxLines: 8,
-              onChanged: (_) => setState(() => _said.remove(c.id)),
-              decoration: const InputDecoration(
-                hintText: 'Office lead: …, ext … · After 6 PM: …',
-                border: OutlineInputBorder(),
+            if (canEdit)
+              FormattedNotesField(
+                fieldKey: Key('dispatcher-note-${c.id}'),
+                controller: _box(c.id),
+                label: 'Office lead: …, ext … · After 6 PM: …',
+              )
+            else
+              FormattedNotesText(
+                _saved[c.id] ?? '',
+                key: Key('dispatcher-note-${c.id}'),
               ),
-            ),
             const SizedBox(height: 6),
             if (canEdit)
               Row(
@@ -1142,7 +1153,7 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
                     key: Key('dispatcher-note-save-${c.id}'),
                     onPressed:
                         _saving != null ||
-                            _box(c.id).text.trim() ==
+                            _box(c.id).markup.trim() ==
                                 (_saved[c.id] ?? '').trim()
                         ? null
                         : () => _save(c.id),
