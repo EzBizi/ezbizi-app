@@ -451,18 +451,19 @@ void main() {
       ];
       expect(rects, hasLength(9));
       expect({for (final r in rects) r.width}, hasLength(1));
-      expect({for (final r in rects) r.height}, {44.0});
+      expect(
+        {for (final r in rects) r.height},
+        {44.0},
+        reason: [for (final r in rects) r.height].toString(),
+      );
       expect({for (final r in rects) r.left}, hasLength(1));
-      // On a phone the label sits above its box; on a desktop beside it.
+      // The label sits above its box on a phone, and in the docked panel at
+      // its narrower default (Kimberly 11-25); beside it once dragged wide.
       final label = tester.getRect(find.text('Timeline').last);
       final box = tester.getRect(
         find.byKey(const ValueKey('column-editor-c-time')),
       );
-      if (width < 600) {
-        expect(label.bottom, lessThanOrEqualTo(box.top));
-      } else {
-        expect(label.right, lessThanOrEqualTo(box.left));
-      }
+      expect(label.bottom, lessThanOrEqualTo(box.top));
       expect(tester.takeException(), isNull);
     });
   }
@@ -540,6 +541,39 @@ void main() {
     await settle(tester);
     expect(find.byKey(const Key('task-dock')), findsNothing);
     expect(shadeBorder(tester), isNull);
+  });
+
+  testWidgets('Kimberly 11-25: the docked panel opens narrower, its edge '
+      'drags within limits, and the width is kept as a preference', (
+    tester,
+  ) async {
+    await pump(tester);
+    final dock = find.byKey(const Key('task-dock'));
+    expect(tester.getSize(dock).width, 380);
+
+    await tester.drag(
+      find.byKey(const Key('task-dock-edge')),
+      const Offset(-200, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(dock).width, 580, reason: 'dragged left: wider');
+    expect(
+      log.any(
+        (e) =>
+            e.$1 == 'PATCH' &&
+            e.$2 == '/me/preferences' &&
+            '${e.$3}'.contains('task_board.panel_width'),
+      ),
+      isTrue,
+    );
+
+    await tester.drag(
+      find.byKey(const Key('task-dock-edge')),
+      const Offset(2000, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(dock).width, 320, reason: 'never narrower than 320');
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('the Updates cell opens the thread alone; the row opens the '
