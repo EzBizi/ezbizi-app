@@ -567,6 +567,25 @@ class MondaySyncTest extends TestCase
         $this->assertNull(JobTitle::split('Call back Mr Smith'));
     }
 
+    /** Desk 11-25: the job fill the sync does (client, job #) is owed to Monday: it goes in the outbox. */
+    public function test_values_the_sync_fills_from_a_job_are_queued_for_monday(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $client = $this->inTenant($this->tenant['org'], function () {
+            $board = TaskBoard::query()->where('external_ref', 'monday:100')->sole();
+            $col = TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 9]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->tenant['franchise']->id, 'name' => 'Pat Doe']);
+            \App\Models\Job::factory()->create(['franchise_id' => $this->tenant['franchise']->id, 'customer_id' => $customer->id, 'number' => 'JOB-77001']);
+
+            return $col;
+        });
+        $this->poll([$this->mondayItem('41', 'Job #JOB-77001 - Pat Doe', '2026-11-12T12:00:00Z')]);
+
+        $task = $this->task('41');
+        $this->assertSame('Pat Doe', $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $client->id)->value('value_text')));
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $task->id)->whereJsonContains('kinds', 'values:'.$client->id)->exists()), 'Monday lacks it: queued');
+    }
+
     /** Desk 11-18: a title still waiting in the outbox is never put back by Monday's older title. */
     public function test_a_field_waiting_in_the_outbox_is_not_overwritten_by_monday(): void
     {

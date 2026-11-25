@@ -47,6 +47,31 @@ final class MondayOutbox
         }
     }
 
+    /**
+     * Desk 11-25: values made here while recording is off (the import's job fill: client,
+     * phone, address, job numbers) that Monday does NOT already have. Recorded once the
+     * suppression ends, by whoever drains them (MondayImport).
+     *
+     * @var array<string, list<string>> task id => kinds
+     */
+    private static array $owed = [];
+
+    /** @param  list<string>  $kinds */
+    public static function owe(string $taskId, array $kinds): void
+    {
+        if (self::$suppressed > 0 && $kinds !== []) {
+            self::$owed[$taskId] = array_values(array_unique([...(self::$owed[$taskId] ?? []), ...$kinds]));
+        }
+    }
+
+    /** @return array<string, list<string>> */
+    public static function takeOwed(): array
+    {
+        [$owed, self::$owed] = [self::$owed, []];
+
+        return $owed;
+    }
+
     /** @param  list<string>  $kinds  create, title, status, due, owners, group, values:<column id> */
     public function record(Task $task, array $kinds, ?TaskUpdate $update = null): void
     {
