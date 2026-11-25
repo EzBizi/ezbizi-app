@@ -502,7 +502,8 @@ class JobsController extends Controller
         $roles = self::technicianRoles($job);
         $users = User::query()->with('role:id,name')->orderBy('name')->get()
             ->filter(fn (User $u) => $franchise === null || $u->canActOnFranchise($franchise))
-            ->filter(fn (User $u) => self::holdsTechnicianRole($u, $roles))
+            // You are always in your own picker, whatever your role or the view (Jose, 2026-11-25).
+            ->filter(fn (User $u) => $u->is($request->user()) || self::holdsTechnicianRole($u, $roles))
             ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values();
 
         // A job already on somebody outside the roles keeps showing them.
