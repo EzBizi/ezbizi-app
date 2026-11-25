@@ -16,6 +16,7 @@ void main() {
     WidgetTester tester,
     double width, {
     Map<String, dynamic>? me,
+    bool nobody = false,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -58,6 +59,26 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/leaderboard/weeks')) {
+          return json({
+            'data': [
+              {
+                'from': '2026-11-15',
+                'to': '2026-11-20',
+                'top': [
+                  for (final (i, n) in ['Bo', 'Ada', 'Cy'].indexed)
+                    {
+                      'rank': i + 1,
+                      'person': n,
+                      'user_id': null,
+                      'score': 8.9 - i,
+                      'calls_scored': 10,
+                    },
+                ],
+              },
+            ],
+          });
+        }
         if (path.endsWith('/leaderboard')) {
           return json({
             'data': {
@@ -65,14 +86,15 @@ void main() {
               'to': request.url.queryParameters['to'],
               'min_calls_to_rank': 3,
               'top': [
-                for (final (i, n) in ['Ada', 'Bo', 'Cy'].indexed)
-                  {
-                    'rank': i + 1,
-                    'person': n,
-                    'user_id': null,
-                    'score': 9.0 - i,
-                    'calls_scored': 12,
-                  },
+                if (!nobody)
+                  for (final (i, n) in ['Ada', 'Bo', 'Cy'].indexed)
+                    {
+                      'rank': i + 1,
+                      'person': n,
+                      'user_id': null,
+                      'score': 9.0 - i,
+                      'calls_scored': 12,
+                    },
               ],
               'me':
                   me ??
@@ -92,13 +114,23 @@ void main() {
             'data': {
               'person': 'Di',
               'min_calls_to_rank': 3,
-              'performance': {'person': 'Di', 'answered': 41, 'jobs': 7},
+              'performance': {
+                'person': 'Di',
+                'answered': 41,
+                'outbound': 12,
+                'new_client': 20,
+                'booked_new': 11,
+                'avg_talk_seconds': 222,
+                'jobs': 7,
+              },
               'scoring': {
                 'person': 'Di',
                 'score': 6.2,
                 'avg_score': 6.5,
                 'calls_scored': 9,
                 'checks': {'greeted': 80},
+                'conversion': 56,
+                'review_weekly': {'calls': 9, 'summary': 'Strong openings.'},
                 'strengths': ['Warm greeting'],
                 'improve': ['Ask for the booking'],
               },
@@ -124,6 +156,14 @@ void main() {
                 'score': 8,
                 'tags': ['latest', 'best'],
                 'transcript': 'Di: thanks for calling',
+              },
+              {
+                'call_id': 'c2',
+                'started_at': '2026-11-19T15:00:00Z',
+                'caller_number': '+12145550002',
+                'score': 3,
+                'tags': ['worst'],
+                'transcript': 'Di: one moment',
               },
             ],
           });
@@ -162,9 +202,49 @@ void main() {
       for (final rank in [1, 2, 3]) {
         expect(find.byKey(ValueKey('leaderboard-top-$rank')), findsOneWidget);
       }
-      expect(find.text('Ada'), findsOneWidget);
-      expect(find.text('Your rank: #4 of 6'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('leaderboard-top-1')),
+          matching: find.text('Ada'),
+        ),
+        findsOneWidget,
+      );
+      // You: the rank, of how many, the score.
+      final you = find.byKey(const ValueKey('leaderboard-me'));
+      expect(
+        find.descendant(of: you, matching: find.text('#4')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: you, matching: find.text('of 6 ranked')),
+        findsOneWidget,
+      );
+      // A phone gives the name the room: no avatar beside the medal.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('leaderboard-top-1')),
+          matching: find.byType(CircleAvatar),
+        ),
+        width < 600 ? findsNothing : findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
+
+      // Past weeks: the winner, then 2nd and 3rd; a tap opens that week.
+      final past = find.byKey(const ValueKey('leaderboard-week-2026-11-15'));
+      await tester.ensureVisible(past);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: past, matching: find.textContaining('Bo')),
+        findsWidgets,
+      );
+      await tester.tap(past);
+      await tester.pumpAndSettle();
+      expect(
+        asked.lastWhere((u) => u.path.endsWith('/leaderboard')).queryParameters,
+        {'week': '2026-11-15'},
+      );
+      await tester.tap(find.byKey(const ValueKey('leaderboard-week-next')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('leaderboard-week-previous')));
       await tester.pumpAndSettle();
@@ -183,7 +263,23 @@ void main() {
         reason: 'the same week',
       );
       expect(find.text('41'), findsOneWidget, reason: 'answered');
+      expect(find.text('56%'), findsOneWidget, reason: 'booking rate');
+      expect(find.text('3:42'), findsOneWidget, reason: 'average talk');
+      // Six tiles, one size (Jose: sibling tiles are equal).
+      final sizes = {
+        for (final t in [
+          'Answered',
+          'Outbound',
+          'New client',
+          'Booked new',
+          'Booking rate',
+          'Avg talk',
+        ])
+          tester.getSize(find.byKey(ValueKey('leaderboard-tile-$t'))),
+      };
+      expect(sizes, hasLength(1));
       expect(find.text('• Ask for the booking'), findsOneWidget);
+      expect(find.text('Strong openings.'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('leaderboard-scored-c9')),
         200,
@@ -194,30 +290,62 @@ void main() {
             )
             .first,
       );
+      // Latest 3 shows c9, not the worst; Worst swaps them.
+      expect(find.byKey(const ValueKey('leaderboard-scored-c2')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('leaderboard-scored-c9')));
       await tester.pumpAndSettle();
       expect(find.text('Di: thanks for calling'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('leaderboard-pick-worst')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('leaderboard-scored-c2')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('leaderboard-scored-c9')), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('outside the board, it says why', (tester) async {
-    await pump(
-      tester,
-      1280,
-      me: {
-        'person': 'Ed',
-        'rank': null,
-        'of': 6,
-        'score': 8.1,
-        'calls_scored': 20,
-        'why': 'not_new',
-      },
-    );
-    expect(find.text('You are not on this board'), findsOneWidget);
-    expect(
-      find.text('Only the people marked for New Client Calls are ranked here.'),
-      findsOneWidget,
-    );
+  // Design 212's empty states, in the You card.
+  for (final (why, says) in [
+    ('not_new', 'Not on New Client Calls'),
+    ('too_few_calls', '2 of 3 scored calls'),
+    ('not_matched', 'Your calls are not linked yet'),
+  ]) {
+    testWidgets('outside the board, it says why: $why', (tester) async {
+      await pump(
+        tester,
+        1280,
+        me: {
+          'person': 'Ed',
+          'rank': null,
+          'of': 6,
+          'score': 8.1,
+          'calls_scored': 2,
+          'why': why,
+        },
+      );
+      final you = find.byKey(const ValueKey('leaderboard-me'));
+      expect(
+        find.descendant(of: you, matching: find.text(says)),
+        findsOneWidget,
+      );
+      if (why == 'too_few_calls') {
+        expect(
+          find.descendant(
+            of: you,
+            matching: find.textContaining('1 more scored call this week'),
+          ),
+          findsOneWidget,
+        );
+      }
+    });
+  }
+
+  testWidgets('nobody ranked yet says so, and You still shows', (tester) async {
+    await pump(tester, 1280, nobody: true);
+    expect(find.byKey(const ValueKey('leaderboard-nobody')), findsOneWidget);
+    expect(find.byKey(const ValueKey('leaderboard-top-1')), findsNothing);
+    expect(find.byKey(const ValueKey('leaderboard-me')), findsOneWidget);
   });
 }
