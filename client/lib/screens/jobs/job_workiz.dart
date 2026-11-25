@@ -546,7 +546,7 @@ class _WorkizFilesState extends State<WorkizFiles> {
                               for (final p in pictures)
                                 (
                                   name: p.name,
-                                  image: NetworkImage(p.url),
+                                  image: NetworkImage(p.url, webHtmlElementStrategy: WebHtmlElementStrategy.prefer),
                                   download: () => _open(p.url),
                                 ),
                             ],
