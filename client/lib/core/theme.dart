@@ -777,10 +777,8 @@ enum Tone {
 /// `tone_colours_test` rather than asserted here.
 /// White or near-black text, whichever reads on [fill]: for a colour the
 /// app does not choose, such as a Workiz tag's (Jose, 2026-11-10).
-Color inkOn(Color fill) =>
-    ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
-    ? Colors.white
-    : Colors.black87;
+// By measured contrast: estimateBrightness put white on #0093CA at 3.37:1 (Mobile UI-UX 11-25).
+Color inkOn(Color fill) => EzBiziTheme.inkOn(fill);
 
 class ToneColours {
   const ToneColours(this.fill, this.ink);

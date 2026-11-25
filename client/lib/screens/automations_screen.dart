@@ -389,7 +389,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       if (words.isEmpty) return true;
       final said = [
         a['name'],
-        a['description'],
+        a['description_shown'] ?? a['description'],
         _catalogue?.describeTrigger('${a['trigger_key']}'),
         _does(a),
       ].whereType<String>().join(' ').toLowerCase();
@@ -514,7 +514,24 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     );
   }
 
+  /// On the Task Board tint the muted grey is 4.15:1 in light (Mobile UI-UX
+  /// 11-25), so a Task Board card's small text takes the full ink.
   Widget _row(BuildContext context, Map<String, dynamic> automation) {
+    if (_taskBoard(automation) == null) return _rowBody(context, automation);
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onSurface;
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(onSurfaceVariant: ink),
+        textTheme: theme.textTheme.copyWith(
+          bodySmall: theme.textTheme.bodySmall?.copyWith(color: ink),
+        ),
+      ),
+      child: Builder(builder: (context) => _rowBody(context, automation)),
+    );
+  }
+
+  Widget _rowBody(BuildContext context, Map<String, dynamic> automation) {
     final noEdit = _noEdit;
     final noDelete = _noDelete;
     final noCreate = _noCreate;
@@ -522,7 +539,9 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final coreReason = automation['core_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
-    final description = automation['description'] as String?;
+    final description =
+        (automation['description_shown'] ?? automation['description'])
+            as String?;
     final scope = (automation['scope'] as Map?)?['label'] as String?;
 
     final theme = Theme.of(context);
@@ -890,9 +909,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   color: theme.colorScheme.primary,
                 ),
               ),
-              if ('${automation['description'] ?? ''}'.trim().isNotEmpty) ...[
+              if ('${automation['description_shown'] ?? automation['description'] ?? ''}'
+                  .trim()
+                  .isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Text('${automation['description']}'),
+                Text(
+                  '${automation['description_shown'] ?? automation['description']}',
+                ),
               ],
               const SizedBox(height: 6),
               _lastRun(
