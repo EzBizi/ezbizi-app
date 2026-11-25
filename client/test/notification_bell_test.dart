@@ -755,6 +755,45 @@ void main() {
     ]);
   });
 
+  // Jose, 2026-11-25: Monday's settings — Email per kind, and the phone switch.
+  testWidgets('a kind can be emailed, and phone notifications switched off', (
+    tester,
+  ) async {
+    final patches = <Object?>[];
+    await _pumpWithSession(
+      tester,
+      preferences: {},
+      items: () => [],
+      patches: patches,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Communication'), findsOneWidget);
+    final email = find.byKey(const ValueKey('notification-email-task.mentioned'));
+    await tester.ensureVisible(email);
+    await tester.tap(email);
+    await tester.pumpAndSettle();
+    final phone = find.byKey(const Key('notification-push'));
+    await tester.ensureVisible(phone);
+    await tester.tap(phone);
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {
+          'notifications.email_kinds': ['task.mentioned'],
+        },
+      },
+      {
+        'preferences': {'notifications.push': false},
+      },
+    ]);
+  });
+
   // Jose, 2026-11-17: Project Management's part alerts, each switchable.
   testWidgets('a Project Management kind can be switched off', (tester) async {
     final patches = <Object?>[];
@@ -891,6 +930,24 @@ Future<void> _pumpWithSession(
             'companies': <Map<String, Object?>>[],
             'franchises': <Map<String, Object?>>[],
           },
+        });
+      }
+      if (path.endsWith('/notifications/kinds')) {
+        return _json({
+          'data': [
+            {
+              'group': 'Communication',
+              'kinds': [
+                {'key': 'task.mentioned', 'label': 'Mentioned me in an update or reply'},
+              ],
+            },
+            {
+              'group': 'Project Management',
+              'kinds': [
+                {'key': 'project_board.part_late', 'label': 'A part is 3 days late'},
+              ],
+            },
+          ],
         });
       }
       if (path.endsWith('/companies')) {

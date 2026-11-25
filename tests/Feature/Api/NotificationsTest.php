@@ -390,6 +390,53 @@ class NotificationsTest extends TestCase
         $this->assertSame(0, $this->inTenant(fn () => Notification::query()->count()));
     }
 
+    public function test_monday_parity_email_per_kind_and_automation_kinds_can_be_muted(): void
+    {
+        // Jose, 2026-11-25: Monday's settings — per kind, In-app and Email.
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => [
+            'notifications.email_kinds' => ['task.assigned'],
+            'notifications.muted_kinds' => ['automation.notify'],
+        ]])->save());
+
+        $send = fn (string $title, ?string $kind, string $source = 'system') => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $title, subject: $this->org['franchise'], onlyTo: $this->org['admin'], source: $source, kind: $kind,
+        ));
+
+        $this->assertSame(1, $send('Assigned: A', 'task.assigned'));
+        $this->assertSame(1, $send('Status: B', 'task.status'));
+        \Illuminate\Support\Facades\Notification::assertSentToTimes($this->org['admin'], \App\Notifications\NotificationNotice::class, 1);
+
+        // An automation names no kind; it is filed as automation.notify.
+        $this->assertSame(0, $send('New lead', null, 'automation'), 'automation.notify is muted');
+
+        $groups = collect($this->as($this->org['admin'])->getJson('/api/v1/notifications/kinds')->assertOk()->json('data'))->pluck('group');
+        $this->assertSame(['Communication', 'Collaboration'], $groups->take(2)->all());
+    }
+
+    public function test_an_invitation_unanswered_for_a_week_tells_its_inviter_once(): void
+    {
+        // Monday's "Didn't sign up after I invited them" (Jose, 2026-11-25).
+        $this->inTenant(fn () => \App\Models\Invitation::query()->forceCreate([
+            'id' => (string) \Illuminate\Support\Str::uuid7(),
+            'organization_id' => $this->org['organization']->id,
+            'email' => 'new.hire@example.test',
+            'assigned_franchise_id' => $this->org['franchise']->id,
+            'token_hash' => hash('sha256', 'unanswered-invite'),
+            'expires_at' => now()->addDays(7),
+            'invited_by_user_id' => $this->org['admin']->id,
+            'sent_at' => now()->subDays(7)->subHours(12),
+        ]));
+
+        $this->artisan('ezbizi:notify-invitation-follow-ups')->assertSuccessful();
+        $this->travel(1)->day(); // the next daily run
+        $this->artisan('ezbizi:notify-invitation-follow-ups')->assertSuccessful();
+
+        $rows = $this->inTenant(fn () => Notification::query()->where('kind', 'user.not_signed_up')->get());
+        $this->assertCount(1, $rows, 'once, not on every run');
+        $this->assertSame($this->org['admin']->id, $rows->first()->user_id);
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

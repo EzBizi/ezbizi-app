@@ -13,11 +13,24 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0647', date: '25 Nov 2026', items: [
+      'Chat: voice and video calls, one to one and in groups, right from a chat (nothing is recorded)',
+      'Notifications: new settings like Monday (bell, then the gear): a phone notifications switch, and In-app and Email switches for every kind, grouped as Communication, Collaboration, Automations, Sign-ups, Security and Admin',
+      'Task Board: you now get notified when someone writes an update on a task you own or follow, replies to your update or to a thread you took part in, reacts to your update, invites you, or deletes an update',
+      'Task Board: drag the left edge of the task panel to make it narrower or wider; it opens narrower and remembers your width',
+      'Task Board: copy and paste work inside a cell while a range of cells is selected',
+      'Jobs: photos on a job (from Workiz and added in EzBizi) show as pictures; tap one to open it full screen and swipe through them',
+      'Jobs: job notes can be bold, italic or underlined',
+    ]),
     VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+      'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
+      'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
       'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',
       'Desktop Monitoring: swipe the large screenshot to step through captures; past days no longer show a false "capture stopped"; the people list stays in name order',
     ]),
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Work schedule: only Administrators can change their own work schedule; everyone else sees "Your manager sets your work schedule" (managers and HR still set other people schedules)',
+      'Task Board: the board list is one tree. Triplex Group on top with its own boards, then each company with its company board first (A1 - Operation for A-1 Chimney), its branches in one row, then its folders; templates and the boards of everyone else sit below',
       'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Leads, Financials (invoice notes), Fleet (vehicle and service notes), Customer Experience (review and complaint notes) HR (people, work hours and recruiting notes) Scheduling (location, helper and wrong-ZIP notes) and the Task Board (long-text and notes columns); Copy and anything sent out stay plain text',
       'Reports > Reports: every report EzBizi sends, on WhatsApp, email or a group, with who gets it and when; open one to see each send, to whom, delivered or read, and what it said',
       'New: Communication > Chat, our own WhatsApp between EzBizi accounts: direct and group chats, photos, files, voice notes, replies, reactions, read ticks, typing and online status, search, pin, mute and archive',

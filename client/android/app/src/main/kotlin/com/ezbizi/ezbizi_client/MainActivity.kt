@@ -2,7 +2,9 @@ package com.ezbizi.ezbizi_client
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
@@ -32,6 +34,22 @@ import io.flutter.plugin.common.MethodChannel
 /// working the day this was written. This costs no download size and has no
 /// iOS surface at all.
 class MainActivity : FlutterActivity() {
+    /// The Chat call waiting for the camera/microphone answer.
+    private var pendingPermissions: MethodChannel.Result? = null
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != PERMISSIONS_REQUEST) return
+        pendingPermissions?.success(
+            grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED },
+        )
+        pendingPermissions = null
+    }
+
     /// The bell row a push tap names, waiting for Dart to ask for it.
     private var pendingTap: String? = null
     private var tapChannel: MethodChannel? = null
@@ -117,6 +135,34 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Chat calls: a web view may use the camera and microphone only once the
+        // APP holds them, and nothing else in the app asks for the camera. Dart
+        // sends ["camera", "microphone"]; the answer is whether all are granted.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERMISSIONS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method != "request") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val wanted = (call.arguments as? List<*>).orEmpty().mapNotNull {
+                    when (it) {
+                        "camera" -> Manifest.permission.CAMERA
+                        "microphone" -> Manifest.permission.RECORD_AUDIO
+                        else -> null
+                    }
+                }
+                val missing = wanted.filter {
+                    checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+                }
+                if (missing.isEmpty()) {
+                    result.success(true)
+                } else {
+                    pendingPermissions?.success(false)
+                    pendingPermissions = result
+                    requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
+                }
+            }
+
         // Cold start: Dart asks once for the tap that launched the app, and
         // the answer is consumed so a later rebuild cannot replay it.
         tapChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TAP_CHANNEL)
@@ -170,5 +216,7 @@ class MainActivity : FlutterActivity() {
     private companion object {
         const val CHANNEL = "com.ezbizi.app/fcm"
         const val TAP_CHANNEL = "com.ezbizi.app/notification_tap"
+        const val PERMISSIONS_CHANNEL = "ezbizi/permissions"
+        const val PERMISSIONS_REQUEST = 4711
     }
 }

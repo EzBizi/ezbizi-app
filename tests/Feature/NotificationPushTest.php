@@ -163,6 +163,31 @@ class NotificationPushTest extends TestCase
      * Jose, 2026-11-13: per-module on/off. A muted module still collects in
      * the bell but does not push; a colleague who did not mute it is pushed.
      */
+    /** Jose, 2026-11-25: Monday's "Received directly on your device" switch. */
+    public function test_phone_notifications_off_stops_the_push_and_keeps_the_bell(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Pi');
+        $colleague = $this->userWithRole($tenant, 'Dispatcher');
+        $this->device($tenant, $tenant['admin']->id, 'token-off-phone');
+        $this->device($tenant, $colleague->id, 'token-on-phone');
+        $this->inTenant($tenant['org'], fn () => $tenant['admin']
+            ->forceFill(['preferences' => ['notifications.push' => false]])->save());
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'Trial ends tomorrow', subject: $tenant['org'], source: 'system',
+        ));
+
+        $this->assertSame(2, $told, 'both still get the bell row');
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-on-phone');
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-off-phone');
+    }
+
     public function test_a_muted_module_collects_in_the_bell_without_pushing(): void
     {
         Http::fake([

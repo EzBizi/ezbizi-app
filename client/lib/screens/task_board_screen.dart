@@ -2512,29 +2512,71 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             unawaited(_closeDock()),
       },
       child: Focus(
-        child: SizedBox(
-          key: const Key('task-dock'),
-          width: 440,
-          child: _TaskPanel(
-            key: ValueKey('task-dock-${task['id']}-$_dockUpdatesOnly'),
-            api: widget.api,
-            formats: _formats,
-            taskId: task['id'] as String,
-            board: _board!,
-            where: '${group['name']}',
-            people: _people,
-            unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
-            subtasks: _subtasksOf(task),
-            saves: _dockSaves,
-            updatesOnly: _dockUpdatesOnly,
-            focusUpdate: _dockFocusUpdate,
-            docked: true,
-            onClose: () => unawaited(_closeDock()),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Kimberly 11-25 (Monday's): drag the edge; the width is kept per person.
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                key: const Key('task-dock-edge'),
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) => setState(
+                  () => _dockDrag = (_dockWidth - d.delta.dx).clamp(
+                    dockMinWidth,
+                    _dockMaxWidth,
+                  ),
+                ),
+                onHorizontalDragEnd: (_) {
+                  final w = _dockDrag;
+                  if (w == null) return;
+                  widget.session.setPreference(
+                    'task_board.panel_width',
+                    w.roundToDouble(),
+                  );
+                  setState(() => _dockDrag = null);
+                },
+                child: const SizedBox(width: 6, height: double.infinity),
+              ),
+            ),
+            SizedBox(
+              key: const Key('task-dock'),
+              width: _dockWidth,
+              child: _TaskPanel(
+                key: ValueKey('task-dock-${task['id']}-$_dockUpdatesOnly'),
+                api: widget.api,
+                formats: _formats,
+                taskId: task['id'] as String,
+                board: _board!,
+                where: '${group['name']}',
+                people: _people,
+                unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
+                subtasks: _subtasksOf(task),
+                saves: _dockSaves,
+                updatesOnly: _dockUpdatesOnly,
+                focusUpdate: _dockFocusUpdate,
+                docked: true,
+                narrow: _dockWidth < 420,
+                onClose: () => unawaited(_closeDock()),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  /// The docked panel's width: while dragged, the drag; else the saved one; else 380.
+  static const dockMinWidth = 320.0;
+  double? _dockDrag;
+  double get _dockMaxWidth =>
+      (MediaQuery.sizeOf(context).width * 0.6).clamp(dockMinWidth, 900.0);
+  double get _dockWidth =>
+      (_dockDrag ??
+              (widget.session.me?.preferences['task_board.panel_width'] as num?)
+                  ?.toDouble() ??
+              380.0)
+          .clamp(dockMinWidth, _dockMaxWidth);
 
   @override
   Widget build(BuildContext context) =>
@@ -5237,7 +5279,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// Ctrl+C copies the range's first value; Ctrl+V writes the clipboard to
   /// every cell in it; Esc lets go.
   KeyEventResult _rangeKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent || _range.isEmpty) return KeyEventResult.ignored;
+    // A box open inside the range keeps its own Ctrl+C/V (Adeline 11-25).
+    if (e is! KeyDownEvent || _range.isEmpty || !_rangeFocus.hasPrimaryFocus) {
+      return KeyEventResult.ignored;
+    }
     final keys = HardwareKeyboard.instance;
     final mod = keys.isControlPressed || keys.isMetaPressed;
     if (e.logicalKey == LogicalKeyboardKey.escape) {
@@ -6393,6 +6438,7 @@ class _TaskPanel extends StatefulWidget {
   const _TaskPanel({
     super.key,
     this.docked = false,
+    this.narrow = false,
     this.onClose,
     required this.api,
     required this.formats,
@@ -6418,6 +6464,9 @@ class _TaskPanel extends StatefulWidget {
 
   /// Beside the board rather than over it; [onClose] then closes it.
   final bool docked;
+
+  /// Docked narrower than 420: labels sit above their boxes, as on a phone.
+  final bool narrow;
   final VoidCallback? onClose;
 
   /// Its subtasks as the board has them, for the panel's checklist.
@@ -7289,8 +7338,8 @@ class _TaskPanelState extends State<_TaskPanel> {
     '📞',
   ];
 
-  Widget _composerTools() => Row(
-    mainAxisSize: MainAxisSize.min,
+  // A Wrap: a narrow panel takes the tools on two lines (Kimberly 11-25).
+  Widget _composerTools() => Wrap(
     children: [
       IconButton(
         key: const Key('task-update-tool-mention'),
@@ -7603,7 +7652,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
     // One form (Jose, 2026-11-16): labels in one column, on top on a phone;
     // every box the full width and one height.
-    final phone = MediaQuery.sizeOf(context).width < 600;
+    final phone = MediaQuery.sizeOf(context).width < 600 || widget.narrow;
     Widget field(String label, Widget box, {Key? key}) => Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 8),

@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardFolder;
 use App\Models\TaskBoardMember;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -506,6 +507,45 @@ class TaskBoards
         };
 
         return [array_values($companyIds), $franchiseIds];
+    }
+
+    /**
+     * Row 66 (Jose 11-25): which company each root folder belongs to (its name, "A1 Chimney" =
+     * "A-1 Chimney"), sub-folders inheriting, and which board is each company's working board:
+     * Monday's "… - Operation" board in that company's folder, else its kind=company board.
+     *
+     * @return array{folders: array<string, string>, boards: array<string, string>} folder id => company id; board id => company id
+     */
+    public function companyMap(): array
+    {
+        $norm = fn (?string $s) => preg_replace('/[^a-z0-9]/', '', mb_strtolower((string) $s));
+        $companies = Company::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$norm($c->name) => (string) $c->id])->all();
+        $folders = TaskBoardFolder::query()->get(['id', 'parent_id', 'name']);
+        $parent = $folders->pluck('parent_id', 'id')->all();
+        $own = $folders->mapWithKeys(fn ($f) => [(string) $f->id => $companies[$norm($f->name)] ?? null])->all();
+        $folderCompany = [];
+        foreach ($folders as $f) {
+            for ($at = (string) $f->id, $hops = 0; $at !== '' && $hops < 20; $at = (string) ($parent[$at] ?? ''), $hops++) {
+                if (($own[$at] ?? null) !== null) {
+                    $folderCompany[(string) $f->id] = $own[$at];
+                    break;
+                }
+            }
+        }
+        $boards = [];
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_CUSTOM)->whereNotNull('folder_id')->where('name', 'like', '% - Operation')->get(['id', 'folder_id']) as $b) {
+            $company = $folderCompany[(string) $b->folder_id] ?? null;
+            if ($company !== null && ! in_array($company, $boards, true)) {
+                $boards[(string) $b->id] = $company;
+            }
+        }
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_COMPANY)->whereNotNull('company_id')->get(['id', 'company_id']) as $b) {
+            if (! in_array((string) $b->company_id, $boards, true)) {
+                $boards[(string) $b->id] = (string) $b->company_id;
+            }
+        }
+
+        return ['folders' => $folderCompany, 'boards' => $boards];
     }
 
     /** The company a franchise board's tasks are filed under. */

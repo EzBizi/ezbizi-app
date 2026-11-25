@@ -175,6 +175,7 @@ class FormattedNotesField extends StatelessWidget {
     this.minLines = 3,
     this.fieldKey,
     this.maxLength,
+    this.enabled = true,
   });
 
   final FormattedNotesController controller;
@@ -182,6 +183,7 @@ class FormattedNotesField extends StatelessWidget {
   final int minLines;
   final Key? fieldKey;
   final int? maxLength;
+  final bool enabled;
 
   static const _toolbarHeight = 40.0;
 
@@ -204,7 +206,7 @@ class FormattedNotesField extends StatelessWidget {
                 tooltip: tip,
                 isSelected: controller.has(bit),
                 icon: Icon(icon),
-                onPressed: () => controller.toggle(bit),
+                onPressed: enabled ? () => controller.toggle(bit) : null,
               ),
           ],
         ),
@@ -230,6 +232,7 @@ class FormattedNotesField extends StatelessWidget {
         child: TextField(
           key: fieldKey,
           controller: controller,
+          enabled: enabled,
           minLines: minLines,
           maxLines: null,
           maxLength: maxLength,

@@ -193,6 +193,21 @@ class PreferenceRegistry
              * 2026-11-17: per-type toggles for Task Board). Unlike a muted
              * module, a muted kind writes no bell row. Empty = all on.
              */
+            // Monday parity (Jose, 2026-11-25): the Email column, opt-in per
+            // kind, and the "Received directly on your device" master switch.
+            'notifications.email_kinds' => [
+                'label' => 'Email me about',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types also sent to you by email.',
+            ],
+            'notifications.push' => [
+                'label' => 'Phone notifications',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Received directly on your device.',
+            ],
+
             'notifications.muted_kinds' => [
                 'label' => 'Muted notification types',
                 'type' => 'kinds',

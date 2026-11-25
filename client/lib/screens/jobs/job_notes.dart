@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -39,7 +40,7 @@ class JobNotes extends StatefulWidget {
   final List<Map<String, dynamic>> notes;
 
   /// Held by the panel, so a half-typed note survives a look at another tab.
-  final TextEditingController draft;
+  final FormattedNotesController draft;
   final DisplayFormats formats;
   final ValueChanged<Map<String, dynamic>> onAdded;
 
@@ -97,8 +98,9 @@ class _JobNotesState extends State<JobNotes> {
   bool get _canAdd => widget.addRefusal == null && !_sending;
 
   Future<void> _add() async {
-    final body = widget.draft.text.trim();
-    if (!_canAdd || body.isEmpty) return;
+    // Bold/italic/underline kept as <b><i><u> (Jose, 2026-11-25).
+    final body = widget.draft.markup.trim();
+    if (!_canAdd || widget.draft.text.trim().isEmpty) return;
 
     setState(() {
       _sending = true;
@@ -293,16 +295,12 @@ class _JobNotesState extends State<JobNotes> {
                   id: widget.jobId,
                   controller: widget.draft,
                   mentions: _mentions,
-                  child: TextField(
-                    key: const Key('job-note-box'),
+                  child: FormattedNotesField(
+                    fieldKey: const Key('job-note-box'),
                     controller: widget.draft,
                     enabled: _canAdd,
+                    label: 'Add a note for the team… (@ to mention)',
                     minLines: phone ? 2 : 3,
-                    maxLines: 8,
-                    keyboardType: TextInputType.multiline,
-                    decoration: const InputDecoration(
-                      hintText: 'Add a note for the team… (@ to mention)',
-                    ),
                   ),
                 ),
               ),
@@ -379,7 +377,7 @@ class _NoteRow extends StatefulWidget {
 }
 
 class _NoteRowState extends State<_NoteRow> {
-  TextEditingController? _edit;
+  FormattedNotesController? _edit;
   bool _busy = false;
   String? _error;
 
@@ -418,20 +416,18 @@ class _NoteRowState extends State<_NoteRow> {
     final full = formatStamp(note['created_at'], '', formats: widget.formats);
     final edit = _edit;
     final Widget body = edit == null
-        ? SelectableText(
+        ? FormattedNotesText(
             '${note['body'] ?? ''}',
             style: theme.textTheme.bodyMedium,
           )
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                key: ValueKey('job-note-edit-${note['id']}'),
+              FormattedNotesField(
+                fieldKey: ValueKey('job-note-edit-${note['id']}'),
                 controller: edit,
+                label: 'Note',
                 minLines: 2,
-                maxLines: 10,
-                enabled: !_busy,
-                keyboardType: TextInputType.multiline,
               ),
               const SizedBox(height: 6),
               Row(
@@ -452,7 +448,7 @@ class _NoteRowState extends State<_NoteRow> {
                     key: ValueKey('job-note-save-${note['id']}'),
                     onPressed: _busy || edit.text.trim().isEmpty
                         ? null
-                        : () => _run(edit.text.trim()),
+                        : () => _run(edit.markup.trim()),
                     child: const Text('Save'),
                   ),
                 ],
@@ -467,7 +463,7 @@ class _NoteRowState extends State<_NoteRow> {
                 key: ValueKey('job-note-edit-item-${note['id']}'),
                 leadingIcon: const Icon(Icons.edit_outlined, size: 18),
                 onPressed: () => setState(
-                  () => _edit = TextEditingController(text: '${note['body']}'),
+                  () => _edit = FormattedNotesController(markup: '${note['body']}'),
                 ),
                 child: const Text('Edit'),
               ),
@@ -577,4 +573,4 @@ String noteWhen(Object? iso, {required DisplayFormats formats, DateTime? now}) {
 
 /// The first line of a note, for the one-line preview on the Job tab.
 String noteFirstLine(Map<String, dynamic> note) =>
-    '${note['body'] ?? ''}'.trim().split('\n').first.trim();
+    NotesMarkup.plain('${note['body'] ?? ''}').trim().split('\n').first.trim();
