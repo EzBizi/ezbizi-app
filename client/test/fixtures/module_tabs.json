@@ -440,6 +440,23 @@
                 ]
             }
         },
+        "leaderboard": {
+            "label": "Leaderboard",
+            "parent": null,
+            "tabs": [
+                "Leaderboard",
+                "My performance"
+            ],
+            "grants": {
+                "Leaderboard": [
+                    "leaderboard.view"
+                ],
+                "My performance": [
+                    "leaderboard.mine.view",
+                    "leaderboard.view"
+                ]
+            }
+        },
         "leads": {
             "label": "Leads",
             "parent": null,
@@ -1253,6 +1270,8 @@
         "jobs.financials",
         "jobs.materials.view",
         "jobs.view",
+        "leaderboard.mine.view",
+        "leaderboard.view",
         "leads.bad_rating.view",
         "leads.dispatcher",
         "leads.edit",

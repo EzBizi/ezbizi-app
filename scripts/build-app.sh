@@ -52,6 +52,7 @@ RUN_GATES=1
 UPLOAD=0
 ALLOW_DIRTY=0
 ANDROID_APK=0
+EZCHAT=0
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -63,6 +64,7 @@ while [ $# -gt 0 ]; do
     --upload)     UPLOAD=1; shift ;;
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
     --apk)         ANDROID_APK=1; shift ;;
+    --ezchat)      EZCHAT=1; shift ;;
     *) echo "unknown argument: $1" >&2
        echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload] [--allow-dirty] [--apk]" >&2
        exit 2 ;;
@@ -194,10 +196,14 @@ build_locally() {
     #
     # It is not part of a release. Play still gets the .aab.
     android)
+      # --ezchat: same gradle project; EZBIZI_APP switches applicationId,
+      # label and icon (build.gradle.kts), -t picks the EzChat entrypoint.
+      local ez=()
+      if [ "${EZCHAT:-0}" -eq 1 ]; then export EZBIZI_APP=ezchat; ez=(-t lib/main_ezchat.dart --dart-define=EZBIZI_APP=ezchat); fi
       if [ "$ANDROID_APK" -eq 1 ]; then
-        (cd client && flutter build apk --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
+        (cd client && flutter build apk --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}" "${ez[@]}")
       else
-        (cd client && flutter build appbundle --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
+        (cd client && flutter build appbundle --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}" "${ez[@]}")
       fi ;;
     *)       (cd client && flutter build "$1" --release "${DEFINES[@]}") ;;
   esac
@@ -366,6 +372,12 @@ if wants macos || wants ios; then
 # found". Every Apple build hit this; none had been run since BUILT_AT was added.
 MAC_DEFINES="${MAC_DEFINES} --dart-define=BUILT_AT='${BUILT_AT}'"
 MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBER}"
+# --ezchat: the iOS build is EzChat, the chat sister app, instead of EzBizi.
+IOS_NAME=EzBizi
+if [ "${EZCHAT:-0}" -eq 1 ]; then
+  IOS_NAME=EzChat
+  MAC_DEFINES="${MAC_DEFINES} --dart-define=EZBIZI_APP=ezchat -t lib/main_ezchat.dart"
+fi
 
   # Built unsigned, and said out loud rather than left to be discovered.
   #
@@ -517,7 +529,11 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
     IOS_TEAM=2CMZQR34RL
 
     if ssh "$MAC_REMOTE" "security find-identity -v -p codesigning 2>/dev/null | grep -q 'Apple Distribution.*${IOS_TEAM}'"; then
-      echo "→ building ios — signed for team ${IOS_TEAM}"
+      echo "→ building ios (${IOS_NAME}) — signed for team ${IOS_TEAM}"
+      if [ "${EZCHAT:-0}" -eq 1 ]; then
+        ssh "$MAC_REMOTE" "rm -rf ~/ezchat-AppIcon.appiconset"
+        scp -rq assets/logo/ezchat/ios/AppIcon.appiconset "${MAC_REMOTE}:ezchat-AppIcon.appiconset"
+      fi
       ssh "$MAC_REMOTE" "
         export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
         set -e
@@ -530,6 +546,17 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
         # (26.0.1, flutter#188461 lipo bug). Desk, 2026-11-23.
         export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
         cd ${MAC_PROJECT}
+        if [ ${EZCHAT:-0} -eq 1 ]; then
+          # EzChat is the same Runner rewritten on this throwaway copy: its own
+          # bundle id, name, icon and profile. Push is the same aps entitlement;
+          # the App ID com.ezbizi.ezchat carries the capability.
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com.ezbizi.app;/PRODUCT_BUNDLE_IDENTIFIER = com.ezbizi.ezchat;/; s/"EzBizi App Store"/"EzChat App Store"/' ios/Runner.xcodeproj/project.pbxproj
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName EzChat' ios/Runner/Info.plist
+          sed -i '' 's/com.ezbizi.app</com.ezbizi.ezchat</; s/EzBizi App Store/EzChat App Store/' ios/ExportOptions.plist
+          rm -rf ios/Runner/Assets.xcassets/AppIcon.appiconset
+          cp -R ~/ezchat-AppIcon.appiconset ios/Runner/Assets.xcassets/AppIcon.appiconset
+          grep -q 'com.ezbizi.ezchat;' ios/Runner.xcodeproj/project.pbxproj
+        fi
         ${MAC_FLUTTER} pub get
         ${MAC_FLUTTER} build ipa --release ${MAC_DEFINES} --export-options-plist=ios/ExportOptions.plist
       "
@@ -543,8 +570,8 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
         echo "✗ flutter build ipa reported success but left no .ipa on the Mac" >&2
         exit 1
       fi
-      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
-      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST_APPLE}/${IOS_NAME}-${VERSION}-${COMMIT}.ipa"
+      echo "  → ${DIST_APPLE}/${IOS_NAME}-${VERSION}-${COMMIT}.ipa"
 
       # TestFlight, only when asked - but release.sh always asks.
       #

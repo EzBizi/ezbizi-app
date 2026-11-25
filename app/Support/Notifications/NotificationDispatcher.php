@@ -116,6 +116,7 @@ class NotificationDispatcher
     ): int {
         // Automations name no kind; Monday files them under Automations
         // (Jose, 2026-11-25), so each person can switch them off.
+        $named = $kind !== null;
         $kind ??= match (true) {
             $subject instanceof \App\Models\Automation => 'automation.failed',
             $source === 'automation' => 'automation.notify',
@@ -134,7 +135,9 @@ class NotificationDispatcher
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
         $recipients = $this->onlyThoseFollowing($recipients, $subject, $source, $eventId);
-        $recipients = $this->withoutMutedOrRepeatedKind($recipients, $kind, $subject, $title);
+        // Grouping is for kinds a caller names (task events); automations keep
+        // ringing each time, under their own flood cap (0.0.0647 gate).
+        $recipients = $this->withoutMutedOrRepeatedKind($recipients, $kind, $named ? $subject : null, $title);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -333,6 +336,8 @@ class NotificationDispatcher
         }
 
         $devices = DeviceToken::query()
+            // EzChat handsets get chat messages and call rings only (ChatController).
+            ->where('app', 'ezbizi')
             ->whereIn('user_id', $recipients->map->getKey()->all())
             ->get();
 

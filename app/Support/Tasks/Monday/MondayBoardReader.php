@@ -126,11 +126,21 @@ final class MondayBoardReader
         }
         if ($this->folders === null) {
             $this->folders = [];
-            $workspaces = array_column($this->api->query('{ workspaces(limit:100) { id } }')['workspaces'] ?? [], 'id');
-            $rows = $workspaces === [] ? [] : ($this->api->query('query($w:[ID]){ folders(workspace_ids:$w, limit:100) { id name color parent { id } } }', ['w' => $workspaces])['folders'] ?? []);
+            // A workspace that is not Main and has one person is that person's own space (row 68).
+            $owner = [];
+            $spaces = $this->api->query('{ workspaces(limit:100) { id is_default_workspace owners_subscribers { email } } }')['workspaces'] ?? [];
+            foreach ($spaces as $w) {
+                $people = array_values(array_filter(array_column($w['owners_subscribers'] ?? [], 'email')));
+                if (empty($w['is_default_workspace']) && count($people) === 1) {
+                    $owner[(string) $w['id']] = mb_strtolower($people[0]);
+                }
+            }
+            $workspaces = array_column($spaces, 'id');
+            $rows = $workspaces === [] ? [] : ($this->api->query('query($w:[ID]){ folders(workspace_ids:$w, limit:100) { id name color parent { id } workspace { id } } }', ['w' => $workspaces])['folders'] ?? []);
             foreach ($rows as $f) {
                 $this->folders[(string) $f['id']] = ['name' => (string) $f['name'], 'colour' => self::FOLDER_COLOURS[(string) ($f['color'] ?? '')] ?? null,
-                    'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null];
+                    'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null,
+                    'owner_email' => $owner[(string) ($f['workspace']['id'] ?? '')] ?? null];
             }
         }
         if (! isset($this->folders[$folderId])) {
@@ -138,7 +148,8 @@ final class MondayBoardReader
         }
         $path = [];
         for ($id = $folderId; $id !== null && isset($this->folders[$id]) && count($path) < 10; $id = $this->folders[$id]['parent']) {
-            array_unshift($path, ['name' => $this->folders[$id]['name'], 'colour' => $this->folders[$id]['colour']]);
+            array_unshift($path, array_filter(['name' => $this->folders[$id]['name'], 'colour' => $this->folders[$id]['colour'],
+                'owner_email' => $this->folders[$id]['owner_email'] ?? null], fn ($v) => $v !== null) + ['colour' => null]);
         }
 
         return $path;

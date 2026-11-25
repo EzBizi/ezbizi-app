@@ -17,7 +17,7 @@ class Chat extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'type', 'name', 'description', 'only_admins_send',
-        'created_by', 'direct_key', 'last_message_at',
+        'created_by', 'direct_key', 'job_id', 'last_message_at',
     ];
 
     protected $dateFormat = 'Y-m-d H:i:s.u';
@@ -45,6 +45,12 @@ class Chat extends Model implements StatesRetention
         sort($pair);
 
         return implode(':', $pair);
+    }
+
+    /** The job this conversation is about, if any. */
+    public function job(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Job::class);
     }
 
     public function members(): HasMany

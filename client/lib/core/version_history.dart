@@ -13,6 +13,20 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0649', date: '25 Nov 2026', items: [
+      'Chat on phones: one-tap replies (On my way, Running late, Done, Need parts), a camera beside the message box, and hold-to-talk voice notes',
+      'Chat: link a chat to a job, and it shows the job number and city at the top',
+      'EzChat: Chats, Calls and You tabs; recent calls with missed ones in red, call back or join',
+    ]),
+    VersionRelease(version: '0.0.0648', date: '25 Nov 2026', items: [
+      'Customer Experience: a branch task about a complaint links to that complaint, so its status, owner and updates show on Reviews and Complaints too, and the duplicate copies in A1 - Operation stop',
+      'Task Board: you always find yourself in owner and assignee pickers, the person filter and @mentions, whatever company is picked',
+      'Sign in: "Forgot password" now confirms the reset link in a normal note instead of a red error, and closing that panel no longer blanks the screen',
+      'Task Board board list: Triplex Group and each company show their own colour, folders always look like folders, and dragging shows a line where the board will land (a highlight only when dropping into a folder)',
+      'Work Hours: you always find yourself in the people list and search, whichever company or branch is picked',
+      'Task Board: the board list shows every board you can reach by your own permissions, whatever the Company and Branch picker is set to',
+      'New: Leaderboard tab. The week top 3 (Sunday to Friday) among New Client Calls people, your own rank, and past weeks winners; My performance shows only your own numbers and calls',
+    ]),
     VersionRelease(version: '0.0.0647', date: '25 Nov 2026', items: [
       'Chat: voice and video calls, one to one and in groups, right from a chat (nothing is recorded)',
       'Notifications: new settings like Monday (bell, then the gear): a phone notifications switch, and In-app and Email switches for every kind, grouped as Communication, Collaboration, Automations, Sign-ups, Security and Admin',
@@ -22,7 +36,8 @@ class VersionHistory {
       'Jobs: photos on a job (from Workiz and added in EzBizi) show as pictures; tap one to open it full screen and swipe through them',
       'Jobs: job notes can be bold, italic or underlined',
     ]),
-    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', deployed: '2026-11-25 18:57',
+      items: [
       'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
       'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
       'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',

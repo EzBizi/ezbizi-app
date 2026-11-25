@@ -2,9 +2,9 @@
 Contributors: ezbizi
 Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
-Tested up to: 7.1
+Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 1.26.36
+Stable tag: 1.26.37
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,9 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.37 =
+* Tested with WordPress 7.2 (RC1): admin screen, REST routes and shortcodes run with no notices.
 
 = 1.26.36 =
 * JSON-LD rating rewrite keeps the comma after a bare reviewCount (it made the block invalid JSON).

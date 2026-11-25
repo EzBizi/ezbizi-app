@@ -94,6 +94,7 @@ use App\Http\Controllers\Api\JobNotesController;
 use App\Http\Controllers\Api\JobPhotosController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadDashboardController;
+use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
@@ -1826,6 +1827,13 @@ Route::prefix('v1')
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
+        // Leaderboard (Trey, approved by Jose 2026-11-25): Scoring's top three
+        // marked New, week by week (Sunday to Friday), and the reader's own
+        // Performance and Scoring.
+        Route::get('leaderboard', [LeaderboardController::class, 'board'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/weeks', [LeaderboardController::class, 'weeks'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/mine', [LeaderboardController::class, 'mine'])->middleware('permission:leaderboard.mine.view');
+        Route::get('leaderboard/mine/calls', [LeaderboardController::class, 'calls'])->middleware('permission:leaderboard.mine.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
@@ -2879,6 +2887,7 @@ Route::prefix('v1')
             Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
             Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
             Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::patch('chat/chats/{chat}/job', [ChatController::class, 'setJob']);
             Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
             Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
             Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
@@ -2892,6 +2901,7 @@ Route::prefix('v1')
             Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
             Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
             Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls', [ChatController::class, 'recentCalls']);
             Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
             Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
             Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);
