@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0651', date: '25 Nov 2026', items: [
+      'Task Board: archive a task (and restore it from the board menu), move a task to the top of its group, and set one column value on many selected tasks at once',
       'Work Hours weekly time report (screen, email and PDF): Overtime over 40 hours in red at the top, then Full time, then Part time, each A to Z',
       'HR: each person can be marked Full time or Part time (or follow their schedule), and you always find yourself in HR Records',
     ]),
