@@ -757,6 +757,13 @@ class TaskBoardsController extends Controller
         ]);
 
         PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+        // Row 67: Monday's board invitation; not when I add myself.
+        if ((string) $input['user_id'] !== (string) $request->user()->id) {
+            app(\App\Support\Notifications\NotificationDispatcher::class)->dispatch(
+                title: $request->user()->name.' added you to '.$taskBoard->name, body: null,
+                subject: $taskBoard, onlyTo: \App\Models\User::query()->find($input['user_id']), kind: 'task.invited', source: 'tasks',
+            );
+        }
 
         return response()->json(['data' => self::presentMember($member->load('user:id,name'))], 201);
     }

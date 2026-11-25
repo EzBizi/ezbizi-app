@@ -673,6 +673,20 @@ class TaskWriter
                 ['task_update_id' => $update->id], actor: $actor);
             $update->delete();
             app(MondayOutbox::class)->record($task, ['update_delete'], $update);
+            // Row 67: the item's owners and the thread's people hear it went (not who deleted it).
+            $ids = $task->owners()->pluck('user_id')->merge([$update->user_id])
+                ->merge($update->parent_update_id ? TaskUpdate::query()->where(fn ($q) => $q->whereKey($update->parent_update_id)->orWhere('parent_update_id', $update->parent_update_id))->pluck('user_id') : [])
+                ->filter()->map(fn ($id) => (string) $id)->unique()->diff([(string) $actor->id])->values()->all();
+            DB::afterCommit(function () use ($task, $ids, $actor) {
+                foreach (User::query()->whereKey($ids)->where('is_active', true)->get() as $user) {
+                    if (Gate::forUser($user)->check('view', $task)) {
+                        app(NotificationDispatcher::class)->dispatch(
+                            title: $actor->name.' deleted an update on '.$task->title, body: null,
+                            subject: $task, onlyTo: $user, kind: 'task.update_deleted', source: 'tasks',
+                        );
+                    }
+                }
+            });
         });
     }
 
@@ -808,26 +822,68 @@ class TaskWriter
             if ($task === null) {
                 return 0;
             }
-            $ids = collect([$task->created_by_user_id])
-                ->merge($task->owners()->pluck('user_id'))
-                ->merge(TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id'))
-                // Monday's bell: whoever follows the update this one replies to.
-                ->merge($update->parent_update_id ? (array) (TaskUpdate::query()->find($update->parent_update_id)?->followers ?? []) : [])
-                ->filter()->unique()->diff([...$skip, $update->user_id])->all();
+            // Monday's kinds, each its own setting (row 67): one bell per person, the closest reason wins.
+            $kinds = [];
+            $give = function (iterable $ids, string $kind) use (&$kinds) {
+                foreach ($ids as $id) {
+                    if ($id !== null && $id !== '') {
+                        $kinds[(string) $id] ??= $kind;
+                    }
+                }
+            };
+            if ($update->parent_update_id !== null && ($parent = TaskUpdate::query()->find($update->parent_update_id)) !== null) {
+                $give([$parent->user_id], 'task.reply.mine');
+                $thread = TaskUpdate::query()->where('parent_update_id', $parent->id)->whereKeyNot($update->id)->get(['user_id', 'likes']);
+                $give([
+                    ...$thread->pluck('user_id')->all(),
+                    ...(array) ($parent->likes ?? []),
+                    ...$thread->pluck('likes')->flatten()->all(),
+                    ...(array) ($parent->followers ?? []),
+                ], 'task.reply.thread');
+            }
+            $give($task->owners()->pluck('user_id'), 'task.update.owner');
+            $give([$task->created_by_user_id, ...TaskUpdate::query()->where('task_id', $task->id)->whereKeyNot($update->id)->pluck('user_id')->all()], 'task.update.subscribed');
+            foreach ([...$skip, $update->user_id] as $gone) {
+                unset($kinds[(string) $gone]);
+            }
             $who = $update->sender_label ?? $update->user()->value('name') ?? 'Monday';
             $told = 0;
-            foreach (User::query()->whereKey($ids)->where('is_active', true)->get() as $user) {
+            foreach (User::query()->whereKey(array_keys($kinds))->where('is_active', true)->get() as $user) {
                 if (Gate::forUser($user)->check('view', $task)) {
+                    $kind = $kinds[(string) $user->id];
                     $told += app(NotificationDispatcher::class)->dispatch(
-                        title: $who.' posted on '.$task->title,
+                        title: match ($kind) {
+                            'task.reply.mine' => $who.' replied to your update on '.$task->title,
+                            'task.reply.thread' => $who.' replied on '.$task->title,
+                            default => $who.' posted on '.$task->title,
+                        },
                         body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) $update->body)), 160),
-                        subject: $task, onlyTo: $user, kind: 'task.reply', source: 'tasks',
+                        subject: $task, onlyTo: $user, kind: $kind, source: 'tasks',
                     );
                 }
             }
 
             return $told;
         });
+    }
+
+    /** Row 67: a like on my update rings me (task.reaction); never my own like. */
+    public static function tellReaction(TaskUpdate $update, User $by): int
+    {
+        if ($update->user_id === null || (string) $update->user_id === (string) $by->id) {
+            return 0;
+        }
+        $task = Task::query()->find($update->task_id);
+        $author = User::query()->whereKey($update->user_id)->where('is_active', true)->first();
+        if ($task === null || $author === null || ! Gate::forUser($author)->check('view', $task)) {
+            return 0;
+        }
+
+        return app(NotificationDispatcher::class)->dispatch(
+            title: $by->name.' liked your update on '.$task->title,
+            body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) SensitiveTasks::open($update->body))), 160),
+            subject: $task, onlyTo: $author, kind: 'task.reaction', source: 'tasks',
+        );
     }
 
     /**
