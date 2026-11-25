@@ -14,7 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
-      'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Fleet (vehicle and service notes), Customer Experience (review and complaint notes) and HR (people, work hours and recruiting notes); Copy and anything sent out stay plain text',
+      'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Fleet (vehicle and service notes), Customer Experience (review and complaint notes) HR (people, work hours and recruiting notes) and Scheduling (location, helper and wrong-ZIP notes); Copy and anything sent out stay plain text',
       'Reports > Reports: every report EzBizi sends, on WhatsApp, email or a group, with who gets it and when; open one to see each send, to whom, delivered or read, and what it said',
       'New: Communication > Chat, our own WhatsApp between EzBizi accounts: direct and group chats, photos, files, voice notes, replies, reactions, read ticks, typing and online status, search, pin, mute and archive',
       'Task Board, Jobs and Leads: the unread updates count sits next to the chat icon (in red while unread), like the read ones, instead of on top of it',
