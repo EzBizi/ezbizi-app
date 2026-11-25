@@ -77,6 +77,10 @@ dependencies:
   path_provider: ^2.1.5
   crypto: ^3.0.6
   webview_flutter: ^4.14.1
+  # Chat calls: inline camera/microphone media in the web view without a
+  # tap inside the page (already resolved through webview_flutter).
+  webview_flutter_android: ^4.12.0
+  webview_flutter_wkwebview: ^3.25.1
 
   # A PDF drawn as its pages, for the onboarding contract's PDF view (Jose,
   # 2026-10-01: "PDF (Final Result view)"). Android's WebView cannot show a

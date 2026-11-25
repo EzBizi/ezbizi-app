@@ -15,11 +15,12 @@ No purchases, subscriptions or paid content. Nothing is sold in the app.
 No public user content, feed or profiles. Everything is a private business record of that organization, and people can reach only colleagues in it (for example a coworker's phone extension).
 
 PERMISSIONS
-The app asks for three permissions, each only at the moment it is needed:
-- Microphone: the first time someone makes or takes a phone call in the app, or starts a safety recording. A safety recording is started by the technician with a tap, only for staff whose employer allows it; it records the visit for the technician's safety and training, continues while the phone is locked (the audio background mode, with iOS's microphone indicator showing), and stops when they tap Stop, leave the job, or after four hours.
+The app asks for these permissions, each only at the moment it is needed:
+- Microphone: the first time someone makes or takes a phone or Chat call, or starts a safety recording. A safety recording is started by the technician with a tap, only for staff whose employer allows it; it records the visit for safety and training, continues while locked (audio background mode, microphone indicator showing), and stops on Stop, leaving the job, or after four hours.
 - Notifications: so a job assigned to someone reaches their phone.
-- Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when: while clocked in, during scheduled hours, or whenever the app runs. It is used for staff safety, SOS, recording arrival at a job, and routing between jobs. Sharing starts only while the app is open; iOS then shows its blue location indicator whenever location is used in the background.
-It does not use contacts, camera, photos or App Tracking Transparency.
+- Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when: while clocked in, during scheduled hours, or whenever the app runs. Used for staff safety, SOS, arrival at a job and routing. Sharing starts only with the app open; iOS shows its blue indicator in the background.
+- Camera: only during a video call with a colleague in Chat, after the person starts or answers it; calls are live, never recorded.
+It does not use contacts, photos or App Tracking Transparency.
 
 ACCOUNT DELETION
 A person deletes their own account from the account screen. It requires their password and typing DELETE, then erases their personal details and signs them out on every device. The sole administrator is refused until someone else is made administrator.

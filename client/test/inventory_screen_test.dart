@@ -563,6 +563,19 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  // An iPhone on its side, 11-25 (874x402; 250 here, the test font being
+  // taller): wider than 600, so not the phone list, and the tiles and search
+  // stood fixed and left the list -1 px. They scroll.
+  testWidgets('Orders on a short wide window: the list keeps its room', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, size: const Size(874, 250));
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Add purchase order'), findsOneWidget);
+  });
+
   testWidgets('a purchase order draft posts vendor, item and qty', (
     tester,
   ) async {

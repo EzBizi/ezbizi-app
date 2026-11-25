@@ -7,6 +7,7 @@ use App\Models\JobNote;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Notes\NoteActivity;
+use App\Support\NotesMarkup;
 use App\Support\Workiz\WorkizJobWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,10 +36,10 @@ class JobNotesController extends Controller
             'mentions.*' => ['uuid'],
         ]);
         $body = trim((string) $input['body']);
-        abort_if($body === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'A note needs some words.');
+        abort_if(trim(NotesMarkup::plain($body)) === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'A note needs some words.');
 
         $note = DB::transaction(function () use ($job, $body, $request, $input) {
-            $mentions = $this->notes->mention($job, $input['mentions'] ?? [], $request->user(), $body);
+            $mentions = $this->notes->mention($job, $input['mentions'] ?? [], $request->user(), NotesMarkup::plain($body));
             $note = JobNote::create(['job_id' => $job->getKey(), 'user_id' => $request->user()->getKey(), 'body' => $body, 'mentions' => $mentions ?: null]);
             $this->audit->log('job.note_added', $job, metadata: ['note_id' => $note->getKey()]);
 
@@ -53,7 +54,7 @@ class JobNotesController extends Controller
     {
         $row = $this->changeable($request, $job, $note);
         $body = trim((string) $request->validate(['body' => ['required', 'string', 'max:10000']])['body']);
-        abort_if($body === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'A note needs some words.');
+        abort_if(trim(NotesMarkup::plain($body)) === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'A note needs some words.');
         $row->update(['body' => $body, 'edited_at' => now()]);
         $this->audit->log('job.note_edited', $job, metadata: ['note_id' => $row->getKey()]);
 
