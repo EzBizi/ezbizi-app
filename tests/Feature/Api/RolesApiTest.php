@@ -130,7 +130,7 @@ class RolesApiTest extends TestCase
             ->pluck('key');
 
         $this->assertContains('roles', $keys, 'control: a Settings module is still offered');
-        $this->assertContains('audit', $keys);
+        $this->assertNotContains('audit', $keys, 'Activity moved to Monitoring (2026-11-25); audit.view opens nothing');
     }
 
     public function test_an_unknown_permission_is_refused_by_name_not_dropped(): void

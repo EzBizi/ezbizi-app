@@ -291,12 +291,6 @@ final class ModuleDefinition
          */
         public readonly array $passiveActions = [],
     ) {
-        if (array_diff($passiveActions, $actions) !== []) {
-            throw new InvalidArgumentException(
-                "Module '{$key}' declares passive actions it does not declare as actions."
-            );
-        }
-
         if ($parent !== null && $parent === $key) {
             throw new InvalidArgumentException(
                 "Module '{$key}' names itself as its parent."
@@ -417,6 +411,14 @@ final class ModuleDefinition
         }
 
         $this->actions = $actions;
+
+        // After the tabs merge: a tab action may be passive (Monitoring's
+        // Activity and API activity, 2026-11-25).
+        if (array_diff($passiveActions, $actions) !== []) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' declares passive actions it does not declare as actions."
+            );
+        }
 
         // `array` cannot say "array of what", so it is said here. A bare string
         // used to be legal and is exactly the regression to catch: it would

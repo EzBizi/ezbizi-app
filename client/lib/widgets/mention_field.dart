@@ -163,5 +163,14 @@ class _MentionFieldState extends State<MentionField> {
 /// [icon] with the count of notes this person has not read yet.
 Widget unreadNotesBadge(Widget icon, Object? count, {Key? key}) {
   final n = count is num ? count.toInt() : 0;
-  return Badge(key: key, isLabelVisible: n > 0, label: Text('$n'), child: icon);
+  // Jose 11-25: the red count sits next to the icon, as a read count does,
+  // never over it.
+  return Row(
+    key: key,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      icon,
+      if (n > 0) ...[const SizedBox(width: 4), Badge(label: Text('$n'))],
+    ],
+  );
 }

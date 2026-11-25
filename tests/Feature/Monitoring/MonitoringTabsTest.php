@@ -47,7 +47,7 @@ class MonitoringTabsTest extends TestCase
         $tabs = $this->tabs();
 
         $this->assertSame(
-            ['general', 'map', 'specs', 'files', 'cameras', 'desktop', 'lighting'],
+            ['general', 'map', 'specs', 'files', 'cameras', 'desktop', 'activity', 'api_activity', 'lighting'],
             array_keys($tabs),
             'The declared order is the order MonitoringScreen draws the chips.'
         );
@@ -74,6 +74,9 @@ class MonitoringTabsTest extends TestCase
         // because the pane they were using is the one that moved.
         $this->assertSame('general.view', $tabs['general']->action());
         $this->assertSame('map.view', $tabs['map']->action());
+        // Moved from Settings (2026-11-25); both mint, and neither implies monitoring.view.
+        $this->assertSame('activity.view', $tabs['activity']->action());
+        $this->assertSame('api_activity.view', $tabs['api_activity']->action());
 
         foreach (['general', 'map'] as $key) {
             $this->assertNull(
