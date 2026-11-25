@@ -92,6 +92,12 @@ class TimeClockReportsTest extends TestCase
         );
         $this->assertSame(['Eve', 'Ana', 'Ben', 'Cy', 'Dee'], array_column($data['rows'], 'name'));
 
+        // HR's own choice wins over the schedule: Ben set to part time moves down.
+        $this->inTenant($alpha['org'], fn () => $techs['ben']->forceFill(['hours_type' => 'part_time'])->save());
+        $moved = $this->signedInAs($manager)->getJson("/api/v1/hr/time-clock/reports/{$report->id}/preview")->assertOk()->json('data');
+        $this->assertSame(['Eve', 'Ana', 'Ben', 'Cy', 'Dee'], array_column($moved['rows'], 'name'));
+        $this->assertSame(['Ben', 'Cy', 'Dee'], array_column(collect($moved['sections'])->firstWhere('key', 'part_time')['rows'], 'name'));
+
         $html = (new WorkHoursReportMail('Weekly hours', $data['range'], array_map(
             fn ($r) => ['name' => $r['name'], 'hours' => $r['hours'], 'section' => $r['section']], $data['rows']), $data['total']))->render();
         $this->assertMatchesRegularExpression('/Overtime.*c62828[^>]*>Eve.*Full time.*Ana.*Ben.*Part time.*Cy.*Dee/s', $html);
