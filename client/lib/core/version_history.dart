@@ -18,6 +18,7 @@ class VersionHistory {
       'Desktop Monitoring: swipe the large screenshot to step through captures; past days no longer show a false "capture stopped"; the people list stays in name order',
     ]),
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Work schedule: only Administrators can change their own work schedule; everyone else sees "Your manager sets your work schedule" (managers and HR still set other people schedules)',
       'Task Board: the board list is one tree. Triplex Group on top with its own boards, then each company with its company board first (A1 - Operation for A-1 Chimney), its branches in one row, then its folders; templates and the boards of everyone else sit below',
       'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Leads, Financials (invoice notes), Fleet (vehicle and service notes), Customer Experience (review and complaint notes) HR (people, work hours and recruiting notes) Scheduling (location, helper and wrong-ZIP notes) and the Task Board (long-text and notes columns); Copy and anything sent out stay plain text',
       'Reports > Reports: every report EzBizi sends, on WhatsApp, email or a group, with who gets it and when; open one to see each send, to whom, delivered or read, and what it said',
