@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -32,7 +33,7 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
   final _occurredOn = TextEditingController();
   final _odometer = TextEditingController();
   final _performedBy = TextEditingController();
-  final _notes = TextEditingController();
+  final _notes = FormattedNotesController();
   final _nextOn = TextEditingController();
   final _nextMiles = TextEditingController();
   bool _busy = false;
@@ -105,7 +106,7 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
           'odometer_miles': ?odometer,
           if (_performedBy.text.trim().isNotEmpty)
             'performed_by': _performedBy.text.trim(),
-          if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+          if (_notes.text.trim().isNotEmpty) 'notes': _notes.markup.trim(),
           if (_nextOn.text.trim().isNotEmpty)
             'next_service_on': _nextOn.text.trim(),
           'next_service_miles': ?nextMiles,
@@ -168,9 +169,8 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
       ].where((s) => s.isNotEmpty).join(' · '),
       if ((visit['performed_by'] as String?)?.isNotEmpty == true)
         'By ${visit['performed_by']}',
-      if ((visit['notes'] as String?)?.isNotEmpty == true)
-        visit['notes'] as String,
     ];
+    final notes = visit['notes'] as String?;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -180,6 +180,11 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
           for (final line in lines)
             if (line.isNotEmpty)
               Text(line, style: Theme.of(context).textTheme.bodyMedium),
+          if (notes != null && notes.isNotEmpty)
+            FormattedNotesText(
+              notes,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           if (visit['id'] != null) ...[
             const SizedBox(height: 8),
             VehiclePapers(
@@ -221,7 +226,7 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
           keyboard: TextInputType.number,
         ),
         fleetField(_performedBy, 'Who did it', enabled: !_busy),
-        fleetField(_notes, 'Notes', enabled: !_busy, minLines: 2, maxLines: 4),
+        FormattedNotesField(controller: _notes, minLines: 2),
         fleetCalendarDay(
           _nextOn,
           'Next service on',
