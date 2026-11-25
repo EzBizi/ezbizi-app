@@ -14,7 +14,7 @@ class TaskBoardFolder extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'parent_id', 'name', 'colour', 'position'];
+    protected $fillable = ['organization_id', 'parent_id', 'owner_user_id', 'name', 'colour', 'position'];
 
     protected function casts(): array
     {

@@ -65,6 +65,14 @@ class TaskBoardListReachTest extends TestCase
         $this->signedInAs($t['admin'])->getJson("/api/v1/task-boards/{$board['id']}")->assertOk();
         $this->assertArrayHasKey('parent_company_id', $board, 'the tree reads parentage from the board itself');
         $this->assertNull($board['parent_company_id']);
+        // Row 68: the company's and the organization's brand colours.
+        $this->inTenant($t['org'], function () use ($t, $other) {
+            $other->forceFill(['brand_colour' => '#ff7a00'])->save();
+            $t['org']->forceFill(['brand_colour' => '#0a66c2'])->save();
+        });
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/task-boards')->json('data'))->firstWhere('name', 'Everdoors');
+        $this->assertSame('#ff7a00', $row['company_colour']);
+        $this->assertSame('#0a66c2', $row['organization_colour']);
     }
 
     public function test_a_company_manager_sees_that_company_tree_and_not_another(): void

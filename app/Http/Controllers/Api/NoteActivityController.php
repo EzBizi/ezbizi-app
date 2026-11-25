@@ -17,7 +17,8 @@ class NoteActivityController extends Controller
     /** GET /api/v1/mentionable?type=job&id=… */
     public function mentionable(Request $request): JsonResponse
     {
-        $people = $this->notes->mentionable($this->record($request));
+        // Jose 11-25: the signed-in person is always findable (they can see the record: it was authorized).
+        $people = TaskBoardsController::withMe($this->notes->mentionable($this->record($request)), $request->user());
         $also = PeopleAliases::of($people);
 
         // also: other words they are found by ("Chris" for Kristopher, Adeline 11-24).

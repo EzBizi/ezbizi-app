@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/soft_keyboard.dart';
 import '../../../widgets/list_search.dart';
 import '../../../widgets/side_panel.dart';
 import 'chat_store.dart';
@@ -99,7 +100,7 @@ class _JobPickerState extends State<_JobPicker> {
           key: const ValueKey('chat-job-search'),
           hint: 'Job number, title or customer',
           width: double.infinity,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           onChanged: (v) {
             _wait?.cancel();
             _wait = Timer(
