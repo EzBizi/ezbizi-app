@@ -49,10 +49,8 @@ final class TimeClockReports
         $in = collect($report->include_user_ids ?? [])->map(fn ($id) => (string) $id)->all();
         $out = collect($report->exclude_user_ids ?? [])->map(fn ($id) => (string) $id)->all();
 
-        $roleOf = User::query()
-            ->whereIn('id', array_column($list['people'], 'id'))
-            ->pluck('role_id', 'id')
-            ->map(fn ($id) => (string) $id);
+        $users = User::query()->with('role')->whereIn('id', array_column($list['people'], 'id'))->get()->keyBy('id');
+        $roleOf = $users->map(fn (User $u) => (string) $u->role_id);
 
         $rows = [];
         $total = 0;
@@ -67,7 +65,8 @@ final class TimeClockReports
 
             // Nobody with no time: the email is a list of hours, and A1 Tools'
             // leaves them out too. They are on the Work Hours screen.
-            if (! $selected || in_array($id, $out, true) || $person['total_seconds'] <= 0) {
+            // Administrators log no hours (Jose, 2026-11-24), so they are never on it.
+            if (! $selected || in_array($id, $out, true) || $person['total_seconds'] <= 0 || $users->get($id)?->isAdministrator()) {
                 continue;
             }
 
@@ -77,8 +76,21 @@ final class TimeClockReports
                 'seconds' => (int) $person['total_seconds'],
                 'hours' => self::hours((int) $person['total_seconds']),
                 'days_worked' => (int) $person['days_worked'],
+                'section' => $this->sectionOf($users->get($id), (int) $person['total_seconds']),
             ];
             $total += (int) $person['total_seconds'];
+        }
+
+        // Eric Nelson Valdes, 2026-11-25: overtime first and in red, then full
+        // time, then part time, each A-Z.
+        $order = array_flip(array_keys(self::SECTIONS));
+        usort($rows, fn ($a, $b) => [$order[$a['section']], strtolower($a['name'])] <=> [$order[$b['section']], strtolower($b['name'])]);
+        $sections = [];
+        foreach (self::SECTIONS as $key => $label) {
+            $in = array_values(array_filter($rows, fn ($r) => $r['section'] === $key));
+            if ($in !== []) {
+                $sections[] = ['key' => $key, 'label' => $label, 'rows' => $in];
+            }
         }
 
         $days = $list['days'];
@@ -88,6 +100,7 @@ final class TimeClockReports
             'week_end' => $list['week_end'],
             'range' => count($days) >= 2 ? $days[0]['label'].' – '.$days[count($days) - 1]['label'] : $list['week_start'],
             'rows' => $rows,
+            'sections' => $sections,
             'total_seconds' => $total,
             'total' => self::hours($total),
         ];
@@ -146,7 +159,7 @@ final class TimeClockReports
             new WorkHoursReportMail(
                 reportName: (string) $report->name,
                 range: $built['range'],
-                rows: array_map(fn ($row) => ['name' => $row['name'], 'hours' => $row['hours']], $built['rows']),
+                rows: array_map(fn ($row) => ['name' => $row['name'], 'hours' => $row['hours'], 'section' => $row['section']], $built['rows']),
                 total: $built['total'],
                 businessName: (string) ($organization?->name ?? ''),
                 fromAutomation: $fromAutomation,
@@ -162,6 +175,48 @@ final class TimeClockReports
         ], actor: $actor);
 
         return ['to' => $addresses, 'rows' => count($built['rows']), 'range' => $built['range']];
+    }
+
+    public const OVERTIME_SECONDS = 40 * 3600;
+
+    /** Scheduled hours a week from which a person counts as full time (the ACA line). */
+    public const FULL_TIME_SCHEDULED_HOURS = 30;
+
+    public const SECTIONS = [
+        'overtime' => 'Overtime (over 40 hours)',
+        'full_time' => 'Full time',
+        'part_time' => 'Part time',
+        'unset' => 'Type not set',
+    ];
+
+    /**
+     * Over 40 hours is overtime, whoever it is. Otherwise HR's Full time /
+     * Part time (users.hours_type) when chosen, else by the hours their
+     * schedule gives them a week.
+     */
+    private function sectionOf(?User $user, int $seconds): string
+    {
+        if ($seconds > self::OVERTIME_SECONDS) {
+            return 'overtime';
+        }
+        // HR's own Full time / Part time when it is set (users.hours_type, 2026-11-25).
+        if (in_array($user?->hours_type, ['full_time', 'part_time'], true)) {
+            return $user->hours_type;
+        }
+        $days = $user === null ? null : ($this->clock->scheduleFor($user)['days'] ?? null);
+        if (! is_array($days)) {
+            return 'unset';
+        }
+        $minutes = 0;
+        foreach ($days as $day) {
+            if (is_array($day) && isset($day['start'], $day['end'])) {
+                [$sh, $sm] = array_map('intval', explode(':', $day['start']));
+                [$eh, $em] = array_map('intval', explode(':', $day['end']));
+                $minutes += max(0, ($eh * 60 + $em) - ($sh * 60 + $sm));
+            }
+        }
+
+        return $minutes === 0 ? 'unset' : ($minutes >= self::FULL_TIME_SCHEDULED_HOURS * 60 ? 'full_time' : 'part_time');
     }
 
     /** "38:05" — hours and minutes, the way A1 Tools' email writes them. */

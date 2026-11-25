@@ -6,14 +6,23 @@
 @if (count($rows) === 0)
 Nobody in this report clocked any time this week.
 @else
+@foreach ($sections as $section)
+**{{ $section['label'] }}**
+
 @component('mail::table')
 | Employee | Hours worked |
 |:---------|-------------:|
-@foreach ($rows as $row)
+@foreach ($section['rows'] as $row)
+@if ($section['key'] === 'overtime')
+| <span style="color:#c62828">{{ str_replace('|', '/', $row['name']) }}</span> | <span style="color:#c62828">**{{ $row['hours'] }}**</span> |
+@else
 | {{ str_replace('|', '/', $row['name']) }} | {{ $row['hours'] }} |
+@endif
 @endforeach
-| **Total ({{ count($rows) === 1 ? '1 employee' : count($rows).' employees' }})** | **{{ $total }}** |
 @endcomponent
+
+@endforeach
+**Total ({{ count($rows) === 1 ? '1 employee' : count($rows).' employees' }}): {{ $total }}**
 @endif
 
 @component('mail::subcopy')

@@ -6,6 +6,7 @@ use App\Console\Commands\ScoreReportCalls;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
+use App\Models\Franchise;
 use App\Models\User;
 use App\Support\Reports\Experimental\PerformancePeople;
 use Carbon\CarbonImmutable;
@@ -99,9 +100,18 @@ class LeaderboardTest extends TestCase
         $this->assertSame([['from' => '2026-10-18', 'to' => '2026-10-23'], []], [$board['week'], $board['top']], 'a new week starts empty');
 
         // The week before only: the one before that ended before AI scored calls.
+        // The database store, as on the box (its key column is 255).
+        config(['cache.default' => 'database']);
         $weeks = $this->signedInAs($this->users['Di'])->getJson('/api/v1/leaderboard/weeks?limit=8')->assertOk()->json('data');
         $this->assertSame([['2026-10-11', '2026-10-16', ['Ada', 'Bo', 'Cy']]],
             array_map(fn ($w) => [$w['from'], $w['to'], array_column($w['top'], 'person')], $weeks));
+
+        // A company with many branches: its branch list in the key 500'd 0.0.0649.
+        $this->inTenant($this->t['org'], fn () => collect(range(1, 60))->each(fn ($i) => Franchise::create([
+            'organization_id' => $this->t['org']->id, 'company_id' => $this->t['company']->id, 'name' => "Alpha F{$i}0",
+        ])));
+        $this->signedInAs($this->users['Di'])->withHeader('X-EzBizi-View', 'company:'.$this->t['company']->id)
+            ->getJson('/api/v1/leaderboard/weeks?limit=8')->assertOk();
 
         // Thursday and Friday have not come: read up to today, never a live day ahead.
         $this->signedInAs($this->users['Di'])->getJson('/api/v1/leaderboard/mine?from=2026-10-18&to=2026-10-23')->assertOk();
