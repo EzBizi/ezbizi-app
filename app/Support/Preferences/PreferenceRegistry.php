@@ -378,6 +378,16 @@ class PreferenceRegistry
              * is his "default should be 30 - 70". The client still keeps both
              * panes above their pixel floors whatever share is stored.
              */
+            // Chat's list pane (Communication > Chat), in pixels.
+            'chat.list_width' => [
+                'label' => 'Chat list width',
+                'type' => 'int',
+                'default' => 400,
+                'min' => 300,
+                'max' => 640,
+                'help' => 'Drag the line beside the chat list to change it.',
+            ],
+
             'leads.list_percent' => [
                 'label' => 'Leads list width',
                 'type' => 'int',

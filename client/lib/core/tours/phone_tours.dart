@@ -189,6 +189,35 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
+  'phone/Chat': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'chat-search',
+        title: 'Your chats',
+        body:
+            'Every conversation with your colleagues, newest first. Search '
+            'names and messages here.',
+      ),
+      TourStep(
+        anchor: 'chat-new-desk',
+        title: 'New chat',
+        body: 'Message any colleague on EzBizi, or start a group.',
+      ),
+      TourStep(
+        anchor: 'chat-filters',
+        title: 'Unread and groups',
+        body: 'Show only chats waiting for you, or only groups.',
+      ),
+      TourStep(
+        anchor: 'chat-input',
+        title: 'Write',
+        body:
+            'Type and send. The + sends photos and documents, the mic records '
+            'a voice message, and the phone at the top calls them.',
+      ),
+    ],
+  ),
   'phone/Records': Tour(
     version: 1,
     steps: [
