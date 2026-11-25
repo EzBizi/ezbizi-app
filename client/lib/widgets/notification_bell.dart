@@ -1165,6 +1165,21 @@ class NotificationSettings extends StatefulWidget {
 }
 
 class _NotificationSettingsState extends State<NotificationSettings> {
+  /// GET /notifications/kinds: [{group, kinds: [{key, label}]}].
+  List<Map<String, dynamic>> _catalogue = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalogue();
+  }
+
+  Future<void> _loadCatalogue() async {
+    final response = await widget.api.get('/notifications/kinds');
+    if (!mounted || !response.ok) return;
+    setState(() => _catalogue = (response.data as List).cast<Map<String, dynamic>>());
+  }
+
   Future<void> _save(String key, Object value) async {
     final saving = widget.session.setPreference(key, value);
     setState(() {});
@@ -1179,6 +1194,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     final modules = me?.reachableModules ?? const [];
     final mutedKinds =
         (me?.preferences['notifications.muted_kinds'] as List? ?? const []).whereType<String>().toList();
+    final emailKinds =
+        (me?.preferences['notifications.email_kinds'] as List? ?? const []).whereType<String>().toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1192,6 +1209,16 @@ class _NotificationSettingsState extends State<NotificationSettings> {
             'Pop-ups, phone and email. Notifications still collect in the bell.',
           ),
           onChanged: (on) => _save('notifications.alerts', on),
+        ),
+        // Monday's "Received directly on your device".
+        SwitchListTile(
+          key: const Key('notification-push'),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: me?.preferences['notifications.push'] != false,
+          title: const Text('Phone notifications'),
+          subtitle: const Text('Received directly on your device.'),
+          onChanged: (on) => _save('notifications.push', on),
         ),
         CompanyFocus(api: widget.api, session: widget.session),
         const Divider(height: 1),
@@ -1218,47 +1245,50 @@ class _NotificationSettingsState extends State<NotificationSettings> {
               on ? muted.where((k) => k != m.key).toList() : [...muted, m.key],
             ),
           ),
-        if (modules.any((m) => m.key == 'tasks')) ...[
+        // Monday's notification settings, one row per kind, In-app and
+        // Email (Jose, 2026-11-25). The list comes from the server so the two
+        // can never disagree about which kinds exist.
+        for (final group in _catalogue) ...[
           const Divider(height: 24),
-          Text('Tasks', style: Theme.of(context).textTheme.titleSmall),
-          Text(
-            'Off means no notification at all for that kind.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          for (final MapEntry(key: kind, value: label) in taskNotificationKinds.entries)
-            SwitchListTile(
-              key: ValueKey('notification-kind-$kind'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              value: !mutedKinds.contains(kind),
-              title: Text(label),
-              onChanged: (on) => _save(
-                'notifications.muted_kinds',
-                on ? mutedKinds.where((k) => k != kind).toList() : [...mutedKinds, kind],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group['group'] as String,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
-            ),
-        ],
-        // Jose, 2026-11-17: parts late and part reminders.
-        if (modules.any((m) => m.key == 'project_board')) ...[
-          const Divider(height: 24),
-          Text(
-            'Project Management',
-            style: Theme.of(context).textTheme.titleSmall,
+              const SizedBox(width: 56, child: Text('In-app', textAlign: TextAlign.center)),
+              const SizedBox(width: 56, child: Text('Email', textAlign: TextAlign.center)),
+            ],
           ),
-          for (final MapEntry(key: kind, value: label)
-              in projectNotificationKinds.entries)
-            SwitchListTile(
-              key: ValueKey('notification-kind-$kind'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              value: !mutedKinds.contains(kind),
-              title: Text(label),
-              onChanged: (on) => _save(
-                'notifications.muted_kinds',
-                on
-                    ? mutedKinds.where((k) => k != kind).toList()
-                    : [...mutedKinds, kind],
-              ),
+          for (final k in (group['kinds'] as List).cast<Map<String, dynamic>>())
+            Row(
+              children: [
+                Expanded(child: Text(k['label'] as String)),
+                SizedBox(
+                  width: 56,
+                  child: Switch(
+                    key: ValueKey('notification-kind-${k['key']}'),
+                    value: !mutedKinds.contains(k['key']),
+                    onChanged: (on) => _save(
+                      'notifications.muted_kinds',
+                      on ? mutedKinds.where((x) => x != k['key']).toList() : [...mutedKinds, k['key'] as String],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 56,
+                  child: Switch(
+                    key: ValueKey('notification-email-${k['key']}'),
+                    value: emailKinds.contains(k['key']),
+                    onChanged: (on) => _save(
+                      'notifications.email_kinds',
+                      on ? [...emailKinds, k['key'] as String] : emailKinds.where((x) => x != k['key']).toList(),
+                    ),
+                  ),
+                ),
+              ],
             ),
         ],
       ],
@@ -1266,21 +1296,4 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   }
 }
 
-/// NotificationDispatcher::KINDS on the server — keep the two in step.
-/// Project Management's kinds, NotificationDispatcher::KINDS too.
-const projectNotificationKinds = {
-  'project_board.part_late': 'A part is 3 days late',
-  'project_board.part_reminder': 'A part reminder is due',
-};
 
-const taskNotificationKinds = {
-  'task.assigned': 'Assigned to me',
-  'task.mentioned': 'Mentioned',
-  'task.reply': 'Replies on my tasks',
-  'task.status': 'Status changes',
-  'task.due': 'Due soon and overdue',
-  'task.subitem_assigned': 'Subitems assigned',
-  'task.moved': 'Moved to my group',
-  'task.file': 'Files added',
-  'task.created': 'New tasks on my boards',
-};

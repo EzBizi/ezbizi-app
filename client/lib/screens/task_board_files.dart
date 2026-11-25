@@ -164,7 +164,8 @@ class _TaskAttachmentsState extends State<TaskAttachments> {
               () => on == true ? _picked.add(id) : _picked.remove(id),
             ),
           ),
-          file,
+          // Shrinks in a narrow panel (Kimberly 11-25) instead of overflowing.
+          Flexible(child: file),
         ],
       );
     }
@@ -180,7 +181,7 @@ class _TaskAttachmentsState extends State<TaskAttachments> {
             children: [for (final a in attachments) item(a)],
           ),
           if (attachments.length > 1)
-            Row(
+            Wrap(
               children: [
                 TextButton(
                   key: const Key('task-attachments-select'),

@@ -487,6 +487,17 @@ class InvitationAcceptanceController extends Controller
             'accepted_user_id' => $user->getKey(),
         ]], actor: $user);
 
+        // Monday's "Signed up after I invited them" (Jose, 2026-11-25).
+        if ($invitation->invitedBy !== null) {
+            app(\App\Support\Notifications\NotificationDispatcher::class)->dispatch(
+                title: $user->name.' signed up',
+                body: 'They accepted your invitation to EzBizi.',
+                onlyTo: $invitation->invitedBy,
+                source: 'system',
+                kind: 'user.signed_up',
+            );
+        }
+
         return $user;
     }
 

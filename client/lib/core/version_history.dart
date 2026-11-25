@@ -14,10 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0647', date: '25 Nov 2026', items: [
+      'Chat: voice and video calls, one to one and in groups, right from a chat (nothing is recorded)',
+      'Notifications: new settings like Monday (bell, then the gear): a phone notifications switch, and In-app and Email switches for every kind, grouped as Communication, Collaboration, Automations, Sign-ups, Security and Admin',
+      'Task Board: you now get notified when someone writes an update on a task you own or follow, replies to your update or to a thread you took part in, reacts to your update, invites you, or deletes an update',
+      'Task Board: drag the left edge of the task panel to make it narrower or wider; it opens narrower and remembers your width',
+      'Task Board: copy and paste work inside a cell while a range of cells is selected',
       'Jobs: photos on a job (from Workiz and added in EzBizi) show as pictures; tap one to open it full screen and swipe through them',
       'Jobs: job notes can be bold, italic or underlined',
     ]),
-    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', deployed: '2026-11-25 18:57',
+      items: [
       'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
       'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
       'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',

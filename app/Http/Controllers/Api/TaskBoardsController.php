@@ -88,7 +88,9 @@ class TaskBoardsController extends Controller
             ->sortBy(fn (TaskBoard $b) => [array_search($b->kind, self::ORDER, true), $b->name])
             ->values();
 
-        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived) {
+        $companyBoards = $this->boards->companyMap()['boards'];
+
+        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived, $companyBoards) {
             $owner = $b->kind === TaskBoard::KIND_USER
                 ? $b->owner
                 : $b->members->firstWhere('role', TaskBoardMember::OWNER)?->user;
@@ -103,8 +105,11 @@ class TaskBoardsController extends Controller
                 'name' => $b->name,
                 'visibility' => $b->visibility,
                 // Franchise names repeat across companies: the client groups by these.
-                'company_id' => ($b->company ?? $b->franchise?->company)?->id,
-                'company_name' => ($b->company ?? $b->franchise?->company)?->name,
+                'company_id' => ($b->company ?? $b->franchise?->company)?->id ?? $companyBoards[(string) $b->id] ?? null,
+                'company_name' => ($b->company ?? $b->franchise?->company)?->name
+                    ?? (isset($companyBoards[(string) $b->id]) ? \App\Models\Company::query()->whereKey($companyBoards[(string) $b->id])->value('name') : null),
+                // Row 66: its company's working board (Monday's "… - Operation", else the company board).
+                'company_board' => isset($companyBoards[(string) $b->id]),
                 'franchise_id' => $b->franchise_id,
                 'folder_id' => $b->folder_id,
                 'colour' => $b->colour,
@@ -757,6 +762,13 @@ class TaskBoardsController extends Controller
         ]);
 
         PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+        // Row 67: Monday's board invitation; not when I add myself.
+        if ((string) $input['user_id'] !== (string) $request->user()->id) {
+            app(\App\Support\Notifications\NotificationDispatcher::class)->dispatch(
+                title: $request->user()->name.' added you to '.$taskBoard->name, body: null,
+                subject: $taskBoard, onlyTo: \App\Models\User::query()->find($input['user_id']), kind: 'task.invited', source: 'tasks',
+            );
+        }
 
         return response()->json(['data' => self::presentMember($member->load('user:id,name'))], 201);
     }

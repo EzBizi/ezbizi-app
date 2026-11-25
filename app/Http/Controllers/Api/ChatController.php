@@ -7,6 +7,7 @@ use App\Models\ChatMember;
 use App\Models\ChatMessage;
 use App\Models\DeviceToken;
 use App\Models\User;
+use App\Support\Chat\ChatCalls;
 use App\Support\Chat\ChatPulse;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
@@ -48,6 +49,7 @@ class ChatController extends Controller
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly ChatPulse $pulse,
+        private readonly ChatCalls $calls,
     ) {}
 
     // ── people ───────────────────────────────────────────────────
@@ -682,6 +684,168 @@ class ChatController extends Controller
         return response()->json(['data' => $rows->map(fn ($m) => $this->row($m, $me, $receipts))->values()]);
     }
 
+    // ── calls ────────────────────────────────────────────────────
+
+    /**
+     * POST chat/chats/{chat}/calls {video} — start a voice or video call and
+     * ring everybody else in the chat. Answers the caller's own token.
+     */
+    public function startCall(Request $request, Chat $chat): JsonResponse
+    {
+        $me = $request->user();
+        $member = $this->member($chat, $me);
+        $this->mayWrite($chat, $member);
+        $video = $request->boolean('video');
+        $connection = $this->calls->connection();
+        abort_if($connection === null, Response::HTTP_CONFLICT,
+            'Calls need the company Twilio account connected under Communication › Settings.');
+
+        // One call at a time per chat: a second Call press joins the one in progress.
+        $call = $chat->messages()->where('kind', 'call')
+            ->where('created_at', '>', now()->subHours(4))
+            ->latest('created_at')->get()
+            ->first(fn (ChatMessage $m) => in_array($m->meta['status'] ?? null, ['ringing', 'ongoing'], true));
+
+        if ($call === null) {
+            $call = ChatMessage::query()->create([
+                'organization_id' => $chat->organization_id,
+                'chat_id' => $chat->id,
+                'sender_id' => $me->id,
+                'kind' => 'call',
+                'meta' => [
+                    'status' => 'ringing',
+                    'video' => $video,
+                    'started_at' => now()->toIso8601String(),
+                    'joined' => [$me->id],
+                ],
+            ]);
+            $this->calls->ring($chat, $call, $me, $video);
+            $this->delivered($chat, $call);
+        }
+
+        return $this->callAnswer($connection, $me, $call->fresh(), $chat, Response::HTTP_CREATED);
+    }
+
+    /** GET v1/chat/call — the page a call runs in (resources/views/chat-call.blade.php). Public, holds nothing. */
+    public function callPage(): \Illuminate\Http\Response
+    {
+        return response()->view('chat-call')->withHeaders([
+            'Cache-Control' => 'no-store',
+            'Referrer-Policy' => 'no-referrer',
+            'Permissions-Policy' => 'camera=(self), microphone=(self), autoplay=(self)',
+        ]);
+    }
+
+    /** GET chat/calls/ringing — calls ringing for me now. One cache read; the whole app polls it. */
+    public function ringing(Request $request): JsonResponse
+    {
+        return response()->json(['data' => $this->calls->ringingFor($request->user()->id)]);
+    }
+
+    /** POST chat/calls/{chatMessage}/join — answer, or join a group call in progress. */
+    public function joinCall(Request $request, ChatMessage $chatMessage): JsonResponse
+    {
+        $me = $request->user();
+        $chat = $this->callChat($chatMessage, $me);
+        $status = $chatMessage->meta['status'] ?? null;
+        abort_unless(in_array($status, ['ringing', 'ongoing'], true), Response::HTTP_GONE, 'That call has ended.');
+        $connection = $this->calls->connection();
+        abort_if($connection === null, Response::HTTP_CONFLICT,
+            'Calls need the company Twilio account connected under Communication › Settings.');
+
+        DB::transaction(function () use ($chatMessage, $me) {
+            $row = ChatMessage::query()->whereKey($chatMessage->id)->lockForUpdate()->first();
+            $meta = $row->meta ?? [];
+            $meta['joined'] = array_values(array_unique([...($meta['joined'] ?? []), $me->id]));
+            if (($meta['status'] ?? null) === 'ringing') {
+                $meta['status'] = 'ongoing';
+                $meta['answered_at'] = now()->toIso8601String();
+            }
+            $row->forceFill(['meta' => $meta])->save();
+        });
+        $this->calls->silence($chatMessage, $chat->type === 'direct' ? null : [$me->id]);
+        $this->pulse->bump($chat);
+
+        return $this->callAnswer($connection, $me, $chatMessage->fresh(), $chat);
+    }
+
+    /** POST chat/calls/{chatMessage}/decline — stop it ringing for me; a 1:1 call ends there. */
+    public function declineCall(Request $request, ChatMessage $chatMessage): JsonResponse
+    {
+        $me = $request->user();
+        $chat = $this->callChat($chatMessage, $me);
+        if ($chat->type === 'direct' && ($chatMessage->meta['status'] ?? null) === 'ringing') {
+            $this->endCall($chatMessage, 'declined');
+        } else {
+            $this->calls->silence($chatMessage, [$me->id]);
+        }
+        $this->pulse->bump($chat);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * POST chat/calls/{chatMessage}/leave {alone} — I hung up. A 1:1 call, or
+     * the last person out of a group call (`alone`, as the call page saw the
+     * room), ends it: answered with its length, or missed if nobody came.
+     */
+    public function leaveCall(Request $request, ChatMessage $chatMessage): JsonResponse
+    {
+        $me = $request->user();
+        $chat = $this->callChat($chatMessage, $me);
+        $alone = $request->boolean('alone');
+        $status = $chatMessage->meta['status'] ?? null;
+        if (in_array($status, ['ringing', 'ongoing'], true) && ($chat->type === 'direct' || $alone)) {
+            $this->endCall($chatMessage, $status === 'ringing' ? 'missed' : 'answered');
+        }
+        $this->pulse->bump($chat);
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function endCall(ChatMessage $call, string $status): void
+    {
+        DB::transaction(function () use ($call, $status) {
+            $row = ChatMessage::query()->whereKey($call->id)->lockForUpdate()->first();
+            $meta = $row->meta ?? [];
+            if (! in_array($meta['status'] ?? null, ['ringing', 'ongoing'], true)) {
+                return;
+            }
+            $meta['status'] = $status;
+            $meta['duration'] = isset($meta['answered_at'])
+                ? max(0, (int) Carbon::parse($meta['answered_at'])->diffInSeconds(now(), true))
+                : 0;
+            $row->forceFill(['meta' => $meta])->save();
+        });
+        $this->calls->silence($call);
+    }
+
+    private function callChat(ChatMessage $call, User $me): Chat
+    {
+        $chat = $call->chat;
+        $this->member($chat, $me);
+        abort_unless($call->kind === 'call', Response::HTTP_NOT_FOUND);
+
+        return $chat;
+    }
+
+    private function callAnswer(\App\Models\PhoneConnection $connection, User $me, ChatMessage $call, Chat $chat, int $status = Response::HTTP_OK): JsonResponse
+    {
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'chat_id' => $chat->id,
+            'room' => $this->calls->room($call),
+            'video' => (bool) ($call->meta['video'] ?? false),
+            'group' => $chat->type === 'group',
+            'identity' => $me->id,
+            'token' => $this->calls->token($connection, $me, $call),
+            // Who the page names on each tile: identity is a user id.
+            'names' => $chat->activeMembers()->with('user:id,name')->get()
+                ->mapWithKeys(fn (ChatMember $m) => [$m->user_id => $m->user?->name])->all(),
+            'ring_seconds' => ChatCalls::RING_SECONDS,
+        ]], $status);
+    }
+
     // ── helpers ──────────────────────────────────────────────────
 
     /** @param callable(\Illuminate\Database\Eloquent\Builder): void $narrow */
@@ -789,15 +953,20 @@ class ChatController extends Controller
         $sender = $message->sender?->name ?? 'Someone';
         $title = $chat->type === 'group' ? (string) $chat->name : $sender;
         $line = ($chat->type === 'group' ? $sender.': ' : '').$this->preview($message);
-        $organization = $chat->organization_id;
+        $this->push($absent, $title, $line, $chat->organization_id);
+    }
 
-        dispatch(function () use ($absent, $title, $line, $organization) {
+    /** @param string[] $userIds push to these people's devices, after the response is sent */
+    private function push(array $userIds, string $title, string $line, string $organization): void
+    {
+        $userIds = array_values($userIds);
+        dispatch(function () use ($userIds, $title, $line, $organization) {
             $push = app(PushSender::class);
             $org = \App\Models\Organization::query()->find($organization);
             if (! $push->configured() || $org === null || ! app(SettingsResolver::class)->get('notifications.push_enabled', $org)) {
                 return;
             }
-            DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $absent)->get()
+            DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get()
                 ->groupBy('user_id')
                 ->each(fn (Collection $devices) => $push->send($devices, $title, $line));
         })->afterResponse();
@@ -913,9 +1082,24 @@ class ChatController extends Controller
             'voice' => '🎤 Voice message',
             'audio' => '🎵 '.($m->body ?: 'Audio'),
             'file' => '📄 '.($m->body ?: ($m->attachments->first()?->original_name ?? 'Document')),
-            'call' => ($m->meta['status'] ?? '') === 'missed' ? '📞 Missed voice call' : '📞 Voice call',
+            'call' => $this->callLine($m),
             'system' => $this->systemLine($m),
             default => mb_substr((string) $m->body, 0, 200),
+        };
+    }
+
+    private function callLine(ChatMessage $m): string
+    {
+        $video = (bool) ($m->meta['video'] ?? false);
+        $what = $video ? 'video call' : 'voice call';
+        $icon = $video ? '🎥' : '📞';
+
+        return match ($m->meta['status'] ?? '') {
+            'missed' => "{$icon} Missed {$what}",
+            'declined' => "{$icon} Declined {$what}",
+            'ringing' => "{$icon} Incoming {$what}",
+            'ongoing' => "{$icon} ".ucfirst($what).' in progress',
+            default => "{$icon} ".ucfirst($what),
         };
     }
 

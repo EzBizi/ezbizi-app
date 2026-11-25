@@ -12,6 +12,34 @@ class TaskBoardFoldersTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /** Row 66 (Jose 11-25): a folder says its company; the company's Monday "… - Operation" board is its company board. */
+    public function test_a_folder_named_for_its_company_carries_it_and_the_operation_board_is_the_company_board(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $maker = $this->userWithRole($tenant, 'Maker', ['tasks.view', 'tasks.edit', 'tasks.create_boards', 'tasks.view_all']);
+        $api = fn () => $this->signedInAs($maker);
+        $companyName = $tenant['company']->name;
+        $list = fn () => collect($api()->getJson('/api/v1/task-boards')->assertOk()->json('data'))->keyBy('name');
+        $companyBoard = $list()->first(fn ($b) => $b['kind'] === 'company');
+        $this->assertTrue($companyBoard['company_board'], 'no Operation board yet: the company board is it');
+
+        $top = $api()->postJson('/api/v1/task-board-folders', ['name' => strtoupper($companyName)])->assertCreated()->json('data.id');
+        $sub = $api()->postJson('/api/v1/task-board-folders', ['name' => 'Partners', 'parent_id' => $top])->assertCreated()->json('data.id');
+        $other = $api()->postJson('/api/v1/task-board-folders', ['name' => 'Templates'])->assertCreated()->json('data.id');
+        $op = $api()->postJson('/api/v1/task-boards', ['name' => 'Alpha - Operation', 'visibility' => 'main'])->assertCreated()->json('data.id');
+        $api()->patchJson("/api/v1/task-boards/{$op}", ['folder_id' => $top])->assertOk();
+
+        $folders = collect($api()->getJson('/api/v1/task-board-folders')->json('data'))->keyBy('id');
+        $this->assertSame($tenant['company']->id, $folders[$top]['company_id']);
+        $this->assertSame($tenant['company']->id, $folders[$sub]['company_id'], 'a sub-folder is its parent\'s company');
+        $this->assertNull($folders[$other]['company_id']);
+
+        $boards = $list();
+        $this->assertTrue($boards['Alpha - Operation']['company_board']);
+        $this->assertSame($tenant['company']->id, $boards['Alpha - Operation']['company_id']);
+        $this->assertFalse(collect($boards)->firstWhere('id', $companyBoard['id'])['company_board'], 'one company board per company');
+    }
+
     public function test_folders_nest_colour_and_hold_boards_for_the_whole_organization(): void
     {
         $tenant = $this->provisionTenant('Alpha');

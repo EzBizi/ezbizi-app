@@ -25,7 +25,7 @@ class UpdateTellsFollowersTest extends TestCase
 
         $this->signedInAs($tech)->postJson("/api/v1/tasks/$task/updates", ['body' => 'On site, liner cracked'])->assertCreated();
 
-        $bells = $this->inTenant($t['org'], fn () => Notification::query()->where('kind', 'task.reply')->pluck('user_id')->all());
+        $bells = $this->inTenant($t['org'], fn () => Notification::query()->whereIn('kind', ['task.update.owner', 'task.update.subscribed'])->pluck('user_id')->all());
         $this->assertSame([$jennine->id], $bells);
     }
 }

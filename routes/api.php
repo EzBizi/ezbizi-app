@@ -903,6 +903,15 @@ Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
 | Flutter build and never serves Laravel's public/ — see SnippetController for
 | why that is not worked around with an nginx location.
 */
+/*
+| Chat's call page (Twilio Video). Public, as the snippet above and for the same
+| nginx reason: it holds no data, the token arrives in the URL fragment, which
+| no browser sends to a server.
+*/
+Route::get('v1/chat/call', [ChatController::class, 'callPage'])
+    ->middleware('throttle:120,1')
+    ->name('chat.call-page');
+
 Route::get('v1/web/ezbizi.js', [WebSnippetController::class, 'show'])
     ->middleware('throttle:120,1')
     ->name('web.snippet');
@@ -2891,6 +2900,11 @@ Route::prefix('v1')
             Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
             Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
             Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
+            Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
+            Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);
+            Route::post('chat/calls/{chatMessage}/decline', [ChatController::class, 'declineCall']);
+            Route::post('chat/calls/{chatMessage}/leave', [ChatController::class, 'leaveCall']);
         });
 
         // Short numbers that reach one person. Twilio has no concept of an
@@ -3793,6 +3807,7 @@ Route::prefix('v1')
         Route::get('notifications', [NotificationsController::class, 'index']);
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
+        Route::get('notifications/kinds', [NotificationsController::class, 'kinds']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
         Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
         Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);

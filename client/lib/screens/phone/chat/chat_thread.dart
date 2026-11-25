@@ -17,13 +17,13 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/files.dart';
-import '../../../core/phone_call_service.dart';
 import '../../../core/session.dart';
 import '../../../core/soft_keyboard.dart';
 import '../../../widgets/side_panel.dart';
 import '../../../core/timestamps.dart';
 import '../../../widgets/user_avatar.dart';
 import '../recording_player.dart';
+import 'chat_calls.dart';
 import 'chat_store.dart';
 import 'chat_tab.dart' show ReceiptTicks, confirmClear, pickMuteHours;
 
@@ -472,43 +472,33 @@ class _ChatThreadState extends State<ChatThread> {
 
   // ── calls ──────────────────────────────────────────────────────
 
-  Future<void> _call() async {
+  /// Voice or video, two people or a group: a Twilio Video room (ChatCalls).
+  /// No phone line needed; the organization's Twilio account carries it.
+  Future<void> _call({bool video = false}) async {
     final chat = _chat;
-    final userId = chat?['user_id'] as String?;
-    if (chat == null || userId == null) return;
-    final phone = PhoneCallService.instance;
-    final callerId = phone.callerId;
-    if (!phone.supported || !phone.hasLine || callerId == null) {
-      _snack(
-        'Calls need a phone line on this device. An administrator assigns '
-        'one under Communication › Users.',
-      );
-      return;
-    }
-    final started = DateTime.now();
-    await phone.connect(
-      to: 'client:${userId.replaceAll('-', '')}',
-      callerId: callerId,
+    if (chat == null) return;
+    await ChatCalls.instance.call(
+      widget.chatId,
+      video: video,
+      title: '${chat['name'] ?? ''}',
     );
-    final refused = phone.callRefusal;
-    if (refused != null) {
-      _snack(refused);
-      return;
-    }
-    // Record the call as a line in the chat once it ends.
-    void ended() {
-      if (phone.onCall) return;
-      phone.removeListener(ended);
-      final seconds = DateTime.now().difference(started).inSeconds;
-      unawaited(
-        store.api.post('/chat/chats/${widget.chatId}/messages', {
-          'kind': 'call',
-          'meta': {'status': 'answered', 'duration': seconds},
-        }),
-      );
-    }
+  }
 
-    phone.addListener(ended);
+  /// A call line was tapped: join it if it is still going, else call back.
+  void _callLine(Json m) {
+    final meta = m['meta'] as Map? ?? const {};
+    final video = meta['video'] == true;
+    if (['ringing', 'ongoing'].contains(meta['status'])) {
+      unawaited(
+        ChatCalls.instance.join(
+          '${m['id']}',
+          video: video,
+          title: '${_chat?['name'] ?? ''}',
+        ),
+      );
+    } else {
+      unawaited(_call(video: video));
+    }
   }
 
   // ── message actions ────────────────────────────────────────────
@@ -848,7 +838,7 @@ class _ChatThreadState extends State<ChatThread> {
           _info = false;
           _searching = true;
         }),
-        onCall: _call,
+        onCall: () => unawaited(_call()),
         phone: widget.phone,
         onJump: (id) => setState(() {
           _info = false;
@@ -929,13 +919,18 @@ class _ChatThreadState extends State<ChatThread> {
                     ),
                   ),
                 ),
-                if (chat?['type'] == 'direct')
-                  IconButton(
-                    key: const ValueKey('chat-call'),
-                    tooltip: 'Voice call',
-                    icon: const Icon(Icons.call_outlined),
-                    onPressed: _call,
-                  ),
+                IconButton(
+                  key: const ValueKey('chat-video-call'),
+                  tooltip: 'Video call',
+                  icon: const Icon(Icons.videocam_outlined),
+                  onPressed: () => unawaited(_call(video: true)),
+                ),
+                IconButton(
+                  key: const ValueKey('chat-call'),
+                  tooltip: 'Voice call',
+                  icon: const Icon(Icons.call_outlined),
+                  onPressed: () => unawaited(_call()),
+                ),
                 IconButton(
                   tooltip: 'Search',
                   icon: const Icon(Icons.search),
@@ -1284,7 +1279,7 @@ class _ChatThreadState extends State<ChatThread> {
           unawaited(_load(around: qid));
         }
       },
-      onCallBack: _call,
+      onCallBack: () => _callLine(m),
       onDownload: () => _download(m),
     );
   }
@@ -1519,7 +1514,8 @@ String _snippet(Json m) {
     'voice' => '🎤 Voice message',
     'audio' => '🎵 Audio',
     'file' => '📄 ${(m['attachment'] as Map?)?['name'] ?? 'Document'}',
-    'call' => '📞 Voice call',
+    'call' =>
+      (m['meta'] as Map?)?['video'] == true ? '🎥 Video call' : '📞 Voice call',
     _ => '${m['body'] ?? ''}',
   };
 }
@@ -1915,10 +1911,15 @@ class _BubbleState extends State<_Bubble> {
         }
       case 'call':
         final meta = m['meta'] as Map? ?? const {};
-        final missed = meta['status'] == 'missed';
+        final status = meta['status'];
+        final video = meta['video'] == true;
+        final missed = status == 'missed' || status == 'declined';
+        final live = status == 'ringing' || status == 'ongoing';
         final secs = meta['duration'] as int? ?? 0;
+        final what = video ? 'video call' : 'voice call';
         parts.add(
           InkWell(
+            key: ValueKey('chat-call-line-${m['id']}'),
             onTap: widget.onCallBack,
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1929,7 +1930,11 @@ class _BubbleState extends State<_Bubble> {
                       ? scheme.errorContainer
                       : scheme.primaryContainer,
                   child: Icon(
-                    m['mine'] == true ? Icons.call_made : Icons.call_received,
+                    video
+                        ? Icons.videocam
+                        : m['mine'] == true
+                        ? Icons.call_made
+                        : Icons.call_received,
                     size: 18,
                     color: missed ? scheme.error : scheme.primary,
                   ),
@@ -1938,14 +1943,23 @@ class _BubbleState extends State<_Bubble> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(missed ? 'Missed voice call' : 'Voice call'),
-                    if (!missed)
-                      Text(
-                        secs > 0
-                            ? formatClock(Duration(seconds: secs))
-                            : 'Tap to call back',
-                        style: theme.textTheme.bodySmall,
+                    Text(switch (status) {
+                      'missed' => 'Missed $what',
+                      'declined' => 'Declined $what',
+                      'ringing' || 'ongoing' =>
+                        '${what[0].toUpperCase()}${what.substring(1)} in progress',
+                      _ => '${what[0].toUpperCase()}${what.substring(1)}',
+                    }),
+                    Text(
+                      live
+                          ? 'Tap to join'
+                          : secs > 0
+                          ? formatClock(Duration(seconds: secs))
+                          : 'Tap to call back',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: live ? scheme.primary : null,
                       ),
+                    ),
                   ],
                 ),
               ],
