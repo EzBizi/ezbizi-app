@@ -63,6 +63,40 @@ class TimeClockReportsTest extends TestCase
         $this->assertSame([['Ana', '8:30']], array_map(fn ($r) => [$r['name'], $r['hours']], $data['rows']));
     }
 
+    /**
+     * Eric Nelson Valdes, 2026-11-25: overtime (over 40 h) first, then full
+     * time, then part time, each A-Z; full or part time by the hours the
+     * schedule gives them a week. The email carries the same sections.
+     */
+    public function test_the_report_is_overtime_then_full_time_then_part_time_each_a_to_z(): void
+    {
+        [$alpha, $manager, $techs] = $this->tenant();
+        $week = fn (string $end) => ['days' => array_fill_keys(['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], ['start' => '09:00', 'end' => $end])];
+        foreach (['ana' => '17:00', 'ben' => '17:00', 'eve' => '17:00', 'cy' => '13:00', 'dee' => '13:00'] as $name => $end) {
+            $this->inTenant($alpha['org'], fn () => $techs[$name]->forceFill(['work_schedule' => $week($end)])->save());   // 40 h or 20 h a week
+        }
+        foreach (['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'] as $d) {
+            $this->shift($alpha['org'], $techs['eve'], "{$d} 12:00:00", "{$d} 21:00:00");   // 45 h: overtime
+            $this->shift($alpha['org'], $techs['ben'], "{$d} 12:00:00", "{$d} 18:00:00");   // 30 h
+            $this->shift($alpha['org'], $techs['dee'], "{$d} 12:00:00", "{$d} 15:00:00");   // 15 h, part time
+        }
+        $this->shift($alpha['org'], $techs['ana'], '2026-09-21 12:00:00', '2026-09-21 20:00:00');
+        $this->shift($alpha['org'], $techs['cy'], '2026-09-21 12:00:00', '2026-09-21 14:00:00');
+        $report = $this->report($alpha['org'], []);
+
+        $data = $this->signedInAs($manager)->getJson("/api/v1/hr/time-clock/reports/{$report->id}/preview")->assertOk()->json('data');
+
+        $this->assertSame(
+            ['overtime' => ['Eve'], 'full_time' => ['Ana', 'Ben'], 'part_time' => ['Cy', 'Dee']],
+            collect($data['sections'])->mapWithKeys(fn ($s) => [$s['key'] => array_column($s['rows'], 'name')])->all(),
+        );
+        $this->assertSame(['Eve', 'Ana', 'Ben', 'Cy', 'Dee'], array_column($data['rows'], 'name'));
+
+        $html = (new WorkHoursReportMail('Weekly hours', $data['range'], array_map(
+            fn ($r) => ['name' => $r['name'], 'hours' => $r['hours'], 'section' => $r['section']], $data['rows']), $data['total']))->render();
+        $this->assertMatchesRegularExpression('/Overtime.*c62828[^>]*>Eve.*Full time.*Ana.*Ben.*Part time.*Cy.*Dee/s', $html);
+    }
+
     /** Roles select, a named person is added, a named person is left out, and nobody with no time appears. */
     public function test_roles_and_named_people_decide_who_is_in_it(): void
     {
@@ -129,7 +163,7 @@ class TimeClockReportsTest extends TestCase
 
         Mail::assertSent(WorkHoursReportMail::class, function (WorkHoursReportMail $mail) {
             return $mail->reportName === 'Weekly hours'
-                && $mail->rows === [['name' => 'Ana', 'hours' => '8:00']]
+                && array_map(fn ($r) => [$r['name'], $r['hours']], $mail->rows) === [['Ana', '8:00']]
                 && $mail->total === '8:00'
                 && str_contains($mail->envelope()->subject, 'Weekly hours');
         });
