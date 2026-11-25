@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/token_store.dart';
 import 'package:ezbizi_client/main_ezchat.dart';
 import 'package:ezbizi_client/screens/login_screen.dart';
 import 'package:ezbizi_client/widgets/error_note.dart';
@@ -68,6 +70,73 @@ void main() {
     await pump(tester);
     final mark = tester.widget<RichText>(find.byKey(EzBiziTheme.wordmarkKey));
     expect(mark.text.toPlainText(), 'EzChat');
+  });
+
+  // Design 213 B1: Chats · You along the bottom, out of the way in a chat.
+  testWidgets('signed in: Chats and You along the bottom', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(
+      client: MockClient((r) async {
+        final p = r.url.path;
+        if (p.endsWith('/me')) {
+          return _json({
+            'data': {
+              ..._me,
+              'permissions': const ['phone.chat.view'],
+            },
+          });
+        }
+        if (p.endsWith('/chat/pulse')) {
+          return _json({
+            'data': {'rev': 'r', 'typing': <String, Object>{}},
+          });
+        }
+        if (p.endsWith('/chat/calls')) {
+          return _json({
+            'data': [
+              {
+                'id': 'k1',
+                'kind': 'call',
+                'mine': false,
+                'sent_at': '2026-11-25T14:02:00Z',
+                'meta': {'status': 'missed', 'video': false},
+                'chat': {'id': 'c-1', 'type': 'direct', 'name': 'Dispatch'},
+              },
+            ],
+          });
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    // adopt() keeps the token; the sign-in tests after this one need none.
+    addTearDown(TokenStore.clear);
+    await tester.runAsync(() => session.adopt('tok'));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.ezChat(Brightness.light),
+        home: EzChatHome(api: api, session: session),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ezchat-bar')), findsOneWidget);
+    await tester.tap(find.text('Calls'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ezchat-calls')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ezchat-call-k1')),
+      findsOneWidget,
+      reason: 'the call from GET chat/calls',
+    );
+    expect(find.textContaining('Missed'), findsOneWidget);
+    await tester.tap(find.text('You'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ezchat-you')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ezchat-sign-out')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   /// The Android pass of EzChat (2026-11-25): "a reset link is on its way"
