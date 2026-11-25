@@ -205,6 +205,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
     return MaterialApp(
       title: 'EzBizi',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: dragClosesKeyboard,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
       // No cross-fade: every frame of the 200 ms lerp rebuilt each board
@@ -2363,7 +2364,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         if (!_typing) PhoneAppBanner(session: widget.session),
         _HiddenWhileTyping(
-          typing: _typing && !_wideShell(context),
+          typing: _typing && (!_wideShell(context) || typingShort(context)),
           child: ListenableBuilder(
             listenable: Listenable.merge([toolbar, action]),
             builder: (context, _) => ModulePageHeader(

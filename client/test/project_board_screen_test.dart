@@ -470,6 +470,70 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   });
+  // The unfolded Duo (951 wide, 640 beside the menu): four tiles, a seven-
+  // figure total. A figure shrinks to fit its tile, never breaks over lines.
+  testWidgets('a total stays on one line in a narrow tile', (tester) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/me')) {
+          return _json({
+            'data': {
+              'id': 'u-1',
+              'name': 'Dana',
+              'email': 'dana@brightside.example',
+              'permissions': ['project_board.view', 'jobs.view'],
+              'modules': <dynamic>[],
+              'organization': {'id': 'org-1', 'name': 'Brightside'},
+            },
+          });
+        }
+        if (!request.url.path.endsWith('/project-board/jobs')) {
+          return _json({'data': <dynamic>[]});
+        }
+        return _json({
+          'data': [
+            {'id': 'j-1', 'number': 'J-1001', 'customer': 'Lena Park'},
+          ],
+          'meta': {
+            'total': 1,
+            'last_page': 1,
+            'counts': {'unscheduled': 1},
+            'columns': [
+              {'key': 'customer', 'label': 'Client', 'visible': true},
+            ],
+            'totals': {
+              'paid': 59902872,
+              'due': 63395138,
+              'total': 122190142,
+              'over': 1107868,
+              'currency': 'USD',
+            },
+          },
+        });
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(640, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ProjectBoardScreen(api: api, session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final k in ['paid', 'due', 'total', 'over']) {
+      final figure = find.byKey(Key('project-board-total-$k'));
+      final size = tester.widget<Text>(figure).style!.fontSize!;
+      // One line is under two font sizes tall; a wrapped figure is not.
+      expect(tester.getSize(figure).height, lessThan(2 * size), reason: k);
+    }
+    expect(tester.takeException(), isNull);
+  });
 }
 
 http.Response _json(Object body) => http.Response(

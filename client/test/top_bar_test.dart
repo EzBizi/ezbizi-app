@@ -8,6 +8,7 @@ import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:ezbizi_client/widgets/phone_bottom_bar.dart';
 import 'package:ezbizi_client/widgets/scope_switcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -76,6 +77,29 @@ void main() {
     );
   });
 
+  /// UI/UX 11-24 (Jose's standing rule): in the bar the switcher still names
+  /// the company AND the branch, never the bare branch.
+  testWidgets('sideways, the switcher in the bar names company and branch', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      width: 923,
+      height: 411,
+      choices: true,
+      scopePath: const ['Everdoors', 'North'],
+    );
+    final inBar = find.descendant(
+      of: find.byType(AppBar),
+      matching: find.text('Everdoors › North'),
+    );
+    expect(inBar, findsOneWidget);
+    expect(
+      tester.renderObject<RenderParagraph>(inBar).didExceedMaxLines,
+      isFalse,
+    );
+  });
+
   testWidgets('a portrait phone page fits and does not scroll', (tester) async {
     await _pump(tester, width: 375, height: 812);
     final top = tester.getTopLeft(find.byType(ModulePageHeader)).dy;
@@ -121,6 +145,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(row, findsOneWidget);
       expect(find.byType(ModulePageHeader), findsOneWidget);
+    });
+
+    // The unfolded Duo: 951 wide, so the sidebar shell, and 405 left above
+    // its keyboard. The page title folds there too.
+    testWidgets('a wide but short window folds the header while typing', (
+      tester,
+    ) async {
+      await _pump(tester, width: 951, height: 669);
+      expect(find.byType(ModulePageHeader), findsOneWidget);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 264);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(find.byType(ModulePageHeader), findsNothing);
     });
 
     testWidgets('a computer keeps its header with the keyboard up', (
@@ -274,6 +311,7 @@ Future<void> _pump(
   bool twoFactor = false,
   bool readOnly = false,
   bool choices = false,
+  List<String> scopePath = const ['Everdoors'],
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
@@ -288,6 +326,7 @@ Future<void> _pump(
             twoFactor: twoFactor,
             readOnly: readOnly,
             choices: choices,
+            scopePath: scopePath,
           ),
         });
       }
@@ -317,6 +356,7 @@ Map<String, dynamic> _me({
   required bool twoFactor,
   required bool readOnly,
   required bool choices,
+  List<String> scopePath = const ['Everdoors'],
 }) => {
   'id': 'u-1',
   'name': 'Jose Silva',
@@ -342,10 +382,10 @@ Map<String, dynamic> _me({
     'is_read_only': readOnly,
   },
   'scope': {
-    'type': 'organization',
-    'id': 'org-1',
-    'label': 'Everdoors',
-    'path': ['Everdoors'],
+    'type': scopePath.length > 1 ? 'franchise' : 'organization',
+    'id': scopePath.length > 1 ? 'c-1' : 'org-1',
+    'label': scopePath.last,
+    'path': scopePath,
   },
   'companies': choices
       ? [

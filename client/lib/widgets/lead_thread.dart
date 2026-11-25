@@ -1651,7 +1651,7 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _pane(BuildContext context, BoxConstraints pane) {
     final theme = Theme.of(context);
     final lead = _lead;
-    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final narrow = _narrowIn(pane);
     final short = pane.maxHeight.isFinite && pane.maxHeight < _shortPaneBelow;
     final src = LeadSourceFields.from(lead, _loaded);
 
@@ -1777,7 +1777,7 @@ class _LeadThreadState extends State<LeadThread> {
           SafeArea(
             top: false,
             child: _canReply
-                ? _composer(theme)
+                ? _composer(theme, narrow: narrow)
                 : _windowEndsAt != null || _waTemplates.isNotEmpty
                 ? _windowClosed(theme)
                 : Padding(
@@ -1800,7 +1800,12 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
-  bool get _narrow => MediaQuery.sizeOf(context).width < 600;
+  /// The pane decides, not the screen: on the unfolded Duo (951 wide) the
+  /// thread is a 330 pane beside the list. Laid out for a desktop there, the
+  /// reply row left the box 30 wide, and with the keyboard up the header
+  /// (Call, Edit, Book stacked) pushed the box 66 px off the pane.
+  bool _narrowIn(BoxConstraints box) =>
+      MediaQuery.sizeOf(context).width < 600 || box.maxWidth < 480;
 
   /// "3h", "45m" or "5d" until [at], as the thread words times.
   static String _until(DateTime at) {
@@ -1886,8 +1891,8 @@ class _LeadThreadState extends State<LeadThread> {
     if (sent == true && mounted) await _load(quiet: true);
   }
 
-  Widget _composer(ThemeData theme) => Padding(
-    padding: _narrow
+  Widget _composer(ThemeData theme, {required bool narrow}) => Padding(
+    padding: narrow
         ? const EdgeInsets.fromLTRB(4, 6, 8, 6)
         : const EdgeInsets.fromLTRB(12, 8, 12, 12),
     child: Column(
@@ -1963,7 +1968,7 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
         if (_templates.isNotEmpty &&
-            (!_narrow || _tools || (_composeFocused && _composeEmpty)))
+            (!narrow || _tools || (_composeFocused && _composeEmpty)))
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Builder(
@@ -2051,8 +2056,8 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
-        if (_narrow && _tools) _phoneTools(theme),
-        if (_narrow) _phoneComposerRow(theme) else Row(
+        if (narrow && _tools) _phoneTools(theme),
+        if (narrow) _phoneComposerRow(theme) else Row(
           // Bottom-aligned, and every control is a one-line box tall, so
           // they line up with the box and stay by its last line as it grows
           // (Jose, 2026-10-01: "the same size as the field").

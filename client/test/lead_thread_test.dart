@@ -1330,6 +1330,53 @@ void main() {
     expect(find.byKey(const ValueKey('reply-templates')), findsOneWidget);
   });
 
+  // The unfolded Duo: 951 wide, the thread a 330 pane beside the list. The
+  // desktop row (box, Suggest, emoji, Send) left the box 30 wide; the pane,
+  // not the screen, picks the phone row. 400 here: the test font draws the
+  // recording bar's "0:00 / 1:23" twice as wide as the phone does.
+  testWidgets('a narrow pane on a wide screen gets the phone reply row', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(951, 669),
+      paneWidth: 400,
+    );
+    expect(find.byKey(const ValueKey('reply-tools')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('reply-box'))).width,
+      greaterThan(400 / 2),
+    );
+  });
+
+  // The same pane with the keyboard up, as on the Duo: 281 tall. Laid out
+  // for a desktop, Call, Edit and Book stacked in the header and pushed the
+  // reply box 66 px off the bottom.
+  testWidgets('a narrow pane keeps the reply box above the keyboard', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(951, 545),
+      paneWidth: 400,
+    );
+    tester.view.viewInsets = const FakeViewPadding(bottom: 264);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // The phone's one-line header, its moves row folded while typing.
+    expect(find.byKey(const ValueKey('phone-bar-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-bar-moves')), findsNothing);
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('reply-box'))).dy,
+      lessThanOrEqualTo(545 - 264),
+    );
+  });
+
   // Jose, 2026-10-01: "see the time of the messages as well like 11:48 13:23".
   test('a message says its time of day, and how long ago while it is recent', () {
     final recent = DateTime.now().subtract(const Duration(minutes: 57));
@@ -1842,6 +1889,7 @@ Future<void> _pump(
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
   Size size = const Size(600, 900),
+  double? paneWidth,
   Map<String, dynamic>? company,
   String? source,
   bool visitorTyping = false,
@@ -2149,7 +2197,9 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: LeadThread(
+        body: _pane(
+          paneWidth,
+          LeadThread(
           api: api,
           player: player,
           lead: {
@@ -2176,6 +2226,7 @@ Future<void> _pump(
           onNote: onNote,
           session: session,
           onBooked: bookable ? (result) async => result['lead'] as Map<String, dynamic>? : null,
+          ),
         ),
       ),
     ),
@@ -2645,3 +2696,11 @@ void _statusTests() {
     expect(tester.takeException(), isNull);
   });
 }
+
+/// The thread as one pane of a wider screen (the Leads list beside it).
+Widget _pane(double? width, Widget child) => width == null
+    ? child
+    : Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(width: width, child: child),
+      );

@@ -13,12 +13,30 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
+      'Phones and foldables: with the keyboard up on a wide screen (an unfolded fold, a tablet on its side) the reply box and lists stay above the keyboard',
+      'Project Management: totals no longer break over two lines, and the total tiles are all one height',
+      'Monitoring: the nightly clean-up of old devices runs for every company again (one company with an ended plan was stopping it for all)',
+    ]),
+    VersionRelease(version: '0.0.0642', date: '25 Nov 2026', items: [
+      'Missed calls: "text the caller" works when the number was saved with a + but without the 1 (a US number like +860 442 ...)',
+    ]),
+    VersionRelease(version: '0.0.0641', date: '25 Nov 2026', deployed: '2026-11-25 04:41',
+      items: [
+      'Phones: dragging a page puts the keyboard away, so number fields (Year, amounts) and notes no longer leave it stuck on screen',
+    ]),
+    VersionRelease(version: '0.0.0640', date: '25 Nov 2026', deployed: '2026-11-25 01:51',
+      items: [
+      'iPhone and Android: this build carries the phone fixes from 0.0.0639 (that release was folded into this one)',
+      'Task Board: status and label cells show the line between rows too, so every row is separated in every column',
+      'Notifications and updates: mentions that came from Monday read @Name instead of a long link',
+    ]),
     VersionRelease(version: '0.0.0639', date: '24 Nov 2026', items: [
       'Phones: turned sideways, every module keeps the phone layout and its lists stay usable on Android, iPhone and the iPhone Duo',
       'Phones: screens hold together with large text sizes',
       'Desktop: the sidebar scrolls instead of spilling over in a short window',
     ]),
-    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', deployed: '2026-11-24 23:36', items: [
       'Financials › Bank: deposits are matched to recorded payments and open invoices, with a Money in, not matched filter; the dashboard shows cash in bank and owed on cards',
       'Phones: Inventory › Orders › Add purchase order opens properly',
       "Roles & permissions: every tab says in plain words what else it needs, with search, select all per module and a What this role sees preview; 15 tabs that hid or refused despite being ticked now work",
