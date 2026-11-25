@@ -19,7 +19,8 @@ class VersionHistory {
       'Phones turned on their side: with the keyboard up, pages no longer break and the box you type in stays in view',
       'Task Board: Job Status on Project Management boards follows Monday again, and new tasks send their client, phone, address and job number to Monday',
     ]),
-    VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0643', date: '25 Nov 2026', deployed: '2026-11-25 15:21',
+      items: [
       'Automations: rules that change a Task Board have their own colour and a "Task Board" tag naming the board, and turning one on or off asks first and names the board it changes',
       'Phones and foldables: with the keyboard up on a wide screen (an unfolded fold, a tablet on its side) the reply box and lists stay above the keyboard',
       'Project Management: totals no longer break over two lines, and the total tiles are all one height',
