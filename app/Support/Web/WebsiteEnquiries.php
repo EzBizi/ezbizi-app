@@ -339,7 +339,7 @@ final class WebsiteEnquiries
         }
 
         // The same phone sending a form again within a day joins its earlier
-        // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
+        // form's lead (Jose, 2026-10-19: Elizabeth Bain sent the sad-face form
         // twice, 6 minutes apart, and showed as two leads - "yes, it should").
         $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));

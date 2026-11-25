@@ -112,7 +112,7 @@ class MetaLeadFormsTest extends TestCase
             'platform' => 'fb', 'campaign_name' => 'Fall', 'ad_name' => 'Sweep ad',
             'field_data' => [
                 ['name' => 'full_name', 'values' => ['N Patterson']],
-                ['name' => 'phone_number', 'values' => ['+19736782560']],
+                ['name' => 'phone_number', 'values' => ['+19735550101']],
                 ['name' => 'zip_code', 'values' => ['07050']],
             ],
         ])]);
@@ -120,7 +120,7 @@ class MetaLeadFormsTest extends TestCase
             'sender' => ['id' => 'PSID1'], 'recipient' => ['id' => self::PAGE_ID], 'timestamp' => 1789000000000,
             'message' => ['mid' => 'm_1', 'text' => 'Hello! I filled out your form.
 Full name: N Patterson
-Phone number: (973) 678-2560
+Phone number: (973) 555-0101
 Zip code: 07050'],
         ]]]]]);
 
@@ -135,7 +135,7 @@ Zip code: 07050'],
         $lead = Lead::query()->withoutGlobalScopes()->sole();
         $this->assertSame('PSID1', $lead->remote_id);
         $this->assertSame('MESSAGE', $lead->lead_type);
-        $this->assertStringEndsWith('9736782560', (string) $lead->phone_digits);
+        $this->assertStringEndsWith('9735550101', (string) $lead->phone_digits);
         $this->assertSame('07050', $lead->postal_code);
         $this->assertContains(['label' => 'Zip code', 'value' => '07050'], $lead->form_answers);
         $this->assertNotNull($lead->form_submitted_at);

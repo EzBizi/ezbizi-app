@@ -74,7 +74,7 @@ class PhoneDeviceRingingTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249501',
+                'e164' => '+13055550115',
                 'ring_group_id' => $group->id,
             ]);
 

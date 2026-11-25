@@ -45,7 +45,7 @@ class PhoneCallPeerNameTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249801',
+                'e164' => '+13055550122',
             ]);
 
             PhoneNumberGrant::create([
@@ -117,15 +117,15 @@ class PhoneCallPeerNameTest extends TestCase
                 'source' => \App\Models\Lead::SOURCE_WEBSITE_CHAT,
                 'remote_id' => 'chat-names',
                 'contact_name' => 'Lena Lead',
-                'phone' => '561-476-1114',
-                'phone_digits' => '5614761114',
+                'phone' => '561-555-0102',
+                'phone_digits' => '5615550102',
                 'status' => \App\Models\Lead::STATUS_NEW,
                 'received_at' => now(),
             ]);
             \App\Models\Customer::factory()->create([
                 'owning_franchise_id' => $t['franchise']->id,
                 'name' => 'Typed Customer',
-                'phone' => '(561) 336-5352',
+                'phone' => '(561) 555-0101',
             ]);
             \App\Models\Lead::create([
                 'organization_id' => $t['org']->getKey(),
@@ -133,23 +133,23 @@ class PhoneCallPeerNameTest extends TestCase
                 'source' => \App\Models\Lead::SOURCE_WEBSITE_CHAT,
                 'remote_id' => 'chat-loses',
                 'contact_name' => 'Should Not Win',
-                'phone_digits' => '5613365352',
+                'phone_digits' => '5615550101',
                 'status' => \App\Models\Lead::STATUS_NEW,
                 'received_at' => now(),
             ]);
-            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 708-9100']);
+            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 555-0100']);
         });
 
-        foreach (['+15614761114', '+15613365352', '+13087089100', '+15550009999'] as $to) {
+        foreach (['+15615550102', '+15615550101', '+13085550100', '+15550009999'] as $to) {
             $this->callTo($t, $number, $to);
         }
 
         $rows = collect($this->signedInAs($desk)->getJson('/api/v1/phone/calls')->assertOk()->json('data'))
             ->keyBy('to_e164');
 
-        $this->assertSame(['Lena Lead', 'lead'], [$rows['+15614761114']['caller_name'], $rows['+15614761114']['caller_kind']]);
-        $this->assertSame(['Typed Customer', 'customer'], [$rows['+15613365352']['caller_name'], $rows['+15613365352']['caller_kind']]);
-        $this->assertSame(['Chaim Perez', 'colleague'], [$rows['+13087089100']['caller_name'], $rows['+13087089100']['caller_kind']]);
+        $this->assertSame(['Lena Lead', 'lead'], [$rows['+15615550102']['caller_name'], $rows['+15615550102']['caller_kind']]);
+        $this->assertSame(['Typed Customer', 'customer'], [$rows['+15615550101']['caller_name'], $rows['+15615550101']['caller_kind']]);
+        $this->assertSame(['Chaim Perez', 'colleague'], [$rows['+13085550100']['caller_name'], $rows['+13085550100']['caller_kind']]);
         $this->assertNull($rows['+15550009999']['caller_name']);
     }
 

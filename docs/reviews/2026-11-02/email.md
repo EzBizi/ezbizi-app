@@ -11,7 +11,7 @@
 ## 2. Broken
 - **All inboxes (no tab) took 20.5s again.** Cause: the cache warmer (`ezbizi:warm-inbox-headers`, every minute, 50s budget) always started from the same inbox. It re-read the same ~24 busy inboxes each run and the rest went cold. Measured: 28 of 66 first pages live; one manual run re-read 24 of 67 in 52s. **Fixed: 68f791b21** — each run starts where the last one stopped. Regression test included. Waiting on release; I'll re-time after.
 - **Filter folders take 19–20s** (Google Local Services, Workiz). Cause: a folder is a live Gmail search across every inbox, and searches aren't cached. Not fixed yet; see Suggestion 1.
-- **acehomecaretx@gmail.com (Ace) shows "connected" but has no token**, so it shows "not connected yet" on every inbox load, and the warmer fails on it every minute (silently). The row's state is wrong since 10-12. The fix is to set it to not-connected, or reconnect it; see section 5.
+- **acesample@gmail.com (Ace) shows "connected" but has no token**, so it shows "not connected yet" on every inbox load, and the warmer fails on it every minute (silently). The row's state is wrong since 10-12. The fix is to set it to not-connected, or reconnect it; see section 5.
 - **5 failed mail jobs, 10-28 → 10-29: SMTP "451 4.4.2 Timeout waiting for data".** Known cause: a failed SMTP send keeps its broken connection until the worker restarts. None since 10-29.
 
 ## 3. Cohesiveness
@@ -25,4 +25,4 @@
 4. Restart the queue worker automatically after an SMTP 451: no repeat failed sends.
 
 ## 5. Needs Jose
-- acehomecaretx@gmail.com (Ace Home Care TX): reconnect it, or should I mark it not-connected (taking a dump first)?
+- acesample@gmail.com (Ace Home Care TX): reconnect it, or should I mark it not-connected (taking a dump first)?

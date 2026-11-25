@@ -150,13 +150,13 @@ void main() {
   });
 
   test('phone, email and url are checked before they are sent', () {
-    expect(validColumnText('phone', '(305) 724-2199'), isTrue);
+    expect(validColumnText('phone', '(305) 555-0107'), isTrue);
     expect(validColumnText('phone', 'call me'), isFalse);
     expect(validColumnText('email', 'ann@example.com'), isTrue);
     expect(validColumnText('email', 'ann'), isFalse);
     expect(validColumnText('url', 'https://example.com'), isTrue);
     expect(validColumnText('url', 'example'), isFalse);
-    expect(contactUri('phone', '(305) 724-2199').toString(), 'tel:3057242199');
+    expect(contactUri('phone', '(305) 555-0107').toString(), 'tel:3055550107');
   });
 
   testWidgets('a text cell edits in place: Enter saves, Esc cancels', (

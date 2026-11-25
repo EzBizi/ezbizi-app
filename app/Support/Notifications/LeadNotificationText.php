@@ -12,7 +12,7 @@ namespace App\Support\Notifications;
  * desk's recommendation, told to him so he could object.
  *
  *     New "Local Services Call" lead
- *     (319) 210-2005 - 1:10 min - A1 Chimney - Toms River
+ *     (319) 555-0100 - 1:10 min - A1 Chimney - Toms River
  *
  *     New reply on "Local Services Text"
  *     <the reply, up to 55 characters>
@@ -161,7 +161,7 @@ final class LeadNotificationText
 
     /**
      * Its second line: the caller's number, then the name of OUR number they
-     * rang — `(319) 210-2005 - Chicago SEO line`. A call that reached voicemail
+     * rang — `(319) 555-0100 - Chicago SEO line`. A call that reached voicemail
      * counts as missed (Jose, same day) and says so at the end, because a
      * message waiting is a different errand from a call to return.
      */
@@ -180,7 +180,7 @@ final class LeadNotificationText
     }
 
     /**
-     * The second line: `(319) 210-2005 - 1:10 min - A1 Chimney - Toms River`.
+     * The second line: `(319) 555-0100 - 1:10 min - A1 Chimney - Toms River`.
      *
      * Each part only when known — a text has no duration, a lead with no
      * branch has no branch — so a missing fact drops out instead of leaving a
@@ -215,7 +215,7 @@ final class LeadNotificationText
         return rtrim(mb_substr($text, 0, $max - 1)).'…';
     }
 
-    /** A North American number as (319) 210-2005; anything else as given. */
+    /** A North American number as (319) 555-0100; anything else as given. */
     public static function phone(?string $phone): ?string
     {
         if ($phone === null || trim($phone) === '') {

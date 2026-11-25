@@ -524,8 +524,8 @@ final class WhatsAppStaffBot
      *     their phone is added - the safe direction.
      *   - A number that is not a real phone is not staff.
      *
-     * Both sides go through the same E.164 normaliser, so "(305) 724-2199" in
-     * a profile matches the "13057242199" WhatsApp sends.
+     * Both sides go through the same E.164 normaliser, so "(305) 555-0107" in
+     * a profile matches the "13055550107" WhatsApp sends.
      */
     private function staffMember(WhatsAppNumber $number, string $sender): ?User
     {
@@ -589,7 +589,7 @@ final class WhatsAppStaffBot
             return;
         }
 
-        // "Send me all the calls with 9524572594" (Jose, 2026-10-13): Grok reads
+        // "Send me all the calls with 9525550100" (Jose, 2026-10-13): Grok reads
         // the number and dates off the webhook; Reports access, as Performance.
         if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && CallRecordingsRequest::looksLikeOne($query)) {
             SendCallRecordings::dispatch($number->id, $to, $query);

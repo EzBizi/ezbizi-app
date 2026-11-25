@@ -381,10 +381,10 @@ void main() {
     final device = _FakeDevice();
     final service = await _started(tester, device: device);
 
-    device.ring('+13057242199');
+    device.ring('+13055550107');
     await tester.pump();
 
-    expect(service.incomingFrom, '+13057242199');
+    expect(service.incomingFrom, '+13055550107');
 
     // The caller gives up. No button is pressed, because nobody was there.
     device.end();
@@ -417,7 +417,7 @@ void main() {
     final device = _FakeDevice();
     final service = await _started(tester, device: device);
 
-    device.ring('+13057242199');
+    device.ring('+13055550107');
     await tester.pump();
     service.accept();
     await tester.pump();

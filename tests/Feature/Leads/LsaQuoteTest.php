@@ -28,7 +28,7 @@ class LsaQuoteTest extends TestCase
             $lead = Lead::create($attributes + [
                 'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
                 'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'MESSAGE', 'remote_id' => uniqid(),
-                'contact_name' => 'Andy Bruce', 'phone' => '+14046979986', 'status' => 'new', 'received_at' => now(),
+                'contact_name' => 'Andy Banks', 'phone' => '+14045550101', 'status' => 'new', 'received_at' => now(),
             ]);
             if ($said !== '') {
                 LeadConversation::create(['lead_id' => $lead->id, 'organization_id' => $t['org']->id, 'participant' => LeadConversation::FROM_CONSUMER, 'channel' => 'SMS',
@@ -83,7 +83,7 @@ class LsaQuoteTest extends TestCase
         $this->assertSame('Could you send your name, the service address with ZIP, whether it is a wood, gas or pellet fireplace or stove and a photo of the chimney or fireplace if you have one?',
             $this->inTenant($t['org'], fn () => LsaQuote::missing($bare)));
 
-        $known = $this->lead($t, ['address' => '1105 Menlo Way NW, Kennesaw, GA 30152', 'service' => 'fireplace_chimney'], 'Wood fireplace, needs a sweep');
+        $known = $this->lead($t, ['address' => '1105 Sampleton Way NW, Kennesaw, GA 30152', 'service' => 'fireplace_chimney'], 'Wood fireplace, needs a sweep');
         $this->assertSame('Could you send a photo of the chimney or fireplace if you have one?', $this->inTenant($t['org'], fn () => LsaQuote::missing($known)));
     }
 

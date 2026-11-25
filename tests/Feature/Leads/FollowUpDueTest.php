@@ -148,8 +148,8 @@ class FollowUpDueTest extends TestCase
 
     public function test_first_name(): void
     {
-        $this->assertSame('Mark', Lead::firstNameOf('mark Morrow'));
-        $this->assertNull(Lead::firstNameOf('+1 (202) 250-1749'));
+        $this->assertSame('Mark', Lead::firstNameOf('mark Mercer'));
+        $this->assertNull(Lead::firstNameOf('+1 (202) 555-0100'));
         $this->assertNull(Lead::firstNameOf(null));
     }
 

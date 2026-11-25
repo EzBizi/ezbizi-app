@@ -16,6 +16,6 @@ Review YOUR module on PRODUCTION (live data, measured — not from memory), then
 5. **Needs Jose** — decisions only he can make, as questions.
 
 Rules: open every tab and control (a-ui-audit-opens-every-tab-and-control); test only on Jose's own
-records (C-04284 / JOB-04926 / +13057242199); no production data rewrites without a dump; screen
+records (C-04284 / JOB-04926 / +13055550107); no production data rewrites without a dump; screen
 changes still go through UI-UX for Jose's approval. Commit only your review file (path-limited)
 and send the desk its path + any fix SHAs. The desk compiles one report for Jose.

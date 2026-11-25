@@ -48,7 +48,7 @@ class PhoneVoicemailTilesTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249601',
+                'e164' => '+13055550117',
                 'voicemail_box_id' => $box->id,
             ]);
 
@@ -166,7 +166,7 @@ class PhoneVoicemailTilesTest extends TestCase
         $this->inTenant($t['org'], fn () => \App\Models\Customer::query()->create([
             'owning_franchise_id' => $t['franchise']->id,
             'number' => 'C-SEARCH',
-            'name' => 'Odalys Fernandez',
+            'name' => 'Odalys Fairbanks',
             'phone' => '+17865550199',
         ]));
 

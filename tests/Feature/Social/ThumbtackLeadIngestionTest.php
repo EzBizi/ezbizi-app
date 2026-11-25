@@ -146,7 +146,7 @@ class ThumbtackLeadIngestionTest extends TestCase
             'connection_id'   => null,
             'source'          => Lead::SOURCE_THUMBTACK,
             'remote_id'       => 'neg-1',
-            'contact_name'    => 'Reinaldo Ortiz',
+            'contact_name'    => 'Reinaldo Oakes',
             'status'          => Lead::STATUS_NEW,
             'received_at'     => now()->subMonth(),
         ]));

@@ -189,7 +189,7 @@ class JobAddressFlagsTest extends TestCase
             $f = $alpha['franchise'];
             $board = app(TaskBoards::class)->ensureFor($f);
             TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 30]);
-            $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'Geri Vandaveer']);
+            $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'Geri Valewater']);
             $job = Job::create(['franchise_id' => $f->id, 'customer_id' => $c->id, 'number' => 'J-61210', 'title' => 'J', 'status' => 'x', 'currency' => 'USD']);
             $w = WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => 'BAD', 'status' => 'x', 'created_by' => 'Nobody', 'payload' => [], 'synced_at' => now(),
                 'address' => 'Savin Ave', 'postal_code' => '06516', 'serial_id' => 101]);
@@ -200,7 +200,7 @@ class JobAddressFlagsTest extends TestCase
 
         $this->inTenant($alpha['org'], function () {
             $task = Task::query()->where('title', 'like', 'Address needs fixing%')->firstOrFail();
-            $this->assertSame('Geri Vandaveer', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Client name'))->value('value_text'));
+            $this->assertSame('Geri Valewater', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Client name'))->value('value_text'));
         });
     }
     /** Jose with Shoval, 2026-11-23: a Project job completed in Workiz without its costs is flagged. */

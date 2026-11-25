@@ -10,7 +10,7 @@ use App\Models\User;
  * Who is behind a phone number: a customer, else a lead, else a colleague
  * (Jose, 2026-10-09: Messages, Recent calls and Voicemail named nobody).
  *
- * Phones are stored as typed, mostly E.164 but some "(308) 708-9100", so a
+ * Phones are stored as typed, mostly E.164 but some "(308) 555-0100", so a
  * number is compared on its last ten digits. Customers are asked for the
  * usual spellings in one query, leads by their `phone_digits`, and colleagues
  * are few enough per tenant to read whole. Runs inside the tenant, so every
