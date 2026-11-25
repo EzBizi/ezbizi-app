@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0640', date: '25 Nov 2026', items: [
+      'Task Board: status and label cells show the line between rows too, so every row is separated in every column',
+      'Notifications and updates: mentions that came from Monday read @Name instead of a long link',
+    ]),
     VersionRelease(version: '0.0.0639', date: '24 Nov 2026', items: [
       'Phones: turned sideways, every module keeps the phone layout and its lists stay usable on Android, iPhone and the iPhone Duo',
       'Phones: screens hold together with large text sizes',
