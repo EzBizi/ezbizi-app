@@ -23,6 +23,7 @@ import '../../../widgets/side_panel.dart';
 import '../../../core/timestamps.dart';
 import '../../../widgets/user_avatar.dart';
 import '../recording_player.dart';
+import 'chat_job_link.dart';
 import 'chat_calls.dart';
 import 'chat_store.dart';
 import 'chat_tab.dart' show ReceiptTicks, confirmClear, pickMuteHours;
@@ -997,6 +998,18 @@ class _ChatThreadState extends State<ChatThread> {
                     if (v == 'unmute') {
                       await store.settings(widget.chatId, {'mute_hours': 0});
                     }
+                    if (v == 'job' && mounted) {
+                      await linkChatToJob(
+                        context,
+                        api: store.api,
+                        chatId: widget.chatId,
+                        current: chat?['job'] as Map?,
+                        reload: () async {
+                          await _load();
+                          await store.load();
+                        },
+                      );
+                    }
                   },
                   itemBuilder: (_) => [
                     PopupMenuItem(
@@ -1015,6 +1028,15 @@ class _ChatThreadState extends State<ChatThread> {
                             : 'Mute notifications',
                       ),
                     ),
+                    // Only someone who may see jobs links one (Chat).
+                    if (widget.session.me?.can('jobs.view') ?? false)
+                      PopupMenuItem(
+                        key: const ValueKey('chat-menu-job'),
+                        value: 'job',
+                        child: Text(
+                          chat?['job'] is Map ? 'Change job' : 'Link to job',
+                        ),
+                      ),
                     const PopupMenuItem(
                       value: 'clear',
                       child: Text('Clear chat'),
