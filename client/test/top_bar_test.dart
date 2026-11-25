@@ -49,6 +49,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /// Android landscape 11-25: with the keyboard up ~150 px were left and seven
+  /// modules' fixed headers overflowed. Sideways, the page keeps its floor
+  /// while typing too; the keyboard narrows the window onto it.
+  testWidgets('a phone on its side keeps the page floor with the keyboard up', (
+    tester,
+  ) async {
+    await _pump(tester, width: 923, height: 411);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 230);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byType(ModuleToolbarScope)).height,
+      greaterThanOrEqualTo(300),
+    );
+  });
+
   /// Landscape chrome took ~160 of 411 px: the company picker moves into the
   /// bar, which has room, and the bottom bar draws its labels beside the icons.
   testWidgets('a phone on its side gives the chrome back to the page', (
