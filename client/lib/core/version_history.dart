@@ -19,7 +19,8 @@ class VersionHistory {
       'Work Hours weekly time report (screen, email and PDF): Overtime over 40 hours in red at the top, then Full time, then Part time, each A to Z',
       'HR: each person can be marked Full time or Part time (or follow their schedule), and you always find yourself in HR Records',
     ]),
-    VersionRelease(version: '0.0.0650', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0650', date: '25 Nov 2026', deployed: '2026-11-25 23:07',
+      items: [
       'Leaderboard: past weeks winners open for people who can see many branches (it showed an error for them)',
       'Jobs on the web: Workiz photos open full screen instead of showing "Could not load"',
       'Task Board: the group menu matches Monday: change the group colour, collapse or expand all, select all, add a group above or below, duplicate, move to another board, archive (restorable) and more',
