@@ -86,6 +86,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('centred on a desk like New Inspection; at the top on a phone', (
+    tester,
+  ) async {
+    // Jose 11-25: "the review qr thing should be centered just like the new
+    // inspection stuff".
+    await pump(tester);
+    final desk = tester.getRect(find.byKey(const ValueKey('review-qr-form')));
+    expect((desk.center.dy - 450).abs(), lessThan(24));
+    expect((desk.center.dx - 600).abs(), lessThan(2));
+
+    await pump(tester, width: 400);
+    final phone = tester.getRect(find.byKey(const ValueKey('review-qr-form')));
+    expect(phone.top, lessThan(60), reason: 'clear of the keyboard');
+  });
+
   testWidgets('five digits is a ZIP; Generate shows the code and branch', (
     tester,
   ) async {

@@ -2,6 +2,8 @@ import '../../widgets/step_timeline.dart';
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/centred_page.dart';
+
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/timestamps.dart';
@@ -608,63 +610,46 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Widget _searchPage(BuildContext context) {
     final theme = Theme.of(context);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final phone = constraints.maxWidth < 600;
-        // The bar's centre half-way down on a desk (28 is half its height).
-        // At the top on a phone: a third of the way down still left the
-        // suggestions under the keyboard (phone audit 2026-11-04, Section 3
-        // #11).
-        final top = phone
-            ? 16.0
-            : (constraints.maxHeight / 2 - 28).clamp(16.0, double.infinity);
-
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, top, 16, 24),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SuggestSearchField(
-                    key: const Key('inspection-search-bar'),
-                    fieldKey: const ValueKey('tour-inspection-search'),
-                    controller: _search,
-                    hintText: 'Client name, phone or job number',
-                    prefixIcon: const Icon(Icons.search),
-                    debounce: const Duration(milliseconds: 250),
-                    enterPicksFirst: true,
-                    suggestions: [for (final hit in _hits) _suggestion(hit)],
-                    onChanged: _doSearch,
-                    onSubmitted: _doSearch,
-                    onPick: (i) => _pickHit(_hits[i]),
-                    onDismiss: () => setState(() => _hits = const []),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_hits.isEmpty)
-                    Text(
-                      "Type a client's name, a phone or a job number",
-                      key: const Key('inspection-search-hint'),
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 8),
-                    ErrorNote(_error!),
-                  ],
-                  if (_empty != null) ...[
-                    const SizedBox(height: 8),
-                    DashboardNote(_empty!),
-                  ],
-                ],
+    // The bar's centre half-way down on a desk (28 is half its height).
+    return CentredPage(
+      anchor: 28,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SuggestSearchField(
+            key: const Key('inspection-search-bar'),
+            fieldKey: const ValueKey('tour-inspection-search'),
+            controller: _search,
+            hintText: 'Client name, phone or job number',
+            prefixIcon: const Icon(Icons.search),
+            debounce: const Duration(milliseconds: 250),
+            enterPicksFirst: true,
+            suggestions: [for (final hit in _hits) _suggestion(hit)],
+            onChanged: _doSearch,
+            onSubmitted: _doSearch,
+            onPick: (i) => _pickHit(_hits[i]),
+            onDismiss: () => setState(() => _hits = const []),
+          ),
+          const SizedBox(height: 8),
+          if (_hits.isEmpty)
+            Text(
+              "Type a client's name, a phone or a job number",
+              key: const Key('inspection-search-hint'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-        );
-      },
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            ErrorNote(_error!),
+          ],
+          if (_empty != null) ...[
+            const SizedBox(height: 8),
+            DashboardNote(_empty!),
+          ],
+        ],
+      ),
     );
   }
 
