@@ -94,6 +94,7 @@ use App\Http\Controllers\Api\JobNotesController;
 use App\Http\Controllers\Api\JobPhotosController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadDashboardController;
+use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
@@ -1817,6 +1818,13 @@ Route::prefix('v1')
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
+        // Leaderboard (Trey, approved by Jose 2026-11-25): Scoring's top three
+        // marked New, week by week (Sunday to Friday), and the reader's own
+        // Performance and Scoring.
+        Route::get('leaderboard', [LeaderboardController::class, 'board'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/weeks', [LeaderboardController::class, 'weeks'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/mine', [LeaderboardController::class, 'mine'])->middleware('permission:leaderboard.mine.view');
+        Route::get('leaderboard/mine/calls', [LeaderboardController::class, 'calls'])->middleware('permission:leaderboard.mine.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).

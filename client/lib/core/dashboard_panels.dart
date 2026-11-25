@@ -38,6 +38,8 @@ IconData dashboardPanelIcon(String key) {
     'inventory': Icons.inventory_2_outlined,
     'financials': Icons.table_chart_outlined,
     'company': Icons.account_tree_outlined,
+    // Same mark as its sidebar entry (module_screens.dart).
+    'leaderboard': Icons.emoji_events_outlined,
     'tasks': Icons.view_kanban_outlined,
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,
