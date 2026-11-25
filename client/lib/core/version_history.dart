@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', items: [
+      'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',
+      'Desktop Monitoring: swipe the large screenshot to step through captures; past days no longer show a false "capture stopped"; the people list stays in name order',
+    ]),
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
       'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Leads, Financials (invoice notes), Fleet (vehicle and service notes), Customer Experience (review and complaint notes) HR (people, work hours and recruiting notes) Scheduling (location, helper and wrong-ZIP notes) and the Task Board (long-text and notes columns); Copy and anything sent out stay plain text',
       'Reports > Reports: every report EzBizi sends, on WhatsApp, email or a group, with who gets it and when; open one to see each send, to whom, delivered or read, and what it said',

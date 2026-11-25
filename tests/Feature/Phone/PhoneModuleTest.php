@@ -27,7 +27,8 @@ class PhoneModuleTest extends TestCase
         // Plus one view per tab (Jose, 2026-09-29), in the tab bar's order.
         $this->assertSame(
             // alerts.view: Communication ▸ Alerts (Jose, 2026-10-07).
-            ['view', 'edit', 'phone.view', 'users.view', 'records.view', 'reports.view', 'alerts.view', 'settings.view'],
+            // chat.view: Communication ▸ Chat, the in-app WhatsApp (Jose, 2026-11-25).
+            ['view', 'edit', 'phone.view', 'chat.view', 'users.view', 'records.view', 'reports.view', 'alerts.view', 'settings.view'],
             $module->actions,
         );
         $this->assertSame(
