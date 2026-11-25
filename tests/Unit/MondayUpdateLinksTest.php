@@ -33,5 +33,13 @@ class MondayUpdateLinksTest extends TestCase
         $this->assertSame('plain', MondayBoardReader::bodyOf(['body' => '<p>plain<br></p>', 'text_body' => 'plain']));
     }
 
+    public function test_a_monday_file_link_becomes_its_name_since_the_file_is_the_attachment(): void
+    {
+        $this->assertSame('see 📎 W9 GA.pdf', MondayBoardReader::bodyOf([
+            'body' => '<p>see <a href="https://a-1group.monday.com/protected_static/27632623/resources/2465939849/W9%20GA.pdf">W9 GA.pdf</a></p>',
+        ]));
+    }
+
+
 
 }
