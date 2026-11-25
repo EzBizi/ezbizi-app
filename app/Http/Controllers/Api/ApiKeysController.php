@@ -94,7 +94,7 @@ class ApiKeysController
     /**
      * GET /api-keys/activity — what keys did, newest first.
      *
-     * Your own keys; a holder of `organizations.api_activity.view` (the Settings ›
+     * Your own keys; a holder of `monitoring.api_activity.view` (the Monitoring ›
      * API activity tab; every Administrator) sees the organization's and may
      * narrow it with `user_id`. Read from the audit trail that
      * EnforceApiKeyAccess writes, so it cannot disagree with it.
@@ -259,10 +259,10 @@ class ApiKeysController
         return [$strategy, '/'.$path.($query ? '?'.$query : ''), $sent, $before, $after];
     }
 
-    /** The Settings › API activity tab's grant; Administrators hold it. */
+    /** The Monitoring › API activity tab's grant; Administrators hold it. */
     private function seesEveryone(User $user): bool
     {
-        return $user->hasPermission('organizations.api_activity.view');
+        return $user->hasPermission('monitoring.api_activity.view');
     }
 
     private function visible(User $user)

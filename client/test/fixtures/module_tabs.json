@@ -628,6 +628,8 @@
                 "Files",
                 "Camera Monitoring",
                 "Desktop Monitoring",
+                "Activity",
+                "API activity",
                 "Lighting"
             ],
             "grants": {
@@ -653,6 +655,12 @@
                 "Desktop Monitoring": [
                     "monitoring.screenshots.view",
                     "monitoring.view"
+                ],
+                "Activity": [
+                    "monitoring.activity.view"
+                ],
+                "API activity": [
+                    "monitoring.api_activity.view"
                 ],
                 "Lighting": [
                     "monitoring.lighting.manage",
@@ -689,8 +697,7 @@
             "tabs": [
                 "Organization",
                 "Preferences",
-                "Integrations",
-                "API activity"
+                "Integrations"
             ],
             "grants": {
                 "Organization": [
@@ -705,10 +712,6 @@
                 "Integrations": [
                     "marketing.view",
                     "organizations.integrations.view",
-                    "organizations.view"
-                ],
-                "API activity": [
-                    "organizations.api_activity.view",
                     "organizations.view"
                 ]
             }
@@ -1282,6 +1285,8 @@
         "memberships.promotions.view",
         "memberships.settings.view",
         "memberships.view",
+        "monitoring.activity.view",
+        "monitoring.api_activity.view",
         "monitoring.cameras.manage",
         "monitoring.cameras.view",
         "monitoring.control",
@@ -1302,7 +1307,6 @@
         "newsletter.send",
         "newsletter.settings.view",
         "newsletter.view",
-        "organizations.api_activity.view",
         "organizations.edit",
         "organizations.integrations.view",
         "organizations.organization.view",
