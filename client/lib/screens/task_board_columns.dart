@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/cell_tap.dart';
 import '../core/deep_links.dart';
 import '../widgets/lazy_menu_anchor.dart';
@@ -985,7 +986,9 @@ class ColumnCell extends StatelessWidget {
         if (label == null) return const EmptyCellIcon(Icons.link);
         return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
       case 'long_text':
-        final text = v is String ? v.split('\n').first : null;
+        final text = v is String
+            ? NotesMarkup.parse(v).$1.split('\n').first
+            : null;
         return Text(
           text == null || text.isEmpty ? '—' : text,
           maxLines: 1,
@@ -1176,16 +1179,30 @@ class ColumnEditor extends StatefulWidget {
 }
 
 class _ColumnEditorState extends State<ColumnEditor> {
-  late final TextEditingController _text = TextEditingController(
-    text: switch (widget.column.type) {
-      'number' ||
-      'currency' => widget.value == null ? '' : _number(widget.value, null),
-      'location' => '${(widget.value as Map?)?['address'] ?? ''}',
-      // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
-      'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
-      _ => widget.value == null ? '' : '${widget.value}',
-    },
-  );
+  // Notes take bold, italic and underline (Jose 11-25), saved as <b>/<i>/<u>.
+  late final TextEditingController _text = widget.column.type == 'long_text'
+      ? FormattedNotesController(
+          markup: widget.value == null ? '' : '${widget.value}',
+        )
+      : TextEditingController(
+          text: switch (widget.column.type) {
+            'number' || 'currency' =>
+              widget.value == null ? '' : _number(widget.value, null),
+            'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+            // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
+            'phone' =>
+              widget.value == null ? '' : formatCellPhone('${widget.value}'),
+            _ => widget.value == null ? '' : '${widget.value}',
+          },
+        );
+
+  /// What the box holds as saved: a note's markup, else its text.
+  String get _typedText => switch (_text) {
+    final FormattedNotesController n => n.markup,
+    _ => _text.text,
+  };
+
+  String _lastMarkup = '';
 
   final _focus = FocusNode();
 
@@ -1200,6 +1217,18 @@ class _ColumnEditorState extends State<ColumnEditor> {
         if (!_focus.hasFocus) _commitText();
       });
       widget.flush?.add(this, _flushNow);
+    }
+    if (_text case final FormattedNotesController n) {
+      _lastMarkup = n.markup;
+      // A style toggled with no typing is a change too: it waits the same pause.
+      if (widget.framed) {
+        n.addListener(() {
+          if (n.markup != _lastMarkup) {
+            _lastMarkup = n.markup;
+            _typed('');
+          }
+        });
+      }
     }
   }
 
@@ -1228,7 +1257,10 @@ class _ColumnEditorState extends State<ColumnEditor> {
     super.didUpdateWidget(old);
     // A saved value comes back: show it, unless somebody is typing here.
     if (widget.framed && old.value != widget.value) _hasSent = false;
-    if (widget.framed && old.value != widget.value && !_focus.hasFocus) {
+    if (widget.framed &&
+        old.value != widget.value &&
+        !_focus.hasFocus &&
+        _text is! FormattedNotesController) {
       final shown = _shownText();
       if (_text.text != shown) _text.text = shown;
     }
@@ -1271,7 +1303,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
   void _commitText({bool quiet = false}) {
     _pause?.cancel();
     _pause = null;
-    final typed = _text.text.trim();
+    final typed = _typedText.trim();
     final bad = typed.isNotEmpty && !validColumnText(widget.column.type, typed);
     if (quiet && bad) return;
     if (bad != (_invalid != null) && mounted && !_closing) {
@@ -1570,6 +1602,35 @@ class _ColumnEditorState extends State<ColumnEditor> {
               : null,
         );
       default:
+        if (_text case final FormattedNotesController notes) {
+          final field = Focus(
+            focusNode: _focus,
+            child: FormattedNotesField(
+              controller: notes,
+              fieldKey: key,
+              label: c.name,
+              minLines: widget.framed ? 2 : 5,
+            ),
+          );
+          if (widget.framed || !editable) return field;
+          void save() {
+            _commitText();
+            widget.onDone?.call();
+          }
+
+          return TapRegion(
+            onTapOutside: (_) => _commitText(),
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                    save,
+                const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                    save,
+              },
+              child: field,
+            ),
+          );
+        }
         if (widget.framed) {
           return TextField(
             key: key,

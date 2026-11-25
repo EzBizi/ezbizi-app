@@ -4,6 +4,7 @@ import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/widgets/priority_row.dart';
 import 'package:ezbizi_client/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -78,6 +79,39 @@ void main() {
     expect(find.byType(Switch), findsNothing);
     await tester.tap(find.byType(Checkbox));
     expect(got, isTrue);
+  });
+
+  testWidgets('Jose 11-25: a notes column takes bold and saves it as <b>', (
+    tester,
+  ) async {
+    final changes = <Object?>[];
+    await tester.pumpWidget(
+      host(
+        SizedBox(
+          width: 400,
+          child: ColumnEditor(
+            column: column('long_text'),
+            value: 'old <i>note</i>',
+            people: const {},
+            formats: formats,
+            onChanged: changes.add,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('old note'), findsOneWidget, reason: 'tags never show');
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('notes-format-1')));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'old note Call');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+    await tester.pump();
+    expect(changes, isNotEmpty);
+    expect('${changes.last}', contains('<b>'));
   });
 
   test(
