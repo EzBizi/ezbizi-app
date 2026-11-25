@@ -546,6 +546,9 @@ class TasksController extends Controller
         $likes = array_values((array) ($update->likes ?? []));
         $likes = in_array($me, $likes, true) ? array_values(array_diff($likes, [$me])) : [...$likes, $me];
         $update->forceFill(['likes' => $likes ?: null])->saveQuietly();
+        if (in_array($me, $likes, true)) {
+            \App\Support\Tasks\TaskWriter::tellReaction($update, $request->user());
+        }
 
         return response()->json(['data' => ['likes' => count($likes), 'liked' => in_array($me, $likes, true)]]);
     }

@@ -40,7 +40,9 @@ class TaskBoardFoldersController extends Controller
             $folders = $folders->filter(fn (TaskBoardFolder $f) => isset($keep[$f->id]))->values();
         }
 
-        return response()->json(['data' => $folders]);
+        $company = app(TaskBoards::class)->companyMap()['folders'];
+
+        return response()->json(['data' => $folders->map(fn (TaskBoardFolder $f) => $f->toArray() + ['company_id' => $company[(string) $f->id] ?? null])->values()]);
     }
 
     public function store(Request $request): JsonResponse
