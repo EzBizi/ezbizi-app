@@ -928,4 +928,61 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  // Task Board 4ed2eea22: the server names each company's working board
+  // (company_board) and each folder's company (company_id).
+  testWidgets('company_board leads its company and an empty company board '
+      'beside it is not listed; a folder goes by its company_id', (
+    tester,
+  ) async {
+    folders = [
+      {
+        'id': 'fo-ops',
+        'parent_id': null,
+        'name': 'Field Ops',
+        'company_id': 'c-1',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    Map<String, Object?> a1(String id, String kind, String name) => board(
+      id,
+      kind,
+      name,
+      section: 'place',
+      companyId: 'c-1',
+      companyName: 'A-1 Chimney',
+    );
+    await pumpBoard(
+      tester,
+      boards: [
+        {...a1('b-empty', 'company', 'A-1 Chimney'), 'company_board': false},
+        {...a1('b-zz', 'custom', 'Zz notes'), 'company_board': false},
+        {...a1('b-op', 'custom', 'Zulu - Operation'), 'company_board': true},
+        a1('b-bos', 'franchise', 'Boston'),
+        {
+          ...board('b-crew', 'custom', 'Crew list', section: 'place'),
+          'folder_id': 'fo-ops',
+        },
+        {
+          ...board('b-crew2', 'custom', 'Crew two', section: 'place'),
+          'folder_id': 'fo-ops',
+        },
+      ],
+    );
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    expect(row('b-empty'), findsNothing);
+    final company = y(
+      find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney')),
+    );
+    // Named Zulu, still first: it is the company's board.
+    expect(company, lessThan(y(row('b-op'))));
+    expect(y(row('b-op')), lessThan(y(row('b-zz'))));
+    expect(y(row('b-zz')), lessThan(y(row('b-bos'))));
+    // "Field Ops" is named for no company, but its company_id puts it, and
+    // its boards of no company, under A-1 Chimney.
+    final folder = find.byKey(const ValueKey('tasks-fold-folder:fo-ops'));
+    expect(company, lessThan(y(folder)));
+    expect(y(folder), lessThan(y(row('b-crew'))));
+  });
 }

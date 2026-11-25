@@ -1095,12 +1095,24 @@ class _BoardTreeState extends State<BoardTree> {
         .firstOrNull;
     String? companyNamed(Object? name) =>
         companyNames.where((c) => norm(c) == norm('$name')).firstOrNull;
+    // A folder's company_id, from the server, wins; a folder without one is
+    // matched by its name (Everdoors under New Locations).
+    final companyById = <String, String>{
+      for (final c in me?.companies ?? const []) c.id: c.name,
+      for (final b in boards)
+        if (b['company_id'] != null && b['company_name'] != null)
+          '${b['company_id']}': '${b['company_name']}',
+    };
     String? companyOfFolder(Object? id) {
       for (
         var f = folderById['$id'];
         f != null;
         f = folderById['${f['parent_id']}']
       ) {
+        if (companyById['${f['company_id']}'] case final c?
+            when companyNames.contains(c)) {
+          return c;
+        }
         if (companyNamed(f['name']) case final c?) return c;
       }
       return null;
@@ -1117,6 +1129,9 @@ class _BoardTreeState extends State<BoardTree> {
     final mine = <int>[];
     for (final (i, b) in boards.indexed) {
       if (i == personal) continue;
+      // An empty company board whose company works on its Operation board is
+      // not listed (server: company_board false on it).
+      if (b['kind'] == 'company' && b['company_board'] == false) continue;
       final company = '${b['company_name'] ?? ''}';
       if (companyOfFolder(b['folder_id']) != null) {
         continue; // Drawn inside that company's folder.
@@ -1144,11 +1159,14 @@ class _BoardTreeState extends State<BoardTree> {
       list.sort((a, b) => _byPlace(boards[a], boards[b]));
     }
 
-    int rank(int i) => switch (boards[i]['kind']) {
-      'organization' || 'company' => 0,
-      'custom' => 1,
-      _ => 2,
-    };
+    // The company's working board first (server: company_board).
+    int rank(int i) => boards[i]['company_board'] == true
+        ? 0
+        : switch (boards[i]['kind']) {
+            'organization' || 'company' => 0,
+            'custom' => 1,
+            _ => 2,
+          };
     // The order the companies were arranged in (their folders' places), then
     // the ones with more boards, then A–Z.
     double placeOf(String c) =>
@@ -1190,17 +1208,22 @@ class _BoardTreeState extends State<BoardTree> {
           // boards are the company's own: "A1 - Operation"), and any named
           // for it under another folder (Everdoors under New Locations, drawn
           // as "New Locations").
+          // Its folders that begin here: the one named for it at the top is
+          // the company itself (its boards are the company's own); others
+          // are drawn as folders.
           final roots = [
             for (final f in _folders)
-              if (companyNamed(f['name']) == company &&
+              if (companyOfFolder(f['id']) == company &&
                   companyOfFolder(f['parent_id']) != company)
                 f,
           ]..sort(_byPlace);
+          bool itself(Map<String, dynamic> f) =>
+              f['parent_id'] == null && companyNamed(f['name']) == company;
           final own = <int>[
             for (final i in all)
               if (rank(i) < 2 && branchOf(i) == null) i,
             for (final f in roots)
-              if (f['parent_id'] == null)
+              if (itself(f))
                 for (final (i, b) in boards.indexed)
                   if (b['folder_id'] == f['id'] && i != personal) i,
           ];
@@ -1253,18 +1276,21 @@ class _BoardTreeState extends State<BoardTree> {
                 : branchRows,
           );
           for (final f in roots) {
-            final top = f['parent_id'] == null;
+            final top = itself(f);
+            final parent = f['parent_id'] == null ? null : '${f['parent_id']}';
             children.addAll(
               _folderRows(
                 context,
-                top ? '${f['id']}' : '${f['parent_id']}',
+                top ? '${f['id']}' : parent,
                 28,
                 (i, x, {note}) => board(i, indent: x, note: note),
                 (i) => matches(i, company),
                 keep: top ? null : (x) => x['id'] == f['id'],
-                label: top
-                    ? null
-                    : '${folderById['${f['parent_id']}']?['name'] ?? f['name']}',
+                // Named for the company under another folder (Everdoors
+                // under New Locations): drawn as that folder.
+                label: !top && companyNamed(f['name']) == company
+                    ? '${folderById[parent]?['name'] ?? f['name']}'
+                    : null,
               ),
             );
           }
