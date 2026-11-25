@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
+      'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
     ]),
     VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
