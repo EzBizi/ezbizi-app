@@ -2784,6 +2784,55 @@ class AutomationsController extends Controller
             : 'A place that no longer exists');
     }
 
+    /**
+     * The Task Board(s) a rule reads or writes, or null for a rule that has none:
+     * board_id conditions and a step's named board, else its place's board, else
+     * every board (a task step with no place lands on whichever place the event is in).
+     * ponytail: one query per task rule in the list; batch if lists grow large.
+     *
+     * @return array{boards: list<string>, every: bool, label: string}|null
+     */
+    public static function taskBoardsOf(Automation $automation): ?array
+    {
+        $actions = $automation->activeVersion?->actions ?? [];
+        $types = array_map(fn ($s) => (string) ($s['type'] ?? ''), $actions);
+        if (! str_starts_with((string) $automation->trigger_key, 'task.') && ! array_filter($types, fn ($t) => str_starts_with($t, 'task.'))) {
+            return null;
+        }
+
+        $ids = [];
+        $walk = function ($node) use (&$walk, &$ids) {
+            if (! is_array($node)) {
+                return;
+            }
+            if (($node['field'] ?? null) === 'board_id') {
+                array_push($ids, ...array_map('strval', (array) ($node['value'] ?? [])));
+            }
+            foreach ($node as $child) {
+                $walk($child);
+            }
+        };
+        $walk($automation->activeVersion?->conditions ?? []);
+        foreach ($actions as $step) {
+            if (is_string($step['board'] ?? null) && $step['board'] !== '') {
+                $ids[] = $step['board'];
+            }
+        }
+
+        $boards = \App\Models\TaskBoard::query()->whereKey(array_unique($ids))->orderBy('name')->pluck('name')->all();
+        if ($boards === [] && in_array($automation->scope_type, ['company', 'franchise'], true)) {
+            $boards = \App\Models\TaskBoard::query()->where($automation->scope_type.'_id', $automation->scope_id)
+                ->where('kind', $automation->scope_type)->pluck('name')->all();
+        }
+        $every = $boards === [];
+
+        return ['boards' => $boards, 'every' => $every, 'label' => 'Task Board · '.match (true) {
+            $every => 'every board',
+            count($boards) === 1 => $boards[0],
+            default => count($boards).' boards',
+        }];
+    }
+
     private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
@@ -2808,6 +2857,8 @@ class AutomationsController extends Controller
             'disabled_reason' => $automation->disabled_reason,
             // A rule a tab depends on (Jose, 2026-10-28): what stops working when it is off. Set by that module, never by the builder.
             'core_reason' => $automation->core_reason,
+            // Jose 11-25: a Task Board rule wears its own colour and names its board(s).
+            'task_board' => self::taskBoardsOf($automation),
             'runs_count' => $automation->runs_count ?? $automation->runs()->count(),
             'version' => $automation->activeVersion?->version,
             // A clock rule's WHEN. Missing from this payload, the builder opened
