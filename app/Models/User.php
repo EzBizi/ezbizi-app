@@ -42,6 +42,8 @@ use Laravel\Sanctum\HasApiTokens;
     'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
     // Records may switch the lock screen off for one person (design 2026-09-08 §4).
     'lock_screen_exempt',
+    // Full or part time, chosen by HR; null infers it from the schedule (2026-11-25).
+    'hours_type',
     // Who they answer to (Jose, 2026-11-03, the ownership chart).
     'reports_to_user_id',
 ])]
