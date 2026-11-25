@@ -64,7 +64,7 @@ final class LeaderboardController extends Controller
     {
         $limit = (int) ($request->validate(['limit' => ['nullable', 'integer', 'between:1,12']])['limit'] ?? 8);
         $since = LabelReportCalls::aiSince();
-        $key = implode(':', ['leaderboard', app(TenantContext::class)->idOrFail(), $request->user()->id, json_encode(ReportView::franchiseIds())]);
+        $key = implode(':', ['leaderboard', app(TenantContext::class)->idOrFail(), $request->user()->id, md5(json_encode(ReportView::franchiseIds()))]); // a company's branch list runs past the 255 of cache.key
 
         $weeks = [];
         for ($sunday = self::sunday(null)->subWeek(); count($weeks) < $limit && $sunday->addDays(5)->endOfDay() >= $since; $sunday = $sunday->subWeek()) {
