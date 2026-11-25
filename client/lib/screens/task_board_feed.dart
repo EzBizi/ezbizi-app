@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/formatted_notes.dart';
+
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/timestamps.dart';
@@ -255,8 +257,15 @@ class _UpdatesFeedPanelState extends State<UpdatesFeedPanel> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${u['body'] ?? ''}',
+                      Text.rich(
+                        TextSpan(
+                          children: () {
+                            final (t, m) = NotesMarkup.parse(
+                              '${u['body'] ?? ''}',
+                            );
+                            return NotesMarkup.spans(t, m);
+                          }(),
+                        ),
                         maxLines: 6,
                         overflow: TextOverflow.ellipsis,
                       ),

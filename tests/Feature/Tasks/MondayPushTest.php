@@ -184,6 +184,21 @@ class MondayPushTest extends TestCase
         $this->assertSame('800021103', json_decode($values['vars']['v'], true)['text_new']);
     }
 
+    /** Jose 11-25: a note's bold, italic and underline stay in the app; Monday gets the words. */
+    public function test_a_formatted_note_reaches_monday_as_plain_text(): void
+    {
+        $this->extraColumns['100'][] = ['id' => 'long_text_n', 'title' => 'Notes', 'type' => 'long_text', 'settings_str' => '{}'];
+        $this->inTenant($this->tenant['org'], function () {
+            $col = TaskColumn::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Notes', 'type' => 'long_text', 'position' => 20]);
+            app(TaskWriter::class)->update($this->task, ['values' => [$col->id => '<b>Call</b> the <i>owner</i> <u>first</u>']], $this->jose);
+            $this->assertSame('Call the owner first', \App\Support\Tasks\ColumnConverter::words($col, \App\Models\TaskColumnValue::query()->where('column_id', $col->id)->sole()));
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $values = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'change_multiple_column_values'));
+        $this->assertSame(['text' => 'Call the owner first'], json_decode($values['vars']['v'], true)['long_text_n']);
+    }
+
     /** Desk 11-19: a text column is made on Monday once, however many tasks need it in one run. */
     public function test_a_text_column_is_made_once_for_many_tasks(): void
     {
