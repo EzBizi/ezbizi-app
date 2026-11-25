@@ -18,6 +18,8 @@ class VersionHistory {
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
       'Phones turned on their side: with the keyboard up, pages no longer break and the box you type in stays in view',
       'Task Board: Job Status on Project Management boards follows Monday again, and new tasks send their client, phone, address and job number to Monday',
+      'Task Board: boards are grouped by company (A-1 Chimney, EzBizi, Everdoors, Triplex), each holding its company board and franchise boards, with folders laid out as on Monday',
+      'Task Board: "A1 - Operatrion" is now "A1 - Operation" and "Washingtom" is now "Washington", here and on Monday',
     ]),
     VersionRelease(version: '0.0.0643', date: '25 Nov 2026', deployed: '2026-11-25 15:21',
       items: [
