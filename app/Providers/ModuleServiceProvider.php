@@ -884,7 +884,10 @@ class ModuleServiceProvider extends ServiceProvider
                 // off. Every role was given it by the migration of that day.
                 // `payroll` (Merav via Jose, 2026-11-19): see pay, set bonus and
                 // deductions, approve a week. Money, so its own grant.
-                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll'],
+                // `own_schedule` (Jose, 2026-11-25: "Disable people changing their own
+                // Work Schedule for all roles except Administrator"): Administrator
+                // holds it by holding every permission; nobody else is given it.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll', 'own_schedule'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
@@ -898,6 +901,7 @@ class ModuleServiceProvider extends ServiceProvider
                     'pto.edit' => 'Edit used paid time off',
                     'approve' => 'Approve daily hours',
                     'payroll' => 'Weekly payroll: pay, bonus, deductions, approve',
+                    'own_schedule' => 'Change your own work schedule',
                     'pto.request' => 'Ask for paid time off',
                 ],
                 tabs: [
