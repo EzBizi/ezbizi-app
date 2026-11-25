@@ -13,7 +13,8 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0641', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0641', date: '25 Nov 2026', deployed: '2026-11-25 04:41',
+      items: [
       'Phones: dragging a page puts the keyboard away, so number fields (Year, amounts) and notes no longer leave it stuck on screen',
     ]),
     VersionRelease(version: '0.0.0640', date: '25 Nov 2026', deployed: '2026-11-25 01:51',
