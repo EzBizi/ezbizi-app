@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main_ezchat.dart';
 import 'package:ezbizi_client/screens/login_screen.dart';
+import 'package:ezbizi_client/widgets/error_note.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -24,6 +25,12 @@ void main() {
         if (p.endsWith('/me')) {
           return _json({
             'data': {..._me, 'permissions': const <String>[]},
+          });
+        }
+        if (p.endsWith('/auth/forgot')) {
+          return _json({
+            'message':
+                'If that address has an account, a reset link is on its way.',
           });
         }
         if (p.endsWith('/chat/chats')) return _json({'data': <Object>[]});
@@ -61,6 +68,24 @@ void main() {
     await pump(tester);
     final mark = tester.widget<RichText>(find.byKey(EzBiziTheme.wordmarkKey));
     expect(mark.text.toPlainText(), 'EzChat');
+  });
+
+  /// The Android pass of EzChat (2026-11-25): "a reset link is on its way"
+  /// showed in the red error box. It is good news and reads as a note.
+  testWidgets('a sent reset link is a note, not an error', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'bar@example.com');
+    await tester.tap(find.text('Send link'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('login-notice')), findsOneWidget);
+    expect(find.textContaining('reset link is on its way'), findsOneWidget);
+    expect(find.byType(ErrorNote), findsNothing);
   });
 }
 

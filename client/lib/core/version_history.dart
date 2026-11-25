@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0648', date: '25 Nov 2026', items: [
+      'Sign in: "Forgot password" now confirms the reset link in a normal note instead of a red error, and closing that panel no longer blanks the screen',
       'Task Board board list: Triplex Group and each company show their own colour, folders always look like folders, and dragging shows a line where the board will land (a highlight only when dropping into a folder)',
       'Work Hours: you always find yourself in the people list and search, whichever company or branch is picked',
       'Task Board: the board list shows every board you can reach by your own permissions, whatever the Company and Branch picker is set to',

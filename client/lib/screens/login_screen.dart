@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -71,6 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _busy = false;
   String? _error;
 
+  /// Good news, drawn as news rather than as a failure: "a reset link is on
+  /// its way" sat in the red error box (Android pass of EzChat, 2026-11-25).
+  String? _notice;
+
   /// Shown only after the server says this account needs it — which it only
   /// does for accounts linked to a staff record (§4.2, revised). Ordinary
   /// customers never see this field.
@@ -108,6 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _notice = null;
     });
 
     final response = await widget.api.post('/auth/login', {
@@ -365,6 +372,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               ErrorNote(_error!),
             ],
+            if (_notice != null) ...[
+              const SizedBox(height: 16),
+              _Notice(_notice!),
+            ],
 
             const SizedBox(height: 24),
             FilledButton(
@@ -550,7 +561,12 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
 
-    email.dispose();
+    // After the panel has slid out (220 ms), not now: its TextField is still
+    // drawn on the way out, and a disposed controller there throws.
+    // ponytail: a fixed wait; a panel-owned controller if this grows.
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 500), email.dispose),
+    );
 
     if (asked == null || asked.isEmpty || !mounted) return;
 
@@ -558,8 +574,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    // Shown whatever came back, for the same reason.
-    setState(() => _error = response.message);
+    // Shown whatever came back, for the same reason; as a note when it worked.
+    setState(() {
+      _error = response.ok ? null : response.message;
+      _notice = response.ok ? response.message : null;
+    });
   }
 
   /// Shown only when the password matched accounts in several organizations.
@@ -613,6 +632,46 @@ class _LoginScreenState extends State<LoginScreen> {
           child: const Text('Back'),
         ),
       ],
+    );
+  }
+}
+
+/// A neutral note: something worked and the person should know what happens next.
+class _Notice extends StatelessWidget {
+  const _Notice(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('login-notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.mark_email_read_outlined,
+            size: 18,
+            color: scheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSecondaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

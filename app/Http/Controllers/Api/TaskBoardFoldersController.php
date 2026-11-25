@@ -28,7 +28,7 @@ class TaskBoardFoldersController extends Controller
     public function index(Request $request): JsonResponse
     {
         $folders = TaskBoardFolder::query()->orderBy('position')->orderBy('name')
-            ->get(['id', 'parent_id', 'name', 'colour', 'position']);
+            ->get(['id', 'parent_id', 'owner_user_id', 'name', 'colour', 'position']);
         if (! $request->user()->hasPermission('tasks.create_boards')) {
             $parent = $folders->pluck('parent_id', 'id');
             $keep = [];
@@ -42,7 +42,21 @@ class TaskBoardFoldersController extends Controller
 
         $company = app(TaskBoards::class)->companyMap()['folders'];
 
-        return response()->json(['data' => $folders->map(fn (TaskBoardFolder $f) => $f->toArray() + ['company_id' => $company[(string) $f->id] ?? null])->values()]);
+        $owners = \App\Models\User::query()->whereKey($folders->pluck('owner_user_id')->filter())->pluck('name', 'id');
+        $ownerOf = function (TaskBoardFolder $f) use ($folders, $owners) {
+            // A sub-folder is in its root's space.
+            for ($at = $f, $hops = 0; $at !== null && $hops < 20; $at = $folders->firstWhere('id', $at->parent_id), $hops++) {
+                if ($at->owner_user_id !== null) {
+                    return ['id' => (string) $at->owner_user_id, 'name' => (string) ($owners[$at->owner_user_id] ?? '')];
+                }
+            }
+
+            return null;
+        };
+
+        // Row 68: 'owner' = whose own Monday workspace the folder is (null: a shared folder).
+        return response()->json(['data' => $folders->map(fn (TaskBoardFolder $f) => collect($f->toArray())->except('owner_user_id')->all()
+            + ['company_id' => $company[(string) $f->id] ?? null, 'owner' => $ownerOf($f)])->values()]);
     }
 
     public function store(Request $request): JsonResponse
