@@ -396,6 +396,20 @@ void main() {
     expect(queries.last.containsKey('role_id'), isFalse);
   });
 
+  // Android on its side, 11-25: the search, chips and both filters stood
+  // fixed above the list and left it -2 px. They scroll with it now.
+  testWidgets('a short window scrolls the records filters with the list', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(923, 300));
+    await _tap(tester, _tab('Records'));
+    expect(tester.takeException(), isNull);
+    // Scrolled up, the filters go and the list is on screen.
+    await tester.drag(find.text('No contract'), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tour-hr-records-list')), findsOneWidget);
+  });
+
   // Jose, 2026-10-01: "see if you can improve records as well, by adding
   // division by company too aside from role". On the server, like the role.
   testWidgets('the records list filters by company or franchise on the '
