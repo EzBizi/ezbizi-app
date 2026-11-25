@@ -18,7 +18,7 @@ class VersionHistory {
       'Phones: screens hold together with large text sizes',
       'Desktop: the sidebar scrolls instead of spilling over in a short window',
     ]),
-    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
+    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', deployed: '2026-11-24 23:36', items: [
       'Financials › Bank: deposits are matched to recorded payments and open invoices, with a Money in, not matched filter; the dashboard shows cash in bank and owed on cards',
       'Phones: Inventory › Orders › Add purchase order opens properly',
       "Roles & permissions: every tab says in plain words what else it needs, with search, select all per module and a What this role sees preview; 15 tabs that hid or refused despite being ticked now work",
