@@ -741,8 +741,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * notification said "local_services"; "Local Services").
      */
     /**
-     * Two spellings of one place (Jose, 2026-11-16: "1734 Hallman Dr, Blue
-     * Bell, PA 19422, USA" was offered "1734 Hallman Dr, Blue bell PA 19422"
+     * Two spellings of one place (Jose, 2026-11-16: "1734 Sampleton Dr, Blue
+     * Bell, PA 19422, USA" was offered "1734 Sampleton Dr, Blue bell PA 19422"
      * as a different address). Case, punctuation, spacing, a trailing country
      * and Dr/Drive-style words are ignored, and a ZIP is its first five
      * digits. Any other word more or less is a different address: a held one
@@ -780,7 +780,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return array_values(array_unique($out));
     }
 
-    /** "Mark" from "Mark Morrow"; null for a phone number or an initial. */
+    /** "Mark" from "Mark Mercer"; null for a phone number or an initial. */
     public static function firstNameOf(?string $name): ?string
     {
         $word = preg_replace("/[^A-Za-z'’-]/u", '', explode(' ', trim((string) $name))[0]);
@@ -955,7 +955,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return LeadNotificationText::headline((string) $this->source, $this->lead_type);
     }
 
-    /** "(319) 210-2005 - 1:10 min - A1 Chimney - Toms River"; the duration is the first call's. */
+    /** "(319) 555-0100 - 1:10 min - A1 Chimney - Toms River"; the duration is the first call's. */
     public function getLeadDetailsAttribute(): string
     {
         $firstCall = $this->conversations()
@@ -1108,9 +1108,9 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     /**
      * A number as every source should store it: a US number in E.164
-     * (+18606708648), the form Google sends and the one the screen formats.
-     * Thumbtack and the website forms sent "8606708648" and the lead showed
-     * it raw beside Google's "+1 (617) 504-3242" (Jose, 2026-10-01: "we need
+     * (+18605550101), the form Google sends and the one the screen formats.
+     * Thumbtack and the website forms sent "8605550101" and the lead showed
+     * it raw beside Google's "+1 (617) 555-0101" (Jose, 2026-10-01: "we need
      * cohesiveness"). Anything that is not certainly a US number is kept as
      * given rather than guessed into somebody else's.
      */

@@ -1,0 +1,37 @@
+# Phone numbers (10 digits, no +1) that may appear in docs/ and test fixtures.
+# Read by scripts/hooks/pre-commit; mirror every change in .gitleaks.toml.
+# Only business lines and product constants belong here, never a person's number.
+#
+# EzBizi / A-1 Chimney / Everdoors business lines (Twilio, WhatsApp WABAs, websites)
+2072742444
+2166662282
+2394560829
+2397470324
+3253124023
+4694988349
+4752152046
+5612323929
+5615767239
+7542953986
+7722526270
+7864086862
+8564468303
+9544538774
+9545162455
+9737820956
+# Customer::PLACEHOLDER_PHONES (app/Models/Customer.php): numbers dispatchers
+# typed for "no phone"; the product filters them, tests assert on them.
+8187482055
+9547109003
+9527777291
+2109636961
+8777711892
+6266244006
+2168590559
+4636764568
+6099035648
+8886219148
+3236761570
+2723942201
+# Not a US number: the tail of a London number in a formatter test.
+4207183875

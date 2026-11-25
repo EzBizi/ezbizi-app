@@ -34,7 +34,7 @@ class SchedulingLocationsTest extends TestCase
         return $this->inTenant($tenant['org'], function () use ($tenant, $area) {
 
             $row = fn (string $name, string $zip, float $lat, float $lng, ?string $street = null) => [
-                'company_id' => $tenant['company']->id, 'name' => $name, 'phone' => '(469) 454-0303',
+                'company_id' => $tenant['company']->id, 'name' => $name, 'phone' => '(469) 555-0100',
                 'address_line1' => $street ?? "1 {$name} St", 'city' => $name, 'state' => 'TX',
                 'postal_code' => $zip, 'latitude' => $lat, 'longitude' => $lng,
             ];
@@ -80,7 +80,7 @@ class SchedulingLocationsTest extends TestCase
             // Same place as the Dallas website row, spelled out ("Court" for "Ct"), with Google's current phone.
             $listing(['address_line1' => '11836 Judd Court #330', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75243', 'phone' => '(469) 000-1111']);
             // A service-area listing (no public address) whose phone is the Houston row's: Houston stays as the website has it.
-            $listing(['phone' => '(469) 454-0303']);
+            $listing(['phone' => '(469) 555-0100']);
         });
 
         $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->keyBy('name');
@@ -104,9 +104,9 @@ class SchedulingLocationsTest extends TestCase
             $gbp->save();
             \App\Models\BusinessLocation::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
                 'connection_id' => $gbp->id, 'remote_name' => 'locations/mi', 'title' => 'A1 Chimney', 'verification_state' => 'VERIFIED',
-                'phone' => '(313) 284-1124', 'service_places' => ['Warren, MI, USA', 'Detroit, MI, USA']]);
+                'phone' => '(313) 555-0100', 'service_places' => ['Warren, MI, USA', 'Detroit, MI, USA']]);
             // The Houston branch entered again on another site with no address.
-            WebLocation::create(['company_id' => $tenant['company']->id, 'name' => 'Houston', 'phone' => '(469) 454-0303']);
+            WebLocation::create(['company_id' => $tenant['company']->id, 'name' => 'Houston', 'phone' => '(469) 555-0100']);
         });
 
         $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->keyBy('name');

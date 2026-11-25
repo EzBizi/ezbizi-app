@@ -153,7 +153,7 @@ class MatchLeadsToJobsTest extends TestCase
     {
         $job = $this->job('600030001');
         $this->inTenant($this->t['org'], function () use ($job) {
-            foreach ([['11:25:12', 'Chynna', '2158472619', $job->id], ['09:02:00', 'Logan', '2149068445', null]] as [$wall, $first, $phone, $jobId]) {
+            foreach ([['11:25:12', 'Chynna', '2155550100', $job->id], ['09:02:00', 'Logan', '2149068445', null]] as [$wall, $first, $phone, $jobId]) {
                 WorkizJob::create([
                     'franchise_id' => $this->t['franchise']->id, 'remote_id' => strtoupper(bin2hex(random_bytes(4))),
                     'job_id' => $jobId, 'job_source' => 'Reserve with Google', 'postal_code' => '08108',
@@ -173,7 +173,7 @@ class MatchLeadsToJobsTest extends TestCase
 
         $booking = $this->inTenant($this->t['org'], fn () => $booking->refresh());
         $this->assertSame('Chynna Doe', $booking->contact_name);
-        $this->assertSame('+12158472619', $booking->phone);
+        $this->assertSame('+12155550100', $booking->phone);
         $this->assertSame('08108', $booking->postal_code);
         $this->assertSame($job->id, $booking->job_id);
         $this->assertSame(Lead::STATUS_COMPLETED, $booking->status);
@@ -193,7 +193,7 @@ class MatchLeadsToJobsTest extends TestCase
             'notifications@mg.workiz.com', [], Carbon::parse($at), $snippet);
         $reader = \Mockery::mock(MailboxReader::class);
         $reader->shouldReceive('search')->andReturn(new MessagePage([
-            $mail('2026-09-28 15:25:14', 'You got a new service request From: Mary Ciccolini Phone: (330) 606-3475 Email: meciccolini@hotmail.com Address: 2585 royalwood rd copley, Ohio 44203 When: Tue Oct 20 2026 11:00 AM Description: Has not'),
+            $mail('2026-09-28 15:25:14', 'You got a new service request From: Mary Coldbrook Phone: (330) 555-0101 Email: msample@hotmail.com Address: 2585 samplewood rd copley, Ohio 44203 When: Tue Oct 20 2026 11:00 AM Description: Has not'),
             $mail('2026-09-28 16:00:00', 'You got a new service request From: Somebody Else Phone: (330) 111-2222'),
         ]));
         $this->app->instance(MailboxReaders::class, new class($reader) extends MailboxReaders
@@ -215,9 +215,9 @@ class MatchLeadsToJobsTest extends TestCase
         $this->artisan('ezbizi:match-leads-to-jobs')->assertSuccessful();
 
         $booking = $this->inTenant($this->t['org'], fn () => $booking->refresh());
-        $this->assertSame('Mary Ciccolini', $booking->contact_name);
-        $this->assertSame('+13306063475', $booking->phone);
-        $this->assertSame('meciccolini@hotmail.com', $booking->email);
+        $this->assertSame('Mary Coldbrook', $booking->contact_name);
+        $this->assertSame('+13305550101', $booking->phone);
+        $this->assertSame('msample@hotmail.com', $booking->email);
         $this->assertSame('44203', $booking->postal_code);
         $this->assertNull($booking->job_id, 'an email is not a job');
         $this->assertSame(Lead::STATUS_NEW, $booking->status);
@@ -226,8 +226,8 @@ class MatchLeadsToJobsTest extends TestCase
     public function test_a_booking_email_with_a_cut_off_address_still_gives_the_name_and_phone(): void
     {
         $this->assertSame(
-            ['name' => 'John Lorenz', 'phone' => '+13304171393', 'email' => 'jflorenz2@gmail.com', 'zip' => null],
-            MatchLeadsToJobs::bookingEmail('You got a new service request From: John Lorenz Phone: (330) 417-1393 Email: jflorenz2@gmail.com Address: 7003 Strausser St Nw North Can'),
+            ['name' => 'John Larkin', 'phone' => '+13305550100', 'email' => 'jsample2@gmail.com', 'zip' => null],
+            MatchLeadsToJobs::bookingEmail('You got a new service request From: John Larkin Phone: (330) 555-0100 Email: jsample2@gmail.com Address: 7003 Sampleton St Nw North Can'),
         );
     }
 }

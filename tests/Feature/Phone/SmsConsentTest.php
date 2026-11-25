@@ -23,7 +23,7 @@ class SmsConsentTest extends TestCase
         $twilio = new FakeTwilioGateway;
         $this->app->instance(TwilioGateway::class, $twilio);
         $t = $this->provisionTenant();
-        $to = '+13057242199';
+        $to = '+13055550107';
 
         $this->inTenant($t['org'], function () use ($t, $twilio, $to) {
             $connection = PhoneConnection::factory()->create([
@@ -55,8 +55,8 @@ class SmsConsentTest extends TestCase
             $this->assertCount(2, $bodies());
 
             // Automated texts carry it every time.
-            $texts->send($number, '+13057242198', 'Hi', automated: true);
-            $texts->send($number, '+13057242198', 'Hi again', automated: true);
+            $texts->send($number, '+13055550106', 'Hi', automated: true);
+            $texts->send($number, '+13055550106', 'Hi again', automated: true);
             $this->assertSame(["Hi\n\n".SmsConsent::FOOTER, "Hi again\n\n".SmsConsent::FOOTER], array_slice($bodies(), 2));
 
             SmsConsent::absorb($t['org']->id, $to, 'START');
@@ -70,7 +70,7 @@ class SmsConsentTest extends TestCase
         $twilio = new FakeTwilioGateway;
         $this->app->instance(TwilioGateway::class, $twilio);
         $t = $this->provisionTenant();
-        $to = '+13057242199';
+        $to = '+13055550107';
 
         $this->inTenant($t['org'], function () use ($t, $twilio, $to) {
             $connection = PhoneConnection::factory()->create([

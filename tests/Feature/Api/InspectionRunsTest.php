@@ -54,14 +54,14 @@ class InspectionRunsTest extends TestCase
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             \App\Models\Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-1',
-                'name' => 'Rosa Diaz', 'phone' => '+13057242199', 'address_line1' => '14 Maple St',
+                'name' => 'Rosa Diaz', 'phone' => '+13055550107', 'address_line1' => '14 Maple St',
                 'city' => 'Miami', 'state' => 'FL', 'postal_code' => '33180']);
             \App\Models\Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-2',
                 'name' => 'Other Person', 'phone' => '+12125550000']);
         });
 
         $data = $this->signedInAs($tech)
-            ->getJson('/api/v1/inspections/search?q='.urlencode('(305) 724-2199'))
+            ->getJson('/api/v1/inspections/search?q='.urlencode('(305) 555-0107'))
             ->assertOk()
             ->json('data');
 

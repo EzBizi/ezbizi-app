@@ -35,7 +35,7 @@ this is the customer-facing summary, with the two caveats at the end.
   tabs; Thumbtack connectable, ingestion not built); **Web Management moved
   under Marketing**; organization-level rows visible below organization
   level; Reviews/Business profile sync errors say so; >100 locations fetched;
-  phone numbers display as +1 (305) 724-2199 everywhere.
+  phone numbers display as +1 (305) 555-0107 everywhere.
 - **0.0.0148** — Human Resources: an administrator can reset a colleague's
   authenticator and hand out a password reset link (permission
   `security.reset`); stored phone numbers normalised.

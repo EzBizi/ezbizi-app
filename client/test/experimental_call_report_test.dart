@@ -337,7 +337,7 @@ void main() {
       'direction': 'Outbound',
       'outcome': 'connected',
       'started_at': '2026-09-16T18:00:00Z',
-      'from': '+19524572594',
+      'from': '+19525550100',
       'placed_by': 'Ada',
       'answered_by': null,
       'recording_id': 'rec-9',
@@ -358,7 +358,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('calls-search')),
-      '952-457-2594',
+      '952-555-0100',
     );
     await tester.pumpAndSettle();
 

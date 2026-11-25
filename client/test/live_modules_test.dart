@@ -203,7 +203,7 @@ void main() {
   testWidgets('Scheduling: the open day shows a job booked elsewhere', (
     tester,
   ) async {
-    var who = 'Tonya Yates';
+    var who = 'Tonya Yarde';
     final s = await _pump(
       tester,
       size: const Size(1400, 1000),
@@ -214,7 +214,7 @@ void main() {
       home: (api, session) =>
           SchedulePane(api: api, session: session, visible: true),
     );
-    expect(find.textContaining('Tonya Yates'), findsWidgets);
+    expect(find.textContaining('Tonya Yarde'), findsWidgets);
     who = 'Booked by the website';
     s.feed = [
       {'type': 'jobs', 'id': 'J2', 'deleted': false},
@@ -952,7 +952,7 @@ Map<String, dynamic> _reschedule(String customer) => {
       'name': customer,
       'phone': '555-0142',
       'email': null,
-      'address': '1180 Larkspur Ln',
+      'address': '1180 Samplespur Ln',
     },
     'date': '2026-10-14',
     'latitude': 41.9,
@@ -1021,7 +1021,7 @@ Map<String, dynamic> _board(String unassigned) => {
       'status': 'Submitted',
       'time': '08:00',
       'window': 0,
-      'address': '18521 Nadol Dr',
+      'address': '18521 Sampleton Dr',
       'city': 'Southfield',
     },
   ],

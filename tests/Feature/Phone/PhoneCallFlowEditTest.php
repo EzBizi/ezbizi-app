@@ -185,7 +185,7 @@ class PhoneCallFlowEditTest extends TestCase
         $this->inTenant($t['org'], fn () => $number->forceFill(['twilio_sid' => 'PNformatformatformatformatformatf'])->save());
 
         $this->assertSame(
-            'A call arrives on +1 (305) 724-9401',
+            'A call arrives on +1 (305) 555-0113',
             $this->describe($t, $number)['arrival']['title'],
         );
     }
@@ -246,7 +246,7 @@ class PhoneCallFlowEditTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249401',
+                'e164' => '+13055550113',
                 'flow_id' => $flow?->id,
                 'ring_group_id' => $group?->id,
             ]);

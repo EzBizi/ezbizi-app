@@ -63,13 +63,13 @@ class ClientIssuesTest extends TestCase
     {
         $this->report([[
             'kind' => 'api_failure',
-            'message' => 'GET /customers?search=jane failed for jane.doe@example.com, call +1 (571) 549-9969, '
+            'message' => 'GET /customers?search=jane failed for jane.doe@example.com, call +1 (571) 555-0101, '
                 .'Authorization: Bearer 1|abcdEFGHijklMNOPqrstUVWXyz0123456789abcd',
         ]])->assertNoContent();
 
         $message = ClientIssue::query()->sole()->message;
         $this->assertStringNotContainsString('jane.doe@example.com', $message);
-        $this->assertStringNotContainsString('549-9969', $message);
+        $this->assertStringNotContainsString('555-0101', $message);
         $this->assertStringNotContainsString('search=jane', $message);
         $this->assertStringNotContainsString('abcdEFGHijkl', $message);
         $this->assertStringContainsString('GET /customers', $message, 'What failed where is kept.');

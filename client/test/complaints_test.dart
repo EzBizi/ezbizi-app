@@ -253,7 +253,7 @@ void main() {
   ) async {
     await _pump(tester);
 
-    expect(find.text(formatPhoneNumber('+14145340603')), findsWidgets);
+    expect(find.text(formatPhoneNumber('+14145550101')), findsWidgets);
     expect(
       find.text('Removed at the source'),
       findsOneWidget,
@@ -571,7 +571,7 @@ final _rows = <Map<String, dynamic>>[
     // A caller who gave no name and left no summary: still there (desk, 2026-10-20).
     'title': null,
     'summary': null,
-    'phone': '+14145340603',
+    'phone': '+14145550101',
     'source_missing': false,
     'rating': null,
     'branch': null,

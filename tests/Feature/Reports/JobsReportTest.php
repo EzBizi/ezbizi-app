@@ -94,7 +94,7 @@ class JobsReportTest extends TestCase
             $job = fn (string $ref, string $status, float $total, array $tags) => WorkizJob::query()->create([
                 'franchise_id' => $f->id, 'remote_id' => $ref, 'serial_id' => '5000'.substr($ref, -2), 'job_source' => 'PPC', 'service_area' => 'NJ',
                 'status' => $status, 'booked_at' => '2026-11-08 12:41:41', 'job_type' => 'Chimney Inspection', 'created_by' => 'Lucas Snyder',
-                'payload' => ['FirstName' => 'Tim', 'LastName' => 'Menture', 'Phone' => '2017573112', 'ClientId' => 14352, 'JobTotalPrice' => $total, 'Tags' => $tags],
+                'payload' => ['FirstName' => 'Tim', 'LastName' => 'Mallory', 'Phone' => '2015550101', 'ClientId' => 14352, 'JobTotalPrice' => $total, 'Tags' => $tags],
                 'synced_at' => now(),
             ]);
             $job('J10', 'Done', 99, []);

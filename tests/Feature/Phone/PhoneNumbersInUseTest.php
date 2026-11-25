@@ -38,8 +38,8 @@ class PhoneNumbersInUseTest extends TestCase
                 'scope_id' => $t['org']->id,
                 'e164' => $e164,
             ]);
-            $busy = $make('+13057249501');
-            $quiet = $make('+13057249502');
+            $busy = $make('+13055550115');
+            $quiet = $make('+13055550116');
 
             foreach ([$busy, $quiet] as $n) {
                 PhoneNumberGrant::create(['organization_id' => $t['org']->id, 'number_id' => $n->id, 'role_id' => $reader->role_id]);

@@ -52,16 +52,16 @@ class PhoneNumberNormalisationTest extends TestCase
 
     public function test_bare_ten_digits_become_e164(): void
     {
-        $id = $this->customerWith('3057242199');
+        $id = $this->customerWith('3055550107');
         $this->normalise();
-        $this->assertSame('+13057242199', $this->phoneOf($id));
+        $this->assertSame('+13055550107', $this->phoneOf($id));
     }
 
     public function test_eleven_digits_with_a_country_code_land_the_same(): void
     {
-        $id = $this->customerWith('1 305 724 2199');
+        $id = $this->customerWith('1 305 555 0107');
         $this->normalise();
-        $this->assertSame('+13057242199', $this->phoneOf($id));
+        $this->assertSame('+13055550107', $this->phoneOf($id));
     }
 
     public function test_a_row_already_stored_correctly_is_untouched(): void
@@ -101,9 +101,9 @@ class PhoneNumberNormalisationTest extends TestCase
 
     public function test_an_impossible_area_code_is_left_alone(): void
     {
-        $id = $this->customerWith('105-724-2199');
+        $id = $this->customerWith('105-555-0107');
         $this->normalise();
-        $this->assertSame('105-724-2199', $this->phoneOf($id));
+        $this->assertSame('105-555-0107', $this->phoneOf($id));
     }
 
     public function test_running_it_twice_changes_nothing_the_second_time(): void

@@ -75,14 +75,14 @@ class ReplyOverdueTest extends TestCase
         $byPhone = $this->lead('p', 'MESSAGE', '2026-09-28T14:45:00Z');
         $nothing = $this->lead('n', 'MESSAGE', '2026-09-28T14:45:00Z');
         $this->inTenant($this->t['org'], function () use ($byPhone, $nothing) {
-            $byPhone->forceFill(['contact_name' => null, 'phone' => '+13192102005'])->save();
+            $byPhone->forceFill(['contact_name' => null, 'phone' => '+13195550100'])->save();
             $nothing->forceFill(['contact_name' => null, 'phone' => null])->save();
         });
 
         $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
 
         $names = collect($this->raised())->mapWithKeys(fn ($e) => [$e->subject_id => $e->payload['after']['contact_name']]);
-        $this->assertSame('(319) 210-2005', $names[$byPhone->id]);
+        $this->assertSame('(319) 555-0100', $names[$byPhone->id]);
         $this->assertSame('A customer', $names[$nothing->id]);
     }
 

@@ -115,7 +115,7 @@ class WhatsAppWebhookTest extends TestCase
 
         $json = json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => self::PHONE_ID],
-            'messages' => [['id' => 'wamid.FORGED', 'from' => '13057242199', 'type' => 'text',
+            'messages' => [['id' => 'wamid.FORGED', 'from' => '13055550107', 'type' => 'text',
                 'text' => ['body' => 'let me in']]],
         ]]]]]]);
 
@@ -158,7 +158,7 @@ class WhatsAppWebhookTest extends TestCase
             'metadata' => ['phone_number_id' => self::PHONE_ID],
             'messages' => [[
                 'id' => 'wamid.HBgLMTMwNTcyNDIxOTkVAgASGBQz',
-                'from' => '13057242199',
+                'from' => '13055550107',
                 'type' => 'text',
                 'text' => ['body' => 'Can you come out Thursday?'],
             ]],
@@ -175,7 +175,7 @@ class WhatsAppWebhookTest extends TestCase
             'the tenant comes from the phone number id we registered, never from the body',
         );
         $this->assertSame(WhatsAppMessage::DIRECTION_IN, $row->direction);
-        $this->assertSame('13057242199', $row->counterparty);
+        $this->assertSame('13055550107', $row->counterparty);
         $this->assertSame('Can you come out Thursday?', $row->body);
     }
 
@@ -187,7 +187,7 @@ class WhatsAppWebhookTest extends TestCase
 
         $json = json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => self::PHONE_ID],
-            'messages' => [['id' => 'wamid.SAME', 'from' => '13057242199', 'type' => 'text',
+            'messages' => [['id' => 'wamid.SAME', 'from' => '13055550107', 'type' => 'text',
                 'text' => ['body' => 'hello']]],
         ]]]]]]);
 
@@ -220,7 +220,7 @@ class WhatsAppWebhookTest extends TestCase
 
         $json = json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => '9999999999'],
-            'messages' => [['id' => 'wamid.X', 'from' => '13057242199', 'type' => 'text',
+            'messages' => [['id' => 'wamid.X', 'from' => '13055550107', 'type' => 'text',
                 'text' => ['body' => 'hi']]],
         ]]]]]]);
 
@@ -241,7 +241,7 @@ class WhatsAppWebhookTest extends TestCase
             'organization_id' => $t['org']->id,
             'phone_number_id' => self::PHONE_ID,
             'direction' => WhatsAppMessage::DIRECTION_OUT,
-            'counterparty' => '13057242199',
+            'counterparty' => '13055550107',
             'wamid' => 'wamid.OUT1',
             'status' => WhatsAppMessage::STATUS_SENT,
             'body' => 'Your technician is on the way.',
@@ -270,7 +270,7 @@ class WhatsAppWebhookTest extends TestCase
             'organization_id' => $t['org']->id,
             'phone_number_id' => self::PHONE_ID,
             'direction' => WhatsAppMessage::DIRECTION_OUT,
-            'counterparty' => '13057242199',
+            'counterparty' => '13055550107',
             'wamid' => 'wamid.OUTFREE',
             'status' => WhatsAppMessage::STATUS_SENT,
             'body' => 'Free text, sent after the window closed.',
@@ -325,7 +325,7 @@ class WhatsAppWebhookTest extends TestCase
             'organization_id' => $t['org']->id,
             'phone_number_id' => self::PHONE_ID,
             'direction' => WhatsAppMessage::DIRECTION_OUT,
-            'counterparty' => '17867762666',
+            'counterparty' => '17865550102',
             'wamid' => $wamid,
             'status' => WhatsAppMessage::STATUS_SENT,
         ]));
@@ -341,7 +341,7 @@ class WhatsAppWebhookTest extends TestCase
         /*
          * THE ORDER MEASURED ON PRODUCTION, 2026-09-24.
          *
-         * A real message to +1 786 776-2666 came to rest with `delivered_at`
+         * A real message to +1 786 555-0102 came to rest with `delivered_at`
          * set and `status` = `sent`. `delivered_at` is only written when a
          * `delivered` status is absorbed, so `delivered` arrived FIRST and a
          * late `sent` then overwrote it. Meta does not promise order.
@@ -455,7 +455,7 @@ class WhatsAppWebhookTest extends TestCase
             'metadata' => ['phone_number_id' => self::PHONE_ID],
             'messages' => [[
                 'id' => 'wamid.IMAGE1',
-                'from' => '13057242199',
+                'from' => '13055550107',
                 'type' => 'image',
                 'image' => ['id' => '1234567890', 'mime_type' => 'image/jpeg'],
             ]],

@@ -25,13 +25,13 @@ void main() {
     expect(find.text('EverDoors (all branches)'), findsNothing);
 
     await tester.tap(
-      find.byKey(const ValueKey('phone-line-place-+17813855201')),
+      find.byKey(const ValueKey('phone-line-place-+17815550100')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('scope-choice-company:co-2')));
     await tester.pumpAndSettle();
 
-    expect(_put.single, {'number': '+17813855201', 'place': 'company:co-2'});
+    expect(_put.single, {'number': '+17815550100', 'place': 'company:co-2'});
     expect(find.text('Saved.'), findsOneWidget);
   });
 
@@ -47,7 +47,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('phone-lines-search')),
-      '(781) 385',
+      '(781) 555',
     );
     await tester.pump();
     expect(find.text('ED - MA - GBP'), findsOneWidget);
@@ -81,7 +81,7 @@ Future<void> _pump(WidgetTester tester) async {
                 'name': 'RingCentral · Everdoors Connecticut (637)',
                 'numbers': [
                   {
-                    'number': '+17813855201',
+                    'number': '+17815550100',
                     'label': 'ED - MA - GBP',
                     'place': null,
                   },

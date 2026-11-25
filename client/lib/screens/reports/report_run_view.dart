@@ -126,8 +126,8 @@ class _ReportRunViewState extends State<ReportRunView> {
             ? run.rows
             : [
                 for (final row in run.rows)
-                  // The raw value too: a phone shown as +1 (732) 674-8312 is
-                  // still found by 732674.
+                  // The raw value too: a phone shown as +1 (732) 555-0105 is
+                  // still found by 732555.
                   if (run.columns.any(
                     (column) =>
                         '${row[column.key] ?? ''}'.toLowerCase().contains(

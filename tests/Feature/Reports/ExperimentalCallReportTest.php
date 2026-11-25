@@ -381,13 +381,13 @@ class ExperimentalCallReportTest extends TestCase
             ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
         );
 
-        $this->fakeCallLog([$call('c-open-job', '+12342014951'), $call('c-done-job', '+12125550000')]);
+        $this->fakeCallLog([$call('c-open-job', '+12345550100'), $call('c-done-job', '+12125550000')]);
 
         $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
         $day = $this->inTenant($this->provisionTenant('Reconcile')['org'], fn () => app(CallReconciliation::class)->forRange(
             $calls,
             [
-                ['created_at' => '2026-09-05 10:00:00', 'phone' => '2342014951', 'status' => 'Submitted', 'scheduled_for' => '2026-09-19 09:00:00'],
+                ['created_at' => '2026-09-05 10:00:00', 'phone' => '2345550100', 'status' => 'Submitted', 'scheduled_for' => '2026-09-19 09:00:00'],
                 ['created_at' => '2026-09-05 10:00:00', 'phone' => '2125550000', 'status' => 'Done'],
             ],
             '2026-09-14',
@@ -1097,7 +1097,7 @@ class ExperimentalCallReportTest extends TestCase
             'direction' => 'Inbound',
             'result' => $result,
             'startTime' => '2026-09-14T13:21:11.795Z',
-            'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
+            'from' => ['phoneNumber' => '+17575550100', 'name' => 'PARKER,NICOLE'],
             'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
 
             // Deliberately DIFFERENT from the leg's, so a test asserting the
