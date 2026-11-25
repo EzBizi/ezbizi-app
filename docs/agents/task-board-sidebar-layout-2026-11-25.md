@@ -74,7 +74,13 @@ Order:
       - Triplex Group: Yosef (CT, MA, RI, ME, NH)
 3. **ORGANIZATION** (shared by every company): Reviews & Complaints, Users, Job Roles, Sharper - Rise-OFFICE.
 4. **TEMPLATES**: New Location / New Brand / New Franchise Template.
-5. **EVERYONE'S BOARDS**: other people's personal boards (incl. Toula Elwell, Analytics Dashboard), collapsed.
+5. **EVERYONE'S BOARDS**: other people's personal boards (incl. Toula Elwell, Analytics Dashboard), collapsed. **One row per board, no per-person group headers.** Jose 11-25 on "Adnan Alvi · 1 board ▸ Adnan Alvi": "what is the point ... waste of space". A person gets a group only when they own 2+ boards.
+
+**Simplify everywhere (Jose 11-25):**
+- No wrapper row that repeats its only child.
+- No "· N boards" counts on single items.
+- A folder or company with one board can show that board directly.
+- The fewest rows that still say what is what.
 
 Gone:
 - the separate "FOLDERS" section: every folder lives inside its company
