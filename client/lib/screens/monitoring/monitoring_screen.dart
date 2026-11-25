@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/api_activity.dart';
 import '../../widgets/tab_bar_like.dart';
+import '../settings/activity_screen.dart';
 import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
 import 'files_tab.dart';
@@ -41,7 +43,17 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { general, map, pcSpecs, files, cameraMonitoring, desktopMonitoring, lighting }
+enum _SubTab {
+  general,
+  map,
+  pcSpecs,
+  files,
+  cameraMonitoring,
+  desktopMonitoring,
+  lighting,
+  activity,
+  apiActivity,
+}
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   /// Opens on General — the ownership chart — rather than PC Specs.
@@ -70,7 +82,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         (_SubTab.general, 'General', Icons.account_tree_outlined),
       if (can('monitoring.map.view'))
         (_SubTab.map, 'Map', Icons.map_outlined),
-      (_SubTab.pcSpecs, 'PC Specs', Icons.computer_outlined),
+      // Activity and API activity open this screen without monitoring.view
+      // (2026-11-25), so PC Specs is no longer reached by everybody here.
+      if (can('monitoring.view'))
+        (_SubTab.pcSpecs, 'PC Specs', Icons.computer_outlined),
       if (can('monitoring.files.view'))
         (_SubTab.files, 'Files', Icons.folder_open_outlined),
       if (can('monitoring.cameras.view'))
@@ -81,6 +96,11 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
           'Desktop Monitoring',
           Icons.screenshot_monitor_outlined,
         ),
+      // Moved from Settings (Jose, 2026-11-25).
+      if (can('monitoring.activity.view'))
+        (_SubTab.activity, 'Activity', Icons.history),
+      if (can('monitoring.api_activity.view'))
+        (_SubTab.apiActivity, 'API activity', Icons.manage_search_outlined),
       if (can('monitoring.lighting.manage'))
         (_SubTab.lighting, 'Lighting', Icons.light_mode_outlined),
     ];
@@ -99,6 +119,11 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   Widget build(BuildContext context) {
     final shown = _shownTabs;
+    if (shown.isEmpty) {
+      return const Center(
+        child: Text('Your role does not open any part of Monitoring.'),
+      );
+    }
     final active = _activeTab;
 
     return Column(
@@ -147,6 +172,17 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         return FilesTab(api: widget.api, session: widget.session);
       case _SubTab.lighting:
         return LightingTab(api: widget.api, session: widget.session);
+      case _SubTab.activity:
+        return ActivityScreen(api: widget.api, session: widget.session);
+      case _SubTab.apiActivity:
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: ApiActivity(
+            api: widget.api,
+            formats: widget.session.me!.display,
+            everyone: true,
+          ),
+        );
       case _SubTab.pcSpecs:
         return PcSpecsTab(api: widget.api, session: widget.session);
     }
