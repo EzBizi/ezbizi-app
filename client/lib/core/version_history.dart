@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
+      'Inspection and Customer Experience: Review QR sits in the middle of the page like New Inspection (at the top on phones, so the keyboard never covers it)',
       'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
       'Phones turned on their side: with the keyboard up, pages no longer break and the box you type in stays in view',
