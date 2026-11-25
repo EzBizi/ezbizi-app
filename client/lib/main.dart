@@ -205,6 +205,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
     return MaterialApp(
       title: 'EzBizi',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: dragClosesKeyboard,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
       // No cross-fade: every frame of the 200 ms lerp rebuilt each board
