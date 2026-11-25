@@ -190,6 +190,8 @@ class MondayParity extends Command
     private function valueDrift(MondayBoardReader $reader, TaskBoard $board, string $mondayId, bool $fix): int
     {
         $there = $reader->valuesByItem($mondayId);
+        // A person with no Monday account (most technicians) cannot be shown there: not drift (desk 11-25: 180 of 181).
+        $onMonday = array_flip(array_map(fn ($u) => mb_strtolower(trim((string) $u['name'])), $reader->users()));
         $norm = function (?string $s, string $type): string {
             $s = mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string) $s)));
             if (in_array($type, ['person', 'people', 'tags', 'dropdown'], true)) {
@@ -221,7 +223,11 @@ class MondayParity extends Command
                 if (! array_key_exists($title, $item)) {
                     continue;
                 }
-                $here = $norm(ColumnConverter::words($v->column, $v), $v->column->type);
+                $words = ColumnConverter::words($v->column, $v);
+                if (in_array($v->column->type, ['person', 'people'], true)) {
+                    $words = implode(', ', array_filter(array_map('trim', explode(',', (string) $words)), fn ($n) => isset($onMonday[mb_strtolower($n)])));
+                }
+                $here = $norm($words, $v->column->type);
                 if ($here !== '' && $here !== $norm($item[$title], $v->column->type)) {
                     $kinds[] = 'values:'.$v->column_id;
                 }

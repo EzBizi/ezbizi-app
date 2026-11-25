@@ -325,9 +325,16 @@ class MondaySyncTest extends TestCase
                 TaskColumnValue::query()->create(['organization_id' => $board->organization_id, 'task_id' => Task::query()->where('external_ref', 'monday:'.$ref)->value('id'), 'column_id' => $col->id, 'value_text' => $v]);
             }
 
+            // Desk 11-25: a technician with no Monday account cannot show there: not drift.
+            $tech = $this->userWithRole($this->tenant, 'Tech', ['tasks.view'], 'tech@ezbizi.test');
+            $techCol = TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Technician', 'type' => 'person', 'position' => 10]);
+            TaskColumnValue::query()->create(['organization_id' => $board->organization_id, 'task_id' => Task::query()->where('external_ref', 'monday:12')->value('id'), 'column_id' => $techCol->id, 'value_text' => $tech->id]);
+
             return [$col, Task::query()->where('external_ref', 'monday:12')->value('id')];
         });
         $board = $this->monday['boards']['100'];
+        $board['columns'][] = ['id' => 'person_t', 'title' => 'Technician', 'type' => 'people', 'settings_str' => '{}'];
+        $board['items'][1]['column_values'][] = ['id' => 'person_t', 'type' => 'people', 'text' => '', 'value' => null];
         $board['columns'][] = ['id' => 'text_c', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
         $board['items'][0]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => '', 'value' => null];             // empty there
         $board['items'][1]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => 'tom  garangelli', 'value' => null]; // same, as a person reads it
