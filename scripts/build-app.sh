@@ -196,10 +196,14 @@ build_locally() {
     #
     # It is not part of a release. Play still gets the .aab.
     android)
+      # --ezchat: same gradle project; EZBIZI_APP switches applicationId,
+      # label and icon (build.gradle.kts), -t picks the EzChat entrypoint.
+      local ez=()
+      if [ "${EZCHAT:-0}" -eq 1 ]; then export EZBIZI_APP=ezchat; ez=(-t lib/main_ezchat.dart --dart-define=EZBIZI_APP=ezchat); fi
       if [ "$ANDROID_APK" -eq 1 ]; then
-        (cd client && flutter build apk --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
+        (cd client && flutter build apk --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}" "${ez[@]}")
       else
-        (cd client && flutter build appbundle --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
+        (cd client && flutter build appbundle --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}" "${ez[@]}")
       fi ;;
     *)       (cd client && flutter build "$1" --release "${DEFINES[@]}") ;;
   esac
