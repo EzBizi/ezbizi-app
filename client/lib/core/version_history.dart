@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
+      'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
+    ]),
     VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
       'Automations: rules that change a Task Board have their own colour and a "Task Board" tag naming the board, and turning one on or off asks first and names the board it changes',
       'Phones and foldables: with the keyboard up on a wide screen (an unfolded fold, a tablet on its side) the reply box and lists stay above the keyboard',
