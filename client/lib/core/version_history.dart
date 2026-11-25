@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0642', date: '25 Nov 2026', items: [
+      'Missed calls: "text the caller" works when the number was saved with a + but without the 1 (a US number like +860 442 ...)',
+    ]),
     VersionRelease(version: '0.0.0641', date: '25 Nov 2026', deployed: '2026-11-25 04:41',
       items: [
       'Phones: dragging a page puts the keyboard away, so number fields (Year, amounts) and notes no longer leave it stuck on screen',

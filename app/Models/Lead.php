@@ -1122,7 +1122,11 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         }
 
         // Another country's number, written with its own code.
-        if (str_starts_with($raw, '+') && ! str_starts_with($raw, '+1')) {
+        // ...unless it is a bare 10-digit US number someone prefixed with '+'
+        // ("+8604421234"): area code and exchange both start 2-9.
+        $plusDigits = preg_replace('/\D+/', '', $raw) ?? '';
+        $usMissingOne = strlen($plusDigits) === 10 && preg_match('/^[2-9]\d\d[2-9]/', $plusDigits) === 1;
+        if (str_starts_with($raw, '+') && ! str_starts_with($raw, '+1') && ! $usMissingOne) {
             return $raw;
         }
 
