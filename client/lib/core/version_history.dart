@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Guidelines: notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); Copy still copies plain text',
       'New: Communication > Chat, our own WhatsApp between EzBizi accounts: direct and group chats, photos, files, voice notes, replies, reactions, read ticks, typing and online status, search, pin, mute and archive',
       'Task Board, Jobs and Leads: the unread updates count sits next to the chat icon (in red while unread), like the read ones, instead of on top of it',
       'Automations: Task Board rule cards are easier to read in light and dark, coloured tags across the app pick dark or light text for contrast, and rules copied from Monday explain in plain words why they are off',
