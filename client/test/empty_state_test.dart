@@ -104,4 +104,25 @@ void main() {
     expect(find.text('inner'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // Mobile review 11-24: a phone on its side is 923 wide but short, and the
+  // fixed header overflowed by 136 px. Short windows scroll the header too.
+  testWidgets('a wide but short window scrolls the header', (tester) async {
+    tester.view.physicalSize = const Size(923, 300);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HeaderAboveList(
+            header: const SizedBox(height: 400, child: Text('tall header')),
+            list: ListView(children: const [Text('row')]),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(NestedScrollView), findsOneWidget);
+  });
 }

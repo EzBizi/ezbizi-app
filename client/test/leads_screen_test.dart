@@ -684,6 +684,35 @@ void main() {
     expect(find.byKey(const ValueKey('viewers-lead-2')), findsNothing);
   });
 
+  // Mobile review 11-24, phone on its side: the marks took the whole line and
+  // the name got 0 px.
+  testWidgets('in a narrow list the marks leave the name room', (tester) async {
+    const name = 'Alexandra Montgomery-Smith';
+    await _pump(
+      tester,
+      size: const Size(300, 800),
+      leads: [
+        {
+          ..._lead('lead-1', name, note: 'Call back after 5'),
+          'viewers': ['Tanya Ruiz', 'Marco Diaz'],
+          'reply_overdue': true,
+          'ai': ['contact_name'],
+        },
+      ],
+      connections: const [],
+    );
+
+    expect(tester.takeException(), isNull);
+    final marks = find.ancestor(
+      of: find.byKey(const ValueKey('lead-ai-name-lead-1')),
+      matching: find.byType(SingleChildScrollView),
+    );
+    expect(
+      tester.getSize(find.text(name).first).width,
+      greaterThan(tester.getSize(marks).width),
+    );
+  });
+
   // Jose, 2026-09-28: a customer left waiting is marked red on the list.
   testWidgets('a lead waiting too long for a reply wears a red warning', (
     tester,
