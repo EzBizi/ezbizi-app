@@ -1,11 +1,11 @@
 # Customers — review 2026-11-02
 
 Measured on production through the live API (Viewer key) and read-only SQL, on Jose's
-own record C-04284 (+13057242199). No production data was changed.
+own record C-04284 (+13055550107). No production data was changed.
 
 ## 1. Working
 
-- **List and search:** `GET /customers?search=3057242199` finds C-04284 (A-1 Chimney · Nationwide, 5 jobs, Miami FL).
+- **List and search:** `GET /customers?search=3055550107` finds C-04284 (A-1 Chimney · Nationwide, 5 jobs, Miami FL).
 - **Leads in search** (1660bea7): the same search returns his 10 leads (Website Form, Live Chat) with status and date, as their own `leads` list.
 - **Segment counts** (all / repeat / none) are returned with every list.
 - **Detail:** address, owner franchise and company, served-by, and the cross-franchise warning setting are all present.
@@ -22,7 +22,7 @@ own record C-04284 (+13057242199). No production data was changed.
 None found in the paths measured. Two loose ends:
 
 - **Twins are still being made, at a low rate.** Of 4,310 customers created since 10-07, 13 share both phone and name with an older customer, and 100 share a phone.
-  - Example: phone 571-224-5123 now has six records, the newest C-49573 on 10-29.
+  - Example: phone 571-555-0100 now has six records, the newest C-49573 on 10-29.
   - Why: Workiz adoption only attaches when phone, name and ZIP all match exactly one person, so a new ZIP or a spelling change ("Sayyav") creates a new customer.
   - That is the agreed, deliberately strict rule (a wrong merge can't be undone). Every twin shows up in the duplicates sweep. There is no merge tool to act on them (see 5).
 - **The Money tab can show all zeros.** C-04284 returns a USD row of zeros. He has Workiz jobs but no invoices or payments, so the tab shows $0 everywhere instead of being hidden. Small; the fix is UI-UX's (hide when every figure is 0) or mine (return no row). I'll take whichever UI-UX prefers.

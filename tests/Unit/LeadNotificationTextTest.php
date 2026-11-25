@@ -46,15 +46,15 @@ class LeadNotificationTextTest extends TestCase
     public function test_his_example_details_line(): void
     {
         $this->assertSame(
-            '(319) 210-2005 - 1:10 min - A1 Chimney - Toms River',
-            T::details('+13192102005', 70_000, 'A1 Chimney', 'Toms River'),
+            '(319) 555-0100 - 1:10 min - A1 Chimney - Toms River',
+            T::details('+13195550100', 70_000, 'A1 Chimney', 'Toms River'),
         );
     }
 
     public function test_a_missing_fact_drops_out_rather_than_leaving_a_dash(): void
     {
         // A text has no duration and this lead has no branch.
-        $this->assertSame('(319) 210-2005 - A1 Chimney', T::details('3192102005', null, 'A1 Chimney', null));
+        $this->assertSame('(319) 555-0100 - A1 Chimney', T::details('3195550100', null, 'A1 Chimney', null));
     }
 
     public function test_a_reply_reads_as_jose_wrote_it(): void
@@ -83,12 +83,12 @@ class LeadNotificationTextTest extends TestCase
     {
         $this->assertSame('Missed call - A-1 Chimney', T::missedCallHeadline('A-1 Chimney'));
         $this->assertSame('Missed call', T::missedCallHeadline(null), 'no company is never a guessed one');
-        $this->assertSame('(319) 210-2005 - Chicago SEO line', T::missedCallDetails('+13192102005', 'Chicago SEO line'));
+        $this->assertSame('(319) 555-0100 - Chicago SEO line', T::missedCallDetails('+13195550100', 'Chicago SEO line'));
         $this->assertSame(
-            '(319) 210-2005 - Chicago SEO line - left a voicemail',
-            T::missedCallDetails('+13192102005', 'Chicago SEO line', voicemail: true),
+            '(319) 555-0100 - Chicago SEO line - left a voicemail',
+            T::missedCallDetails('+13195550100', 'Chicago SEO line', voicemail: true),
         );
-        $this->assertSame('(319) 210-2005', T::missedCallDetails('3192102005', null), 'an unnamed number drops out');
+        $this->assertSame('(319) 555-0100', T::missedCallDetails('3195550100', null), 'an unnamed number drops out');
         // Production, 2026-10-07: a withheld caller arrived as from = null.
         $this->assertSame('Unknown caller - A1 Chimney - Voicemail', T::missedCallDetails(null, 'A1 Chimney - Voicemail'));
     }

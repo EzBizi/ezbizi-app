@@ -9,7 +9,7 @@ namespace App\Support\Leads;
  * may be something we can automate without needing ai?".
  *
  * Plain patterns over the customer's own messages, newest first, so a
- * correction ("sorry, it's 215 Lakeview") wins over the first attempt. Each
+ * correction ("sorry, it's 215 Sampleview") wins over the first attempt. Each
  * is a best guess the screen labels as read from the conversation; nothing
  * here is written back to the lead.
  */
@@ -67,7 +67,7 @@ final class LeadDetails
         return ['phone' => $phone, 'email' => $email];
     }
 
-    /** "215 Lakeview Dr Michigan City Indiana" -> "215 Lakeview Dr Michigan City Indiana". */
+    /** "215 Sampleview Dr Michigan City Indiana" -> "215 Sampleview Dr Michigan City Indiana". */
     public static function address(string $text): ?string
     {
         $street = '/\b(\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9\'.-]+\s+){0,4}(?:'.self::STREET.')\b\.?'
@@ -93,7 +93,7 @@ final class LeadDetails
         return null;
     }
 
-    /** "my name is Jacob Garcia" / "this is Dave Malkowski" / "Dave Malkowski 2196692720". */
+    /** "my name is Jacob Garcia" / "this is Dave Mapleford" / "Dave Mapleford 2195550100". */
     public static function name(string $text): ?string
     {
         $word = "[A-Z][a-z'-]+";

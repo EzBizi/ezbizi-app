@@ -617,7 +617,7 @@ final class RingCentralCallLog
      *
      * The call log never says "In Progress": a live call is listed there as
      * "Accepted" with no answered leg yet, so it read as missed (Jose,
-     * 2026-10-19, +1 732-275-7027 at 1:05 PM). Only active-calls says so -
+     * 2026-10-19, +1 732-555-0102 at 1:05 PM). Only active-calls says so -
      * measured that day: its ids are the call log's.
      *
      * @return array<string, true>

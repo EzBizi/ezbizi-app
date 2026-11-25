@@ -1819,7 +1819,7 @@ class SettingRegistry
                 editPermission: 'leads.manage',
                 readPermission: 'leads.manage',
                 help: 'Whose calls each RingCentral number takes, set in Leads › Manage › Phone lines: '
-                    .'{"+17813855201": "company:<id>"} or "franchise:<id>".',
+                    .'{"+17815550100": "company:<id>"} or "franchise:<id>".',
             ),
             new SettingDefinition(
                 key: 'leads.line_brands',

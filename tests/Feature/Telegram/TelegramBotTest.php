@@ -59,7 +59,7 @@ class TelegramBotTest extends TestCase
 
             return Http::response(['ok' => true, 'result' => ['message_id' => count($this->sent)]]);
         });
-        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => '(786) 555-0102', 'is_active' => true])->save());
     }
 
     private function update(array $message, string $secret = self::SECRET, int $from = self::FROM)
@@ -112,10 +112,10 @@ class TelegramBotTest extends TestCase
         $this->assertTrue($this->sent[0]['reply_markup']['keyboard'][0][0]['request_contact']);
 
         // A forwarded card: somebody else's number. Refused.
-        $this->update(['contact' => ['phone_number' => '+17867762666', 'first_name' => 'Boss', 'user_id' => 999]])->assertOk();
+        $this->update(['contact' => ['phone_number' => '+17865550102', 'first_name' => 'Boss', 'user_id' => 999]])->assertOk();
         $this->assertSame(0, $this->links());
 
-        $this->update(['contact' => ['phone_number' => '17867762666', 'first_name' => 'Tech', 'user_id' => self::FROM]])->assertOk();
+        $this->update(['contact' => ['phone_number' => '17865550102', 'first_name' => 'Tech', 'user_id' => self::FROM]])->assertOk();
         $link = TelegramLink::query()->withoutGlobalScopes()->sole();
         $this->assertSame([$this->t['admin']->id, $this->t['org']->id, self::FROM], [$link->user_id, $link->organization_id, $link->chat_id]);
         $this->assertStringContainsString('Linked', end($this->sent)['text']);

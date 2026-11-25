@@ -104,7 +104,7 @@ class Customer extends Model implements HoldsPersonalData
      *
      * Each was measured as many DIFFERENT names at different addresses --
      * 3236761570 on 28 customers under 28 names; 8187482055 on 388 A1 rows. That
-     * is the test, not the count: 3477245006 sits on 12 customers but only 8
+     * is the test, not the count: 3475550100 sits on 12 customers but only 8
      * names and 7 addresses, which reads as a real property manager, so it is
      * deliberately NOT here. An SMS automation would text a stranger for every
      * row one of these is on, and the duplicate sweep would call them one
@@ -361,8 +361,8 @@ class Customer extends Model implements HoldsPersonalData
     }
 
     /**
-     * A search term that reads as a phone, in any format: "(305) 724-2199",
-     * "305.724.2199", "+13057242199" (Trey, 2026-11-11). Matches no rows when
+     * A search term that reads as a phone, in any format: "(305) 555-0107",
+     * "305.555.0107", "+13055550107" (Trey, 2026-11-11). Matches no rows when
      * the term has under four digits.
      */
     public static function phoneLike(Builder $q, string $term): void

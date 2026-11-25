@@ -285,7 +285,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     if (q.isEmpty) return;
     setState(() => _suggestions = []);
 
-    // A house number then words is a street address ("86 Jerusalem hill
+    // A house number then words is a street address ("86 Sample hill
     // Trumbull"): the server finds its zip (Mia, 2026-10-02).
     if (_looksLikeAddress(q)) {
       await _run({'address': q});

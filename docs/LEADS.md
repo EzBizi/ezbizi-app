@@ -359,7 +359,7 @@ other 22 via 4051729356); 46 connected Google Ads rows, 23 read through a
 manager. The full re-read (`ezbizi:sync-leads --days=3650`) followed, 13:48
 to 14:20 UTC: leads 23,918 -> 40,469 (16,550 of the new ones on 19 of the 23
 adopted accounts), conversations 65,002 after the read; both numbers Jose
-had found missing against a1tools (646-547-6829, 610-406-7510) present. One
+had found missing against a1tools (646-555-0100, 610-555-0100) present. One
 connection failed: the seeded demo row DEMO-555-0100-01, which has no grant.
 146-421-7121 is marked broken by the same run.
 

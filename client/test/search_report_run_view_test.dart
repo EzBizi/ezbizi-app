@@ -25,7 +25,7 @@ void main() {
                 {'key': 'customers.phone', 'label': 'Phone', 'type': 'string'},
               ],
               'rows': [
-                {'jobs.title': 'Sweep', 'customers.phone': '7326748312'},
+                {'jobs.title': 'Sweep', 'customers.phone': '7325550105'},
                 {'jobs.title': 'Cap install', 'customers.phone': '2035550142'},
               ],
               'capped': false,
@@ -55,12 +55,12 @@ void main() {
     tester,
   ) async {
     await pump(tester, 1200);
-    expect(find.text('+1 (732) 674-8312'), findsOneWidget);
-    expect(find.text('7326748312'), findsNothing);
+    expect(find.text('+1 (732) 555-0105'), findsOneWidget);
+    expect(find.text('7325550105'), findsNothing);
 
     await tester.enterText(
       find.byKey(const Key('report-run-search')),
-      '732674',
+      '732555',
     );
     await tester.pumpAndSettle();
     expect(find.text('Sweep'), findsOneWidget);

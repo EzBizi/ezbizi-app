@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Every phone number a person typed, stored the way Twilio and the app compare
- * them: `+13057242199`.
+ * them: `+13055550107`.
  *
  * The client started formatting phone fields on 2026-09-03 and normalising what
  * they send, so everything typed from now on arrives as E.164. This is the
@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Schema;
  * not E.164, and they are two different problems:
  *
  *   9 rows are a real number written another way
- *       customers `305-555-0199`, users `3057242199`, companies, vendors
+ *       customers `305-555-0199`, users `3055550107`, companies, vendors
  *
  *   10 rows are not a phone number at all
  *       business_locations and leads hold `+1 (555) 0120` — EIGHT digits.
@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * ── Why there is no down() ───────────────────────────────────────
  *
- * `+13057242199` and `305-555-0199` are the same number, so nothing is lost
+ * `+13055550107` and `305-555-0199` are the same number, so nothing is lost
  * and there is nothing to restore. A down() that put the punctuation back
  * would have to invent which punctuation, and would be undoing a correction
  * rather than a change.

@@ -1735,7 +1735,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
     return noParts ? widget.person['address']?.toString() ?? '' : value;
   }
 
-  /// What a box shows for what is stored: a phone as `+1 (214) 968-9819`,
+  /// What a box shows for what is stored: a phone as `+1 (214) 555-0102`,
   /// even one saved as bare digits before this was formatted.
   String _shown(String key) {
     final value = _stored(key);

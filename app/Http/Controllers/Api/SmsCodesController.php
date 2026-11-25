@@ -205,7 +205,7 @@ class SmsCodesController extends Controller
      * The same rule the dial pad uses: refuse rather than guess.
      *
      * A number missing its country code used to be dialled as typed, which is
-     * how +3057242199 reached Twilio and came back as an unroutable
+     * how +3055550107 reached Twilio and came back as an unroutable
      * destination. Ten digits are taken as North American; anything else has
      * to arrive already carrying its country code.
      */

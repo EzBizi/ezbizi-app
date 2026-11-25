@@ -441,7 +441,7 @@ final class RingCentralLeadCalls
     /**
      * What a missed-call alert says: the line they dialled by its name (its
      * number when it has none) and who called, when the business knows them
-     * (Automations, 2026-10-20: "Missed Call: (219) 670-6463 · NJ - GMB").
+     * (Automations, 2026-10-20: "Missed Call: (219) 555-0101 · NJ - GMB").
      *
      * @param  array{line_number: ?string, line_name: ?string}  $line
      * @return array<string, ?string>

@@ -25,7 +25,7 @@ void main() {
 
     // The card is to the right of its technician and under its window: same
     // row as Ivan, same column as "11 AM – 2 PM".
-    final card = tester.getCenter(find.text('Honesty Haislett'));
+    final card = tester.getCenter(find.text('Honesty Hartwell'));
     final tech = tester.getCenter(find.text('Ivan Sharkov'));
     final column = tester.getCenter(find.text('11 AM – 2 PM'));
     expect((card.dy - tech.dy).abs(), lessThan(40));
@@ -35,7 +35,7 @@ void main() {
   testWidgets('the unassigned list filters as you type', (tester) async {
     await _pump(tester, board: _board);
 
-    expect(find.text('Tonya Yates'), findsOneWidget);
+    expect(find.text('Tonya Yarde'), findsOneWidget);
     expect(find.text('Sheila Content'), findsOneWidget);
 
     await tester.enterText(
@@ -45,7 +45,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Sheila Content'), findsOneWidget);
-    expect(find.text('Tonya Yates'), findsNothing);
+    expect(find.text('Tonya Yarde'), findsNothing);
   });
 
   /// Jose, 2026-09-25: assigning "should be possible on both with the sync".
@@ -183,7 +183,7 @@ void main() {
     await _pump(tester, board: _board, width: 390);
 
     expect(find.byKey(const ValueKey('schedule-phone-week')), findsOneWidget);
-    final job = tester.getCenter(find.text('Honesty Haislett').first);
+    final job = tester.getCenter(find.text('Honesty Hartwell').first);
     final slot = tester.getCenter(find.text('11 AM – 2 PM').first);
     expect((slot.dy - job.dy).abs(), lessThan(40));
     expect(slot.dx, lessThan(job.dx));
@@ -194,7 +194,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('schedule-phone-tech-fr-ct|102')));
     await tester.pumpAndSettle();
-    expect(find.text('Honesty Haislett'), findsNothing);
+    expect(find.text('Honesty Hartwell'), findsNothing);
     expect(find.text('Nothing booked this day.'), findsOneWidget);
 
     await tester.ensureVisible(
@@ -202,7 +202,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('schedule-phone-tech-fr-ct|101')));
     await tester.pumpAndSettle();
-    expect(find.text('Honesty Haislett'), findsWidgets);
+    expect(find.text('Honesty Hartwell'), findsWidgets);
   });
 }
 
@@ -240,7 +240,7 @@ const _board = {
     {
       'id': 'J1',
       'number': '600024908',
-      'customer': 'Honesty Haislett',
+      'customer': 'Honesty Hartwell',
       'job_type': 'Chimney Inspection',
       'status': 'Submitted',
       'time': '11:00',
@@ -253,12 +253,12 @@ const _board = {
     {
       'id': 'J2',
       'number': '100077558',
-      'customer': 'Tonya Yates',
+      'customer': 'Tonya Yarde',
       'job_type': 'Chimney Sweep',
       'status': 'In progress',
       'time': '11:00',
       'window': 1,
-      'address': '18521 Nadol Dr',
+      'address': '18521 Sampleton Dr',
       'city': 'Southfield',
     },
     {
@@ -273,7 +273,7 @@ const _board = {
       'status': 'Submitted',
       'time': '08:00',
       'window': 0,
-      'address': '32 Deerwood Manor',
+      'address': '32 Sample Manor',
       'city': 'Norwalk',
     },
   ],

@@ -422,9 +422,9 @@ class LeadsController extends Controller
          * One box, many meanings. Somebody looking for a lead has a name, an
          * email, a phone number in whatever punctuation they saw it in, or a
          * few words of what was said. Digits are matched against the
-         * normalised column so "(609)", "609-246" and "609246" all find
-         * +1 (609) 246-1458; the four-digit floor that used to be here made
-         * "609" find nothing while "609246" found the lead (Jose, 2026-09-09),
+         * normalised column so "(609)", "609-555" and "609555" all find
+         * +1 (609) 555-0101; the four-digit floor that used to be here made
+         * "609" find nothing while "609555" found the lead (Jose, 2026-09-09),
          * and a person types the short form first. Two digits is enough to be
          * a search and not an accident.
          */
@@ -720,7 +720,7 @@ class LeadsController extends Controller
     /**
      * The stored reading, less any address it offers that is the lead's own
      * spelled differently: readings saved before Lead::sameAddress still
-     * carry the offer (Jose, 2026-11-16, John Sczepanski).
+     * carry the offer (Jose, 2026-11-16, John Stonebrook).
      */
     private static function readingNow(Lead $lead): ?array
     {
@@ -1915,7 +1915,7 @@ class LeadsController extends Controller
     /**
      * POST /api/v1/leads/{lead}/reading/use {field: phone|email|address}
      *
-     * The reply reader's "Use (516) 404-1690?" (Jose, 2026-11-13): what the
+     * The reply reader's "Use (516) 555-0100?" (Jose, 2026-11-13): what the
      * customer wrote replaces what the lead holds, as a person's choice (no AI
      * mark), and the offer goes.
      */
@@ -1932,7 +1932,7 @@ class LeadsController extends Controller
         if (($set['reading']['suggest'] ?? []) === []) {
             $set['reading']['suggest'] = null;
         }
-        // Shown "(516) 404-1690"; stored as the reader fills a blank one.
+        // Shown "(516) 555-0100"; stored as the reader fills a blank one.
         $digits = substr((string) Lead::digits($value), -10);
         $lead->forceFill([
             ...($field === 'phone' ? ['phone' => '+1'.$digits, 'phone_digits' => Lead::digits('+1'.$digits)] : [$field => $value]),

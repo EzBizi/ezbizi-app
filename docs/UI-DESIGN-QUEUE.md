@@ -4335,7 +4335,7 @@ Jose, 2026-09-30, with two screenshots of Communication › Phone › Dial: *"se
 improve the Phone Main Screen"*. Today: recent calls are numbers only (the same one nine times in a
 row, a customer's number still digits although every call carries `customer_id`), no day groups, no
 missed filter; the keypad floats in a wide empty column above the live transcript's grey box, which
-sits empty until a call; the number shows raw (+13057242199) in the box and in the Customer panel;
+sits empty until a call; the number shows raw (+13055550107) in the box and in the Customer panel;
 Calling as runs the full width and "Do not disturb" sits alone on a line. `docs/previews/phone-dial-layouts.html`:
 desktop **1** a call desk: calls by day, named, repeats folded (×9), chips All / Missed / Voicemail,
 "called back" on a missed call; one strip for the state and the line; a name-or-number box that

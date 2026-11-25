@@ -71,10 +71,10 @@ void main() {
     // opening anything -- you came to check the number was right.
     expect(find.text('Phone number'), findsOneWidget);
     expect(
-      find.text('+1 (305) 724-2199'),
+      find.text('+1 (305) 555-0107'),
       findsOneWidget,
       reason:
-          'The row is being READ. +13057242199 is not a number anybody reads '
+          'The row is being READ. +13055550107 is not a number anybody reads '
           'back, so this one is formatted even though the field it opens is '
           'not.',
     );
@@ -233,7 +233,7 @@ Future<void> _pump(
           'first_name': 'Jose',
           'middle_name': '',
           'last_name': 'Demasi',
-          'phone': '+13057242199',
+          'phone': '+13055550107',
           'address': address,
           'gender': 'Male',
           'has_avatar': false,

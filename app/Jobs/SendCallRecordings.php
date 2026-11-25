@@ -19,7 +19,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * "Please send me all the calls w this number 9524572594" (Ana, via Jose,
+ * "Please send me all the calls w this number 9525550100" (Ana, via Jose,
  * 2026-10-13): Grok reads the number and dates, then each call with that
  * number comes back as a line (time, in/out, who answered) and its recording
  * as a WhatsApp audio message. Only for staff with Reports access - the
@@ -56,7 +56,7 @@ class SendCallRecordings implements ShouldQueue
                 return;
             }
             if ($ask === null) {
-                $say("\u{1F914} I couldn't tell which calls you want. Send the phone number and the day, e.g. *calls with 9524572594 yesterday*.");
+                $say("\u{1F914} I couldn't tell which calls you want. Send the phone number and the day, e.g. *calls with 9525550100 yesterday*.");
 
                 return;
             }

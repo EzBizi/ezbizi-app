@@ -1190,7 +1190,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Address'),
-      'acehomecaretx@gmail.com',
+      'acesample@gmail.com',
     );
     await tester.pump();
 
@@ -1617,7 +1617,7 @@ void main() {
             'data': {
               'state': 'refused',
               'message':
-                  'That sign-in was for jose.personal@gmail.com, but this '
+                  'That sign-in was for jane.sample@gmail.com, but this '
                   'inbox is info@a-1chimney.com, so nothing has been connected '
                   'and the permission has already been handed back to Google. '
                   'If you have more than one Google account, sign out of the '
@@ -1640,7 +1640,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(SidePanel),
-        matching: find.textContaining('jose.personal@gmail.com'),
+        matching: find.textContaining('jane.sample@gmail.com'),
       ),
       findsOneWidget,
       reason:

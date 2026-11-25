@@ -1761,8 +1761,8 @@ class ActionRunner
             ];
         }
 
-        // Passed as written. Their `send()` normalises "(305) 724-2199" and
-        // "+1 305 724 2199" alike, and refuses what it cannot be sure of rather
+        // Passed as written. Their `send()` normalises "(305) 555-0107" and
+        // "+1 305 555 0107" alike, and refuses what it cannot be sure of rather
         // than guessing - so cleaning it here would only give it worse input.
         $parameters = array_map(
             fn ($value) => $this->interpolate((string) $value, $event, $subject),
@@ -4420,7 +4420,7 @@ class ActionRunner
 
     /**
      * A notification reads as written, not as its blanks (Jose, 2026-10-21:
-     * "Missed call: +12196706463 ()"): a US number reads (219) 670-6463,
+     * "Missed call: +12195550101 ()"): a US number reads (219) 555-0101,
      * brackets a missing value left empty go, and spaces are tidied.
      */
     public static function tidyNotice(string $text): string

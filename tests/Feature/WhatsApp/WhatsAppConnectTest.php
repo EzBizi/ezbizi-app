@@ -187,7 +187,7 @@ class WhatsAppConnectTest extends TestCase
     {
         [$t] = $this->connected();
 
-        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->send('hello', '(305) 724-2199'));
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->send('hello', '(305) 555-0107'));
         Http::assertSent(fn ($r) => str_ends_with($r->url(), self::PHONE_ID.'/messages')
             && $r->hasHeader('Authorization', 'Bearer the-business-token'));
 
@@ -240,7 +240,7 @@ class WhatsAppConnectTest extends TestCase
         Http::fake(fn () => Http::response(['messages' => [['id' => 'wamid.x']]]));
 
         try {
-            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->send('hello', '(305) 724-2199', from: '+13055550100'));
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->send('hello', '(305) 555-0107', from: '+13055550100'));
             $this->fail('A send on a disconnected number went out.');
         } catch (\RuntimeException) {
         }

@@ -129,7 +129,7 @@ class ThumbtackTestLeadTest extends TestCase
     public function test_a_lead_that_could_be_a_real_enquiry_is_left_unmarked_and_said_out_loud(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->fakeThumbtack($t, $this->connection($t), '+19083802661');
+        $this->fakeThumbtack($t, $this->connection($t), '+19085550100');
 
         $this->artisan('ezbizi:thumbtack-test-lead', ['--wait' => 2])
             ->expectsOutputToContain('may be a REAL enquiry')
