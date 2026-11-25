@@ -1,3 +1,4 @@
+import '../../widgets/image_gallery.dart';
 import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
@@ -300,6 +301,29 @@ class _JobFilesState extends State<JobFiles> {
     Files.download(_name(row), bytes);
   }
 
+  /// Every loaded picture full screen, swipe and zoom (Adeline 01a2137d,
+  /// 2026-11-25). Remove stays on the tile (hover ×, long press).
+  Future<void> _gallery(Map<String, dynamic> row) {
+    final shown = [
+      for (final r in _files.items)
+        if (isJobPicture(r) && _files.pictures[r['id']] != null) r,
+    ];
+    final at = shown.indexWhere((r) => r['id'] == row['id']);
+    if (at < 0) return _view(row);
+    return showImageGallery(
+      context,
+      start: at,
+      images: [
+        for (final r in shown)
+          (
+            name: _name(r),
+            image: MemoryImage(_files.pictures[r['id']]!),
+            download: () => _download(r),
+          ),
+      ],
+    );
+  }
+
   Future<void> _view(Map<String, dynamic> row) async {
     final id = row['id'] as String? ?? '';
     final bytes = _files.pictures[id];
@@ -586,7 +610,7 @@ class _JobFilesState extends State<JobFiles> {
                   children: [
                     InkWell(
                       key: ValueKey('job-own-open-$id'),
-                      onTap: () => picture ? _view(row) : _download(row),
+                      onTap: () => picture ? _gallery(row) : _download(row),
                       onLongPress: _canAdd ? () => _remove(row) : null,
                       // No Tooltip: on touch it takes the long press that
                       // Remove needs, and the name is printed underneath.

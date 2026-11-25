@@ -10,17 +10,20 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\JobNote;
 use App\Models\JobPart;
+use App\Models\Role;
 use App\Models\User;
 use App\Models\WorkizRecord;
 use App\Support\Audit\AuditLogger;
 use App\Support\Jobs\JobMoney;
+use App\Support\Jobs\ProjectCosts;
 use App\Support\Jobs\ScheduleTexts;
 use App\Support\Jobs\WorkizExtras;
+use App\Support\NotesMarkup;
 use App\Support\ProjectBoard\WorkOrderPdf;
 use App\Support\Scoping\ViewScope;
-use App\Support\Tenancy\TenantContext;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizMirror;
 use App\Support\Workiz\WorkizTagColours;
 use App\Support\Workiz\WorkizTags;
@@ -32,6 +35,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -506,7 +510,7 @@ class ProjectBoardController extends Controller
             'repair_colours' => WorkizTags::COLORS,
             'users' => User::query()->where('organization_id', $user->organization_id)->orderBy('name')->get(['id', 'name']),
             // For "Roles that can be picked as Technician" (Jose, 2026-11-16).
-            'roles' => \App\Models\Role::query()->orderBy('name')->pluck('name')->unique()->values(),
+            'roles' => Role::query()->orderBy('name')->pluck('name')->unique()->values(),
             'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
                 ->reduce(fn (array $c, string $f) => $c + app(WorkizTagColours::class)->for($f, $tags->all()), []),
         ]]);
@@ -717,7 +721,7 @@ class ProjectBoardController extends Controller
             'parts' => JobPart::query()->whereIn('job_id', $ids)->orderBy('position')->get()->groupBy('job_id')->all(),
             'technicians' => Job::technicianNames($ids),
             'notes' => JobNote::query()->whereIn('job_id', $ids)->latest()->get(['job_id', 'body'])
-                ->groupBy('job_id')->map(fn ($n) => ['count' => $n->count(), 'latest' => (string) $n->first()->body])->all(),
+                ->groupBy('job_id')->map(fn ($n) => ['count' => $n->count(), 'latest' => NotesMarkup::plain((string) $n->first()->body)])->all(),
         ];
     }
 
@@ -894,7 +898,7 @@ class ProjectBoardController extends Controller
             'parts.*.delivery_on' => ['nullable', 'date_format:Y-m-d'],
             'parts.*.inventory_item_id' => ['nullable', 'uuid', 'exists:inventory_items,id'],
             // Paid by the technician with his own money (Merav, 2026-11-19).
-            'parts.*.paid_by_user_id' => ['nullable', 'uuid', \Illuminate\Validation\Rule::exists('users', 'id')->where('organization_id', $job->organization_id)],
+            'parts.*.paid_by_user_id' => ['nullable', 'uuid', Rule::exists('users', 'id')->where('organization_id', $job->organization_id)],
             'parts.*.reimbursed' => ['nullable', 'boolean'],
         ]);
         // The company's suppliers (Settings), copied onto the part as picked.
@@ -1016,7 +1020,7 @@ class ProjectBoardController extends Controller
                 'total' => $m['total'] ?? 0,
                 'currency' => $job->currency,
                 'job_cost' => $job->job_cost_minor,
-                ...(\App\Support\Jobs\ProjectCosts::isProject($job) ? $this->projectCosts($job) : ['project' => false]),
+                ...(ProjectCosts::isProject($job) ? $this->projectCosts($job) : ['project' => false]),
                 'production' => (bool) $job->production_job,
                 'total_cost' => self::totalCost($job->job_cost_minor, (bool) $job->production_job, (int) ($m['total'] ?? 0)),
             ] : []),
@@ -1036,10 +1040,10 @@ class ProjectBoardController extends Controller
     /** A Project job's costs, as the board shows them. */
     private function projectCosts(Job $job): array
     {
-        return ['project' => true, 'parts_cost' => \App\Support\Jobs\ProjectCosts::partsMinor($job),
+        return ['project' => true, 'parts_cost' => ProjectCosts::partsMinor($job),
             'labor_kind' => $job->labor_kind, 'labor_price' => $job->labor_price_minor, 'labor_days' => $job->labor_days,
-            'labor_helper' => (bool) $job->labor_helper, 'labor_cost' => \App\Support\Jobs\ProjectCosts::laborMinor($job),
-            'project_missing' => \App\Support\Jobs\ProjectCosts::missing($job)];
+            'labor_helper' => (bool) $job->labor_helper, 'labor_cost' => ProjectCosts::laborMinor($job),
+            'project_missing' => ProjectCosts::missing($job)];
     }
 
     /**

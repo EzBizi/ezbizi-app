@@ -3799,6 +3799,7 @@ Route::prefix('v1')
         Route::get('notifications', [NotificationsController::class, 'index']);
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
+        Route::get('notifications/kinds', [NotificationsController::class, 'kinds']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
         Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
         Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);
