@@ -190,16 +190,18 @@ final class TimeClockReports
     ];
 
     /**
-     * Over 40 hours is overtime, whoever it is. Otherwise full or part time by
-     * the hours their schedule gives them a week: HR keeps W-2 or 1099, not
-     * full or part time, so the schedule is the only record of it.
-     * ponytail: add an HR "Full time / Part time" field when somebody needs
-     * it to differ from the schedule.
+     * Over 40 hours is overtime, whoever it is. Otherwise HR's Full time /
+     * Part time (users.hours_type) when chosen, else by the hours their
+     * schedule gives them a week.
      */
     private function sectionOf(?User $user, int $seconds): string
     {
         if ($seconds > self::OVERTIME_SECONDS) {
             return 'overtime';
+        }
+        // HR's own Full time / Part time when it is set (users.hours_type, 2026-11-25).
+        if (in_array($user?->hours_type, ['full_time', 'part_time'], true)) {
+            return $user->hours_type;
         }
         $days = $user === null ? null : ($this->clock->scheduleFor($user)['days'] ?? null);
         if (! is_array($days)) {
