@@ -259,7 +259,7 @@ class PhoneSmsTest extends TestCase
                 'role_id' => $desk->role_id,
             ]);
 
-            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 708-9100']);
+            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 555-0100']);
             Customer::create([
                 'owning_franchise_id' => $t['franchise']->id,
                 'number' => 'C-sms-peer',
@@ -267,7 +267,7 @@ class PhoneSmsTest extends TestCase
                 'phone' => '+15557650000',
             ]);
 
-            foreach (['+13087089100', '+15557650000', '+15550009999'] as $i => $peer) {
+            foreach (['+13085550100', '+15557650000', '+15550009999'] as $i => $peer) {
                 PhoneMessage::query()->create([
                     'connection_id' => $line->connection_id,
                     'number_id' => $line->id,
@@ -285,7 +285,7 @@ class PhoneSmsTest extends TestCase
             ->json('data'))
             ->pluck('peer_name', 'to_e164');
 
-        $this->assertSame('Chaim Perez', $names['+13087089100']);
+        $this->assertSame('Chaim Perez', $names['+13085550100']);
         $this->assertSame('Phone-Only Customer', $names['+15557650000']);
         $this->assertNull($names['+15550009999']);
     }

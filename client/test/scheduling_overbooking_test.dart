@@ -91,7 +91,7 @@ void main() {
     );
     expect(find.text('John Lynch  ·  Submitted'), findsOneWidget);
     expect(find.text('2145550100'), findsOneWidget);
-    expect(find.text('1430 Red Oaks Dr, Dallas 75201'), findsOneWidget);
+    expect(find.text('1430 Sample Oaks Dr, Dallas 75201'), findsOneWidget);
     expect(find.text('Ivan Sharkov'), findsOneWidget);
     expect(find.text('Gate code 4411'), findsOneWidget);
     // An online booking with nobody on it yet says so.
@@ -247,7 +247,7 @@ const _jobs = [
       'name': 'John Lynch',
       'phone': '2145550100',
       'email': 'john@example.com', //
-      'address': '1430 Red Oaks Dr, Dallas 75201',
+      'address': '1430 Sample Oaks Dr, Dallas 75201',
     },
   },
   {

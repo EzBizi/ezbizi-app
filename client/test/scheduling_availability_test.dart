@@ -93,7 +93,7 @@ void main() {
     expect(find.text('Closed that day'), findsOneWidget);
   });
 
-  // Mia, 2026-10-02: a customer writes "86 Jerusalem hill Trumbull", not a
+  // Mia, 2026-10-02: a customer writes "86 Sample hill Trumbull", not a
   // zip. The pane asks by address and says which address the zip came from.
   // Jose, 2026-11-06: picking from the list must check right away, map and all.
   testWidgets(
@@ -204,7 +204,7 @@ void main() {
           'data': {
             ..._dallas,
             'resolved': {
-              'address': '86 Jerusalem Hill Rd, Trumbull, CT 06611, USA',
+              'address': '86 Sample Hill Rd, Trumbull, CT 06611, USA',
               'zip': '06611',
               'exact': true,
             },
@@ -215,14 +215,14 @@ void main() {
 
     await tester.enterText(
       find.byKey(const Key('availability-search')),
-      '86 Jerusalem hill Trumbull',
+      '86 Sample hill Trumbull',
     );
     await tester.tap(find.text('Check'));
     await tester.pumpAndSettle();
 
-    expect(asked?.queryParameters['address'], '86 Jerusalem hill Trumbull');
+    expect(asked?.queryParameters['address'], '86 Sample hill Trumbull');
     expect(
-      find.text('86 Jerusalem Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
+      find.text('86 Sample Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
       findsOneWidget,
     );
   });

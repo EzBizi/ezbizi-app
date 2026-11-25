@@ -132,8 +132,8 @@ void main() {
       details: {
         'account': 'A1 Chimney - Cleveland',
         'google_status': 'Active',
-        'name': 'Dave Malkowski',
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'name': 'Dave Mapleford',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
       },
     );
@@ -405,7 +405,7 @@ void main() {
 
     expect(find.text('Customer called · 2:05'), findsOneWidget);
     // The number they dialled and its line (Jose, 2026-10-20).
-    expect(find.text('to +1 (732) 659-1055 · NJ - GMB · answered by Sasha'), findsOneWidget);
+    expect(find.text('to +1 (732) 555-0104 · NJ - GMB · answered by Sasha'), findsOneWidget);
     expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);
@@ -554,7 +554,7 @@ void main() {
   test('a lead with no name, or a number for one, reads as Customer', () {
     expect(typingLine('Marcus Hill'), 'Marcus is typing…');
     expect(typingLine(null), 'Customer is typing…');
-    expect(typingLine('+1 (914) 325-8137'), 'Customer is typing…');
+    expect(typingLine('+1 (914) 555-0100'), 'Customer is typing…');
   });
 
   /// A text lead's customer never sees "typing" (only a website chat shows
@@ -651,10 +651,10 @@ void main() {
       recordingGate: Completer()..complete(),
       size: const Size(1200, 900),
       reading: {
-        'suggest': {'phone': '(516) 404-1690'},
+        'suggest': {'phone': '(516) 555-0100'},
         'availability': 'not Tue',
         'deadline': 'before Fri 11/20',
-        'source': 'My cell is (516)404-1690. Off Tuesdays.',
+        'source': 'My cell is (516)555-0100. Off Tuesdays.',
       },
     );
 
@@ -1146,15 +1146,15 @@ void main() {
       details: {
         'account': 'A1 Chimney - Cleveland',
         'google_status': 'Active',
-        'name': 'Dave Malkowski',
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'name': 'Dave Mapleford',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
       },
     );
 
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
     expect(find.text('Google: Active'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
+    expect(find.text('215 Sampleview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
   });
 
   // UI/UX tour, 2026-10-14: a Workiz lead's status read "Google: ...".
@@ -1181,10 +1181,10 @@ void main() {
       player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       details: {
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
         'checked_address': {
-          'address': '215 Lakeview Dr, Michigan City, IN 46360, USA',
+          'address': '215 Sampleview Dr, Michigan City, IN 46360, USA',
           'zip': '46360',
           'exact': true,
         },
@@ -1192,8 +1192,8 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('lead-address-checked')), findsOneWidget);
-    expect(find.text('215 Lakeview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
+    expect(find.text('215 Sampleview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
+    expect(find.text('215 Sampleview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
   });
 
   // Jose, 2026-09-28: a number that is already a customer shows who they are
@@ -1396,7 +1396,7 @@ void main() {
   });
 
   test('the number shows under any name, the customer one included', () {
-    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
+    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Mercer'}}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101'}), isFalse, reason: 'the title is the number');
   });
@@ -2122,7 +2122,7 @@ Future<void> _pump(
                   'from': 'CONSUMER',
                   'occurred_at': '2026-09-06T10:00:00Z',
                   'duration_ms': 125000,
-                  'line_number': '+17326591055',
+                  'line_number': '+17325550104',
                   'line_name': 'NJ - GMB',
                   'answered_by': 'Sasha',
                   'text': null,
@@ -2179,7 +2179,7 @@ Future<void> _pump(
       if (request.url.path.endsWith('/reading/use')) {
         _booked.add({'use': (jsonDecode(request.body) as Map)['field']});
         return _ok({
-          'data': {'phone': '+15164041690', 'reading': {'availability': 'not Tue'}},
+          'data': {'phone': '+15165550100', 'reading': {'availability': 'not Tue'}},
         });
       }
       if (bookable &&

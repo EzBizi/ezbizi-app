@@ -41,14 +41,14 @@ class PhoneLineInUseTest extends TestCase
                     'connection_id' => $connection->id,
                     'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                     'scope_id' => $t['org']->id,
-                    'e164' => '+13057249101',
+                    'e164' => '+13055550109',
                     'label' => 'Mine',
                 ]),
                 PhoneNumber::factory()->create([
                     'connection_id' => $connection->id,
                     'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                     'scope_id' => $t['org']->id,
-                    'e164' => '+13057249102',
+                    'e164' => '+13055550110',
                     'label' => 'Ana',
                 ]),
             ];

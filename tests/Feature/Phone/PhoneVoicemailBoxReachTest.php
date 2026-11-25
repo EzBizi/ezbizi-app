@@ -54,7 +54,7 @@ class PhoneVoicemailBoxReachTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249701',
+                'e164' => '+13055550121',
                 'voicemail_box_id' => null,
             ]);
 

@@ -69,7 +69,7 @@ class PhoneAnsweredByTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249601',
+                'e164' => '+13055550117',
                 'ring_group_id' => $group->id,
             ]);
 

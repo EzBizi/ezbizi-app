@@ -76,12 +76,23 @@ class TasksImportMondayEverythingTest extends TestCase
             // monday emails are not EzBizi emails: the export carries the map.
             'people' => ['jose@a-1chimney.com' => 'jose@ezbizi.test'],
             'users' => [['monday_id' => '9', 'name' => 'Rodrigo Mena', 'email' => 'rodrigo@a-1chimney.com']],
-            'boards' => [['monday_id' => '1', 'name' => 'Jose Demasi', 'owner_email' => 'jose@a-1chimney.com', 'groups' => [], 'items' => $items]],
+            'boards' => [['monday_id' => '1', 'name' => 'Jose Demasi', 'owner_email' => 'jose@a-1chimney.com', 'groups' => [], 'items' => $items]
+                + ($extra['--folder'] ?? null ? ['folder' => $extra['--folder']] : [])],
         ]));
+        unset($extra['--folder']);
         $this->artisan('ezbizi:tasks-import-monday', ['file' => $file, '--org' => $this->tenant['org']->id, '--as' => 'jose@a-1chimney.com', '--files' => $this->dir] + $extra)
             ->assertSuccessful();
 
         return $file;
+    }
+
+    /** Row 68 (Jose 11-25): a board in someone's own Monday workspace lands in a folder that says whose. */
+    public function test_a_folder_from_a_personal_workspace_carries_its_owner(): void
+    {
+        $this->import([], ['--folder' => [['name' => 'Dark Theme', 'colour' => null, 'owner_email' => 'jose@a-1chimney.com'], ['name' => 'Charts', 'colour' => null]]]);
+        $folders = collect($this->signedInAs($this->jose)->getJson('/api/v1/task-board-folders')->assertOk()->json('data'))->keyBy('name');
+        $this->assertSame(['id' => (string) $this->jose->id, 'name' => $this->jose->name], $folders['Dark Theme']['owner']);
+        $this->assertSame($folders['Dark Theme']['owner'], $folders['Charts']['owner'], 'a sub-folder is in its root\'s space');
     }
 
     public function test_done_items_land_done_with_mondays_completion_time(): void

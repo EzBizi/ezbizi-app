@@ -9,6 +9,8 @@ Measured 2026-09-04 by the deploy desk, from `~/.claude/sessions/*.json`,
 **Role table refreshed 2026-11-13** from `list_sessions` and `get_session`
 (titles, last-seen dates, gone/archived sessions, new roles).
 
+> **2026-11-25, repo hygiene (Jose: "get rid of the real risks on the git, and block them from being uploaded in the future").** A pre-commit hook is installed (`core.hooksPath=scripts/hooks`). It blocks staged secrets, `.env`/keys, spreadsheet exports in `docs/`, and real-looking phone numbers and personal emails in `docs/`, `tests/` and `client/test/`. Fixtures use 555-0100..0199 numbers and `example.com`. A real business line goes in `scripts/hooks/pii-allowlist.txt` and `.gitleaks.toml`. GitHub runs gitleaks on every push. Never paste customer or staff contact data into docs.
+
 ## Three names, one of them durable
 
 | | Where it shows | Set by | Lifetime |

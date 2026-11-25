@@ -2564,7 +2564,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
-      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Send to', '+13055550107');
       await _type(tester, 'Message', 'An email just arrived.');
       await _save(tester);
 
@@ -2572,7 +2572,7 @@ void main() {
         {
           'type': 'sms.send',
           'number_id': 'num-1',
-          'to': '+13057242199',
+          'to': '+13055550107',
           'body': 'An email just arrived.',
         },
       ]);
@@ -2613,7 +2613,7 @@ void main() {
       await _tap(tester, find.byType(SearchPickerField<String>).last);
       await tester.pumpAndSettle();
       await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
-      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Send to', '+13055550107');
       await _type(tester, 'Message', 'An email just arrived.');
 
       // A switch, not a box to type "true" into.

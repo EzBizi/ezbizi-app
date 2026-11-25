@@ -70,6 +70,33 @@ class EzBiziTheme {
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
+  /// EzChat, the chat companion app (Jose 2026-11-25: "a green version of the
+  /// icon"): this theme with a green accent in place of the cyan. Primary
+  /// keeps the same contrast rule as above — #15803D on white is 5.0:1, ink on
+  /// #4ADE80 is 12:1. [ezChatGreen] is the brand green of the icon and large
+  /// fills (UI-UX design 213), as the bright cyan is EzBizi's; never text.
+  static const ezChatGreen = Color(0xFF00C875);
+
+  static ThemeData ezChat(Brightness brightness) {
+    final base = _build(brightness);
+    final dark = brightness == Brightness.dark;
+    final seeded = ColorScheme.fromSeed(
+      seedColor: ezChatGreen,
+      brightness: brightness,
+    );
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        primary: dark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+        onPrimary: dark ? _ink : Colors.white,
+        primaryContainer: seeded.primaryContainer,
+        onPrimaryContainer: seeded.onPrimaryContainer,
+        secondary: dark ? const Color(0xFF22C55E) : const Color(0xFF166534),
+        secondaryContainer: seeded.secondaryContainer,
+        onSecondaryContainer: seeded.onSecondaryContainer,
+      ),
+    );
+  }
+
   /// The line between the chrome's regions — top bar to page, sidebar to page.
   ///
   /// Deliberately NOT `dividerColor`. That one separates rows inside a list,
@@ -507,6 +534,9 @@ class EzBiziTheme {
   /// as absence rather than as the wrong finder.
   static const wordmarkKey = Key('ezbizi-wordmark');
 
+  /// The app the wordmark names: EzBizi, or EzChat (main_ezchat.dart).
+  static bool isEzChat = false;
+
   static Widget wordmark(BuildContext context, {double size = 28}) {
     final onSurface = Theme.of(context).brightness == Brightness.dark
         ? Colors.white
@@ -522,11 +552,11 @@ class EzBiziTheme {
               fontSize: size,
               fontWeight: FontWeight.w800,
               letterSpacing: -1,
-              color: _cyan,
+              color: isEzChat ? ezChatGreen : _cyan,
             ),
           ),
           TextSpan(
-            text: 'Bizi',
+            text: isEzChat ? 'Chat' : 'Bizi',
             style: TextStyle(
               fontSize: size,
               fontWeight: FontWeight.w800,

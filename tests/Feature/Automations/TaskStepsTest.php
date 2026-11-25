@@ -262,7 +262,7 @@ class TaskStepsTest extends TestCase
             $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
             \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => '🤝 Customer Relations Board - Natalie', 'position' => 9]);
             $jobCol = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'EzBizi Job #', 'type' => 'text', 'position' => 1]);
-            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Joe', 'phone' => '+13307153809']);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Joe', 'phone' => '+13305550102']);
             $job = \App\Models\Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
             $dispatcher = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'Joe .', 'group' => '🤝 Customer Relations Board - Natalie',
                 'values' => [$jobCol->id => $job->number]], $t['admin']);
@@ -272,12 +272,12 @@ class TaskStepsTest extends TestCase
             $call = fn (string $phone) => new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => ['phone' => $phone, 'summary' => 'Paid half, wants a date']],
                 'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
 
-            $made = app(ActionRunner::class)->run($step, $call('+13307153809'), null, automation: $rule);
+            $made = app(ActionRunner::class)->run($step, $call('+13305550102'), null, automation: $rule);
             $this->assertTrue($made['ok'], $made['detail']);
             $this->assertSame(1, Task::query()->count(), 'no AI twin of the dispatcher\'s task');
             $this->assertStringContainsString('Paid half, wants a date', (string) $dispatcher->updates()->value('body'));
 
-            $missed = app(ActionRunner::class)->run($step, $call('+12164097375'), null, automation: $rule);
+            $missed = app(ActionRunner::class)->run($step, $call('+12165550105'), null, automation: $rule);
             $this->assertTrue($missed['ok'], $missed['detail']);
             $this->assertSame(2, Task::query()->count(), 'a complaint nobody logged is still added');
         });
@@ -522,19 +522,19 @@ class TaskStepsTest extends TestCase
                 'scope_snapshot' => ['type' => 'company', 'id' => $t['company']->id, 'company_chain' => [$t['company']->id]]]);
             $step = ['type' => 'task.create', 'title' => 'NJ Ads {{phone}}', 'board' => $board->id, 'group' => 'Missed Calls', 'dedupe' => '{{phone}}'];
 
-            $first = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $first = app(ActionRunner::class)->run($step, $event('(281) 555-0100'), null, automation: $rule);
             $this->assertTrue($first['ok'], $first['detail']);
             $this->assertSame($board->id, Task::query()->sole()->board_id, 'the named board, not the company one');
 
-            $again = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $again = app(ActionRunner::class)->run($step, $event('(281) 555-0100'), null, automation: $rule);
             $this->assertTrue($again['skipped'] ?? false, $again['detail']);
             $this->assertSame(1, Task::query()->count());
 
             app(ActionRunner::class)->run($step, $event('(305) 555-0101'), null, automation: $rule);
             $this->assertSame(2, Task::query()->count(), 'another caller is another task');
 
-            Task::query()->where('title', 'like', '%701-1639%')->update(['completed_at' => now()]);
-            app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            Task::query()->where('title', 'like', '%555-0100%')->update(['completed_at' => now()]);
+            app(ActionRunner::class)->run($step, $event('(281) 555-0100'), null, automation: $rule);
             $this->assertSame(3, Task::query()->count(), 'once the first is done, a new call is a new task');
 
             $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'lead.missed_call', 'is_active' => false, 'created_by' => $viewer->id]);

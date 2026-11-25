@@ -29,7 +29,7 @@ class ReplyWindowTest extends TestCase
         return $this->inTenant($t['org'], function () use ($t, $source, $connectionId, $lastWrote, $remote) {
             $lead = Lead::query()->create([
                 'organization_id' => $t['org']->id, 'source' => $source, 'remote_id' => $remote,
-                'connection_id' => $connectionId, 'contact_name' => 'Saman Shafqat', 'phone' => '+13055550199',
+                'connection_id' => $connectionId, 'contact_name' => 'Saman Shelton', 'phone' => '+13055550199',
             ]);
             LeadConversation::create([
                 'organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'm-'.Str::random(6),

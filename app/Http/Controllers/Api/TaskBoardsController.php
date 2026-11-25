@@ -70,7 +70,7 @@ class TaskBoardsController extends Controller
         $switchedOn = fn ($q) => $q->whereDoesntHave('company', fn ($c) => $c->switchedOff())
             ->whereDoesntHave('franchise', fn ($f) => $f->switchedOff());
 
-        $boards = $this->boards->visibleTo($user)->where($switchedOn)
+        $boards = $this->boards->visibleTo($user, byReach: true)->where($switchedOn)
             ->when($archived, $ownerGone, fn ($q) => $q->whereNot($ownerGone))
             ->when($archived && ! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))
             ->withCount(['tasks as open_for_me' => fn ($q) => $q
@@ -79,8 +79,8 @@ class TaskBoardsController extends Controller
             ->when($archived, fn ($q) => $q->withCount(['tasks as open_tasks' => fn ($t) => $t
                 ->where('status', '!=', Task::STATUS_DONE)]))
             ->with([
-                'company:id,name',
-                'franchise' => fn ($q) => $q->withTrashed()->with('company:id,name'),
+                'company:id,name,parent_company_id,brand_colour',
+                'franchise' => fn ($q) => $q->withTrashed()->with('company:id,name,parent_company_id,brand_colour'),
                 'owner:id,name',
                 'members' => fn ($q) => $q->with('user:id,name'),
             ])
@@ -89,8 +89,11 @@ class TaskBoardsController extends Controller
             ->values();
 
         $companyBoards = $this->boards->companyMap()['boards'];
+        // Row 68 (Jose 11-25: the org and companies have colours, never grey).
+        $orgColour = \App\Models\Organization::query()->whereKey($user->organization_id)->value('brand_colour');
+        $brandOf = \App\Models\Company::query()->pluck('brand_colour', 'id');
 
-        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived, $companyBoards) {
+        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived, $companyBoards, $orgColour, $brandOf) {
             $owner = $b->kind === TaskBoard::KIND_USER
                 ? $b->owner
                 : $b->members->firstWhere('role', TaskBoardMember::OWNER)?->user;
@@ -108,8 +111,13 @@ class TaskBoardsController extends Controller
                 'company_id' => ($b->company ?? $b->franchise?->company)?->id ?? $companyBoards[(string) $b->id] ?? null,
                 'company_name' => ($b->company ?? $b->franchise?->company)?->name
                     ?? (isset($companyBoards[(string) $b->id]) ? \App\Models\Company::query()->whereKey($companyBoards[(string) $b->id])->value('name') : null),
+                // Row 66: the company's parent, for the tree (a company with no branch is not in /me).
+                'parent_company_id' => ($b->company ?? $b->franchise?->company)?->parent_company_id,
                 // Row 66: its company's working board (Monday's "… - Operation", else the company board).
                 'company_board' => isset($companyBoards[(string) $b->id]),
+                'company_colour' => ($b->company ?? $b->franchise?->company)?->brand_colour
+                    ?? (isset($companyBoards[(string) $b->id]) ? ($brandOf[$companyBoards[(string) $b->id]] ?? null) : null),
+                'organization_colour' => $orgColour,
                 'franchise_id' => $b->franchise_id,
                 'folder_id' => $b->folder_id,
                 'colour' => $b->colour,
@@ -124,7 +132,7 @@ class TaskBoardsController extends Controller
             ];
         })->concat($archived ? $this->deleted($user) : [])->all(), 'meta' => [
             // The Archived list's switch, with how many wait there.
-            'archived_count' => $archived ? null : $this->boards->visibleTo($user)->where($switchedOn)->where($ownerGone)
+            'archived_count' => $archived ? null : $this->boards->visibleTo($user, byReach: true)->where($switchedOn)->where($ownerGone)
                 ->when(! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))->count()
                 + $this->deleted($user)->count(),
         ]]);
@@ -138,7 +146,7 @@ class TaskBoardsController extends Controller
      */
     private function deleted(User $user): Collection
     {
-        return $this->boards->visibleTo($user)->onlyTrashed()
+        return $this->boards->visibleTo($user, byReach: true)->onlyTrashed()
             ->where('deleted_at', '>=', now()->subDays(PurgeDeletedTaskBoards::DAYS))
             ->get()->filter(fn (TaskBoard $b) => $this->canRestore($user, $b))
             ->map(fn (TaskBoard $b) => ['id' => $b->id, 'kind' => $b->kind, 'name' => $b->name, 'archived' => true,
@@ -168,7 +176,7 @@ class TaskBoardsController extends Controller
     public function restore(Request $request, string $id): JsonResponse
     {
         $user = $request->user();
-        $board = $this->boards->visibleTo($user)->onlyTrashed()->findOrFail($id);
+        $board = $this->boards->visibleTo($user, byReach: true)->onlyTrashed()->findOrFail($id);
         abort_unless($this->canRestore($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
         abort_if($board->deleted_at->lt(now()->subDays(PurgeDeletedTaskBoards::DAYS)), 404);
         $board->restore();
@@ -233,7 +241,7 @@ class TaskBoardsController extends Controller
         $unread = NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
         $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
-        $assignable = $this->boards->assignable($taskBoard);
+        $assignable = self::withMe($this->boards->assignable($taskBoard), $user);
         $withPhoto = User::query()->whereIn('id', $assignable->pluck('id'))
             ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
         // Other words each is found by in the picker (Adeline 11-24: "Chris").
@@ -713,10 +721,20 @@ class TaskBoardsController extends Controller
      * Email and phone come back for the "Contact details" fold; the client
      * keeps them hidden until it is opened.
      */
+    /**
+     * Jose 11-25: the signed-in person is always in a people picker, whatever the Company·Branch picker says
+     * (he is at Triplex, so A-1's reach left him out of his own boards' pickers). Not on a private board they aren't on.
+     */
+    public static function withMe(\Illuminate\Support\Collection $people, User $me): \Illuminate\Support\Collection
+    {
+        return $people->contains('id', $me->id) || ! $me->is_active ? $people
+            : $people->push($me)->sortBy('name')->values();
+    }
+
     public function person(Request $request, TaskBoard $taskBoard, User $user): JsonResponse
     {
         $this->authorize('view', $taskBoard);
-        abort_unless($this->boards->assignable($taskBoard)->contains('id', $user->id), 404);
+        abort_unless(self::withMe($this->boards->assignable($taskBoard), $request->user())->contains('id', $user->id), 404);
 
         $user->loadMissing('role:id,name');
         $state = PhonePresence::query()->where('user_id', $user->id)->value('state');

@@ -1,0 +1,76 @@
+# gitleaks configuration for EzBizi.
+#
+# Default secret rules, plus two personal-data rules for the places real rows
+# get pasted: docs/ (design previews, reviews, migration notes) and test
+# fixtures (tests/, client/test/). Used by .github/workflows/secret-scan.yml
+# and scripts/hooks/pre-commit. Background: docs/security/.
+#
+# Fiction that passes: 555 numbers (prefer 555-0100..555-0199), toll-free
+# lines, repeated-digit and ...-0000/1234 dummies, example.com / .test /
+# .invalid domains, and the business lines in scripts/hooks/pii-allowlist.txt
+# (keep that file and the allowlist below in step).
+
+title = "EzBizi secrets and personal data"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public or generated files"
+paths = [
+  # The Android Firebase config: its api_key is the public client key, by design.
+  '''client/android/app/google-services\.json''',
+  '''client/web/vendor/''',
+  '''(^|/)vendor/''',
+  '''\.gitleaks\.toml''',
+  '''scripts/hooks/pii-allowlist\.txt''',
+]
+
+[[rules]]
+id = "pii-us-phone-number"
+description = "US phone number in docs or a test fixture. Use a fictional 555-01xx number."
+regex = '''(?:\+1[ .-]?)?\(?\b[2-9]\d{2}\)?[ .-][2-9]\d{2}[ .-]\d{4}\b|\+1[2-9]\d{2}[2-9]\d{6}\b|\([2-9]\d{2}\)[2-9]\d{2}-\d{4}\b'''
+path = '''^(docs|tests|client/test)/'''
+tags = ["pii", "phone"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    # fiction: 555 area code or exchange
+    '''^(?:\+?1[ .-]?)?\(?555''',
+    '''^(?:\+?1[ .-]?)?\(?[2-9]\d{2}\)?[ .-]?555''',
+    # toll-free business lines
+    '''^(?:\+?1[ .-]?)?\(?8(?:00|33|44|55|66|77|88)\b''',
+    # dummies
+    '''[ .-]?(?:0000|1111|1234)$''',
+    '''^(?:\+?1[ .-]?)?\(?(?:222\)?[ .-]?222[ .-]?2222|333\)?[ .-]?333[ .-]?3333|444\)?[ .-]?444[ .-]?4444|666\)?[ .-]?666[ .-]?6666|777\)?[ .-]?777[ .-]?7777|888\)?[ .-]?888[ .-]?8888|999\)?[ .-]?999[ .-]?9999)$''',
+    # business lines and Customer::PLACEHOLDER_PHONES (scripts/hooks/pii-allowlist.txt)
+    '''(?:207\)?[ .-]?274[ .-]?2444|216\)?[ .-]?666[ .-]?2282|239\)?[ .-]?456[ .-]?0829|239\)?[ .-]?747[ .-]?0324|325\)?[ .-]?312[ .-]?4023|469\)?[ .-]?498[ .-]?8349|475\)?[ .-]?215[ .-]?2046|561\)?[ .-]?232[ .-]?3929|561\)?[ .-]?576[ .-]?7239|754\)?[ .-]?295[ .-]?3986|772\)?[ .-]?252[ .-]?6270|786\)?[ .-]?408[ .-]?6862|856\)?[ .-]?446[ .-]?8303|954\)?[ .-]?453[ .-]?8774|954\)?[ .-]?516[ .-]?2455|973\)?[ .-]?782[ .-]?0956)$''',
+    '''(?:818\)?[ .-]?748[ .-]?2055|954\)?[ .-]?710[ .-]?9003|952\)?[ .-]?777[ .-]?7291|210\)?[ .-]?963[ .-]?6961|877\)?[ .-]?771[ .-]?1892|626\)?[ .-]?624[ .-]?4006|216\)?[ .-]?859[ .-]?0559|463\)?[ .-]?676[ .-]?4568|609\)?[ .-]?903[ .-]?5648|888\)?[ .-]?621[ .-]?9148|323\)?[ .-]?676[ .-]?1570|272\)?[ .-]?394[ .-]?2201|420\)?[ .-]?718[ .-]?3875)$''',
+  ]
+
+[[rules]]
+id = "pii-personal-email"
+description = "Personal-domain email address in docs or a test fixture. Use name@example.com."
+regex = '''\b[A-Za-z0-9._%+-]+@(?:gmail|googlemail|yahoo|ymail|rocketmail|icloud|me|mac|hotmail|outlook|live|msn|aol|comcast|att|sbcglobal|bellsouth|verizon|cox|optonline|protonmail|proton)\.(?:com|net|co\.uk|fr|con|me)\b'''
+path = '''^(docs|tests|client/test)/'''
+tags = ["pii", "email"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    # obviously fictional local parts
+    '''(?i)(?:sample|example|test|demo|fake|dummy|placeholder|jane|john|doe)[^@]*@''',
+    # Customer::PLACEHOLDER_EMAILS spellings and generic first-name-only fixtures
+    '''(?i)^(?:no|nm|n|na|naa|none|nomail|noemail\d*|noemai|nonail|nomaol|noname|notavaliable11|refused?|cxdeclined(?:email)?|fhfg|ghfg|nora|bob|person)@''',
+  ]
+
+[[rules]]
+id = "twilio-account-sid"
+description = "Twilio Account SID (an identifier, but it names the account to attack)."
+regex = '''\bAC[0-9a-f]{32}\b'''
+tags = ["twilio"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = ['''^AC(?:a{32}|b{32}|c{32}|0{32})$''']

@@ -71,7 +71,7 @@ void main() {
       details: const {
         'checked_address': {
           'exact': true,
-          'line1': '14 Edgerton St',
+          'line1': '14 Sampleton St',
           'city': 'Darien',
           'state': 'CT',
           'zip': '06820',
@@ -81,7 +81,7 @@ void main() {
     );
     expect(
       [p.line1, p.city, p.state, p.postal],
-      ['14 Edgerton St', 'Darien', 'CT', '06820'],
+      ['14 Sampleton St', 'Darien', 'CT', '06820'],
     );
     expect(p.franchiseId, 'fr-ct');
     expect(p.description, 'Chimney cleaning in Darien.');
@@ -455,14 +455,14 @@ BookPrefill _fromLead({
 );
 
 const _twoMatches = [
-  {'id': 'c-12', 'number': 'C-12', 'name': 'Jane Doe', 'phone': '+15132267716'},
-  {'id': 'c-88', 'number': 'C-88', 'name': 'J. Doe', 'phone': '+15132267716'},
+  {'id': 'c-12', 'number': 'C-12', 'name': 'Jane Doe', 'phone': '+15135550100'},
+  {'id': 'c-88', 'number': 'C-88', 'name': 'J. Doe', 'phone': '+15135550100'},
 ];
 
 const _lead = {
   'id': 'lead-1',
   'contact_name': 'Jane Doe',
-  'phone': '+1 (513) 226-7716',
+  'phone': '+1 (513) 555-0100',
   'email': null,
   'service': 'fireplace_chimney',
   'source': 'google',
@@ -616,7 +616,7 @@ Future<void> _pump(
             'id': 'c-12',
             'number': 'C-12',
             'name': 'Jane Doe',
-            'phone': '+15132267716',
+            'phone': '+15135550100',
             'address': {
               'line1': '9 Oak St',
               'city': 'Hartford',
@@ -664,7 +664,7 @@ Future<void> _pump(
                 'id': 'c-12',
                 'number': 'C-12',
                 'name': 'Jane Doe',
-                'phone': '+15132267716',
+                'phone': '+15135550100',
                 'email': null,
                 'address_line1': '9 Oak St',
                 'city': 'Hartford',

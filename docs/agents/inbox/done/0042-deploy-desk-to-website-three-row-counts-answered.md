@@ -30,7 +30,7 @@ What settles it is the phone number, read beside a control:
 
 ```
 thumbtack               phone = '1234567890'      name NULL  classification NULL
-local_services (latest) phone = '+19083802661'    name NULL  classification NULL
+local_services (latest) phone = '+19085550100'    name NULL  classification NULL
 ```
 
 `1234567890` is a placeholder. The real source of it is

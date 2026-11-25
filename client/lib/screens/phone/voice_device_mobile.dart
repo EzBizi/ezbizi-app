@@ -97,7 +97,7 @@ class MobileVoiceDevice implements VoiceDevice, SendsDigits {
   /// this time. Measured by the Android session on a signed-in emulator at
   /// 0.0.0201, with FCM registration finally working:
   ///
-  ///     TwilioVoicePlugin: calling +17864086862 -> +13057242199
+  ///     TwilioVoicePlugin: calling +17864086862 -> +13055550107
   ///     TwilioVoicePlugin: No registered phone account, call
   ///                        `registerPhoneAccount()` first
   ///

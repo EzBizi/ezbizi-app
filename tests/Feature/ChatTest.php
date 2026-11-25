@@ -264,4 +264,32 @@ class ChatTest extends TestCase
         $this->assertSame(['m1', 'm2', 'm3'], array_column($older, 'body'));
         $this->assertSame(5, ChatMessage::query()->withoutGlobalScopes()->count());
     }
+
+    public function test_a_chat_ties_to_a_job_the_linker_may_see_and_every_member_sees_the_line(): void
+    {
+        $dispatch = $this->userWithRole($this->t, 'Dispatcher', ['phone.chat.view', 'jobs.view'], 'dsp@alpha.test');
+        $job = $this->inTenant($this->t['org'], fn () => \App\Models\Job::factory()->create([
+            'franchise_id' => $this->t['franchise']->id,
+            'number' => 'JOB-05112',
+            'customer_id' => \App\Models\Customer::factory()->create([
+                'owning_franchise_id' => $this->t['franchise']->id, 'city' => 'Hartford',
+            ])->id,
+        ]));
+
+        // Made from the job, as a group.
+        $group = $this->signedInAs($dispatch)->postJson('/api/v1/chat/chats', [
+            'name' => 'Elm St chimney', 'user_ids' => [$this->bar->id], 'job_id' => $job->id,
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($this->bar)->getJson('/api/v1/chat/chats')
+            ->assertJsonPath('data.0.job', ['id' => $job->id, 'number' => 'JOB-05112', 'city' => 'Hartford']);
+
+        // Someone who may not see jobs cannot tie one, and a direct chat starts with none.
+        $chat = $this->direct($this->bar, $dispatch);
+        $this->signedInAs($this->bar)->patchJson("/api/v1/chat/chats/{$chat}/job", ['job_id' => $job->id])->assertNotFound();
+        $this->signedInAs($dispatch)->patchJson("/api/v1/chat/chats/{$chat}/job", ['job_id' => $job->id])
+            ->assertOk()->assertJsonPath('data.job.number', 'JOB-05112');
+        $this->signedInAs($dispatch)->patchJson("/api/v1/chat/chats/{$chat}/job", ['job_id' => null])
+            ->assertOk()->assertJsonPath('data.job', null);
+        $this->signedInAs($this->eve)->patchJson("/api/v1/chat/chats/{$group}/job", ['job_id' => null])->assertNotFound();
+    }
 }
