@@ -652,15 +652,21 @@ final class TimeClock
      * sender's last-picked company must not change what the email covers.
      * Reach itself (assertReaches, corrections) is not narrowed either.
      */
-    public function narrowToView(Builder $users, User $actor): Builder
+    public function narrowToView(Builder $users, User $actor, bool $withSelf = false): Builder
     {
         $places = $this->placesInView($actor);
 
-        return $users->where(function (Builder $inView) use ($places) {
+        return $users->where(function (Builder $inView) use ($places, $actor, $withSelf) {
             $inView->whereHas('assignments', fn (Builder $a) => $this->constrainToPlaces($a, $places));
             // Nobody placed anywhere counts only at the whole organization.
             if ($places['organization'] !== null) {
                 $inView->orWhereDoesntHave('assignments');
+            }
+            // The people list: yourself, whatever the picker (Jose, 2026-11-25:
+            // "when ur looking for yourself you always show up no matter
+            // where"). Not counts or payroll, which describe the place.
+            if ($withSelf) {
+                $inView->orWhere($inView->getModel()->qualifyColumn('id'), $actor->getKey());
             }
         });
     }
@@ -1160,7 +1166,7 @@ final class TimeClock
 
         $people = User::query()
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
-            ->when($inView, fn (Builder $q) => $this->narrowToView($q, $actor))
+            ->when($inView, fn (Builder $q) => $this->narrowToView($q, $actor, withSelf: true))
             ->orderBy('name')
             // The role, for the list's role filter (Jose, 2026-09-30).
             ->with('role:id,name')
