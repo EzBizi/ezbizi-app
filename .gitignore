@@ -148,3 +148,7 @@ docs/**/*.tsv
 *.dump
 # The CI scan's own workflow file matches the *secret* rule above; it holds no secret.
 !.github/workflows/secret-scan.yml
+
+# Review screenshots show real customer data: never commit (Jose 11-25 repo hygiene)
+docs/agents/mobile-review/**/*.png
+docs/agents/mobile-review/shots-*/
