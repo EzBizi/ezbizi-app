@@ -2334,14 +2334,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // header took it all and its list got 0 px (10 overflows, Android landscape
     // 11-24). Under the floor the page keeps [_pageFloor] and scrolls. The same
     // scroll view is there at every height, so turning the phone or opening
-    // the keyboard never rebuilds the screen; while typing the floor is off and
-    // the keyboard fold above decides.
+    // the keyboard never rebuilds the screen. Typing on a portrait phone the
+    // floor is off and the keyboard fold above decides; on a phone on its side
+    // it stays, or ~150 px above the keyboard overflowed 7 modules' headers
+    // (Android landscape 11-25): the keyboard only narrows the window onto
+    // the same page, and the box being typed in is scrolled into it.
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
         key: const Key('module-page-scroll'),
         primary: false,
         child: SizedBox(
-          height: _typing ? box.maxHeight : math.max(box.maxHeight, _pageFloor),
+          height: _typing && MediaQuery.sizeOf(context).height >= 560
+              ? box.maxHeight
+              : math.max(box.maxHeight, _pageFloor),
           child: _page(destination, toolbar, action),
         ),
       ),

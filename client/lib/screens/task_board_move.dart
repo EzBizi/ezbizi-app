@@ -52,6 +52,15 @@ class _TaskDestinationPanelState extends State<TaskDestinationPanel> {
         .cast<_Json>()
         .where((b) => b['can_edit'] == true)
         .toList();
+    // Jose 11-25: by company, then board, as the sidebar lists them.
+    String co(_Json b) => '${b['company_name'] ?? ''}';
+    boards.sort(
+      (a, b) => co(a).isEmpty != co(b).isEmpty
+          ? (co(a).isEmpty ? 1 : -1)
+          : co(a).compareTo(co(b)) != 0
+          ? co(a).compareTo(co(b))
+          : '${a['name']}'.compareTo('${b['name']}'),
+    );
     setState(() => _boards = boards);
     final start = boards.any((b) => b['id'] == widget.boardId)
         ? widget.boardId
@@ -285,7 +294,11 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     setState(() {
       _about = record == null
           ? null
-          : {'type': record['type'], 'id': record['id'], 'label': record['label']};
+          : {
+              'type': record['type'],
+              'id': record['id'],
+              'label': record['label'],
+            };
       _found = const [];
       _records = const [];
       _error = null;

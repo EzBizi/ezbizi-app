@@ -325,9 +325,16 @@ class MondaySyncTest extends TestCase
                 TaskColumnValue::query()->create(['organization_id' => $board->organization_id, 'task_id' => Task::query()->where('external_ref', 'monday:'.$ref)->value('id'), 'column_id' => $col->id, 'value_text' => $v]);
             }
 
+            // Desk 11-25: a technician with no Monday account cannot show there: not drift.
+            $tech = $this->userWithRole($this->tenant, 'Tech', ['tasks.view'], 'tech@ezbizi.test');
+            $techCol = TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Technician', 'type' => 'person', 'position' => 10]);
+            TaskColumnValue::query()->create(['organization_id' => $board->organization_id, 'task_id' => Task::query()->where('external_ref', 'monday:12')->value('id'), 'column_id' => $techCol->id, 'value_text' => $tech->id]);
+
             return [$col, Task::query()->where('external_ref', 'monday:12')->value('id')];
         });
         $board = $this->monday['boards']['100'];
+        $board['columns'][] = ['id' => 'person_t', 'title' => 'Technician', 'type' => 'people', 'settings_str' => '{}'];
+        $board['items'][1]['column_values'][] = ['id' => 'person_t', 'type' => 'people', 'text' => '', 'value' => null];
         $board['columns'][] = ['id' => 'text_c', 'title' => 'Client name', 'type' => 'text', 'settings_str' => '{}'];
         $board['items'][0]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => '', 'value' => null];             // empty there
         $board['items'][1]['column_values'][] = ['id' => 'text_c', 'type' => 'text', 'text' => 'tom  garangelli', 'value' => null]; // same, as a person reads it
@@ -342,6 +349,10 @@ class MondaySyncTest extends TestCase
         $queued = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->whereJsonContains('kinds', 'values:'.$client->id)->pluck('task_id')->all());
         $this->assertSame([$this->task('11')->id], $queued, 'only the one Monday lacks');
         $this->assertNotContains($same, $queued);
+
+        // Desk 11-25: a sensitive task is never sent to Monday, so its gap is not drift.
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['sensitive' => true]));
+        $this->artisan('ezbizi:monday-parity', ['--values' => true])->expectsOutputToContain('values differ 0')->assertSuccessful();
     }
 
     /** Desk 11-18: missing from Monday's board listing is not proof; an item Monday says is active is never trashed. */
@@ -558,6 +569,25 @@ class MondaySyncTest extends TestCase
         $this->assertSame('800020972', $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::query()->with('column')->where('task_id', $task->id)->get()->firstWhere('column.name', 'Workiz Job ID')?->value_text));
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $task->id)->whereJsonContains('kinds', 'title')->exists()), 'the clean title goes back to Monday');
         $this->assertNull(JobTitle::split('Call back Mr Smith'));
+    }
+
+    /** Desk 11-25: the job fill the sync does (client, job #) is owed to Monday: it goes in the outbox. */
+    public function test_values_the_sync_fills_from_a_job_are_queued_for_monday(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $client = $this->inTenant($this->tenant['org'], function () {
+            $board = TaskBoard::query()->where('external_ref', 'monday:100')->sole();
+            $col = TaskColumn::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 9]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->tenant['franchise']->id, 'name' => 'Pat Doe']);
+            \App\Models\Job::factory()->create(['franchise_id' => $this->tenant['franchise']->id, 'customer_id' => $customer->id, 'number' => 'JOB-77001']);
+
+            return $col;
+        });
+        $this->poll([$this->mondayItem('41', 'Job #JOB-77001 - Pat Doe', '2026-11-12T12:00:00Z')]);
+
+        $task = $this->task('41');
+        $this->assertSame('Pat Doe', $this->inTenant($this->tenant['org'], fn () => TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $client->id)->value('value_text')));
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $task->id)->whereJsonContains('kinds', 'values:'.$client->id)->exists()), 'Monday lacks it: queued');
     }
 
     /** Desk 11-18: a title still waiting in the outbox is never put back by Monday's older title. */

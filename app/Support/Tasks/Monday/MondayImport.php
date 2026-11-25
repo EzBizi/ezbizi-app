@@ -194,6 +194,15 @@ final class MondayImport
                     }
                 }
             })));
+            // The job fill the import's writer did while recording was off: Monday lacks it (desk 11-25).
+            $owed = MondayOutbox::takeOwed();
+            if (! $this->dry && $owed !== []) {
+                $this->tenant->run($org, function () use ($owed) {
+                    foreach (Task::query()->whereIn('id', array_keys($owed))->get() as $t) {
+                        app(MondayOutbox::class)->record($t, $owed[$t->id]);
+                    }
+                });
+            }
             if (! $this->dry && ($this->retitled !== [] || $this->blankStatus !== [])) {
                 // Outside the suppression: the cleaned titles, and the status we gave an item Monday
                 // left blank (Monday showed an empty cell, we "Not started"), go back as live rows.

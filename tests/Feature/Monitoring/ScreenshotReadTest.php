@@ -125,6 +125,36 @@ class ScreenshotReadTest extends TestCase
         $this->assertSame($jpegBytes, $resp->getContent());
     }
 
+    public function test_one_day_pages_back_through_every_capture_with_its_counts(): void
+    {
+        // Jose 11-25: the filmstrip showed only the newest 12 of ~5,000.
+        $alpha = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Seer', ['monitoring.screenshots.view']);
+        $device = $this->inTenant($alpha['org'], fn () => MonitoredDevice::factory()->create([
+            'organization_id' => $alpha['org']->id, 'user_id' => $alpha['admin']->getKey(),
+        ]));
+        $day = now()->startOfDay()->addHours(12);
+        $shot = fn ($at) => $this->inTenant($alpha['org'], fn () => MonitoringScreenshot::factory()->create([
+            'organization_id' => $alpha['org']->id, 'device_id' => $device->id,
+            'user_id' => $alpha['admin']->getKey(), 'captured_at' => $at,
+        ]))->id;
+        $inDay = [$shot($day->copy()->addMinutes(3)), $shot($day->copy()->addMinutes(2)), $shot($day->copy()->addMinute())];
+        $yesterday = $shot($day->copy()->subDay());
+
+        $q = fn (array $p) => '/api/v1/monitoring/screenshots?'.http_build_query(['device_id' => $device->id] + $p);
+        $from = $day->copy()->startOfDay()->toIso8601String();
+        $to = $day->copy()->endOfDay()->toIso8601String();
+
+        $page1 = $this->signedInAs($viewer)->getJson($q(['from' => $from, 'to' => $to, 'limit' => 2]))->assertOk();
+        $this->assertSame(array_slice($inDay, 0, 2), $page1->json('data.*.id'));
+        $this->assertSame(['in_range' => 3, 'total' => 4], $page1->json('meta'));
+
+        $page2 = $this->signedInAs($viewer)->getJson($q(['from' => $from, 'to' => $to, 'limit' => 2,
+            'before' => $page1->json('data.1.captured_at')]))->assertOk();
+        $this->assertSame([$inDay[2]], $page2->json('data.*.id'), 'the rest of the day, and not yesterday');
+        $this->assertNotContains($yesterday, $page2->json('data.*.id'));
+    }
+
     public function test_filtering_by_device_id_and_a_before_cursor(): void
     {
         $alpha = $this->provisionTenant('Alpha');

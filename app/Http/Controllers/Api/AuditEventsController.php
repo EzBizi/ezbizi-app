@@ -16,7 +16,7 @@ use Illuminate\Validation\Rule;
  * Settings › Activity: who did what, newest first (A1 Leads takeover,
  * 2026-10-16 — Rodrigo's Activity tab, built the EzBizi way).
  *
- * Gated on `audit.view` by the route, and scoped to the CURRENT VIEW (§3):
+ * Gated on `monitoring.activity.view` by the route, and scoped to the CURRENT VIEW (§3):
  * standing in a company you see that company's and its branches' events, and
  * the organization-level ones only from the organization view.
  *

@@ -51,8 +51,11 @@ class ModuleTabsFixtureTest extends TestCase
             if ($module->tabs !== []) {
                 $grants = [];
                 foreach ($module->tabs as $tab) {
+                    // A passive tab (Monitoring's Activity, API activity) opens
+                    // without the module's view, so the client is pumped without it.
+                    $passive = in_array($tab->action(), $module->passiveActions, true);
                     $grants[$tab->label] = $this->closure($registry, [
-                        "{$module->key}.view",
+                        ...($passive ? [] : ["{$module->key}.view"]),
                         "{$module->key}.{$tab->action()}",
                     ]);
                 }
@@ -106,8 +109,10 @@ class ModuleTabsFixtureTest extends TestCase
             if ($module === null) {
                 continue;
             }
-            // Any grant in a module implies its view (withImpliedView).
-            $keys[] = "{$moduleKey}.view";
+            // Any grant in a module implies its view (withImpliedView), except a passive one.
+            if (! in_array($action, $module->passiveActions, true)) {
+                $keys[] = "{$moduleKey}.view";
+            }
             foreach ($module->actionRequires[$action] ?? [] as $needed) {
                 $keys[] = $needed;
             }

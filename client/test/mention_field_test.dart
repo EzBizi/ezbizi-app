@@ -77,5 +77,12 @@ void main() {
 
     expect(find.text('3'), findsOneWidget);
     expect(find.text('0'), findsNothing);
+    // Jose 11-25: beside the icon, never over it.
+    expect(
+      tester.getTopLeft(find.text('3')).dx,
+      greaterThanOrEqualTo(
+        tester.getTopRight(find.byIcon(Icons.note).first).dx,
+      ),
+    );
   });
 }

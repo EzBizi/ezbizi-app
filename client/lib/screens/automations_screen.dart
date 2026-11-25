@@ -329,6 +329,22 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       _catalogue?.triggerIsRaised(automation['trigger_key'] as String?) ==
           false;
 
+  /// A Task Board rule (Jose 11-25): its tag and board names, from the server.
+  static Map<String, dynamic>? _taskBoard(Map<String, dynamic> a) =>
+      a['task_board'] is Map
+      ? Map<String, dynamic>.from(a['task_board'] as Map)
+      : null;
+
+  /// "the Leads board", "the A and B boards", "every Task Board".
+  static String _boardsSaid(Map<String, dynamic> board) {
+    final names = [
+      for (final n in (board['boards'] as List? ?? const [])) '$n',
+    ];
+    if (board['every'] == true || names.isEmpty) return 'every Task Board';
+    if (names.length == 1) return 'the ${names.first} board';
+    return 'the ${names.sublist(0, names.length - 1).join(', ')} and ${names.last} boards';
+  }
+
   /// The module a rule's event belongs to: "Jobs" from "Jobs › Created".
   String _moduleOf(Map<String, dynamic> automation) {
     final trigger = automation['trigger_key'] as String? ?? '';
@@ -373,7 +389,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       if (words.isEmpty) return true;
       final said = [
         a['name'],
-        a['description'],
+        a['description_shown'] ?? a['description'],
         _catalogue?.describeTrigger('${a['trigger_key']}'),
         _does(a),
       ].whereType<String>().join(' ').toLowerCase();
@@ -498,7 +514,24 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     );
   }
 
+  /// On the Task Board tint the muted grey is 4.15:1 in light (Mobile UI-UX
+  /// 11-25), so a Task Board card's small text takes the full ink.
   Widget _row(BuildContext context, Map<String, dynamic> automation) {
+    if (_taskBoard(automation) == null) return _rowBody(context, automation);
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onSurface;
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(onSurfaceVariant: ink),
+        textTheme: theme.textTheme.copyWith(
+          bodySmall: theme.textTheme.bodySmall?.copyWith(color: ink),
+        ),
+      ),
+      child: Builder(builder: (context) => _rowBody(context, automation)),
+    );
+  }
+
+  Widget _rowBody(BuildContext context, Map<String, dynamic> automation) {
     final noEdit = _noEdit;
     final noDelete = _noDelete;
     final noCreate = _noCreate;
@@ -506,15 +539,20 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final coreReason = automation['core_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
-    final description = automation['description'] as String?;
+    final description =
+        (automation['description_shown'] ?? automation['description'])
+            as String?;
     final scope = (automation['scope'] as Map?)?['label'] as String?;
 
     final theme = Theme.of(context);
+    final board = _taskBoard(automation);
 
     return Card(
       // The whole card opens the rule (UI queue 73); it used to do nothing,
       // so everything hid in the ⋮ menu.
       clipBehavior: Clip.antiAlias,
+      // A Task Board rule wears its own colour (Jose 11-25).
+      color: board == null ? null : theme.colorScheme.secondaryContainer,
       // A rule a tab depends on wears its own border (Jose, 2026-10-28).
       shape: coreReason == null
           ? null
@@ -560,6 +598,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         if (disabledReason != null)
                           const Tag('Auto-disabled', warn: true),
                         if (coreReason != null) const Tag('Core'),
+                        if (board != null)
+                          Tag(
+                            '${board['label']}',
+                            key: ValueKey(
+                              'automation-board-${automation['id']}',
+                            ),
+                            colour: theme.colorScheme.secondary,
+                          ),
                       ],
                     ),
                   ),
@@ -645,7 +691,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   null => '',
                 }}',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
+                  // Primary on the Task Board tint is 3.69:1 in dark (UI/UX 11-25).
+                  color: board == null
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -846,6 +895,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_taskBoard(automation) case final board?) ...[
+                Tag('${board['label']}', colour: theme.colorScheme.secondary),
+                const SizedBox(height: 8),
+              ],
               Text(
                 'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
                 '${switch (_does(automation)) {
@@ -856,9 +909,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   color: theme.colorScheme.primary,
                 ),
               ),
-              if ('${automation['description'] ?? ''}'.trim().isNotEmpty) ...[
+              if ('${automation['description_shown'] ?? automation['description'] ?? ''}'
+                  .trim()
+                  .isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Text('${automation['description']}'),
+                Text(
+                  '${automation['description_shown'] ?? automation['description']}',
+                ),
               ],
               const SizedBox(height: 6),
               _lastRun(
@@ -1026,6 +1083,41 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             ),
           ],
           child: Text('While this rule is off: $core'),
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
+    // A Task Board rule says which board changes, on or off (Jose 11-25).
+    final board = _taskBoard(automation);
+    if (board != null && !undoing) {
+      final trigger = automation['trigger_key'] as String? ?? '';
+      final what =
+          'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
+          '${switch (_does(automation)) {
+            final does? => ' → $does',
+            null => '',
+          }}';
+      final go = await showSidePanel<bool>(
+        context,
+        builder: (context) => SidePanel(
+          title: on
+              ? 'Turn on a Task Board rule?'
+              : 'Turn off a Task Board rule?',
+          width: 480,
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('automation-board-confirm'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(on ? 'Turn it on' : 'Turn it off'),
+            ),
+          ],
+          child: Text(
+            'Turning this ${on ? 'on' : 'off'} changes how ${_boardsSaid(board)} works: $what.',
+          ),
         ),
       );
       if (go != true || !mounted) return;

@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/** Settings › Activity (2026-10-16). */
+/** Monitoring › Activity (Settings › Activity until 2026-11-25). */
 class AuditEventsApiTest extends TestCase
 {
     use BuildsTenants;
@@ -35,7 +35,7 @@ class AuditEventsApiTest extends TestCase
         return collect($this->getJson('/api/v1/audit-events')->assertOk()->json('data'))->pluck('action')->sort()->values()->all();
     }
 
-    public function test_it_needs_audit_view(): void
+    public function test_it_needs_monitoring_activity_view(): void
     {
         $tenant = $this->provisionTenant();
 
@@ -50,7 +50,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($alpha, 'alpha.done', 'organization', $alpha['org']->id);
         $this->event($beta, 'beta.done', 'organization', $beta['org']->id);
 
-        $this->signedInAs($this->userWithRole($alpha, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($alpha, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(['alpha.done'], $this->actions());
 
@@ -66,7 +66,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'mine.done', 'franchise', $tenant['franchise']->id);
         $this->event($tenant, 'sibling.done', 'franchise', $sibling->id);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['audit.view'], onlyAt: $tenant['franchise']));
+        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['monitoring.activity.view'], onlyAt: $tenant['franchise']));
 
         $this->assertSame(['mine.done'], $this->actions());
     }
@@ -98,7 +98,7 @@ class AuditEventsApiTest extends TestCase
         $mine  = AuditEvent::query()->where('action', 'mine.done')->value('id');
         $other = AuditEvent::query()->where('action', 'sibling.done')->value('id');
 
-        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['audit.view'], onlyAt: $tenant['franchise']));
+        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['monitoring.activity.view'], onlyAt: $tenant['franchise']));
 
         $this->getJson("/api/v1/audit-events/{$mine}")->assertOk()
             ->assertJsonPath('data.action', 'mine.done')
@@ -123,7 +123,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'old.done', 'organization', $tenant['org']->id, ['occurred_at' => now()->subDays(10)]);
         $this->event($tenant, 'robot.done', 'organization', $tenant['org']->id, ['actor_type' => 'system']);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(['recent.done', 'robot.done'], $this->actions());
         $this->assertSame(['old.done', 'recent.done', 'robot.done'], collect($this->getJson('/api/v1/audit-events?window=30d')->json('data'))->pluck('action')->sort()->values()->all());
@@ -148,7 +148,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'at.org', 'organization', $tenant['org']->id);
         $this->event($tenant, 'at.nowhere', null, null);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(
             ['at.company' => 'Alpha Co', 'at.franchise' => 'Alpha F1', 'at.nowhere' => 'Alpha', 'at.org' => 'Alpha'],
@@ -164,7 +164,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'dana.done', 'organization', $tenant['org']->id, ['actor_id' => $dana]);
         $this->event($tenant, 'eve.done', 'organization', $tenant['org']->id, ['actor_id' => (string) Str::uuid()]);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(['dana.done'], array_keys($this->field("?actor_id={$dana}", 'action')));
     }
@@ -177,7 +177,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'timeXclock.punched', 'organization', $tenant['org']->id);
         $this->event($tenant, 'inspection.done', 'organization', $tenant['org']->id);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(['time_clock.punched'], array_keys($this->field('?module=time_clock', 'action')));
         // The prefix the logger writes, not the registry key: `lead`, not `leads`.
@@ -194,7 +194,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'sale.dollars', 'organization', $tenant['org']->id, ['target_label' => 'Spring 500 off']);
         $this->event($tenant, 'other.done', 'organization', $tenant['org']->id, ['target_label' => 'Chimney sweep']);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $this->assertSame(['sale.percent'], array_keys($this->field('?q='.urlencode('50%'), 'action')));
         $this->assertSame(['sale.dollars', 'sale.percent'], array_keys($this->field('?q=spring', 'action')));
@@ -211,7 +211,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'robot.one', 'organization', $tenant['org']->id, ['actor_type' => 'system', 'actor_label' => 'system']);
         $this->event($tenant, 'olga.old', 'organization', $tenant['org']->id, ['actor_id' => (string) Str::uuid(), 'actor_label' => 'Olga <olga@example.test>', 'occurred_at' => now()->subDays(10)]);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
 
         $expected = [['id' => $dana, 'label' => 'Dana'], ['id' => $eve, 'label' => 'Eve']];
         $this->assertSame($expected, $this->getJson('/api/v1/audit-events')->json('meta.actors'));
@@ -226,7 +226,7 @@ class AuditEventsApiTest extends TestCase
         $this->event($tenant, 'sibling.done', 'franchise', $sibling->id, ['actor_id' => $theirs, 'actor_label' => 'Sam <sam@example.test>']);
         $this->event($tenant, 'mine.done', 'franchise', $tenant['franchise']->id);
 
-        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['audit.view'], onlyAt: $tenant['franchise']));
+        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['monitoring.activity.view'], onlyAt: $tenant['franchise']));
 
         $response = $this->getJson("/api/v1/audit-events?actor_id={$theirs}")->assertOk();
         $this->assertSame([], $response->json('data'));
