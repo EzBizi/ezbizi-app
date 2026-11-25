@@ -662,6 +662,12 @@ class ChatController extends Controller
         return $this->across($request, fn ($q) => $q->whereJsonContains('chat_messages.starred_by', $request->user()->id));
     }
 
+    /** GET chat/calls — my recent calls across every chat, newest first (the Calls tab). */
+    public function recentCalls(Request $request): JsonResponse
+    {
+        return $this->across($request, fn ($q) => $q->where('chat_messages.kind', 'call'));
+    }
+
     /** GET chat/search?q= — messages across every chat I am in. */
     public function search(Request $request): JsonResponse
     {
