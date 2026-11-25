@@ -258,7 +258,13 @@ class PermissionCatalogue
                 // dropped unavailable modules, so this cannot be true while
                 // `available` is false — but it is written as a conjunction
                 // anyway, because a reader should not have to know that.
-                'reachable' => $available && in_array("{$module->key}.view", $held, true),
+                //
+                // Or any of its tabs: Monitoring's Activity and API activity do
+                // not imply monitoring.view (passive, 2026-11-25), yet the screen
+                // must draw for them. Every other tab action implies the view,
+                // so this changes nothing elsewhere.
+                'reachable' => $available && (in_array("{$module->key}.view", $held, true)
+                    || array_intersect(array_map(fn ($t) => "{$module->key}.{$t->action()}", $module->tabs), $held) !== []),
             ];
         }, $this->registry->all()));
     }

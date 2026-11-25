@@ -12,6 +12,8 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import '../../widgets/centred_page.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -208,15 +210,11 @@ class _ReviewQrPanelState extends State<ReviewQrPanel> {
 
   @override
   Widget build(BuildContext context) {
+    // Centred like New Inspection's search (Jose 11-25), by the same widget.
     return LayoutBuilder(
-      builder: (context, box) => SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: _code == null ? _form(context) : _result(context, box),
-          ),
-        ),
+      builder: (context, box) => CentredPage(
+        maxWidth: 460,
+        child: _code == null ? _form(context) : _result(context, box),
       ),
     );
   }

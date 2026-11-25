@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -148,8 +149,28 @@ class ScreenshotsController extends Controller
             $query->where('device_id', $deviceId);
         }
 
+        // One day of the filmstrip (Jose, 2026-11-25: every stored capture
+        // reachable, not just the newest 12): the client sends its own local
+        // day as [from, to); `before` pages back through it.
+        $request->validate([
+            'from' => ['sometimes', 'nullable', 'date'],
+            'to' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $total = $deviceId ? (clone $query)->count() : null;
+
+        if ($from = $request->query('from')) {
+            $query->where('captured_at', '>=', Carbon::parse($from)->utc());
+        }
+
+        if ($to = $request->query('to')) {
+            $query->where('captured_at', '<', Carbon::parse($to)->utc());
+        }
+
+        $inRange = $deviceId ? (clone $query)->count() : null;
+
         if ($before = $request->query('before')) {
-            $query->where('captured_at', '<', $before);
+            // An unencoded '+' in the offset arrives as a space; read it back.
+            $query->where('captured_at', '<', Carbon::parse(str_replace(' ', '+', $before))->utc());
         }
 
         $limit = max(1, min((int) $request->query('limit', self::DEFAULT_LIMIT), self::MAX_LIMIT));
@@ -165,6 +186,8 @@ class ScreenshotsController extends Controller
                 'width' => $s->width,
                 'height' => $s->height,
             ])->all(),
+            // Per device only: "124 today · 5,170 in 30 days".
+            'meta' => ['in_range' => $inRange, 'total' => $total],
         ]);
     }
 
