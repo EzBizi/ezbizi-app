@@ -100,8 +100,12 @@ class DevicePruner
                     })
                     ->get();
 
+                // Deleted in platform scope, the way expire-data runs: retention
+                // is owed even by an organization whose subscription has ended,
+                // and its read-only guard refused the delete and aborted the
+                // whole run (2026-11-25 04:31 UTC).
                 foreach ($stale as $device) {
-                    $this->pruneDevice($device);
+                    $this->tenant->runWithoutTenant(fn () => $this->pruneDevice($device));
                 }
 
                 return $stale->count();

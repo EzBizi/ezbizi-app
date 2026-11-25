@@ -13,7 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0642', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
+      'Automations: rules that change a Task Board have their own colour and a "Task Board" tag naming the board, and turning one on or off asks first and names the board it changes',
+      'Phones and foldables: with the keyboard up on a wide screen (an unfolded fold, a tablet on its side) the reply box and lists stay above the keyboard',
+      'Project Management: totals no longer break over two lines, and the total tiles are all one height',
+      'Monitoring: the nightly clean-up of old devices runs for every company again (one company with an ended plan was stopping it for all)',
+    ]),
+    VersionRelease(version: '0.0.0642', date: '25 Nov 2026', deployed: '2026-11-25 14:16',
+      items: [
       'Missed calls: "text the caller" works when the number was saved with a + but without the 1 (a US number like +860 442 ...)',
     ]),
     VersionRelease(version: '0.0.0641', date: '25 Nov 2026', deployed: '2026-11-25 04:41',

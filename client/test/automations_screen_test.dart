@@ -243,6 +243,46 @@ void main() {
     );
   });
 
+  // Jose 11-25: a Task Board rule wears a tag naming its board, and both
+  // switching it on and switching it off say which board changes first.
+  testWidgets('a Task Board rule names its board and asks before switching', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Overdue nudge',
+            'description': null,
+            'trigger_key': 'task.overdue',
+            'is_active': false,
+            'is_live': false,
+            'disabled_at': null,
+            'disabled_reason': null,
+            'task_board': {
+              'boards': ['Leads'],
+              'every': false,
+              'label': 'Task Board · Leads',
+            },
+            'runs_count': 0,
+            'version': 1,
+          },
+        ],
+      ),
+    );
+
+    expect(find.text('Task Board · Leads'), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(find.text('Turn on a Task Board rule?'), findsOneWidget);
+    expect(
+      find.textContaining('Turning this on changes how the Leads board works'),
+      findsOneWidget,
+    );
+  });
+
   // On a phone one line cut every rule to "Flag a customer with no w…".
   testWidgets('on a phone a rule name reads in full over two lines', (
     tester,

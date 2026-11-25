@@ -1310,4 +1310,22 @@ class AutomationsApiTest extends TestCase
 
         $this->assertTrue(Automation::query()->withoutGlobalScopes()->findOrFail($original['id'])->is_active);
     }
+
+    /** Jose 11-25: a Task Board rule names its board(s); any other rule carries nothing. */
+    public function test_a_task_board_rule_names_its_boards(): void
+    {
+        $make = fn (array $rule) => $this->as()->postJson('/api/v1/automations', $rule + ['conditions' => ['all' => []]])->assertCreated()->json('data.id');
+        $plain = $make(['name' => 'Plain', 'trigger_key' => 'job.status_changed', 'actions' => [['type' => 'notify', 'message' => 'x']]]);
+        $every = $make(['name' => 'Every', 'trigger_key' => 'job.status_changed', 'actions' => [['type' => 'task.create', 'title' => 'x', 'assignee' => 'user:'.$this->org['admin']->id]]]);
+        $board = app(TenantContext::class)->run($this->org['organization'], fn () => \App\Models\TaskBoard::query()->create([
+            'organization_id' => $this->org['organization']->id, 'kind' => 'custom', 'name' => 'Leads', 'created_by_user_id' => $this->org['admin']->id]));
+        $named = $make(['name' => 'Named', 'trigger_key' => 'task.overdue', 'conditions' => ['all' => [['field' => 'board_id', 'op' => 'eq', 'value' => $board->id]]],
+            'actions' => [['type' => 'notify', 'message' => 'x']]]);
+
+        $list = collect($this->as()->getJson('/api/v1/automations')->assertOk()->json('data'))->keyBy('id');
+        $this->assertNull($list[$plain]['task_board']);
+        $this->assertSame('Task Board · every board', $list[$every]['task_board']['label']);
+        $this->assertSame('Task Board · Leads', $list[$named]['task_board']['label']);
+        $this->assertSame(['Leads'], $list[$named]['task_board']['boards']);
+    }
 }
