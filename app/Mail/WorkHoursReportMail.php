@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\Organization;
 use App\Support\Reports\Texts\ReportPdf;
 use App\Support\Settings\OrgTimezone;
+use App\Support\TimeClock\TimeClockReports;
 use Carbon\CarbonImmutable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
@@ -25,7 +26,7 @@ use Illuminate\Support\Str;
 class WorkHoursReportMail extends Mailable
 {
     /**
-     * @param  list<array{name: string, hours: string}>  $rows
+     * @param  list<array{name: string, hours: string, section?: string}>  $rows  in section order
      */
     public function __construct(
         public readonly string $reportName,
@@ -49,6 +50,7 @@ class WorkHoursReportMail extends Mailable
                 'name' => $this->reportName,
                 'range' => $this->range,
                 'rows' => $this->rows,
+                'sections' => $this->sections(),
                 'total' => $this->total,
                 'business' => $this->businessName,
                 'fromAutomation' => $this->fromAutomation,
@@ -56,11 +58,26 @@ class WorkHoursReportMail extends Mailable
         );
     }
 
+    /** @return list<array{key: string, label: string, rows: list<array<string, mixed>>}> */
+    private function sections(): array
+    {
+        $out = [];
+        foreach (TimeClockReports::SECTIONS as $key => $label) {
+            $rows = array_values(array_filter($this->rows, fn (array $r) => ($r['section'] ?? 'unset') === $key));
+            if ($rows !== []) {
+                $out[] = ['key' => $key, 'label' => $label, 'rows' => $rows];
+            }
+        }
+
+        return $out;
+    }
+
     /** The same table as a formatted PDF (Jose, 2026-11-10: every report, its PDF too). */
     public function attachments(): array
     {
         $body = '*'.$this->reportName."*\n".$this->range."\n\n"
-            .implode("\n", array_map(fn (array $r) => '• *'.$r['name'].'*: '.$r['hours'], $this->rows))
+            .implode("\n\n", array_map(fn (array $s) => '*'.$s['label']."*\n".implode("\n", array_map(
+                fn (array $r) => '• *'.$r['name'].'*: '.$r['hours'], $s['rows'])), $this->sections()))
             ."\n\n*TOTAL: ".$this->total.'*';
 
         return [Attachment::fromData(fn () => ReportPdf::render($body, new Organization(['name' => $this->businessName ?: 'EzBizi']),
