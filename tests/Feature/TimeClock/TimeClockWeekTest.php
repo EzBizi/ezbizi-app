@@ -135,7 +135,9 @@ class TimeClockWeekTest extends TestCase
         $ids = fn ($response) => array_column($response->assertOk()->json('data.people'), 'id');
 
         $this->assertContains($worker->id, $ids($this->signedInAs($alpha['admin'])->getJson('/api/v1/hr/time-clock/week')));
-        $this->assertSame([], $ids($this->signedInAs($alpha['admin'])
+        // Nobody else, but always yourself (Jose, 2026-11-25: "when ur looking
+        // for yourself you always show up no matter where").
+        $this->assertSame([$alpha['admin']->id], $ids($this->signedInAs($alpha['admin'])
             ->withHeader('X-EzBizi-View', 'company:'.$empty->id)
             ->getJson('/api/v1/hr/time-clock/week')));
     }
