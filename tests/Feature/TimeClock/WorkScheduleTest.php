@@ -106,22 +106,31 @@ class WorkScheduleTest extends TestCase
         $this->assertNull($row['work_schedule']);
     }
 
-    public function test_self_schedule_is_refused_until_the_organization_allows_it(): void
+    /**
+     * Jose, 2026-11-25: "Disable people changing their own Work Schedule for
+     * all roles except Administrator". The organization's switch still has to
+     * be on; then only an Administrator may change their own. A manager
+     * still sets other people's.
+     */
+    public function test_only_an_administrator_changes_their_own_schedule_and_managers_still_set_others(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+        $tech = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+        $manager = $this->userWithRole($alpha, 'Manager', ['work_hours.view', 'work_hours.general.view', 'work_hours.all', 'work_hours.manage']);
+        $admin = $alpha['admin'];
 
-        $this->signedInAs($person)->getJson('/api/v1/me/profile')
-            ->assertOk()->assertJsonPath('can_edit_schedule', false);
-
-        $this->signedInAs($person)->patchJson('/api/v1/me/schedule', ['days' => self::WEEK])
-            ->assertForbidden();
-
+        $this->signedInAs($admin)->patchJson('/api/v1/me/schedule', ['days' => self::WEEK])->assertForbidden();   // switch off
         $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('time_clock.self_schedule', $alpha['org'], true));
 
-        $this->signedInAs($person)->patchJson('/api/v1/me/schedule', ['days' => self::WEEK])
+        $this->signedInAs($tech)->getJson('/api/v1/me/profile')->assertOk()->assertJsonPath('can_edit_schedule', false);
+        $this->signedInAs($tech)->patchJson('/api/v1/me/schedule', ['days' => self::WEEK])->assertForbidden();
+
+        $this->signedInAs($admin)->getJson('/api/v1/me/profile')->assertOk()->assertJsonPath('can_edit_schedule', true);
+        $this->signedInAs($admin)->patchJson('/api/v1/me/schedule', ['days' => self::WEEK])
             ->assertOk()->assertJsonPath('work_schedule.days.monday.start', '08:00');
-        $this->signedInAs($person)->getJson('/api/v1/me/profile')
-            ->assertOk()->assertJsonPath('can_edit_schedule', true);
+
+        // A manager sets someone else's as before, but not their own through the same door.
+        $this->signedInAs($manager)->patchJson("/api/v1/hr/people/{$tech->id}/schedule", ['days' => self::WEEK])->assertOk();
+        $this->signedInAs($manager)->patchJson("/api/v1/hr/people/{$manager->id}/schedule", ['days' => self::WEEK])->assertForbidden();
     }
 }

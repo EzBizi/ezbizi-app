@@ -426,6 +426,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _scheduleCard() => WorkScheduleCard(
     schedule: _schedule,
     canEdit: _profile['can_edit_schedule'] == true,
+    caption: _profile['can_edit_schedule'] == true
+        ? null
+        : 'Your manager sets your work schedule.',
     onEdit: _editSchedule,
   );
 

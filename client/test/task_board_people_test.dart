@@ -380,11 +380,14 @@ void main() {
       ],
     );
 
-    for (final header in ['MY BOARDS', 'SHARED WITH ME', "EVERYONE'S BOARDS"]) {
+    await tester.tap(find.byKey(const ValueKey('tasks-fold-everyone')));
+    await tester.pumpAndSettle();
+    for (final header in ['SHARED WITH ME', "EVERYONE'S BOARDS"]) {
       expect(find.text(header), findsOneWidget);
     }
     expect(find.text('Office move'), findsOneWidget);
-    expect(find.text('Ben Okafor · 1 board'), findsOneWidget);
+    // One board, one row: no "Ben Okafor · 1 board" above it (Jose 11-25).
+    expect(find.text('Ben Okafor · 1 board'), findsNothing);
     expect(find.text('Ben'), findsOneWidget);
   });
 

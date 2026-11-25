@@ -153,6 +153,17 @@ void main() {
     expect(tester.getBottomLeft(all).dy, greaterThan(700));
   });
 
+  // Android on its side (923 wide): the table's fixed columns need 952, and
+  // it ran 115 px off the right. Narrower than the table, the cards draw.
+  testWidgets('narrower than the table: cards, nothing runs off', (
+    tester,
+  ) async {
+    final stub = _Stub();
+    await _pump(tester, stub, size: const Size(923, 900));
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Card), findsWidgets);
+  });
+
   testWidgets('without work_hours.payroll there is no Payroll tab', (
     tester,
   ) async {

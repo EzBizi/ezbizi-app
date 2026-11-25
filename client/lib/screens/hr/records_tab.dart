@@ -424,8 +424,12 @@ class _RecordsTabState extends State<RecordsTab> {
   Widget _sidebar(BuildContext context) {
     final shown = _shown;
 
-    return Column(
+    // The filters scroll with the list where the window is short (Android on
+    // its side: they left the list -2 px) and are capped elsewhere.
+    return HeaderAboveList(
+      header: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           key: const ValueKey('tour-hr-records-search'),
@@ -515,8 +519,9 @@ class _RecordsTabState extends State<RecordsTab> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
+      ],
+      ),
+      list: AsyncBody(
             key: const ValueKey('tour-hr-records-list'),
             loading: _loading,
             error: _error,
@@ -551,8 +556,6 @@ class _RecordsTabState extends State<RecordsTab> {
                         : _row(context, shown[i]),
                   ),
           ),
-        ),
-      ],
     );
   }
 
