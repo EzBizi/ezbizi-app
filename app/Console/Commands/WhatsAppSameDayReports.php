@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\WhatsAppGroup;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
 use App\Support\Settings\OrgTimezone;
@@ -50,22 +51,22 @@ class WhatsAppSameDayReports extends Command
                     $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
 
                     if ($branch !== null) {
-                        $sent += $this->once($group->getKey(), $date, fn () => $groups->deliver(
+                        $sent += $this->once($group->getKey(), $date, fn () => ReportSource::during('same-day', fn () => $groups->deliver(
                             $group->purpose,
                             BranchName::of($branch).' Same-Day Report for '.Carbon::parse($date)->format('M j'),
                             SameDayReport::forFranchise($branch, $date),
-                        ));
+                        )));
                     }
                 }
 
                 $financial = WhatsAppGroup::query()->where('purpose', 'financial')->first();
 
                 if ($financial !== null) {
-                    $sent += $this->once($financial->getKey(), $date, fn () => $groups->deliver(
+                    $sent += $this->once($financial->getKey(), $date, fn () => ReportSource::during('same-day', fn () => $groups->deliver(
                         'financial',
                         $organization->name.' · Same-Day Company Summary · '.Carbon::parse($date)->format('M j'),
                         SameDayReport::summary($organization, $date),
-                    ));
+                    )));
                 }
             });
         }

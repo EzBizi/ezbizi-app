@@ -1144,6 +1144,8 @@ Future<void> _pumpReports(
       if (path.endsWith('/reports')) {
         return _json({'data': reports});
       }
+      // Every report sent (2026-11-25): none here.
+      if (path.endsWith('/reports/sent')) return _json({'data': []});
 
       return _json({'message': 'Nothing stubbed for $path.'}, 500);
     }),

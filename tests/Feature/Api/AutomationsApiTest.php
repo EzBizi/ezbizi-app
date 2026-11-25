@@ -443,8 +443,9 @@ class AutomationsApiTest extends TestCase
     {
         $source = file_get_contents(app_path('Support/Automations/ActionRunner.php'));
 
-        // The runner now wraps its match in AutomationVoice::speak(..., fn () => match ...) (11-24).
-        $match = preg_match('/return (?:AutomationVoice::speak\(\$automation, fn \(\) => )?match \(\$type\) \{(.*?)\n        \}\)?;/s', $source, $m);
+        // The runner now wraps its match in AutomationVoice::speak(..., fn () => match ...) (11-24),
+        // and that in ReportSource::during(self::reportKey(...), fn () => ...) (Reports, 11-25).
+        $match = preg_match('/return (?:ReportSource::during\([^\n]*?, fn \(\) => )?(?:AutomationVoice::speak\(\$automation, fn \(\) => )?match \(\$type\) \{(.*?)\n        \}\)?\)?;/s', $source, $m);
         $this->assertSame(1, $match, 'the runner no longer has one match on $type — this guard needs rewriting, not deleting');
 
         preg_match_all("/^\s+'([a-z0-9_.]+)' => \\\$this->/m", $m[1], $found);
@@ -1327,5 +1328,10 @@ class AutomationsApiTest extends TestCase
         $this->assertSame('Task Board · every board', $list[$every]['task_board']['label']);
         $this->assertSame('Task Board · Leads', $list[$named]['task_board']['label']);
         $this->assertSame(['Leads'], $list[$named]['task_board']['boards']);
+
+        // A Monday copy's stored key is shown in words (Mobile UI-UX 11-25).
+        $this->assertSame('Copied from Monday (active there). Off here: this board has no group (removed on Monday).',
+            AutomationsController::descriptionShown('monday:384190975 (Monday, active) — off: not here: group (gone on Monday)'));
+        $this->assertSame('Mine', AutomationsController::descriptionShown('Mine'));
     }
 }

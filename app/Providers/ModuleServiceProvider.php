@@ -153,11 +153,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('organization', 'Organization'),
                     new TabDefinition('settings', 'Preferences'),
                     new TabDefinition('integrations', 'Integrations'),
-                    // Everything anybody did with an API key (UI queue 66; Jose,
-                    // 2026-10-07: "an MCP-API log to records the actions").
-                    // Administrators hold it; the activity endpoint widens to
-                    // the organization for whoever does.
-                    new TabDefinition('api_activity', 'API activity'),
+                    // API activity moved to Monitoring (Jose, 2026-11-25):
+                    // monitoring.api_activity.view.
                 ],
                 // The Organization tab is the companies tree (roles audit 2026-11-24).
                 actionRequires: ['integrations.view' => ['marketing.view'], 'organization.view' => ['companies.view']],
@@ -410,9 +407,12 @@ class ModuleServiceProvider extends ServiceProvider
                 // or delete action exists to grant, so tampering isn't a permission
                 // question — there is simply no code path.
                 automationExemptBecause: 'The audit log is append-only; nothing may act on it programmatically.',
-                // Read by Settings › Activity (2026-10-16), so it is a tick that
-                // opens something again.
-                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                // Activity moved to Monitoring (Jose, 2026-11-25) and reads
+                // `monitoring.activity.view`; nothing on the server reads
+                // `audit.view` any more, so the editor no longer offers it.
+                // Kept in the registry so roles still holding it stay valid
+                // while older clients are in the field.
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
                 sidebar: false,
             ),
 
@@ -2334,6 +2334,10 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('phone', 'Phone'),
+                    // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi
+                    // accounts. Messages never touch Twilio; calls ring the
+                    // colleague's Twilio identity like the Team roster.
+                    new TabDefinition('chat', 'Chat'),
                     new TabDefinition('users', 'Users'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('reports', 'Reports'),
@@ -2345,6 +2349,7 @@ class ModuleServiceProvider extends ServiceProvider
                 actionLabels: ['edit' => 'Change lines, flows and settings'],
                 actionDescriptions: [
                     'phone.view' => 'Dial, Messages, Team and Voicemail.',
+                    'chat.view' => 'Chat with colleagues: messages, groups, photos, files, voice notes and calls.',
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -4428,7 +4433,15 @@ class ModuleServiceProvider extends ServiceProvider
                 // ScreenMonitoringExemption; implies no monitoring.view. The
                 // exemption is the grant, so every role stays monitored until
                 // ticked, with no backfill.
-                passiveActions: ['unmonitored'],
+                //
+                // `activity.view` and `api_activity.view` (the Activity and API
+                // activity tabs, moved from Settings, Jose 2026-11-25) are listed
+                // here for the same reason: they must NOT imply monitoring.view.
+                // A role holding only one of them reads the audit log or the API
+                // log, never the device list. MonitoringScreen still draws for
+                // them because PermissionCatalogue::modulesFor counts any held
+                // tab as reach.
+                passiveActions: ['unmonitored', 'activity.view', 'api_activity.view'],
                 actionDescriptions: ['unmonitored' => 'Their PCs still show online with their specs. Screen views and remote control are refused at once; the PC itself stops capturing at its next app restart. Administrators are always monitored.'],
                 actionLabels: [
                     'unmonitored' => 'Their own PC is not screen-monitored',
@@ -4524,6 +4537,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('files', 'Files', action: 'files.view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
+                    // Moved from Settings (Jose, 2026-11-25). Neither needs
+                    // monitoring.view; see passiveActions above.
+                    new TabDefinition('activity', 'Activity'),
+                    new TabDefinition('api_activity', 'API activity'),
                     new TabDefinition('lighting', 'Lighting', action: 'lighting.manage'),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),

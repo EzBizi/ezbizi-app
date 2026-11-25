@@ -64,7 +64,7 @@ class SchedulingZipReportsController extends Controller
         $editors = User::query()->where('is_active', true)->get()
             ->filter(fn (User $u) => $u->hasPermission('scheduling.edit'))->pluck('id')->all();
         if ($editors !== []) {
-            $notify->dispatch(title: $title, body: $report->note ?: 'Fix it in Scheduling > Settings > Wrong ZIPs.', userIds: $editors);
+            $notify->dispatch(title: $title, body: \App\Support\NotesMarkup::plain((string) $report->note) ?: 'Fix it in Scheduling > Settings > Wrong ZIPs.', userIds: $editors);
         }
 
         return response()->json(['data' => ['id' => $report->id]], 201);

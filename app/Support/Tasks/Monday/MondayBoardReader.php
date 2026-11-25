@@ -668,7 +668,10 @@ final class MondayBoardReader
 
         foreach ($values as $id => $c) {
             $m = $meta[$id] ?? null;
-            if ($m === null || ($order !== [] && $id === $order[0])) {
+            // A "Job Status" standing in for a missing Status column is also kept as its column, so the
+            // board's Job Status follows Monday (desk 11-25 parity: 27 stale since the first import).
+            $isStatus = $order !== [] && $id === $order[0] && mb_strtolower(trim((string) $m['title'])) !== 'job status';
+            if ($m === null || $isStatus) {
                 continue;
             }
             $title = self::title($m, $order);
