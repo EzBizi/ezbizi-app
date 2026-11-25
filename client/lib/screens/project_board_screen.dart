@@ -1,3 +1,4 @@
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -3411,7 +3412,7 @@ class _NotesPanel extends StatefulWidget {
 }
 
 class _NotesPanelState extends State<_NotesPanel> {
-  final _draft = TextEditingController();
+  final _draft = FormattedNotesController();
   List<Map<String, dynamic>>? _notes;
   String? _workiz;
   String? _error;

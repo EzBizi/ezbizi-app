@@ -47,6 +47,22 @@ class NoteActivityTest extends TestCase
             ->assertJsonPath('data.0.meta.record', ['type' => 'job', 'id' => $job]);
     }
 
+    /** Jose, 2026-11-25: bold notes, but what leaves the note (the mention) is plain text. */
+    public function test_a_bold_job_note_keeps_its_tags_but_its_mention_is_plain_text(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->aJob($alpha);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['jobs.view']);
+
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/jobs/{$job}/notes", ['body' => '@Viewer <b>bring</b> the <u>ladder</u>', 'mentions' => [$viewer->id]])
+            ->assertCreated()->assertJsonPath('data.body', '@Viewer <b>bring</b> the <u>ladder</u>');
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/jobs/{$job}/notes", ['body' => '<b> </b>'])->assertStatus(422);
+
+        $sent = json_encode($this->signedInAs($viewer)->getJson('/api/v1/notifications')->assertOk()->json('data.0'));
+        $this->assertStringContainsString('bring the ladder', $sent);
+        $this->assertStringNotContainsString('<b>', $sent);
+    }
+
     public function test_a_job_counts_notes_by_others_until_they_are_read(): void
     {
         $alpha = $this->provisionTenant('Alpha');
