@@ -433,12 +433,13 @@ class _BoardTreeState extends State<BoardTree> {
     String? parent,
     double indent,
     Widget Function(int i, double indent) board,
-    bool Function(int i) matches,
-  ) {
+    bool Function(int i) matches, {
+    bool Function(Map<String, dynamic> folder)? keep,
+  }) {
     final theme = Theme.of(context);
     final mine = [
       for (final f in _folders)
-        if (f['parent_id'] == parent) f,
+        if (f['parent_id'] == parent && (keep == null || keep(f))) f,
     ]..sort(_byPlace);
     final out = <Widget>[];
     for (final f in mine) {
@@ -1023,13 +1024,43 @@ class _BoardTreeState extends State<BoardTree> {
             for (final (i, b) in boards.indexed)
               if (b['kind'] == 'user' && loose(b)) i,
           ];
-    final shared = sectioned ? inSection('shared') : const <int>[];
-    final places = sectioned
-        ? inSection('place')
-        : [
-            for (final (i, b) in boards.indexed)
-              if (b['kind'] != 'user' && loose(b)) i,
-          ];
+    // Jose 11-25: the company is the top level. A board shared with me that
+    // belongs to a company sits under that company with the rest of its
+    // boards (New York was alone under All markets while the other branches
+    // were under Franchise boards); only shared boards of no company stay
+    // in their own section.
+    bool ofCompany(int i) => '${boards[i]['company_name'] ?? ''}'.isNotEmpty;
+    final sharedAll = sectioned ? inSection('shared') : const <int>[];
+    final shared = [
+      for (final i in sharedAll)
+        if (!ofCompany(i)) i,
+    ];
+    final places = [
+      ...(sectioned
+          ? inSection('place')
+          : [
+              for (final (i, b) in boards.indexed)
+                if (b['kind'] != 'user' && loose(b)) i,
+            ]),
+      for (final i in sharedAll)
+        if (ofCompany(i)) i,
+    ];
+    // A folder named for a company (Monday's "A1 Chimney", "Everdoors") is
+    // that company's: its boards sit under the company, its sub-folders too.
+    String norm(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final companyNames = {
+      for (final i in places) '${boards[i]['company_name'] ?? ''}',
+    }..remove('');
+    String? companyOfFolder(Map<String, dynamic> f) =>
+        companyNames.where((c) => norm(c) == norm('${f['name']}')).firstOrNull;
+    final companyFolders = <String, List<String>>{};
+    for (final f in _folders) {
+      if (f['parent_id'] != null) continue;
+      if (companyOfFolder(f) case final c?) {
+        companyFolders.putIfAbsent(c, () => []).add('${f['id']}');
+      }
+    }
     final everyone = sectioned ? inSection('everyone') : const <int>[];
 
     // Companies, each with its own board and custom boards first, then its
@@ -1071,6 +1102,7 @@ class _BoardTreeState extends State<BoardTree> {
 
           final top = all.where((i) => branchOf(i) == null).toList()
             ..sort((a, b) => _byPlace(boards[a], boards[b]));
+          final folderIds = companyFolders[company] ?? const <String>[];
           final children = <Widget>[];
           for (final i in top) {
             final under = rank(i) == 2 && boards[i]['franchise_id'] != null
@@ -1099,6 +1131,29 @@ class _BoardTreeState extends State<BoardTree> {
               children.add(board(c, indent: 30));
             }
           }
+          // The company's folder: its boards straight under the company (the
+          // company board, "A1 - Operation"), then its sub-folders.
+          for (final fid in folderIds) {
+            children.addAll(
+              [
+                for (final (i, b) in boards.indexed)
+                  if (b['folder_id'] == fid &&
+                      matches(i) &&
+                      !(b['kind'] == 'user' && b['section'] == 'mine'))
+                    i,
+              ].map((i) => board(i, indent: 14)),
+            );
+            children.addAll(
+              _folderRows(
+                context,
+                fid,
+                14,
+                (i, x) => board(i, indent: x),
+                matches,
+              ),
+            );
+          }
+          if (children.isEmpty) return const <Widget>[];
           return group(
             'company:$company',
             company.isEmpty ? 'Organization' : company,
@@ -1136,7 +1191,8 @@ class _BoardTreeState extends State<BoardTree> {
       if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('shared', 'Franchise boards', asHeader: true, [
+      ...group('companies', 'Companies', asHeader: true, companyRows),
+      ...group('shared', 'Shared with me', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),
@@ -1144,9 +1200,15 @@ class _BoardTreeState extends State<BoardTree> {
         'folders',
         'Folders',
         asHeader: true,
-        _folderRows(context, null, 0, (i, x) => board(i, indent: x), matches),
+        _folderRows(
+          context,
+          null,
+          0,
+          (i, x) => board(i, indent: x),
+          matches,
+          keep: (f) => companyOfFolder(f) == null,
+        ),
       ),
-      ...group('companies', 'All markets', asHeader: true, companyRows),
       ...group('everyone', "Everyone's boards", asHeader: true, [
         for (final person in names)
           ...group(
