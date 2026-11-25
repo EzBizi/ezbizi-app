@@ -485,12 +485,16 @@ class _OrderListState extends State<OrderList> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ...top,
-        Expanded(
-          child:
+    // The tiles and search scroll or cap rather than stand fixed: an iPhone
+    // on its side (874x402) left the list -1 px under them (mobile review
+    // 11-25). Inside the split scaffold this is the nested, capped column.
+    return HeaderAboveList(
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: top,
+      ),
+      list:
               empty ??
               LayoutBuilder(
                 builder: (context, box) => box.maxWidth >= 760 && !_hasPane
@@ -502,8 +506,6 @@ class _OrderListState extends State<OrderList> {
                         itemBuilder: (context, i) => _row(context, rows[i]),
                       ),
               ),
-        ),
-      ],
     );
   }
 
