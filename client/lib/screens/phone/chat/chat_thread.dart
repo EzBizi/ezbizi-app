@@ -2395,6 +2395,16 @@ class _ChatInfoPaneState extends State<ChatInfoPane> {
   String? _gallery; // media | docs | starred
   List<Json> _galleryRows = const [];
   final _memberSearch = TextEditingController();
+  final _memberKeys = <Object?, GlobalKey>{};
+
+  /// Where a member's row is drawn, for the desktop menu.
+  Offset? _rowAt(Object? id) {
+    final box =
+        _memberKeys[id]?.currentContext?.findRenderObject() as RenderBox?;
+    return box?.localToGlobal(
+      Offset(box.size.width - 220, box.size.height / 2),
+    );
+  }
 
   @override
   void initState() {
@@ -2543,38 +2553,47 @@ class _ChatInfoPaneState extends State<ChatInfoPane> {
     await widget.store.load();
   }
 
-  Future<void> _memberMenu(Json member) async {
+  /// A menu at the row on a desktop, a sheet from the bottom on a phone
+  /// (UI/UX 11-25), like the message and chat-row menus.
+  Future<void> _memberMenu(Json member, [Offset? at]) async {
     final me = widget.session.me!.id;
     if (member['id'] == me) return;
     final admin = _info?['i_am_admin'] == true;
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text('Message ${member['name']}'),
-              onTap: () => Navigator.of(sheet).pop('message'),
-            ),
-            if (admin)
-              ListTile(
-                title: Text(
-                  member['is_admin'] == true
-                      ? 'Dismiss as admin'
-                      : 'Make group admin',
-                ),
-                onTap: () => Navigator.of(sheet).pop('admin'),
-              ),
-            if (admin)
-              ListTile(
-                title: Text('Remove ${member['name']}'),
-                onTap: () => Navigator.of(sheet).pop('remove'),
-              ),
-          ],
+    final items = <(String, String)>[
+      ('message', 'Message ${member['name']}'),
+      if (admin)
+        (
+          'admin',
+          member['is_admin'] == true ? 'Dismiss as admin' : 'Make group admin',
         ),
-      ),
-    );
+      if (admin) ('remove', 'Remove ${member['name']}'),
+    ];
+    final String? choice;
+    if (!widget.phone && at != null) {
+      choice = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+        items: [
+          for (final (v, l) in items) PopupMenuItem(value: v, child: Text(l)),
+        ],
+      );
+    } else {
+      choice = await showModalBottomSheet<String>(
+        context: context,
+        builder: (sheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (v, l) in items)
+                ListTile(
+                  title: Text(l),
+                  onTap: () => Navigator.of(sheet).pop(v),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     if (choice == null) return;
     if (choice == 'message') {
       final id = await widget.store.openDirect(member['id'] as String);
@@ -2872,6 +2891,7 @@ class _ChatInfoPaneState extends State<ChatInfoPane> {
                       ),
                     for (final m in shownMembers)
                       ListTile(
+                        key: _memberKeys.putIfAbsent(m['id'], GlobalKey.new),
                         leading: UserAvatar(
                           api: widget.store.api,
                           userId: '${m['id']}',
@@ -2900,7 +2920,7 @@ class _ChatInfoPaneState extends State<ChatInfoPane> {
                                 ),
                               )
                             : null,
-                        onTap: () => unawaited(_memberMenu(m)),
+                        onTap: () => unawaited(_memberMenu(m, _rowAt(m['id']))),
                       ),
                   ]),
                 card([
