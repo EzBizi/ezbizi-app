@@ -17,8 +17,12 @@ option and click on iPhone and iPhone Duo, on the Mac, visibly.
   drives the app via Flutter's VM service (no macOS accessibility grant needed).
   Screenshots go to `~/ezbizi-mobile/shots/`.
 - The Duo has two displays: `--display=1` cover (1398×2034 px) and
-  `--display=3` inner (2007×2853 px). Fold/unfold is a Simulator menu item,
-  not scriptable via simctl.
+  `--display=3` inner (2007×2853 px). Fold/unfold is a Device Hub control,
+  not a simctl command (`screenConfig power` crashed SpringBoard).
+- ssh processes on the Mac hold Accessibility: `~/ezbizi-mobile/probe/press
+  <pid> "Window>iPhone Duo (iOS 27.2)"` presses a Device Hub menu item, `ax2`
+  and `hit` read its controls. All of it needs the Mac's screen unlocked: a
+  locked screen (`probe/lock` prints `locked=1`) hides every window.
 
 ## Findings
 
@@ -40,7 +44,7 @@ Status: FIXED (sha) · OPEN · NEEDS-DECISION.
 | 12 | Communication › Phone (simulator only) | Red "could not connect … missing VoIP push token" banner | Simulators have no push token | None (not a defect on a device) | NOT A BUG |
 | 13 | Test account side effects | The new account was clocked in (from the web invite's clock-in page) and "Taking calls" | Defaults for a new Administrator | Clocked out, calls off on the test account | DONE |
 | 14 | Every side panel (Book a job, Invite somebody, ~30 more), keyboard up | Save / Create / Book job buttons hidden under the keyboard (Android shots aa-01, aa-12) | `showSidePanel` is a dialog route; nothing resized it for the keyboard | Panel content padded by max(keyboard, home bar); side_panel_test. Verified on the iPhone: Book a job, Filters, Add customer, Invite somebody, New report, Add company all keep their footer above the keyboard | FIXED 8ed18b9fd |
-| 15 | Inventory › Orders header | "Add purchase order" scaled small beside the title | The header scales an action down to its room (≥140) rather than wrapping | The header measures the action: beside the title only if it fits there at 90% or more, else its own line at full size (`_TitleThenActions`); module_page_header_test | FIXED (next sha) |
+| 15 | Inventory › Orders header | "Add purchase order" scaled small beside the title | The header scales an action down to its room (≥140) rather than wrapping | The header measures the action: beside the title only if it fits there at 90% or more, else its own line at full size (`_TitleThenActions`); module_page_header_test | FIXED 13d928c79 |
 | 16 | Android emulator | Gboard showed a floating toolbar instead of a keyboard, so nothing folded | Emulator keyboard mode, not the app | `settings put secure show_ime_with_hard_keyboard 1` + cold restart | RIG |
 | 17 | Location prompt on first Android launch | "Allow EzBizi to access this device's location?" | Field tracking asks at launch | Denied for the test account (so it does not show on Field's map) | RIG |
 | 18 | Work Hours › General (requests) | "BOTTOM OVERFLOWED BY 21 PIXELS"; request text ~80 px beside its buttons | Requests card grows unbounded above the week; Row with buttons | Card capped at 45% and scrolls; buttons under text below 520 | FIXED cb6337bb5 |
@@ -59,4 +63,5 @@ Status: FIXED (sha) · OPEN · NEEDS-DECISION.
 | 31 | iPhone on its side (874×402), Marketing › Social Media › calendar | Month grid overflowed 4 px and its card 26 px | Wide enough for the desktop grid, ~220 px tall | Below 480 tall the planner draws the phone's week and day list | FIXED 326af248a |
 | 32 | Guidelines cards, 3 across (iPhone landscape; desktop with long titles too) | Card overflowed 14 px | Budget held a two-line title OR a two-line summary, not both | Text budget 118 → 132 | FIXED 326af248a |
 | 33 | iPhone and Android landscape after 27–32 | All 27 modules open with no layout errors on both | — | — | PASSED |
-| 34 | Duo on its side (593 pt beside its status column), bottom bar | "Schedu…" | The 52 px icon pill stayed in the 48 px side-by-side bar | Pill 36 px sideways; phone_bottom_bar_test | FIXED (next sha) |
+| 34 | Duo on its side (593 pt beside its status column), bottom bar | "Schedu…" | The 52 px icon pill stayed in the 48 px side-by-side bar | Pill 36 px sideways; phone_bottom_bar_test | FIXED 05769ad70 |
+| 35 | Every form on the iPhone (number pad: Year, odometer, amounts; multi-line notes) | The keyboard could not be put away: the number pad has no Done key, and a tap outside a box does nothing on a phone | Flutter drops focus on a tap outside only on desktop | Dragging any page closes the keyboard (`dragClosesKeyboard`, the app's ScrollBehavior); drag_closes_keyboard_test. Verified on the iPhone (vehicle › Year) | FIXED (next sha) |

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 /// Whether this device types on an on-screen keyboard (a phone or tablet,
 /// native or in a browser). A function so a test can say which device it is.
@@ -19,6 +19,18 @@ bool Function() hasSoftKeyboard = () =>
 /// opened by asking to type (a code, a password, a rename, a reply), and says
 /// so with a `// keyboard:` comment. client/test/soft_keyboard_guard_test.dart.
 bool get autofocusOnOpen => !hasSoftKeyboard();
+
+/// The app's scrolling, plus one rule: dragging a page puts the keyboard away.
+///
+/// Mobile review 11-24: on a phone Flutter never closes the keyboard on a tap
+/// outside the box, and the iPhone number pad has no Done key, so after a
+/// Year, an amount or a multi-line note the keyboard stayed over half the
+/// screen with no way down. Dragging the page is how iPhone apps close it.
+/// A scroll made by the app (bringing a field into view) is not a drag.
+final ScrollBehavior dragClosesKeyboard = const MaterialScrollBehavior()
+    .copyWith(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    );
 
 /// The on-screen keyboard is up. Read from the window, not `MediaQuery`: inside
 /// a Scaffold body (every module) `MediaQuery.viewInsets` is already zeroed by
