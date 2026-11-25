@@ -8,10 +8,10 @@ use App\Models\BankTransaction;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Financials\Plaid\BankMatcher;
+use App\Support\Financials\Plaid\BankView;
 use App\Support\Financials\Plaid\PlaidClient;
-use App\Support\Scoping\ViewScope;
 use App\Support\Social\PlaidOAuth;
-use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Console\QueuedCommand;
@@ -39,7 +39,8 @@ class FinancialBankController extends Controller
 {
     public function __construct(
         private readonly AuditLogger $audit,
-        private readonly SocialConnectionAccess $access,
+        private readonly BankView $view,
+        private readonly BankMatcher $matcher,
     ) {}
 
     /** Every bank in view, its accounts with balances, and the totals. */
@@ -87,6 +88,7 @@ class FinancialBankController extends Controller
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'direction' => ['nullable', 'in:in,out'],
+            'unmatched' => ['nullable', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
 
@@ -97,6 +99,8 @@ class FinancialBankController extends Controller
             ->when($input['to'] ?? null, fn ($q, $d) => $q->where('date', '<=', $d))
             ->when(($input['direction'] ?? null) === 'out', fn ($q) => $q->where('amount_cents', '>', 0))
             ->when(($input['direction'] ?? null) === 'in', fn ($q) => $q->where('amount_cents', '<', 0))
+            // Money in that nothing in EzBizi accounts for yet.
+            ->when($request->boolean('unmatched'), fn ($q) => $q->where('amount_cents', '<', 0)->whereNull('matched_type'))
             ->when(trim((string) ($input['search'] ?? '')), function ($q, $s) {
                 $like = '%'.addcslashes($s, '%_\\').'%';
                 $q->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('merchant_name', 'like', $like)
@@ -105,6 +109,7 @@ class FinancialBankController extends Controller
             ->orderByDesc('date')->orderByDesc('created_at');
 
         $page = $query->paginate(100);
+        $matches = BankMatcher::describe($page->items());
 
         return response()->json([
             'data' => collect($page->items())->map(fn (BankTransaction $t) => [
@@ -118,9 +123,45 @@ class FinancialBankController extends Controller
                 'category_detailed' => $t->category_detailed,
                 'pending' => $t->pending,
                 'account' => $t->account ? ['id' => $t->account->getKey(), 'name' => $t->account->name, 'mask' => $t->account->mask] : null,
+                'match' => $matches[(string) $t->getKey()] ?? null,
             ])->values(),
             'meta' => ['page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()],
         ]);
+    }
+
+    /** What this money in could be: recorded payments and open invoices in the bank's own place (BankMatcher). */
+    public function candidates(Request $request, BankTransaction $transaction): JsonResponse
+    {
+        $this->visible($request, $transaction);
+
+        return response()->json(['data' => [
+            'match' => BankMatcher::describe([$transaction])[(string) $transaction->getKey()] ?? null,
+            'candidates' => $this->matcher->candidates($transaction),
+        ]]);
+    }
+
+    /** A person says what this money in was for. Only a current candidate is accepted. */
+    public function match(Request $request, BankTransaction $transaction): JsonResponse
+    {
+        $user = $this->changer($request, $transaction);
+        $input = $request->validate(['type' => ['required', 'in:'.implode(',', BankMatcher::TYPES)], 'id' => ['required', 'uuid']]);
+        abort_unless($this->matcher->offers($transaction, $input['type'], $input['id']), Response::HTTP_UNPROCESSABLE_ENTITY,
+            'That is not one of the payments or invoices this deposit could be. Reload and choose again.');
+        $transaction->forceFill(['matched_type' => $input['type'], 'matched_id' => $input['id'], 'matched_by' => 'person', 'matched_at' => now()])->save();
+        $this->audit->log('financials.bank.matched', $transaction, ['type' => $input['type'], 'id' => $input['id']], actor: $user);
+
+        return response()->json(['data' => ['match' => BankMatcher::describe([$transaction])[(string) $transaction->getKey()] ?? null]]);
+    }
+
+    /** Undo a match, a person's or the sync's. */
+    public function unmatch(Request $request, BankTransaction $transaction): JsonResponse
+    {
+        $user = $this->changer($request, $transaction);
+        $was = ['type' => $transaction->matched_type, 'id' => $transaction->matched_id, 'by' => $transaction->matched_by];
+        $transaction->forceFill(['matched_type' => null, 'matched_id' => null, 'matched_by' => null, 'matched_at' => null])->save();
+        $this->audit->log('financials.bank.unmatched', $transaction, $was, actor: $user);
+
+        return response()->json(['data' => ['match' => null]]);
     }
 
     /**
@@ -152,24 +193,24 @@ class FinancialBankController extends Controller
         return response()->json(['data' => ['queued' => true]], Response::HTTP_ACCEPTED);
     }
 
-    /** The Plaid connections this view sees (see the class comment). */
+    /** The Plaid connections this view sees (BankView). */
     private function banks(User $user): \Illuminate\Database\Eloquent\Collection
     {
-        $view = ViewScope::forUser($user);
-
-        return SocialConnection::query()->where('provider', SocialProvider::Plaid->value)->orderBy('display_name')->get()
-            ->filter(fn (SocialConnection $c) => self::sees($view, $c) && $this->access->reaches($user, $c))
-            ->values();
+        return $this->view->banks($user);
     }
 
-    public static function sees(ViewScope $view, SocialConnection $c): bool
+    private function visible(Request $request, BankTransaction $transaction): void
     {
-        return match ($c->scope_type) {
-            SocialConnection::SCOPE_ORGANIZATION => $view->isOrganization(),
-            SocialConnection::SCOPE_COMPANY => $view->isOrganization() ? true : $view->type === ViewScope::COMPANY && in_array($c->scope_id, $view->companyIds(), true),
-            SocialConnection::SCOPE_FRANCHISE => in_array($c->scope_id, $view->franchiseIds(), true),
-            default => false,
-        };
+        abort_unless($this->banks($request->user())->contains(fn ($c) => (string) $c->getKey() === (string) $transaction->social_connection_id), Response::HTTP_NOT_FOUND);
+    }
+
+    private function changer(Request $request, BankTransaction $transaction): User
+    {
+        $this->visible($request, $transaction);
+        $user = $request->user();
+        abort_unless($user->hasPermission('financials.edit'), Response::HTTP_FORBIDDEN, 'Your role cannot match bank transactions.');
+
+        return $user;
     }
 
     private function editable(Request $request, SocialConnection $connection): User

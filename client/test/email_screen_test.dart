@@ -12,6 +12,7 @@ import 'package:ezbizi_client/screens/email/message_body.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/email/message_list.dart';
 import 'package:ezbizi_client/screens/email/reply_panel.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -443,9 +444,23 @@ void main() {
       reason: 'The combined list opened a composer, and the only address it '
           'could pick is one the reader never chose.',
     );
-    expect(find.text('From info@a-1chimney.com'), findsOneWidget);
+    // A searchable "Send from" list (11-24: forty addresses filled a phone).
+    expect(find.text('Send from'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.text('info@a-1chimney.com'),
+      ),
+      findsOneWidget,
+    );
 
-    await _tap(tester, find.text('From bookings@a-1chimney.com'));
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.text('bookings@a-1chimney.com'),
+      ),
+    );
 
     expect(find.text('Sending as bookings@a-1chimney.com'), findsOneWidget);
   });

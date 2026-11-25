@@ -545,7 +545,7 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-financials-bank',
         title: 'Bank',
         body:
-            'Connect your business bank and card accounts through Plaid. See balances and search every transaction. EzBizi only reads; it never moves money.',
+            'Connect your business bank and card accounts through Plaid. See balances, search every transaction, and tap money in to match it to an invoice. EzBizi only reads; it never moves money.',
       ),
     ],
   ),

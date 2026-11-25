@@ -159,7 +159,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // the organization for whoever does.
                     new TabDefinition('api_activity', 'API activity'),
                 ],
-                actionRequires: ['integrations.view' => ['marketing.view']],
+                // The Organization tab is the companies tree (roles audit 2026-11-24).
+                actionRequires: ['integrations.view' => ['marketing.view'], 'organization.view' => ['companies.view']],
                 actionDescriptions: ['view' => 'Opens nothing by itself; tick the tabs below.', 'settings.view' => 'Preferences and Lists.'],
                 // SettingsController files every settings event against the
                 // tenant root, whatever level the value was written at, because
@@ -950,10 +951,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // `command`: run app actions from the staff WhatsApp line
                 // (AppAct). Each action still needs its own screen's tick.
                 actions: ['view', 'manage', 'command'],
-                // No actionRequires: `manage` is spent on two tabs, Library
+                // `manage` requires no tab: it is spent on two, Library
                 // (answers) and Settings (name, welcome), so requiring either
-                // tab would grant a pane somebody may not have been meant to
-                // see. Each tab's own grant decides where manage can be used.
+                // would grant a pane somebody may not have been meant to see.
+                // The other way round is declared (roles audit 2026-11-24):
+                // WhatsApp groups and Staff bot are editors with no read-only
+                // face, every endpoint behind them asks for manage, and the
+                // screen drew neither without it while the editor said nothing.
+                actionRequires: [
+                    'whatsapp_groups.view' => ['ai_assistance.manage'],
+                    'staff_bot.view' => ['ai_assistance.manage'],
+                ],
                 actionLabels: ['manage' => 'Edit answers and settings', 'command' => 'Do things from WhatsApp'],
                 tabs: [
                     new TabDefinition('ai', 'AI'),
@@ -1284,6 +1292,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // Texts to the customers of Done jobs (Jose, 2026-11-06).
                     new TabDefinition('promotions', 'Promotions'),
                 ],
+                // The Dashboard counts the members list (roles audit 2026-11-24).
+                actionRequires: ['dashboard.view' => ['memberships.members.view']],
                 triggers: [
                     new TriggerDefinition(
                         key: 'membership.created',
@@ -1360,6 +1370,7 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('work', 'Jobs', action: 'view'),
                 ],
+                actionDescriptions: ['create' => 'Opens Book. Picking an existing customer there needs Customers › View.'],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
@@ -1567,10 +1578,12 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('in_progress', 'In Progress', action: 'view'),
                     new TabDefinition('done_waiting_payment', 'Done Waiting Payment', action: 'view'),
                     new TabDefinition('complete', 'Complete', action: 'view'),
-                    new TabDefinition('settings', 'Settings', action: 'view'),
+                    // Its own grant since the roles audit (2026-11-24): it was
+                    // drawn on Organization settings › Edit, which the editor
+                    // never said. Roles holding both were granted it.
+                    new TabDefinition('settings', 'Settings'),
                 ],
-                actionRequires: ['view' => ['jobs.view']],
-                actionDescriptions: ['view' => 'Changing its Settings also needs Organization settings › Edit.'],
+                actionRequires: ['view' => ['jobs.view'], 'settings.view' => ['organizations.edit']],
                 automationExemptBecause: 'It changes nothing; Jobs raises every event about the jobs it lists.',
                 auditExemptBecause: 'It changes nothing.',
             ),
@@ -1637,6 +1650,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // this order.
                     new TabDefinition('settings', 'Settings'),
                 ],
+                actionDescriptions: ['settings.view' => 'Its Locations page also needs the Locations tab.'],
                 /*
                  * The first booking event (Jose, 2026-09-29: a warning email).
                  * Since 2026-10-05 it carries only the areas with no spot left
@@ -1726,6 +1740,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('review_qr', 'Review QR', action: 'new.view'),
                 ],
                 actionRequires: ['new.view' => ['inspection.create'], 'builder.view' => ['inspection.edit']],
+                actionDescriptions: ['new.view' => 'Also opens Review QR. Finding a customer or job there needs Customers or Jobs.'],
                 /*
                  * Both record types this module broadcasts, not just the one
                  * that matters most.
@@ -2727,7 +2742,9 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view', 'edit'],
                 actionLabels: ['edit' => 'Change ownership, processes and KPIs'],
                 // The processes and KPIs are saved on HR records.
-                actionRequires: ['edit' => ['hr.edit']],
+                // KPIs are the Performance report's numbers and goals, read from
+                // Reports (roles audit 2026-11-24).
+                actionRequires: ['edit' => ['hr.edit'], 'kpis.view' => ['reports.experimental.view']],
                 tabs: [
                     new TabDefinition('ownership', 'Ownership'),
                     new TabDefinition('processes', 'Processes'),

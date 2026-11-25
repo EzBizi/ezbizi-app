@@ -44,6 +44,20 @@ class ModuleTabsFixtureTest extends TestCase
             if ($within !== []) {
                 $modules[$module->key]['within'] = $within;
             }
+
+            // What granting each tab takes (roles audit, 2026-11-24): its key
+            // and every key it declares it needs. The client pumps each tab with
+            // only these, plus the module's view, and expects it drawn.
+            if ($module->tabs !== []) {
+                $grants = [];
+                foreach ($module->tabs as $tab) {
+                    $grants[$tab->label] = $this->closure($registry, [
+                        "{$module->key}.view",
+                        "{$module->key}.{$tab->action()}",
+                    ]);
+                }
+                $modules[$module->key]['grants'] = $grants;
+            }
         }
         ksort($modules);
 
@@ -64,5 +78,44 @@ class ModuleTabsFixtureTest extends TestCase
             str_replace("\r\n", "\n", (string) file_get_contents($path)),
             self::FIXTURE.' is stale. Regenerate: WRITE_MODULE_TABS=1 php artisan test '.__FILE__,
         );
+    }
+
+    /**
+     * The keys, plus every key they declare they need, followed through other
+     * modules (a requirement's own requirement is still needed), sorted.
+     *
+     * @param  string[]  $keys
+     * @return string[]
+     */
+    private function closure(ModuleRegistry $registry, array $keys): array
+    {
+        $byKey = [];
+        foreach ($registry->all() as $module) {
+            $byKey[$module->key] = $module;
+        }
+
+        $seen = [];
+        while ($keys !== []) {
+            $key = array_shift($keys);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            [$moduleKey, $action] = explode('.', $key, 2) + [1 => ''];
+            $module = $byKey[$moduleKey] ?? null;
+            if ($module === null) {
+                continue;
+            }
+            // Any grant in a module implies its view (withImpliedView).
+            $keys[] = "{$moduleKey}.view";
+            foreach ($module->actionRequires[$action] ?? [] as $needed) {
+                $keys[] = $needed;
+            }
+        }
+
+        $out = array_keys($seen);
+        sort($out);
+
+        return $out;
     }
 }

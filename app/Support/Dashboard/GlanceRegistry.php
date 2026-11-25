@@ -9,6 +9,7 @@ use App\Support\Dashboard\Glances\CompanyGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FieldGlance;
+use App\Support\Dashboard\Glances\FinancialsGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
 use App\Support\Dashboard\Glances\ProjectBoardGlance;
 use App\Support\Dashboard\Glances\HrGlance;
@@ -243,6 +244,8 @@ class GlanceRegistry
         ReportsGlance::class,
         FieldGlance::class,
         CompanyGlance::class,
+        // Financials: the banks connected through Plaid (11-24).
+        FinancialsGlance::class,
     ];
 
     public function __construct(

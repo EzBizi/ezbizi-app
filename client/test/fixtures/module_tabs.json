@@ -22,7 +22,43 @@
                 "WhatsApp groups",
                 "Staff bot",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "AI": [
+                    "ai_assistance.ai.view",
+                    "ai_assistance.view"
+                ],
+                "Library": [
+                    "ai_assistance.library.view",
+                    "ai_assistance.view"
+                ],
+                "Parts": [
+                    "ai_assistance.parts.view",
+                    "ai_assistance.view"
+                ],
+                "Manuals": [
+                    "ai_assistance.manuals.view",
+                    "ai_assistance.view"
+                ],
+                "Answers": [
+                    "ai_assistance.answers.view",
+                    "ai_assistance.view"
+                ],
+                "WhatsApp groups": [
+                    "ai_assistance.manage",
+                    "ai_assistance.view",
+                    "ai_assistance.whatsapp_groups.view"
+                ],
+                "Staff bot": [
+                    "ai_assistance.manage",
+                    "ai_assistance.staff_bot.view",
+                    "ai_assistance.view"
+                ],
+                "Settings": [
+                    "ai_assistance.settings.view",
+                    "ai_assistance.view"
+                ]
+            }
         },
         "api_keys": {
             "label": "API keys",
@@ -40,7 +76,17 @@
             "tabs": [
                 "Your automations",
                 "Build"
-            ]
+            ],
+            "grants": {
+                "Your automations": [
+                    "automations.rules.view",
+                    "automations.view"
+                ],
+                "Build": [
+                    "automations.build.view",
+                    "automations.view"
+                ]
+            }
         },
         "business_profile": {
             "label": "Business Profile",
@@ -59,14 +105,36 @@
                 "Ownership",
                 "Processes",
                 "KPIs"
-            ]
+            ],
+            "grants": {
+                "Ownership": [
+                    "company.ownership.view",
+                    "company.view"
+                ],
+                "Processes": [
+                    "company.processes.view",
+                    "company.view"
+                ],
+                "KPIs": [
+                    "company.kpis.view",
+                    "company.view",
+                    "reports.experimental.view",
+                    "reports.view"
+                ]
+            }
         },
         "customer_experience": {
             "label": "Customer Experience",
             "parent": null,
             "tabs": [
                 "Reviews & Complaints"
-            ]
+            ],
+            "grants": {
+                "Reviews & Complaints": [
+                    "customer_experience.complaints.view",
+                    "customer_experience.view"
+                ]
+            }
         },
         "customers": {
             "label": "Customers",
@@ -90,7 +158,21 @@
                 "Inbox",
                 "Settings",
                 "Google Workspace"
-            ]
+            ],
+            "grants": {
+                "Inbox": [
+                    "email.inbox.view",
+                    "email.view"
+                ],
+                "Settings": [
+                    "email.settings.view",
+                    "email.view"
+                ],
+                "Google Workspace": [
+                    "email.view",
+                    "email.workspace.view"
+                ]
+            }
         },
         "estimates": {
             "label": "Estimates",
@@ -106,7 +188,29 @@
                 "Route",
                 "Recordings",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Dashboard": [
+                    "field.dashboard.view",
+                    "field.view"
+                ],
+                "Map": [
+                    "field.map.view",
+                    "field.view"
+                ],
+                "Route": [
+                    "field.route.view",
+                    "field.view"
+                ],
+                "Recordings": [
+                    "field.recordings.view",
+                    "field.view"
+                ],
+                "Settings": [
+                    "field.settings.view",
+                    "field.view"
+                ]
+            }
         },
         "financial_results": {
             "label": "Lead source results",
@@ -122,7 +226,29 @@
                 "Markets",
                 "Bank",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Home": [
+                    "financials.bases.view",
+                    "financials.view"
+                ],
+                "Bills": [
+                    "financials.bills.view",
+                    "financials.view"
+                ],
+                "Markets": [
+                    "financials.markets.view",
+                    "financials.view"
+                ],
+                "Bank": [
+                    "financials.bank.view",
+                    "financials.view"
+                ],
+                "Settings": [
+                    "financials.settings.view",
+                    "financials.view"
+                ]
+            }
         },
         "fleet_management": {
             "label": "Fleet Management",
@@ -130,7 +256,17 @@
             "tabs": [
                 "General",
                 "Vehicles"
-            ]
+            ],
+            "grants": {
+                "General": [
+                    "fleet_management.general.view",
+                    "fleet_management.view"
+                ],
+                "Vehicles": [
+                    "fleet_management.vehicles.view",
+                    "fleet_management.view"
+                ]
+            }
         },
         "franchises": {
             "label": "Franchises",
@@ -143,7 +279,18 @@
             "tabs": [
                 "Guidelines",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Guidelines": [
+                    "guidelines.guidelines.view",
+                    "guidelines.view"
+                ],
+                "Settings": [
+                    "guidelines.manage",
+                    "guidelines.settings.view",
+                    "guidelines.view"
+                ]
+            }
         },
         "hr": {
             "label": "Human Resources",
@@ -156,7 +303,37 @@
                 "Onboarding",
                 "Payroll",
                 "Recruiting"
-            ]
+            ],
+            "grants": {
+                "Dashboard": [
+                    "hr.dashboard.view",
+                    "hr.view"
+                ],
+                "Records": [
+                    "hr.records.view",
+                    "hr.view"
+                ],
+                "Contracts": [
+                    "hr.contracts.view",
+                    "hr.view"
+                ],
+                "Invitations": [
+                    "hr.invitations.view",
+                    "hr.view"
+                ],
+                "Onboarding": [
+                    "hr.onboarding.view",
+                    "hr.view"
+                ],
+                "Payroll": [
+                    "hr.payroll.view",
+                    "hr.view"
+                ],
+                "Recruiting": [
+                    "hr.recruiting.view",
+                    "hr.view"
+                ]
+            }
         },
         "inspection": {
             "label": "Inspection",
@@ -167,7 +344,33 @@
                 "Builder",
                 "Testing",
                 "Review QR"
-            ]
+            ],
+            "grants": {
+                "New Inspection": [
+                    "inspection.create",
+                    "inspection.new.view",
+                    "inspection.view"
+                ],
+                "Generated Reports": [
+                    "inspection.reports.view",
+                    "inspection.view"
+                ],
+                "Builder": [
+                    "inspection.builder.view",
+                    "inspection.edit",
+                    "inspection.view"
+                ],
+                "Testing": [
+                    "inspection.builder.view",
+                    "inspection.edit",
+                    "inspection.view"
+                ],
+                "Review QR": [
+                    "inspection.create",
+                    "inspection.new.view",
+                    "inspection.view"
+                ]
+            }
         },
         "inventory": {
             "label": "Inventory",
@@ -178,7 +381,29 @@
                 "Items",
                 "Orders",
                 "Locations"
-            ]
+            ],
+            "grants": {
+                "General": [
+                    "inventory.general.view",
+                    "inventory.view"
+                ],
+                "Stock": [
+                    "inventory.stock.view",
+                    "inventory.view"
+                ],
+                "Items": [
+                    "inventory.items.view",
+                    "inventory.view"
+                ],
+                "Orders": [
+                    "inventory.orders.view",
+                    "inventory.view"
+                ],
+                "Locations": [
+                    "inventory.locations.view",
+                    "inventory.view"
+                ]
+            }
         },
         "invoices": {
             "label": "Invoices",
@@ -187,14 +412,33 @@
                 "Charge sheets",
                 "Invoices",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Charge sheets": [
+                    "invoices.charge_sheets.view",
+                    "invoices.view"
+                ],
+                "Invoices": [
+                    "invoices.invoices.view",
+                    "invoices.view"
+                ],
+                "Settings": [
+                    "invoices.settings.view",
+                    "invoices.view"
+                ]
+            }
         },
         "jobs": {
             "label": "Jobs",
             "parent": null,
             "tabs": [
                 "Jobs"
-            ]
+            ],
+            "grants": {
+                "Jobs": [
+                    "jobs.view"
+                ]
+            }
         },
         "leads": {
             "label": "Leads",
@@ -226,6 +470,73 @@
                 "Instagram": "Meta",
                 "WhatsApp": "Meta",
                 "Hidden": "Manage"
+            },
+            "grants": {
+                "Google Local Services": [
+                    "leads.local_services.view",
+                    "leads.view"
+                ],
+                "RC Calls": [
+                    "leads.ringcentral.view",
+                    "leads.view"
+                ],
+                "EZ Calls": [
+                    "leads.ez_calls.view",
+                    "leads.view"
+                ],
+                "EZ Texts": [
+                    "leads.ez_texts.view",
+                    "leads.view"
+                ],
+                "Thumbtack": [
+                    "leads.thumbtack.view",
+                    "leads.view"
+                ],
+                "Chat": [
+                    "leads.view",
+                    "leads.website_chat.view"
+                ],
+                "Forms": [
+                    "leads.view",
+                    "leads.website_form.view"
+                ],
+                "Bad Ratings": [
+                    "leads.bad_rating.view",
+                    "leads.view"
+                ],
+                "Online Booking": [
+                    "leads.view",
+                    "leads.website_booking.view"
+                ],
+                "Facebook": [
+                    "leads.facebook.view",
+                    "leads.view"
+                ],
+                "Instagram": [
+                    "leads.instagram.view",
+                    "leads.view"
+                ],
+                "WhatsApp": [
+                    "leads.view",
+                    "leads.whatsapp.view"
+                ],
+                "Workiz": [
+                    "leads.view",
+                    "leads.workiz.view"
+                ],
+                "Promotions": [
+                    "leads.promotions.view",
+                    "leads.view"
+                ],
+                "Recovery": [
+                    "leads.recovery.view",
+                    "leads.view"
+                ],
+                "Hidden": [
+                    "leads.hidden.view",
+                    "leads.manage",
+                    "leads.view"
+                ]
             }
         },
         "marketing": {
@@ -247,6 +558,35 @@
                 "Accounts": "Social Media Management",
                 "Comments": "Social Media Management",
                 "QR Codes": "Social Media Management"
+            },
+            "grants": {
+                "Social Media Management": [
+                    "marketing.view"
+                ],
+                "Dashboard": [
+                    "marketing.dashboard.view",
+                    "marketing.view"
+                ],
+                "Compose": [
+                    "marketing.compose.view",
+                    "marketing.view"
+                ],
+                "Calendar": [
+                    "marketing.calendar.view",
+                    "marketing.view"
+                ],
+                "Accounts": [
+                    "marketing.accounts.view",
+                    "marketing.view"
+                ],
+                "Comments": [
+                    "marketing.comments.view",
+                    "marketing.view"
+                ],
+                "QR Codes": [
+                    "marketing.qr_codes.view",
+                    "marketing.view"
+                ]
             }
         },
         "memberships": {
@@ -257,7 +597,26 @@
                 "Members",
                 "Settings",
                 "Promotions"
-            ]
+            ],
+            "grants": {
+                "Dashboard": [
+                    "memberships.dashboard.view",
+                    "memberships.members.view",
+                    "memberships.view"
+                ],
+                "Members": [
+                    "memberships.members.view",
+                    "memberships.view"
+                ],
+                "Settings": [
+                    "memberships.settings.view",
+                    "memberships.view"
+                ],
+                "Promotions": [
+                    "memberships.promotions.view",
+                    "memberships.view"
+                ]
+            }
         },
         "monitoring": {
             "label": "Monitoring",
@@ -270,7 +629,36 @@
                 "Camera Monitoring",
                 "Desktop Monitoring",
                 "Lighting"
-            ]
+            ],
+            "grants": {
+                "General": [
+                    "monitoring.general.view",
+                    "monitoring.view"
+                ],
+                "Map": [
+                    "monitoring.map.view",
+                    "monitoring.view"
+                ],
+                "PC Specs": [
+                    "monitoring.view"
+                ],
+                "Files": [
+                    "monitoring.files.view",
+                    "monitoring.view"
+                ],
+                "Camera Monitoring": [
+                    "monitoring.cameras.view",
+                    "monitoring.view"
+                ],
+                "Desktop Monitoring": [
+                    "monitoring.screenshots.view",
+                    "monitoring.view"
+                ],
+                "Lighting": [
+                    "monitoring.lighting.manage",
+                    "monitoring.view"
+                ]
+            }
         },
         "newsletter": {
             "label": "Newsletter",
@@ -279,7 +667,21 @@
                 "Dashboard",
                 "Composer",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Dashboard": [
+                    "newsletter.dashboard.view",
+                    "newsletter.view"
+                ],
+                "Composer": [
+                    "newsletter.composer.view",
+                    "newsletter.view"
+                ],
+                "Settings": [
+                    "newsletter.settings.view",
+                    "newsletter.view"
+                ]
+            }
         },
         "organizations": {
             "label": "Organization settings",
@@ -289,7 +691,27 @@
                 "Preferences",
                 "Integrations",
                 "API activity"
-            ]
+            ],
+            "grants": {
+                "Organization": [
+                    "companies.view",
+                    "organizations.organization.view",
+                    "organizations.view"
+                ],
+                "Preferences": [
+                    "organizations.settings.view",
+                    "organizations.view"
+                ],
+                "Integrations": [
+                    "marketing.view",
+                    "organizations.integrations.view",
+                    "organizations.view"
+                ],
+                "API activity": [
+                    "organizations.api_activity.view",
+                    "organizations.view"
+                ]
+            }
         },
         "phone": {
             "label": "Communication",
@@ -301,7 +723,33 @@
                 "Reports",
                 "Alerts",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Phone": [
+                    "phone.phone.view",
+                    "phone.view"
+                ],
+                "Users": [
+                    "phone.users.view",
+                    "phone.view"
+                ],
+                "Records": [
+                    "phone.records.view",
+                    "phone.view"
+                ],
+                "Reports": [
+                    "phone.reports.view",
+                    "phone.view"
+                ],
+                "Alerts": [
+                    "phone.alerts.view",
+                    "phone.view"
+                ],
+                "Settings": [
+                    "phone.settings.view",
+                    "phone.view"
+                ]
+            }
         },
         "profit_loss": {
             "label": "Profit & Loss",
@@ -321,7 +769,48 @@
                 "Done Waiting Payment",
                 "Complete",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Dashboard": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Inbox": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Unscheduled": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Ready to Schedule": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Scheduled": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "In Progress": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Done Waiting Payment": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Complete": [
+                    "jobs.view",
+                    "project_board.view"
+                ],
+                "Settings": [
+                    "jobs.view",
+                    "organizations.edit",
+                    "organizations.view",
+                    "project_board.settings.view",
+                    "project_board.view"
+                ]
+            }
         },
         "reports": {
             "label": "Reports",
@@ -359,6 +848,86 @@
                 "Recruiting": "Office",
                 "Tech report": "Technicians",
                 "AI checks": "Technicians"
+            },
+            "grants": {
+                "Reports": [
+                    "reports.library.view",
+                    "reports.view"
+                ],
+                "Report Builder": [
+                    "reports.build",
+                    "reports.builder.view",
+                    "reports.view"
+                ],
+                "Performance": [
+                    "reports.experimental.view",
+                    "reports.view"
+                ],
+                "Scoring": [
+                    "reports.scoring.view",
+                    "reports.view"
+                ],
+                "Marketing Reports": [
+                    "profit_loss.view",
+                    "reports.marketing.view",
+                    "reports.view"
+                ],
+                "Meta": [
+                    "reports.meta.view",
+                    "reports.view"
+                ],
+                "Thumbtack": [
+                    "reports.thumbtack.view",
+                    "reports.view"
+                ],
+                "Overview": [
+                    "reports.jobs.view",
+                    "reports.view"
+                ],
+                "Cancelled": [
+                    "reports.cancelled.view",
+                    "reports.view"
+                ],
+                "Pending": [
+                    "reports.pending.view",
+                    "reports.view"
+                ],
+                "Estimates": [
+                    "reports.estimates.view",
+                    "reports.view"
+                ],
+                "Tasks": [
+                    "reports.tasks.view",
+                    "reports.view"
+                ],
+                "Complaints": [
+                    "reports.complaints.view",
+                    "reports.view"
+                ],
+                "Dispatch": [
+                    "reports.dispatch.view",
+                    "reports.view"
+                ],
+                "Accounting weekly": [
+                    "reports.accounting.view",
+                    "reports.view"
+                ],
+                "Recruiting": [
+                    "reports.recruiting.view",
+                    "reports.view"
+                ],
+                "Tech report": [
+                    "reports.techs.view",
+                    "reports.view"
+                ],
+                "AI checks": [
+                    "reports.tech_checks.view",
+                    "reports.view"
+                ],
+                "Workspace": [
+                    "reports.view",
+                    "reports.workspace.view"
+                ]
             }
         },
         "reviews": {
@@ -382,7 +951,37 @@
                 "Helpers",
                 "Locations",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Availability": [
+                    "scheduling.availability.view",
+                    "scheduling.view"
+                ],
+                "Schedule": [
+                    "scheduling.schedule.view",
+                    "scheduling.view"
+                ],
+                "Re-Scheduling": [
+                    "scheduling.rescheduling.view",
+                    "scheduling.view"
+                ],
+                "Routing": [
+                    "scheduling.routing.view",
+                    "scheduling.view"
+                ],
+                "Helpers": [
+                    "scheduling.helpers.view",
+                    "scheduling.view"
+                ],
+                "Locations": [
+                    "scheduling.locations.view",
+                    "scheduling.view"
+                ],
+                "Settings": [
+                    "scheduling.settings.view",
+                    "scheduling.view"
+                ]
+            }
         },
         "services": {
             "label": "Services",
@@ -390,7 +989,17 @@
             "tabs": [
                 "Catalogue",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Catalogue": [
+                    "services.catalogue.view",
+                    "services.view"
+                ],
+                "Settings": [
+                    "services.settings.view",
+                    "services.view"
+                ]
+            }
         },
         "tasks": {
             "label": "Task Board",
@@ -409,7 +1018,20 @@
                 "Learn",
                 "Dashboard",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "Learn": [
+                    "training.view"
+                ],
+                "Dashboard": [
+                    "training.monitor",
+                    "training.view"
+                ],
+                "Settings": [
+                    "training.manage",
+                    "training.view"
+                ]
+            }
         },
         "users": {
             "label": "Users",
@@ -422,7 +1044,17 @@
             "tabs": [
                 "SEO",
                 "Widgets"
-            ]
+            ],
+            "grants": {
+                "SEO": [
+                    "web_management.seo.view",
+                    "web_management.view"
+                ],
+                "Widgets": [
+                    "web_management.view",
+                    "web_management.widgets.view"
+                ]
+            }
         },
         "work_hours": {
             "label": "Work Hours",
@@ -434,7 +1066,35 @@
                 "Daily approval",
                 "Payroll",
                 "Settings"
-            ]
+            ],
+            "grants": {
+                "General": [
+                    "work_hours.general.view",
+                    "work_hours.view"
+                ],
+                "Paid Time Off": [
+                    "work_hours.pto.view",
+                    "work_hours.view"
+                ],
+                "Reports": [
+                    "work_hours.reports.view",
+                    "work_hours.view"
+                ],
+                "Daily approval": [
+                    "work_hours.approval.view",
+                    "work_hours.view"
+                ],
+                "Payroll": [
+                    "work_hours.all",
+                    "work_hours.general.view",
+                    "work_hours.payroll",
+                    "work_hours.view"
+                ],
+                "Settings": [
+                    "work_hours.settings.view",
+                    "work_hours.view"
+                ]
+            }
         }
     },
     "permissions": [
@@ -657,6 +1317,7 @@
         "phone.users.view",
         "phone.view",
         "profit_loss.view",
+        "project_board.settings.view",
         "project_board.view",
         "reports.accounting.view",
         "reports.build",

@@ -13,7 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
+      'Financials › Bank: deposits are matched to recorded payments and open invoices, with a Money in, not matched filter; the dashboard shows cash in bank and owed on cards',
+      'Phones: Inventory › Orders › Add purchase order opens properly',
+      "Roles & permissions: every tab says in plain words what else it needs, with search, select all per module and a What this role sees preview; 15 tabs that hid or refused despite being ticked now work",
+      'Task Board: the Calendar shows the scheduled jobs (it plots Schedule Date on Project Management boards), with a Date column picker',
+      'Email: Compose Send from is a searchable list',
+    ]),
     VersionRelease(version: '0.0.0637', date: '24 Nov 2026', items: [
+      'Everywhere: people whose accounts were removed now read Former staff, and reports group them in one row',
       'Theme: the button switches between light and dark only; Match my device is gone',
       'Suggestions: attached screenshots show large and keep their shape',
       'Sidebar: when folded, More is just the arrow; Task Board group titles are a lighter tint',

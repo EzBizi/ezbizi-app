@@ -3173,303 +3173,345 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
         // animation, icon column, label style and row height are identical
         // because they are the same widget, not because constants were copied
         // out of its source.
-        child: Column(
-          children: [
-            // The filter, and only while there are labels to filter.
-            //
-            // Collapsed there is no search at all, not even an icon. The
-            // collapsed rail is for somebody who already knows where things are
-            // and wants their screen back; search is for FINDING, which implies
-            // wanting labels. An icon at 80px would be a control that only
-            // makes sense by first undoing the state you deliberately chose.
-            if (expanded && !arranging)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                child: TextField(
-                  controller: _search,
-                  onChanged: (value) => setState(() => _query = value),
-                  textInputAction: TextInputAction.search,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: UiStrings.t('shell.find_module'),
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    prefixIconConstraints: const BoxConstraints(
-                      minWidth: 34,
-                      minHeight: 34,
-                    ),
-                    suffixIcon: filtering
-                        ? IconButton(
-                            icon: const Icon(Icons.close, size: 16),
-                            visualDensity: VisualDensity.compact,
-                            tooltip: UiStrings.t('shell.clear_filter'),
-                            onPressed: () => setState(() {
-                              _search.clear();
-                              _query = '';
-                            }),
-                          )
-                        : null,
-                    suffixIconConstraints: const BoxConstraints(
-                      minWidth: 34,
-                      minHeight: 34,
+        child: LayoutBuilder(
+          builder: (context, box) => Column(
+            children: [
+              // The filter, and only while there are labels to filter.
+              //
+              // Collapsed there is no search at all, not even an icon. The
+              // collapsed rail is for somebody who already knows where things are
+              // and wants their screen back; search is for FINDING, which implies
+              // wanting labels. An icon at 80px would be a control that only
+              // makes sense by first undoing the state you deliberately chose.
+              if (expanded && !arranging)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  child: TextField(
+                    controller: _search,
+                    onChanged: (value) => setState(() => _query = value),
+                    textInputAction: TextInputAction.search,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: UiStrings.t('shell.find_module'),
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 34,
+                        minHeight: 34,
+                      ),
+                      suffixIcon: filtering
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              visualDensity: VisualDensity.compact,
+                              tooltip: UiStrings.t('shell.clear_filter'),
+                              onPressed: () => setState(() {
+                                _search.clear();
+                                _query = '';
+                              }),
+                            )
+                          : null,
+                      suffixIconConstraints: const BoxConstraints(
+                        minWidth: 34,
+                        minHeight: 34,
+                      ),
                     ),
                   ),
                 ),
-              ),
 
-            // How many of how many.
-            //
-            // With a filter on, "three modules match" and "three modules exist"
-            // look exactly alike, and one of them means the app has lost
-            // thirteen tabs. The total is what tells them apart.
-            if (filtering && shown.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text(
-                  UiStrings.t('shell.modules_shown')
-                      .replaceFirst('{n}', '${shown.length}')
-                      .replaceFirst('{total}', '${widget.destinations.length}'),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+              // How many of how many.
+              //
+              // With a filter on, "three modules match" and "three modules exist"
+              // look exactly alike, and one of them means the app has lost
+              // thirteen tabs. The total is what tells them apart.
+              if (filtering && shown.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    UiStrings.t('shell.modules_shown')
+                        .replaceFirst('{n}', '${shown.length}')
+                        .replaceFirst(
+                          '{total}',
+                          '${widget.destinations.length}',
+                        ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
 
-            // The destinations scroll; the group below does NOT.
-            //
-            // A NavigationRail lays its destinations out in a Column and has no
-            // scrolling of its own. Inside a bare Expanded it therefore
-            // OVERFLOWED on a short window: past about 780px of sidebar the
-            // sixteen destinations drew straight over Settings and Development,
-            // and the ones underneath were unreachable rather than merely
-            // hidden — there was nothing to scroll with. Reported from a 900px
-            // screen, where Services sat on top of Settings.
-            //
-            // The rail still has to FILL the column when there is room, or it
-            // stops stretching and the selected-row highlight ends early. So it
-            // is a scroll view with a minimum height of whatever it was given:
-            // at full height nothing scrolls and this is identical to before;
-            // below that the list scrolls and the tail stays put.
-            //
-            // The tail is deliberately outside this. Going to Settings is often
-            // what somebody does BECAUSE they could not find a module in the
-            // list, so it is the last thing that should require scrolling to
-            // reach.
-            Expanded(
-              // Keyed: the search field above it comes and goes with the
-              // collapse, and an unkeyed sibling shift remounted this whole
-              // list (and its scroll view) on every toggle.
-              key: const ValueKey('sidebar-list'),
-              // Nothing matched is the state that matters more than the happy
-              // path: a sidebar with no modules in it and no explanation is
-              // indistinguishable from a broken one. So it names what was
-              // typed, says the list is filtered rather than empty, and points
-              // at the way back.
-              child: arranging
-                  ? _SidebarArranger(
-                      destinations: widget.destinations,
-                      divideAfter: widget.divideAfter,
-                      headingAt: widget.headingAt,
-                      onDone: (order) {
-                        setState(() => _arranging = false);
-                        if (order != null) widget.onArranged!(order);
-                      },
-                    )
-                  : filtering && shown.isEmpty
-                  ? _noMatch(context, _query.trim())
-                  : Column(
-                      children: [
-                        Expanded(
-                          child: LayoutBuilder(
-                            // A visible thumb when the list is taller than the
-                            // window: without it the lower group just stopped
-                            // mid-row with no hint there was more (deep dive
-                            // 2026-11-02).
-                            builder: (context, constraints) => Stack(
-                              children: [
-                                Scrollbar(
-                                  controller: _railScroll,
-                                  thumbVisibility: true,
-                                  child: SingleChildScrollView(
+              // The destinations scroll; the group below does NOT.
+              //
+              // A NavigationRail lays its destinations out in a Column and has no
+              // scrolling of its own. Inside a bare Expanded it therefore
+              // OVERFLOWED on a short window: past about 780px of sidebar the
+              // sixteen destinations drew straight over Settings and Development,
+              // and the ones underneath were unreachable rather than merely
+              // hidden — there was nothing to scroll with. Reported from a 900px
+              // screen, where Services sat on top of Settings.
+              //
+              // The rail still has to FILL the column when there is room, or it
+              // stops stretching and the selected-row highlight ends early. So it
+              // is a scroll view with a minimum height of whatever it was given:
+              // at full height nothing scrolls and this is identical to before;
+              // below that the list scrolls and the tail stays put.
+              //
+              // The tail is deliberately outside this. Going to Settings is often
+              // what somebody does BECAUSE they could not find a module in the
+              // list, so it is the last thing that should require scrolling to
+              // reach.
+              Expanded(
+                // Keyed: the search field above it comes and goes with the
+                // collapse, and an unkeyed sibling shift remounted this whole
+                // list (and its scroll view) on every toggle.
+                key: const ValueKey('sidebar-list'),
+                // Nothing matched is the state that matters more than the happy
+                // path: a sidebar with no modules in it and no explanation is
+                // indistinguishable from a broken one. So it names what was
+                // typed, says the list is filtered rather than empty, and points
+                // at the way back.
+                child: arranging
+                    ? _SidebarArranger(
+                        destinations: widget.destinations,
+                        divideAfter: widget.divideAfter,
+                        headingAt: widget.headingAt,
+                        onDone: (order) {
+                          setState(() => _arranging = false);
+                          if (order != null) widget.onArranged!(order);
+                        },
+                      )
+                    : filtering && shown.isEmpty
+                    ? _noMatch(context, _query.trim())
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              // A visible thumb when the list is taller than the
+                              // window: without it the lower group just stopped
+                              // mid-row with no hint there was more (deep dive
+                              // 2026-11-02).
+                              builder: (context, constraints) => Stack(
+                                children: [
+                                  Scrollbar(
                                     controller: _railScroll,
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        minHeight: constraints.maxHeight,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          for (
-                                            var g = 0;
-                                            g < segments.length;
-                                            g++
-                                          ) ...[
-                                            if (!filtering &&
-                                                expanded &&
-                                                widget.headingAt.containsKey(
-                                                  segments[g].first,
-                                                ))
-                                              _GroupHeading(
-                                                widget.headingAt[segments[g]
-                                                    .first]!,
-                                              )
-                                            else if (g > 0)
-                                              Divider(
-                                                height: 17,
-                                                thickness: 1,
-                                                indent: width * 0.15,
-                                                endIndent: width * 0.15,
-                                                color: scheme.outlineVariant,
-                                              ),
-                                            IntrinsicHeight(
-                                              child: _rail(
-                                                context,
-                                                expanded: expanded,
-                                                width: width,
-                                                destinations: [
-                                                  for (final i in segments[g])
-                                                    widget.destinations[i],
-                                                ],
-                                                selectedIndex: within(
-                                                  segments[g],
+                                    thumbVisibility: true,
+                                    child: SingleChildScrollView(
+                                      controller: _railScroll,
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minHeight: constraints.maxHeight,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            for (
+                                              var g = 0;
+                                              g < segments.length;
+                                              g++
+                                            ) ...[
+                                              if (!filtering &&
+                                                  expanded &&
+                                                  widget.headingAt.containsKey(
+                                                    segments[g].first,
+                                                  ))
+                                                _GroupHeading(
+                                                  widget.headingAt[segments[g]
+                                                      .first]!,
+                                                )
+                                              else if (g > 0)
+                                                Divider(
+                                                  height: 17,
+                                                  thickness: 1,
+                                                  indent: width * 0.15,
+                                                  endIndent: width * 0.15,
+                                                  color: scheme.outlineVariant,
                                                 ),
-                                                onSelected: (i) => widget
-                                                    .onSelected(segments[g][i]),
-                                                query: query,
+                                              IntrinsicHeight(
+                                                child: _rail(
+                                                  context,
+                                                  expanded: expanded,
+                                                  width: width,
+                                                  destinations: [
+                                                    for (final i in segments[g])
+                                                      widget.destinations[i],
+                                                  ],
+                                                  selectedIndex: within(
+                                                    segments[g],
+                                                  ),
+                                                  onSelected: (i) =>
+                                                      widget.onSelected(
+                                                        segments[g][i],
+                                                      ),
+                                                  query: query,
+                                                ),
                                               ),
-                                            ),
+                                            ],
                                           ],
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
+                          // "More below" on its own row under the list while
+                          // rows remain under the fold (Jose 11-13 read the
+                          // cut-off list as modules MISSING). Drawn over the
+                          // list it covered a module name (desktop review
+                          // 2026-11-13, Top 6).
+                          _MoreBelow(
+                            controller: _railScroll,
+                            compact: !expanded,
+                          ),
+                        ],
+                      ),
+              ),
+
+              // The tail never takes more than half the column. It is fixed
+              // under the list, so in a short window (under ~460px) it left the
+              // list negative room and the column overflowed (Mobile, 11-24).
+              // At a normal height it is far under half and nothing changes;
+              // below that the tail scrolls too, and the list keeps its half.
+              ConstrainedBox(
+                key: const ValueKey('sidebar-tail'),
+                constraints: BoxConstraints(maxHeight: box.maxHeight / 2),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // The rule that says the group below is a different kind of thing:
+                      // places you go to change how the work behaves, rather than places
+                      // you go to do it.
+                      //
+                      // Inset to about 70% of the column. Edge to edge it reads as the
+                      // bottom of the sidebar — a border, the same language as the right
+                      // edge beside it. Pulled in, it reads as a break WITHIN one list,
+                      // which is what it is.
+                      Divider(
+                        height: 17,
+                        thickness: 1,
+                        indent: width * 0.15,
+                        endIndent: width * 0.15,
+                        color: scheme.outlineVariant,
+                      ),
+
+                      // IntrinsicHeight because a rail's root column is mainAxisSize.max
+                      // — it expects to own the full height. This asks it for exactly the
+                      // height its destinations need.
+                      IntrinsicHeight(
+                        child: _rail(
+                          context,
+                          expanded: expanded,
+                          width: width,
+                          destinations: widget.pinned,
+                          selectedIndex: widget.pinnedIndex,
+                          onSelected: widget.onPinnedSelected,
                         ),
-                        // "More below" on its own row under the list while
-                        // rows remain under the fold (Jose 11-13 read the
-                        // cut-off list as modules MISSING). Drawn over the
-                        // list it covered a module name (desktop review
-                        // 2026-11-13, Top 6).
-                        _MoreBelow(controller: _railScroll, compact: !expanded),
+                      ),
+
+                      // And a third group, for staff only.
+                      //
+                      // Development sat in the group above, which said it was the same
+                      // kind of thing as Settings. Settings configures the business and
+                      // every administrator has it; this is the platform underneath the
+                      // product (§4.2), it appears only when the server says this person
+                      // is also EzBizi staff, and most people signed into this app will
+                      // never see it.
+                      //
+                      // The whole group disappears with its rule when they are not, so
+                      // nobody is left looking at a divider with nothing under it.
+                      if (widget.staffOnly.isNotEmpty) ...[
+                        Divider(
+                          height: 17,
+                          thickness: 1,
+                          indent: width * 0.15,
+                          endIndent: width * 0.15,
+                          color: scheme.outlineVariant,
+                        ),
+                        IntrinsicHeight(
+                          child: _rail(
+                            context,
+                            expanded: expanded,
+                            width: width,
+                            destinations: widget.staffOnly,
+                            selectedIndex: widget.staffIndex,
+                            onSelected: widget.onStaffSelected,
+                          ),
+                        ),
                       ],
-                    ),
-            ),
 
-            // The rule that says the group below is a different kind of thing:
-            // places you go to change how the work behaves, rather than places
-            // you go to do it.
-            //
-            // Inset to about 70% of the column. Edge to edge it reads as the
-            // bottom of the sidebar — a border, the same language as the right
-            // edge beside it. Pulled in, it reads as a break WITHIN one list,
-            // which is what it is.
-            Divider(
-              height: 17,
-              thickness: 1,
-              indent: width * 0.15,
-              endIndent: width * 0.15,
-              color: scheme.outlineVariant,
-            ),
-
-            // IntrinsicHeight because a rail's root column is mainAxisSize.max
-            // — it expects to own the full height. This asks it for exactly the
-            // height its destinations need.
-            IntrinsicHeight(
-              child: _rail(
-                context,
-                expanded: expanded,
-                width: width,
-                destinations: widget.pinned,
-                selectedIndex: widget.pinnedIndex,
-                onSelected: widget.onPinnedSelected,
-              ),
-            ),
-
-            // And a third group, for staff only.
-            //
-            // Development sat in the group above, which said it was the same
-            // kind of thing as Settings. Settings configures the business and
-            // every administrator has it; this is the platform underneath the
-            // product (§4.2), it appears only when the server says this person
-            // is also EzBizi staff, and most people signed into this app will
-            // never see it.
-            //
-            // The whole group disappears with its rule when they are not, so
-            // nobody is left looking at a divider with nothing under it.
-            if (widget.staffOnly.isNotEmpty) ...[
-              Divider(
-                height: 17,
-                thickness: 1,
-                indent: width * 0.15,
-                endIndent: width * 0.15,
-                color: scheme.outlineVariant,
-              ),
-              IntrinsicHeight(
-                child: _rail(
-                  context,
-                  expanded: expanded,
-                  width: width,
-                  destinations: widget.staffOnly,
-                  selectedIndex: widget.staffIndex,
-                  onSelected: widget.onStaffSelected,
+                      // The foot: what build you are on, and the way into rearranging.
+                      //
+                      // Rearranging used to sit under the search field. Jose, 2026-09-14:
+                      // "i dont like the rearrange being on the top, perhaps move it next
+                      // to the version number instead." It belongs here for the same
+                      // reason Settings does — a place you go to change how the sidebar
+                      // behaves rather than a place you go to work — and the top of a
+                      // list of modules is the one place it competes with the modules.
+                      //
+                      // Collapsed shows the version alone. It used to show nothing, on
+                      // the reasoning that half a build id is worse than none; the
+                      // version is a whole field rather than half of one, and it fits.
+                      // See [BuildStamp.compact].
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          expanded ? 20 : 8,
+                          10,
+                          12,
+                          0,
+                        ),
+                        // Stacked, not side by side, and that was measured rather than
+                        // chosen: `BuildStamp` is 160px wide on a desktop platform --
+                        // the version plus the update control beside it -- and this
+                        // sidebar is draggable down to 180. A Row gives its non-flex
+                        // children unbounded width, so the two of them overflowed by
+                        // 86px at the default 220 rather than shrinking. Stacked they
+                        // fit at every width, and the control keeps its WORD, which an
+                        // icon squeezed in beside the version could not have.
+                        child: expanded
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!arranging && widget.onArranged != null)
+                                    TextButton.icon(
+                                      onPressed: () =>
+                                          setState(() => _arranging = true),
+                                      icon: const Icon(
+                                        Icons.swap_vert,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        UiStrings.t('shell.rearrange'),
+                                      ),
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        foregroundColor:
+                                            scheme.onSurfaceVariant,
+                                        textStyle: Theme.of(
+                                          context,
+                                        ).textTheme.labelMedium,
+                                      ),
+                                    ),
+                                  BuildStamp(api: widget.api),
+                                ],
+                              )
+                            : Center(
+                                child: BuildStamp(
+                                  compact: true,
+                                  api: widget.api,
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
                 ),
               ),
             ],
-
-            // The foot: what build you are on, and the way into rearranging.
-            //
-            // Rearranging used to sit under the search field. Jose, 2026-09-14:
-            // "i dont like the rearrange being on the top, perhaps move it next
-            // to the version number instead." It belongs here for the same
-            // reason Settings does — a place you go to change how the sidebar
-            // behaves rather than a place you go to work — and the top of a
-            // list of modules is the one place it competes with the modules.
-            //
-            // Collapsed shows the version alone. It used to show nothing, on
-            // the reasoning that half a build id is worse than none; the
-            // version is a whole field rather than half of one, and it fits.
-            // See [BuildStamp.compact].
-            Padding(
-              padding: EdgeInsets.fromLTRB(expanded ? 20 : 8, 10, 12, 0),
-              // Stacked, not side by side, and that was measured rather than
-              // chosen: `BuildStamp` is 160px wide on a desktop platform --
-              // the version plus the update control beside it -- and this
-              // sidebar is draggable down to 180. A Row gives its non-flex
-              // children unbounded width, so the two of them overflowed by
-              // 86px at the default 220 rather than shrinking. Stacked they
-              // fit at every width, and the control keeps its WORD, which an
-              // icon squeezed in beside the version could not have.
-              child: expanded
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!arranging && widget.onArranged != null)
-                          TextButton.icon(
-                            onPressed: () => setState(() => _arranging = true),
-                            icon: const Icon(Icons.swap_vert, size: 16),
-                            label: Text(UiStrings.t('shell.rearrange')),
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              foregroundColor: scheme.onSurfaceVariant,
-                              textStyle: Theme.of(
-                                context,
-                              ).textTheme.labelMedium,
-                            ),
-                          ),
-                        BuildStamp(api: widget.api),
-                      ],
-                    )
-                  : Center(child: BuildStamp(compact: true, api: widget.api)),
-            ),
-            const SizedBox(height: 12),
-          ],
+          ),
         ),
       ),
     );
