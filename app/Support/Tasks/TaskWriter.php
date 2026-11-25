@@ -820,7 +820,7 @@ class TaskWriter
                 if (Gate::forUser($user)->check('view', $task)) {
                     $told += app(NotificationDispatcher::class)->dispatch(
                         title: $who.' posted on '.$task->title,
-                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) $update->body)), 160),
                         subject: $task, onlyTo: $user, kind: 'task.reply', source: 'tasks',
                     );
                 }
@@ -854,7 +854,7 @@ class TaskWriter
                 if (Gate::forUser($user)->check('view', $task)) {
                     $told += app(NotificationDispatcher::class)->dispatch(
                         title: $who.' mentioned you',
-                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) $update->body), 160),
+                        body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) $update->body)), 160),
                         subject: $task, onlyTo: $user, source: 'mention', kind: 'task.mentioned',
                     );
                 }

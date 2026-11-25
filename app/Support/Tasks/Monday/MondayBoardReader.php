@@ -854,13 +854,15 @@ final class MondayBoardReader
     {
         // A @mention is a name, not a link (its href is the person's Monday profile).
         $html = (string) preg_replace('/<a\b[^>]*data-mention-type="[^"]*"[^>]*>(.*?)<\/a>/is', '$1', (string) ($u['body'] ?? ''));
-        if (! str_contains($html, '<a ')) {
+        // Bold, italic, underline are kept as our <b>/<i>/<u> (Jose 11-25: updates take them both ways).
+        $html = (string) preg_replace(['#<(/?)strong\b[^>]*>#i', '#<(/?)em\b[^>]*>#i', '#<(/?)([biu])\b[^>]*>#i'], ['<$1b>', '<$1i>', '<$1$2>'], $html);
+        if (! str_contains($html, '<a ') && ! preg_match('#<[biu]>#', $html)) {
             return trim((string) ($u['text_body'] ?? ''));
         }
         $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
             // A link to a Monday person is a mention however it is marked: its name alone (Cristine 11-25).
             fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2])) : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
-        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html));
+        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html), '<b><i><u>');
         $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
 
         return trim((string) preg_replace("/[ \t]*\n[ \t]*/", "\n", (string) preg_replace("/\n{3,}/", "\n\n", $text)));

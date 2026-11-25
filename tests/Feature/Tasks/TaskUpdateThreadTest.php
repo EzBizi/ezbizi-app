@@ -50,14 +50,14 @@ class TaskUpdateThreadTest extends TestCase
         $task = $this->signedInAs($tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Liner'])->assertCreated()->json('data.id');
         $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Parts came'])->assertCreated();
         $this->travel(1)->minutes();
-        $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@you look', 'mentions' => [$tenant['admin']->id]])->assertCreated();
+        $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@you <b>look</b>', 'mentions' => [$tenant['admin']->id]])->assertCreated();
 
         $feed = fn (string $q = '') => $this->signedInAs($tenant['admin'])->getJson('/api/v1/task-updates'.$q)->assertOk();
         $all = $feed()->json();
-        $this->assertSame(['@you look', 'Parts came'], collect($all['data'])->pluck('body')->all());
+        $this->assertSame(['@you <b>look</b>', 'Parts came'], collect($all['data'])->pluck('body')->all());
         $this->assertSame('Liner', $all['data'][0]['task']);
         $this->assertSame(2, collect($all['meta']['boards'])->firstWhere('id', $board->id)['count']);
-        $this->assertSame(['@you look'], collect($feed('?filter=mentions')->json('data'))->pluck('body')->all());
+        $this->assertSame(['@you <b>look</b>'], collect($feed('?filter=mentions')->json('data'))->pluck('body')->all());
         $this->assertCount(2, $feed('?unread=1')->json('data'));
 
         $this->travel(1)->minutes();
@@ -98,7 +98,7 @@ class TaskUpdateThreadTest extends TestCase
         $this->assertTrue($api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$now}/bookmark")->assertOk()->json('data.bookmarked'));
         $this->assertSame([$now], collect($api($tech)->getJson('/api/v1/task-updates?filter=bookmarked')->json('data'))->pluck('id')->all());
 
-        $later = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@crew tomorrow at 8', 'mentions' => [$tech->id], 'post_at' => now()->addHour()->toIso8601String()])
+        $later = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@crew <b>tomorrow</b> at 8', 'mentions' => [$tech->id], 'post_at' => now()->addHour()->toIso8601String()])
             ->assertCreated()->json('data');
         $this->assertNotNull($later['scheduled_for']);
         $this->assertSame([$later['id']], collect($api($tenant['admin'])->getJson('/api/v1/task-updates?filter=scheduled')->json('data'))->pluck('id')->all());
@@ -110,6 +110,8 @@ class TaskUpdateThreadTest extends TestCase
         $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 1')->assertSuccessful();
         $this->assertContains($later['id'], collect($api($tech)->getJson("/api/v1/tasks/{$task}")->json('data.updates'))->pluck('id')->all());
         $this->assertSame(1, $mentioned());
+        // Jose 11-25: the bell, push and email read the words, never the tags.
+        $this->assertSame('@crew tomorrow at 8', $this->inTenant($tenant['org'], fn () => Notification::query()->where('user_id', $tech->id)->where('kind', 'task.mentioned')->value('body')));
         $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 0')->assertSuccessful();
     }
 }
