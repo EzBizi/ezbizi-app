@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppNumber;
 use App\Support\Ai\ReportFileRequest;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Scoping\ViewScope;
@@ -96,18 +97,20 @@ class SendRequestedReport implements ShouldQueue
             // Reports come from the Reports number (Jose, 2026-11-09); this chat says where.
             // No phone on their profile and it comes here instead.
             $reports = WhatsAppNumber::forPurpose('reports');
-            if ($reports !== null && $reports->isNot($number) && app(WhatsAppGroups::class)->deliverDocumentsToUser($reports, $user, $title, [[
+            if ($reports !== null && $reports->isNot($number) && ReportSource::during('requested', fn () => app(WhatsAppGroups::class)->deliverDocumentsToUser($reports, $user, $title, [[
                 'title' => $title, 'pdf' => (string) $file->getContent(), 'filename' => $name,
                 'type' => (string) $file->headers->get('Content-Type'), 'text' => $text,
-            ]]) > 0) {
+            ]])) > 0) {
                 $say("\u{1F4C4} Sent from the Reports number, {$reports->display_number}.");
 
                 return;
             }
 
             $id = app(WhatsAppGroups::class)->upload($number, (string) $file->getContent(), $name, (string) $file->headers->get('Content-Type'));
-            $say($text);
-            $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
+            ReportSource::during('requested', function () use ($say, $text, $cloud, $number, $id, $name) {
+                $say($text);
+                $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
+            });
         });
     }
 }
