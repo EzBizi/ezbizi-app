@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
+      'Phones and foldables: with the keyboard up on a wide screen (an unfolded fold, a tablet on its side) the reply box and lists stay above the keyboard',
+      'Project Management: totals no longer break over two lines, and the total tiles are all one height',
       'Monitoring: the nightly clean-up of old devices runs for every company again (one company with an ended plan was stopping it for all)',
     ]),
     VersionRelease(version: '0.0.0642', date: '25 Nov 2026', items: [
