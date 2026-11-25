@@ -2007,6 +2007,9 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   late String? _role = _savedRole;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
+  // Full or part time; '' is "from their schedule" (Eric, 2026-11-25).
+  String get _savedHours => widget.person['hours_type']?.toString() ?? '';
+  late String _hours = _savedHours;
   late final _startDay = TextEditingController(text: _savedStart ?? '');
 
   @override
@@ -2019,6 +2022,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
     if (_role != _savedRole && _role != null) 'role_id': _role,
     if (_active != _savedActive) 'is_active': _active,
     if (_start != _savedStart && _start != null) 'started_on': _start,
+    if (_hours != _savedHours) 'hours_type': _hours.isEmpty ? null : _hours,
   };
 
   @override
@@ -2081,6 +2085,26 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
               : null,
         ),
         const SizedBox(height: 16),
+        Text('Hours', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          key: const ValueKey('hr-record-hours-type'),
+          segments: const [
+            ButtonSegment(value: 'full_time', label: Text('Full time')),
+            ButtonSegment(value: 'part_time', label: Text('Part time')),
+            ButtonSegment(value: '', label: Text('From schedule')),
+          ],
+          selected: {_hours},
+          onSelectionChanged: editable
+              ? (value) => setState(() => _hours = value.first)
+              : null,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'From schedule: 30 hours a week or more counts as full time.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
         _Pair(
           CalendarDayField(
             key: const ValueKey('hr-start-date'),
@@ -2118,6 +2142,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
             onDiscard: () => setState(() {
               _role = _savedRole;
               _active = _savedActive;
+              _hours = _savedHours;
               _start = _savedStart;
               _startDay.text = _savedStart ?? '';
             }),
