@@ -240,6 +240,47 @@ class _BoardTreeState extends State<BoardTree> {
   /// (Move up, Move down, Move to folder), so touch gets no drag at all.
   static bool get _dragByMouse => !hasSoftKeyboard();
 
+  /// What a row looks like with something held over it (Jose 11-25, row
+  /// 68): a 2px line along its top where a reorder will land, or a tinted
+  /// fill when the drop goes INTO it (a board into a folder, a task into a
+  /// board). Never a box around the row.
+  Widget _dropLook(
+    BuildContext context,
+    List<Object?> hovering, {
+    required bool Function(Object? data) into,
+    required Widget child,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    if (hovering.isEmpty) return child;
+    if (into(hovering.first)) {
+      return ColoredBox(
+        key: const ValueKey('tasks-drop-into'),
+        color: scheme.primaryContainer,
+        child: child,
+      );
+    }
+    return DecoratedBox(
+      key: const ValueKey('tasks-drop-line'),
+      position: DecorationPosition.foreground,
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: scheme.primary, width: 2)),
+      ),
+      child: child,
+    );
+  }
+
+  /// A company's dot when the organization has not picked one: a colour of
+  /// the board palette chosen by its name, the same on every device and run
+  /// (Jose 11-25, row 68: not grey).
+  static Color dotFor(String name) {
+    final palette = BoardTree.palette.sublist(1); // not the grey
+    final sum = name.codeUnits.fold<int>(
+      0,
+      (a, c) => (a * 31 + c) & 0x7fffffff,
+    );
+    return palette[sum % palette.length];
+  }
+
   Widget _folderDraggable(String id, String name, Widget child) =>
       widget.canArrange && widget.api != null && _dragByMouse
       ? Draggable<String>(
@@ -481,12 +522,8 @@ class _BoardTreeState extends State<BoardTree> {
       // 211); one just made shows while it is named, and boards reach it by
       // "Move to folder".
       if (inner.isEmpty && _renamingFolder != id) continue;
-      // A folder of one board is that board, with the folder's name beside
-      // it (Jose 11-25: no row that only repeats its child).
-      if (sub.isEmpty && boards.length == 1 && _renamingFolder != id) {
-        out.add(board(boards.single, indent, note: name));
-        continue;
-      }
+      // A folder is always drawn as a folder, even of one board (Jose 11-25,
+      // row 68: "Rodrigo Mena · Marketing" read as random).
       final open = searching || !_folded.contains('folder:$id');
       final head = _renamingFolder == id
           ? Padding(
@@ -546,12 +583,10 @@ class _BoardTreeState extends State<BoardTree> {
           onAcceptWithDetails: (d) => d.data.startsWith('folder:')
               ? _reorderFolder(d.data.substring(7), f)
               : _patchBoard(d.data.substring(6), {'folder_id': id}),
-          builder: (context, hovering, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              border: hovering.isEmpty
-                  ? null
-                  : Border.all(color: theme.colorScheme.primary, width: 2),
-            ),
+          builder: (context, hovering, _) => _dropLook(
+            context,
+            hovering,
+            into: (d) => '$d'.startsWith('board:'),
             child: _contextMenu([
               MenuItemButton(
                 key: ValueKey('folder-rename-$id'),
@@ -826,7 +861,7 @@ class _BoardTreeState extends State<BoardTree> {
                         size: 10,
                         color:
                             _colour(_groupColours['company:$company']) ??
-                            theme.colorScheme.outline,
+                            dotFor(company),
                       ),
                     )
                   else
@@ -952,12 +987,12 @@ class _BoardTreeState extends State<BoardTree> {
                     ? _moveFavorite(d.data.substring(6), '${b['id']}')
                     : _reorder(d.data.substring(6), b)
               : drop!(i, d.data),
-          builder: (context, hovering, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              border: hovering.isEmpty
-                  ? null
-                  : Border.all(color: theme.colorScheme.primary, width: 2),
-            ),
+          builder: (context, hovering, _) => _dropLook(
+            context,
+            hovering,
+            // A task dropped on a board goes into it; a board dragged onto
+            // a board takes its place.
+            into: (d) => !'$d'.startsWith('board:'),
             child: draggable(tile(b, i, on, text, indent, from, note, company)),
           ),
         );
@@ -983,6 +1018,7 @@ class _BoardTreeState extends State<BoardTree> {
       String? colourKey,
       IconData? icon,
       bool strong = false,
+      Color? dot,
       bool startFolded = false,
     }) {
       if (children.isEmpty) return const [];
@@ -1023,7 +1059,7 @@ class _BoardTreeState extends State<BoardTree> {
                     Icons.circle,
                     key: ValueKey('group-tint-$colourKey'),
                     size: 10,
-                    color: tint ?? theme.colorScheme.outline,
+                    color: tint ?? dot ?? theme.colorScheme.outline,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1336,6 +1372,7 @@ class _BoardTreeState extends State<BoardTree> {
         company,
         children,
         colourKey: 'company:$company',
+        dot: dotFor(company),
         strong: true,
         indent: base,
       );
@@ -1395,7 +1432,7 @@ class _BoardTreeState extends State<BoardTree> {
       // The organization, then under it its own boards and folders, then
       // its companies: org > company > branch or folder > board, one indent
       // step a level (design 211, Jose 11-25).
-      ...group('org', org, strong: true, [
+      ...group('org', org, strong: true, dot: theme.colorScheme.primary, [
         if (orgFolder != null)
           for (final (i, b) in boards.indexed)
             if (b['folder_id'] == orgFolder['id'] &&

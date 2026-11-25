@@ -627,12 +627,16 @@ void main() {
     expect(y(org), lessThan(y(row('b-pa'))));
     expect(y(row('b-pa')), lessThan(company));
     expect(company, lessThan(y(row('b-ev'))));
+    // A folder of one board stays a folder (Jose 11-25, row 68).
+    final partners = find.byKey(const ValueKey('tasks-fold-folder:fo-p'));
+    expect(partners, findsOneWidget);
+    expect(y(partners), lessThan(y(row('b-pa'))));
     expect(
       find.descendant(
         of: row('b-pa'),
         matching: find.textContaining('Partners'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     // The company's own board first, then its branches.
     expect(y(row('b-op')), lessThan(y(row('b-ct'))));
@@ -859,17 +863,15 @@ void main() {
     // Office Management and Marketing hold only people's boards, cut here.
     expect(y(board('TX- Texas')), lessThan(y(inTree('Field Management'))));
     expect(y(inTree('Field Management')), lessThan(y(everdoors)));
-    // Everdoors: its Operation board first; Partners of one board is that
-    // board with "Partners" beside it.
+    // Everdoors: its Operation board first; Partners, of one board, is a
+    // folder holding it.
     expect(y(everdoors), lessThan(y(board('Everdoors - Operation'))));
     expect(y(board('Everdoors - Operation')), lessThan(y(board('Yosef'))));
-    expect(
-      find.descendant(
-        of: board('Yosef'),
-        matching: find.textContaining('Partners'),
-      ),
-      findsOneWidget,
+    final partners = find.byKey(
+      const ValueKey('tasks-fold-folder:01a1d6b2-be35-73d2-9681-eac7a799977d'),
     );
+    expect(y(everdoors), lessThan(y(partners)));
+    expect(y(partners), lessThan(y(board('Yosef'))));
     expect(y(board('Everdoors - Brand')), greaterThan(y(everdoors)));
     // Triplex Group is the organization: the root, its own boards first,
     // then its companies, each level one indent step in (Jose 11-25).
@@ -1063,4 +1065,65 @@ void main() {
       },
     );
   }
+
+  // Jose 11-25, row 68: colour dots, not grey; a line where a reorder lands,
+  // a fill only when the drop goes into a folder.
+  testWidgets('row 68: dots in colour; reorder shows a line, into a folder '
+      'shows a fill', (tester) async {
+    final platform = hasSoftKeyboard;
+    hasSoftKeyboard = () => false;
+    arrange = true;
+    folders = [
+      {'id': 'fo-x', 'parent_id': null, 'name': 'Archive', 'position': 0},
+    ];
+    addTearDown(() {
+      hasSoftKeyboard = platform;
+      arrange = false;
+      folders = [];
+    });
+    await pumpBoard(
+      tester,
+      boards: [
+        ...fixture,
+        {
+          ...board('b-x1', 'custom', 'Old one', section: 'place'),
+          'folder_id': 'fo-x',
+        },
+      ],
+    );
+    final dot = tester.widget<Icon>(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+    );
+    expect(EzBiziTheme.boardPalette.sublist(1), contains(dot.color));
+
+    Future<void> hold(String from, Finder over, String look) async {
+      final g = await tester.startGesture(
+        tester.getCenter(find.byKey(ValueKey('tasks-board-drag-$from'))),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await g.moveTo(tester.getCenter(over) + const Offset(0, 1));
+      await tester.pump();
+      await g.moveTo(tester.getCenter(over));
+      await tester.pump();
+      expect(find.byKey(ValueKey(look)), findsOneWidget, reason: look);
+      expect(
+        find.byKey(
+          ValueKey(
+            look == 'tasks-drop-line' ? 'tasks-drop-into' : 'tasks-drop-line',
+          ),
+        ),
+        findsNothing,
+      );
+      await g.cancel();
+      await tester.pumpAndSettle();
+    }
+
+    await hold('b-cu', row('b-a1'), 'tasks-drop-line');
+    await hold(
+      'b-cu',
+      find.byKey(const ValueKey('tasks-fold-folder:fo-x')),
+      'tasks-drop-into',
+    );
+  });
 }
