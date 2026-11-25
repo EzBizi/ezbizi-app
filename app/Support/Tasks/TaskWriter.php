@@ -174,6 +174,11 @@ class TaskWriter
             }
             app(MondayOutbox::class)->record($task, self::mondayKinds($input));
             ModuleBoard::changed($task, self::mondayKinds($input));
+            ComplaintLink::changed($task, self::mondayKinds($input));
+            // A branch task that now names a phone or job may be a complaint's copy (Jose 11-25, CX).
+            if (! empty($input['values'])) {
+                DB::afterCommit(fn () => rescue(fn () => ComplaintLink::linkTask($task->fresh() ?? $task)));
+            }
             $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
             if (empty($input['group_id']) && isset($input['group'])) {
@@ -641,6 +646,7 @@ class TaskWriter
             $this->audit->log('task.update_posted', $task, actor: $author);
             app(MondayOutbox::class)->record($task, [], $update);
             ModuleBoard::changed($task, ['update'], $update);
+            ComplaintLink::changed($task, ['update'], $update);
             if (! $this->quiet) {
                 DB::afterCommit(fn () => self::tellFollowers($update, $mentions));
             }
