@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -113,7 +114,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// The job's notes, newest first (queue 122). Held apart from [_row] so an
   /// added one goes on top without reloading the panel.
   List<Map<String, dynamic>> _notes = const [];
-  final _noteDraft = TextEditingController();
+  final _noteDraft = FormattedNotesController();
 
   bool _loading = true;
   bool _busy = false;

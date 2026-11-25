@@ -1,3 +1,4 @@
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -57,7 +58,7 @@ void main() {
                 api: api,
                 jobId: 'j-1',
                 notes: shown,
-                draft: TextEditingController(),
+                draft: FormattedNotesController(),
                 formats: DisplayFormats.fallback,
                 workizNotes: workiz,
                 onAdded: (_) {},
