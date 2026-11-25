@@ -1126,4 +1126,113 @@ void main() {
       'tasks-drop-into',
     );
   });
+
+  // Row 68 (desk relay of Jose 11-25): brand colours, a personal folder
+  // under Everyone's boards, one folder icon, the line at the landing level.
+  testWidgets('row 68: brand colours, personal folders, one folder icon, an '
+      'indented line', (tester) async {
+    final platform = hasSoftKeyboard;
+    hasSoftKeyboard = () => false;
+    arrange = true;
+    folders = [
+      {
+        'id': 'fo-dark',
+        'parent_id': null,
+        'name': 'Dark Theme',
+        'position': 0,
+        'owner': {'id': 'u-d', 'name': 'Dieuve Ray'},
+      },
+      {'id': 'fo-m', 'parent_id': null, 'name': 'Marketing', 'position': 1},
+    ];
+    addTearDown(() {
+      hasSoftKeyboard = platform;
+      arrange = false;
+      folders = [];
+    });
+    Map<String, Object?> a1(String id, String kind, String name) => {
+      ...board(
+        id,
+        kind,
+        name,
+        section: 'place',
+        companyId: 'c-1',
+        companyName: 'A-1 Chimney',
+      ),
+      'company_colour': '#e2445c',
+      'organization_colour': '#0086c0',
+    };
+    await pumpBoard(
+      tester,
+      boards: [
+        a1('b-a1', 'company', 'A-1 Chimney'),
+        a1('b-bos', 'franchise', 'Boston'),
+        a1('b-ct', 'franchise', 'Hartford'),
+        {
+          ...board('b-an', 'custom', 'Analytics Dashboard', section: 'mine'),
+          'folder_id': 'fo-dark',
+        },
+        {
+          ...board('b-ro', 'custom', 'Rodrigo Mena', section: 'place'),
+          'folder_id': 'fo-m',
+        },
+      ],
+    );
+    Color? dot(String key) =>
+        tester.widget<Icon>(find.byKey(ValueKey('group-tint-$key'))).color;
+    expect(dot('company:A-1 Chimney'), const Color(0xFFE2445C));
+    final org = find.byKey(const ValueKey('tasks-fold-org'));
+    final orgDot = tester.widget<Icon>(
+      find
+          .descendant(
+            of: org,
+            matching: find.byWidgetPredicate(
+              (w) => w is Icon && w.icon == Icons.circle,
+            ),
+          )
+          .first,
+    );
+    expect(orgDot.color, const Color(0xFF0086C0));
+
+    // Dark Theme is Dieuve's: under Everyone's boards, not the organization.
+    expect(
+      find.byKey(const ValueKey('tasks-fold-folder:fo-dark')),
+      findsNothing,
+    );
+    expect(row('b-an'), findsNothing, reason: "Everyone's starts folded");
+    await tester.tap(find.byKey(const ValueKey('tasks-fold-everyone')));
+    await tester.pumpAndSettle();
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    expect(y(find.text("EVERYONE'S BOARDS")), lessThan(y(row('b-an'))));
+
+    // One folder icon: Branches draws the same one as a real folder.
+    IconData? folderIcon(Finder row) => tester
+        .widgetList<Icon>(find.descendant(of: row, matching: find.byType(Icon)))
+        .map((i) => i.icon)
+        .firstWhere(
+          (i) => i != Icons.arrow_drop_down && i != Icons.arrow_right,
+        );
+    expect(
+      folderIcon(find.byKey(const ValueKey('tasks-fold-branches:A-1 Chimney'))),
+      folderIcon(find.byKey(const ValueKey('tasks-fold-folder:fo-m'))),
+    );
+
+    // The insertion line starts where the target row's icon does.
+    final g = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('tasks-board-drag-b-ct'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await g.moveTo(tester.getCenter(row('b-bos')) + const Offset(0, 1));
+    await tester.pump();
+    await g.moveTo(tester.getCenter(row('b-bos')));
+    await tester.pump();
+    final line = find.byKey(const ValueKey('tasks-drop-line'));
+    expect(line, findsOneWidget);
+    final icon = find
+        .descendant(of: row('b-bos'), matching: find.byType(Icon))
+        .first;
+    expect(tester.getTopLeft(line).dx, closeTo(tester.getTopLeft(icon).dx, 1));
+    await g.cancel();
+    await tester.pumpAndSettle();
+  });
 }

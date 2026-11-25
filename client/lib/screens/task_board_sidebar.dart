@@ -249,6 +249,7 @@ class _BoardTreeState extends State<BoardTree> {
     List<Object?> hovering, {
     required bool Function(Object? data) into,
     required Widget child,
+    double inset = 0,
   }) {
     final scheme = Theme.of(context).colorScheme;
     if (hovering.isEmpty) return child;
@@ -259,13 +260,18 @@ class _BoardTreeState extends State<BoardTree> {
         child: child,
       );
     }
-    return DecoratedBox(
-      key: const ValueKey('tasks-drop-line'),
-      position: DecorationPosition.foreground,
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: scheme.primary, width: 2)),
-      ),
-      child: child,
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          key: const ValueKey('tasks-drop-line'),
+          left: inset,
+          right: 8,
+          top: 0,
+          height: 2,
+          child: ColoredBox(color: scheme.primary),
+        ),
+      ],
     );
   }
 
@@ -554,11 +560,7 @@ class _BoardTreeState extends State<BoardTree> {
                         size: 20,
                         color: colour,
                       ),
-                      Icon(
-                        open ? Icons.folder_open : Icons.folder,
-                        size: 18,
-                        color: colour,
-                      ),
+                      Icon(Icons.folder, size: 18, color: colour),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -587,6 +589,7 @@ class _BoardTreeState extends State<BoardTree> {
             context,
             hovering,
             into: (d) => '$d'.startsWith('board:'),
+            inset: 26 + indent,
             child: _contextMenu([
               MenuItemButton(
                 key: ValueKey('folder-rename-$id'),
@@ -766,6 +769,16 @@ class _BoardTreeState extends State<BoardTree> {
     final query = _search.text.trim().toLowerCase();
     final searching = query.isNotEmpty;
     final boards = widget.boards;
+    // Brand colours from the board rows (Task Board: company_colour,
+    // organization_colour).
+    final brand = <String, Color>{
+      for (final b in boards)
+        '${b['company_name']}': ?_colour(b['company_colour']),
+    };
+    final orgColour = boards
+        .map((b) => _colour(b['organization_colour']))
+        .whereType<Color>()
+        .firstOrNull;
 
     bool matches(int i, [String? within]) {
       if (!searching) return true;
@@ -861,6 +874,7 @@ class _BoardTreeState extends State<BoardTree> {
                         size: 10,
                         color:
                             _colour(_groupColours['company:$company']) ??
+                            brand[company] ??
                             dotFor(company),
                       ),
                     )
@@ -993,6 +1007,7 @@ class _BoardTreeState extends State<BoardTree> {
             // A task dropped on a board goes into it; a board dragged onto
             // a board takes its place.
             into: (d) => !'$d'.startsWith('board:'),
+            inset: 26 + indent,
             child: draggable(tile(b, i, on, text, indent, from, note, company)),
           ),
         );
@@ -1147,6 +1162,17 @@ class _BoardTreeState extends State<BoardTree> {
         if (b['company_id'] != null && b['company_name'] != null)
           '${b['company_id']}': '${b['company_name']}',
     };
+    String? personalOwner(Object? id) {
+      for (
+        var f = folderById['$id'];
+        f != null;
+        f = folderById['${f['parent_id']}']
+      ) {
+        if ((f['owner'] as Map?)?['name'] case final String name) return name;
+      }
+      return null;
+    }
+
     String? companyOfFolder(Object? id) {
       for (
         var f = folderById['$id'];
@@ -1166,6 +1192,7 @@ class _BoardTreeState extends State<BoardTree> {
     // a server flag if templates ever get other names.
     bool template(int i) => _name(boards[i]).toLowerCase().endsWith('template');
     final byCompany = <String, List<int>>{};
+    final ownerOf = <int, String>{};
     final organization = <int>[];
     final templates = <int>[];
     final shared = <int>[];
@@ -1177,7 +1204,10 @@ class _BoardTreeState extends State<BoardTree> {
       // not listed (server: company_board false on it).
       if (b['kind'] == 'company' && b['company_board'] == false) continue;
       final company = '${b['company_name'] ?? ''}';
-      if (companyOfFolder(b['folder_id']) != null) {
+      if (personalOwner(b['folder_id']) case final who?) {
+        ownerOf[i] = who;
+        everyone.add(i);
+      } else if (companyOfFolder(b['folder_id']) != null) {
         continue; // Drawn inside that company's folder.
       } else if (template(i)) {
         templates.add(i);
@@ -1331,7 +1361,7 @@ class _BoardTreeState extends State<BoardTree> {
                 'Branches',
                 branchRows,
                 indent: base + 14,
-                icon: Icons.folder_outlined,
+                icon: Icons.folder,
               )
             : branchRows,
       );
@@ -1372,7 +1402,7 @@ class _BoardTreeState extends State<BoardTree> {
         company,
         children,
         colourKey: 'company:$company',
-        dot: dotFor(company),
+        dot: brand[company] ?? dotFor(company),
         strong: true,
         indent: base,
       );
@@ -1388,7 +1418,9 @@ class _BoardTreeState extends State<BoardTree> {
     final people = <String, List<int>>{};
     for (final i in everyone) {
       if (matches(i)) {
-        people.putIfAbsent(_owner(boards[i]) ?? 'Someone', () => []).add(i);
+        people
+            .putIfAbsent(ownerOf[i] ?? _owner(boards[i]) ?? 'Someone', () => [])
+            .add(i);
       }
     }
     final names = people.keys.toList()..sort();
@@ -1432,33 +1464,41 @@ class _BoardTreeState extends State<BoardTree> {
       // The organization, then under it its own boards and folders, then
       // its companies: org > company > branch or folder > board, one indent
       // step a level (design 211, Jose 11-25).
-      ...group('org', org, strong: true, dot: theme.colorScheme.primary, [
-        if (orgFolder != null)
-          for (final (i, b) in boards.indexed)
-            if (b['folder_id'] == orgFolder['id'] &&
-                i != personal &&
-                !template(i) &&
-                matches(i))
-              board(i, indent: 14),
-        for (final i in organization)
-          if (matches(i)) board(i, indent: 14),
-        // Its folders: those in its own folder, then those named for no
-        // company. A board of a company is under its company, wherever filed.
-        for (final parent in [?orgFolder?['id'], null])
-          ..._folderRows(
-            context,
-            parent == null ? null : '$parent',
-            14,
-            (i, x, {note}) => board(i, indent: x, note: note),
-            (i) =>
-                matches(i) &&
-                !template(i) &&
-                '${boards[i]['company_name'] ?? ''}'.isEmpty,
-            hide: (f) =>
-                companyOfFolder(f['id']) != null || identical(f, orgFolder),
-          ),
-        ...companyRows,
-      ]),
+      ...group(
+        'org',
+        org,
+        strong: true,
+        dot: orgColour ?? theme.colorScheme.primary,
+        [
+          if (orgFolder != null)
+            for (final (i, b) in boards.indexed)
+              if (b['folder_id'] == orgFolder['id'] &&
+                  i != personal &&
+                  !template(i) &&
+                  matches(i))
+                board(i, indent: 14),
+          for (final i in organization)
+            if (matches(i)) board(i, indent: 14),
+          // Its folders: those in its own folder, then those named for no
+          // company. A board of a company is under its company, wherever filed.
+          for (final parent in [?orgFolder?['id'], null])
+            ..._folderRows(
+              context,
+              parent == null ? null : '$parent',
+              14,
+              (i, x, {note}) => board(i, indent: x, note: note),
+              (i) =>
+                  matches(i) &&
+                  !template(i) &&
+                  '${boards[i]['company_name'] ?? ''}'.isEmpty,
+              hide: (f) =>
+                  companyOfFolder(f['id']) != null ||
+                  identical(f, orgFolder) ||
+                  f['owner'] != null,
+            ),
+          ...companyRows,
+        ],
+      ),
       ...group('templates', 'Templates', asHeader: true, [
         for (final i in templates)
           if (matches(i)) board(i),
