@@ -17,8 +17,13 @@ option and click on iPhone and iPhone Duo, on the Mac, visibly.
   drives the app via Flutter's VM service (no macOS accessibility grant needed).
   Screenshots go to `~/ezbizi-mobile/shots/`.
 - The Duo has two displays: `--display=1` cover (1398×2034 px) and
-  `--display=3` inner (2007×2853 px). Fold/unfold is a Device Hub control,
-  not a simctl command (`screenConfig power` crashed SpringBoard).
+  `--display=3` inner (2007×2853 px). Fold/unfold is Device Hub's hinge
+  slider `deviceChrome.poseHingeSlider` (0 shut … 180 open), not a simctl
+  command (`screenConfig power` crashed SpringBoard). Setting the slider's
+  AX value moves the knob but not the device; a real mouse drag does
+  (`probe/drag 1413 1366 1490 1366 25`, coordinates from `probe/ax 927`).
+  Open, the inner screen is landscape, 951×669 pt; `DUO_DISPLAY=3 drive.py
+  duo shot` shoots it.
 - ssh processes on the Mac hold Accessibility: `~/ezbizi-mobile/probe/press
   <pid> "Window>iPhone Duo (iOS 27.2)"` presses a Device Hub menu item, `ax2`
   and `hit` read its controls. All of it needs the Mac's screen unlocked: a
@@ -66,3 +71,8 @@ Status: FIXED (sha) · OPEN · NEEDS-DECISION.
 | 34 | Duo on its side (593 pt beside its status column), bottom bar | "Schedu…" | The 52 px icon pill stayed in the 48 px side-by-side bar | Pill 36 px sideways; phone_bottom_bar_test | FIXED 05769ad70 |
 | 35 | Every form on the iPhone (number pad: Year, odometer, amounts; multi-line notes) | The keyboard could not be put away: the number pad has no Done key, and a tap outside a box does nothing on a phone | Flutter drops focus on a tap outside only on desktop | Dragging any page closes the keyboard (`dragClosesKeyboard`, the app's ScrollBehavior); drag_closes_keyboard_test. Verified on the iPhone (vehicle › Year) | FIXED a11b87923 |
 | 36 | Records on the iPhone, keyboard up: a job, a customer, a vehicle, a stock item, a staff record, a service | The box being typed in stays above the keyboard with its panel's Cancel/Save; chrome folds | — | — | PASSED |
+| 37 | All 27 modules on the unfolded Duo (inner screen, 951×669 pt landscape, sidebar shell) | Every module opens with no layout errors; the top bar stays clear of the clock column | — | — | PASSED |
+| 38 | Project Management › totals, unfolded Duo | "$599,028.7 / 2": figures broke over two lines; the Overpaid tile was shorter | Four tiles in ~640 pt at headlineSmall | The figure shrinks to fit (FittedBox) and the tiles are equal height; project_board_screen_test | FIXED SHA |
+| 39 | Leads › reply row, unfolded Duo | The reply box was ~30 pt wide beside Suggest, emoji and Send | The thread chose its desktop layout from the SCREEN (951), but it is a 330 pt pane beside the list | The pane's width (under 480) picks the phone reply row and header; lead_thread_test | FIXED SHA |
+| 40 | Leads › conversation, keyboard up, unfolded Duo | "BOTTOM OVERFLOWED BY 66 PIXELS"; the reply box under the keyboard | Desktop header (Call, Edit, Book stacked) in a 330 pane, and the page title kept because the window is 951 wide | Phone header in a narrow pane (its moves fold while typing); the page title and FoldWhileTyping now also fold when under 560 pt is left above the keyboard (`typingShort`); top_bar_test, lead_thread_test. Verified on the Duo | FIXED SHA |
+| 41 | Duo inner screen, rig | The on-screen keyboard never came up | Device Hub's Device › Keyboard › Simulate Hardware Keyboard was on | `probe/press 927 "Device>Keyboard>Simulate Hardware Keyboard"` turns it off | RIG |

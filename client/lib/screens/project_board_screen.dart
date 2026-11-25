@@ -454,7 +454,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [caption, value],
+                      children: [
+                        caption,
+                        // A figure shrinks, never breaks: the unfolded Duo
+                        // (951 wide) split $1,221,901.42 over two lines.
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: AlignmentDirectional.centerStart,
+                          child: value,
+                        ),
+                      ],
                     ),
             );
           }
@@ -490,13 +499,18 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               ],
             );
           }
-          return Row(
-            children: [
-              for (final (i, w) in tiles.indexed) ...[
-                if (i > 0) const SizedBox(width: 10),
-                Expanded(child: w),
+          // Equal tiles: a one-line caption (Overpaid) keeps its tile as
+          // tall as a wrapped one.
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, w) in tiles.indexed) ...[
+                  if (i > 0) const SizedBox(width: 10),
+                  Expanded(child: w),
+                ],
               ],
-            ],
+            ),
           );
         },
       ),

@@ -2364,7 +2364,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         if (!_typing) PhoneAppBanner(session: widget.session),
         _HiddenWhileTyping(
-          typing: _typing && !_wideShell(context),
+          typing: _typing && (!_wideShell(context) || typingShort(context)),
           child: ListenableBuilder(
             listenable: Listenable.merge([toolbar, action]),
             builder: (context, _) => ModulePageHeader(

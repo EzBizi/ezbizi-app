@@ -38,6 +38,16 @@ final ScrollBehavior dragClosesKeyboard = const MaterialScrollBehavior()
 /// there. The body shrinking is what rebuilds a LayoutBuilder that asks this.
 bool keyboardUp(BuildContext context) => View.of(context).viewInsets.bottom > 0;
 
+/// The keyboard is up and leaves under 560 above it, so chrome folds at any
+/// width: the unfolded Duo is 951 wide and keeps 405, where the Leads reply
+/// box was pushed off the pane. A computer-sized window keeps its header.
+bool typingShort(BuildContext context) {
+  final view = View.of(context);
+  final inset = view.viewInsets.bottom;
+  return inset > 0 &&
+      (view.physicalSize.height - inset) / view.devicePixelRatio < 560;
+}
+
 /// Hides [child] on a phone while the keyboard is up, keeping its state:
 /// summary tiles above a search, a floating Compose or Keypad button. Typing,
 /// the results get the room (mobile review 11-24: Jobs showed one job, and
@@ -78,7 +88,8 @@ class _FoldWhileTypingState extends State<FoldWhileTyping>
 
   @override
   Widget build(BuildContext context) => Visibility(
-    visible: !(_up && MediaQuery.sizeOf(context).width < 900),
+    visible: !(_up &&
+        (MediaQuery.sizeOf(context).width < 900 || typingShort(context))),
     maintainState: true,
     child: widget.child,
   );
