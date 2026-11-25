@@ -79,7 +79,8 @@ class NoteActivity
         }
 
         $title = $author->name.' mentioned you';
-        $body = Str::limit(trim($text), 160);
+        // A note's bold/italic/underline tags stay in the app (Jose 11-25).
+        $body = Str::limit(trim(\App\Support\NotesMarkup::plain($text)), 160);
         DB::afterCommit(function () use ($ids, $allowed, $record, $title, $body) {
             foreach ($ids as $id) {
                 $this->notifications->dispatch($title, $body, $record, onlyTo: $allowed[$id], source: 'mention');

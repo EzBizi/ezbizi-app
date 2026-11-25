@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
@@ -1547,6 +1548,21 @@ void main() {
     // On the label line, who then what: "Note · Maya · just now".
     expect(find.textContaining('Note · Maya · '), findsOneWidget);
     expect(find.byKey(const ValueKey('note-edit')), findsOneWidget);
+
+    // Jose 11-25: bold in the note box is saved as <b>, shown bold.
+    await tester.tap(find.byKey(const ValueKey('note-edit')));
+    await tester.pumpAndSettle();
+    final box = find.byKey(const ValueKey('note-box'));
+    expect(tester.widget<TextField>(box).controller!.text, 'Wants Saturday.');
+    tester.widget<TextField>(box).controller!.selection =
+        const TextSelection(baseOffset: 6, extentOffset: 14);
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey('notes-format-${NotesMarkup.bold}')));
+    await tester.tap(find.byKey(const ValueKey('note-save')));
+    await tester.pumpAndSettle();
+    expect(saved, 'Wants <b>Saturday</b>.');
+    expect(find.text('Wants Saturday.'), findsOneWidget);
+    expect(find.textContaining('<b>'), findsNothing);
   });
 
   testWidgets('messages read as a thread: theirs left, yours right, with who '
