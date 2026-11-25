@@ -21,7 +21,8 @@ class VersionHistory {
       'Automations: Task Board rule cards are easier to read in light and dark, coloured tags across the app pick dark or light text for contrast, and rules copied from Monday explain in plain words why they are off',
       'Monitoring: Activity (who changed what) and API activity moved here from Settings, between Desktop Monitoring and Lighting; everyone who could see them before still can',
     ]),
-    VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0644', date: '25 Nov 2026', deployed: '2026-11-25 16:42',
+      items: [
       'Inspection and Customer Experience: Review QR sits in the middle of the page like New Inspection (at the top on phones, so the keyboard never covers it)',
       'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
