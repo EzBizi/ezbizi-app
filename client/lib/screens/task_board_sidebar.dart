@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/soft_keyboard.dart';
 import '../core/theme.dart';
 
 import '../core/device_key_store_io.dart'
@@ -233,8 +234,14 @@ class _BoardTreeState extends State<BoardTree> {
     widget.onArranged?.call();
   }
 
+  /// On a phone a finger drag is a scroll: a row that dragged on first move
+  /// picked boards up instead (Mobile, 11-25: six swipes never scrolled the
+  /// tree, and a drop is a write). There a long press opens the row's menu
+  /// (Move up, Move down, Move to folder), so touch gets no drag at all.
+  static bool get _dragByMouse => !hasSoftKeyboard();
+
   Widget _folderDraggable(String id, String name, Widget child) =>
-      widget.canArrange && widget.api != null
+      widget.canArrange && widget.api != null && _dragByMouse
       ? Draggable<String>(
           key: ValueKey('folder-drag-$id'),
           data: 'folder:$id',
@@ -917,7 +924,8 @@ class _BoardTreeState extends State<BoardTree> {
       final drop = widget.onDropTask;
       // Favorites are one's own: anybody arranges them.
       final arrange = favorite || widget.canArrange && widget.api != null;
-      Widget draggable(Widget w) => arrange && b['deleted'] != true
+      Widget draggable(Widget w) =>
+          arrange && b['deleted'] != true && _dragByMouse
           ? Draggable<String>(
               key: ValueKey('tasks-board-drag-${b['id']}'),
               data: 'board:${b['id']}',
@@ -1188,9 +1196,18 @@ class _BoardTreeState extends State<BoardTree> {
     // Jose 11-25: "It should follow your own permissions and hierarchy":
     // a sub-company sits under its parent company, one step in.
     final byId = {for (final c in me?.companies ?? const []) c.id: c};
+    // Parentage from the board rows (Task Board: /me lists only companies
+    // behind reachable branches, so a holding company is missing there).
+    final parentIdOf = <String, String>{
+      for (final b in boards)
+        if (b['company_name'] != null && b['parent_company_id'] != null)
+          '${b['company_name']}': '${b['parent_company_id']}',
+    };
     String? parentOf(String company) {
       final c = (me?.companies ?? const []).where((x) => x.name == company);
-      final parent = c.isEmpty ? null : byId[c.first.parentCompanyId]?.name;
+      final id =
+          parentIdOf[company] ?? (c.isEmpty ? null : c.first.parentCompanyId);
+      final parent = byId[id]?.name ?? companyById[id];
       return parent != null && byCompany.containsKey(parent) ? parent : null;
     }
 

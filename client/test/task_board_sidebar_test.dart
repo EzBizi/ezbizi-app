@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/soft_keyboard.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -1039,4 +1040,27 @@ void main() {
     expect(x(angi) - x(a1), x(row('b-a1')) - x(a1));
     expect(x(row('b-as')) - x(angi), x(row('b-a1')) - x(a1));
   });
+
+  // Mobile 11-25: on a phone a finger drag on the tree picked a board up
+  // instead of scrolling, and a drop is a production write. Touch gets no
+  // row drag (a long press opens the row's menu); a mouse still drags.
+  for (final touch in [true, false]) {
+    testWidgets(
+      'one who arranges boards: ${touch ? 'a finger scrolls' : 'a mouse drags'}',
+      (tester) async {
+        final platform = hasSoftKeyboard;
+        hasSoftKeyboard = () => touch;
+        arrange = true;
+        addTearDown(() {
+          hasSoftKeyboard = platform;
+          arrange = false;
+        });
+        await pumpBoard(tester);
+        expect(
+          find.byKey(const ValueKey('tasks-board-drag-b-bos')),
+          touch ? findsNothing : findsOneWidget,
+        );
+      },
+    );
+  }
 }
