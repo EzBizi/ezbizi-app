@@ -15,6 +15,7 @@ import 'core/files.dart';
 import 'core/live_view_service.dart';
 import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
+import 'screens/phone/chat/chat_calls.dart';
 import 'screens/leads_screen.dart';
 import 'core/field_tracker.dart';
 import 'core/issue_reporter.dart';
@@ -241,6 +242,8 @@ class _EzBiziAppState extends State<EzBiziApp> {
           children: [
             ?child,
             IncomingCallPopup(api: _api, session: _session),
+            // Chat calls (Twilio Video): the ring and the call, any screen.
+            ChatCallLayer(api: _api, session: _session),
           ],
         ),
       ),
