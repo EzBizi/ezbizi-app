@@ -3985,3 +3985,28 @@ Unlike QuickBooks (11-20, deliberately absent), Plaid runs on EzBizi's own clien
 is a service we rely on, and Plaid's developer policy asks apps to disclose it. Code: `af8f6b65d` (Bank tab) and the
 matching/glance follow-up. **Trigger:** if EzBizi ever adds Plaid Auth, Identity, payments or transfers, this
 section says "cannot move money" and "no full account numbers" and goes false.
+
+## 2026-11-24: 0.0.0628-0.0.0635 live, nothing on the site went false
+
+Production web is 0.0.0635 at `b723830e0`; `/download/windows.json` reads 0.0.0635 at `b723830e0` (0633/0634 folded
+into 0635; 0636/0637 failed gates, folded into 0638, cutting). All 10 live pages contain their WP post_content
+(method of 11-15); the only WP change since 11-23 is page 8 `/privacy/` (Plaid, `post_modified_gmt` 2026-11-24 21:06,
+entry above dated 11-25). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`593d1a696..b723830e0` is 131 files: 0 new hosts, scopes, processors, publishers or `app/Support/Social` changes; the
+new routes (task-board search, scheduling zip-reports, role mobile-bar options, project costs) are all
+authenticated. No sentence moves.
+- **Plaid is NOT on prod yet** (`af8f6b65d` is not an ancestor of `b723830e0`; 0 bank tables, 0 connections). The
+  11-25 `/privacy/` section went up ahead of 0638 and describes what 0638 ships; left as is (a disclosure ahead of a
+  feature is not a false capability claim; nothing on the homepage sells Bank). Re-check 0638 is live next run.
+- Administrator time-clock events no longer written to the audit log (past rows deleted, Jose's instruction); Monday
+  sync writes now attributed to "Monday sync". `/privacy/` says only "audit entries showing who changed what" and
+  makes no every-action claim, so neither moves it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control term `ezbizi` hit all 10). Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0559.
+
+**Desk (11-24, ~23:20 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-24-desk-reply.md`):
+Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
+elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,215 all with `remote_id`. No new publisher.
