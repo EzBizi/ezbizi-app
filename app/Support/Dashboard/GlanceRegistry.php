@@ -75,6 +75,8 @@ class GlanceRegistry
         'tasks',
         // Company (design 175, 2026-11-03).
         'company',
+        // Leaderboard (Trey, 2026-11-25).
+        'leaderboard',
     ];
 
     /**
@@ -159,6 +161,11 @@ class GlanceRegistry
         'guidelines' => [
             'label' => 'Guidelines',
             'sentence' => 'Step-by-step answers for the situations your team meets.',
+        ],
+        // Three names and your own rank; the tab is the figure.
+        'leaderboard' => [
+            'label' => 'Leaderboard',
+            'sentence' => 'The top three on new-client calls, and where you stand.',
         ],
         'profit_loss' => [
             'label' => 'Profit & Loss',
