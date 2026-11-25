@@ -16,4 +16,13 @@ class MondayUpdateLinksTest extends TestCase
         ]));
         $this->assertSame('hi there', MondayBoardReader::bodyOf(['body' => '<p>hi there</p>', 'text_body' => 'hi there']));
     }
+
+    public function test_a_monday_person_link_is_a_plain_at_name(): void
+    {
+        $this->assertSame('@Cristine Hicale tech sup ok [x](https://x.com/a)', MondayBoardReader::bodyOf([
+            'body' => '<p><a href="https://a-1group.monday.com/users/119890962-cristine-hicale">@Cristine Hicale</a> tech sup ok <a href="https://x.com/a">x</a></p>',
+        ]));
+        $this->assertSame('↳ @Angela Herrera ch [x](https://x.com)', MondayBoardReader::cleanMentions('↳ [@Angela Herrera](https://a-1group.monday.com/users/119721735) ch [x](https://x.com)'));
+    }
+
 }
