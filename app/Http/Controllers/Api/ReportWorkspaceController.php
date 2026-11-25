@@ -6,6 +6,7 @@ use App\Models\Automation;
 use App\Models\User;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Automations\ActionRunner;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\ReportView;
 use App\Support\Reports\Texts\DailyTexts;
 use App\Support\Settings\SettingsResolver;
@@ -45,7 +46,7 @@ class ReportWorkspaceController extends Controller
         $org = $request->user()->organization;
         [$title, $text] = $texts->headed($kind, $org->name, $org, $day, $branches);
 
-        $sent = ActionRunner::deliverReportText((string) ($in['from'] ?? ''), $in['user_ids'], $scopeType, $scopeId, $title, $text);
+        $sent = ReportSource::during('workspace:'.$kind, fn () => ActionRunner::deliverReportText((string) ($in['from'] ?? ''), $in['user_ids'], $scopeType, $scopeId, $title, $text));
         abort_if(is_string($sent), 422, is_string($sent) ? $sent : '');
 
         return response()->json(['data' => ['sent' => $sent]]);

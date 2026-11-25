@@ -69,6 +69,7 @@ use App\Http\Controllers\Api\BeforeAfterController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SentReportsController;
 use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
 use App\Http\Controllers\Api\IntegrationsOverviewController;
@@ -1877,6 +1878,9 @@ Route::prefix('v1')
 
         Route::middleware('permission:reports.library.view')->group(function () {
             Route::get('reports', [ReportsController::class, 'index']);
+            // Every report EzBizi sends, and what each sent (Jose, 2026-11-25). Before reports/{id}.
+            Route::get('reports/sent', [SentReportsController::class, 'index']);
+            Route::get('reports/sent/history', [SentReportsController::class, 'history']);
             Route::post('reports/{id}/run', [ReportsController::class, 'run']);
             Route::get('reports/{id}/csv', [ReportsController::class, 'csv']);
             Route::get('reports/{id}', [ReportsController::class, 'show']);
