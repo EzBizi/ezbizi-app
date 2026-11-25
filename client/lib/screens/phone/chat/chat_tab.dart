@@ -18,7 +18,16 @@ import 'chat_store.dart';
 import 'chat_thread.dart';
 
 class ChatTab extends StatefulWidget {
-  const ChatTab({super.key, required this.api, required this.session});
+  const ChatTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.onOpenChanged,
+  });
+
+  /// A chat opened (true) or closed (false); EzChat hides its bottom bar
+  /// while one is open, as WhatsApp does.
+  final ValueChanged<bool>? onOpenChanged;
 
   final ApiClient api;
   final Session session;
@@ -34,6 +43,7 @@ class _ChatTabState extends State<ChatTab> {
     ..start();
 
   String? _open;
+  bool _toldOpen = false;
   _Side _side = _Side.chats;
   String _filter = 'all';
   final _search = TextEditingController();
@@ -109,6 +119,13 @@ class _ChatTabState extends State<ChatTab> {
 
   @override
   Widget build(BuildContext context) {
+    if ((_open != null) != _toldOpen) {
+      _toldOpen = _open != null;
+      final open = _toldOpen;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.onOpenChanged?.call(open),
+      );
+    }
     // Offstage when another Communication tab is showing: pulse slowly then.
     _store.visible = TickerMode.valuesOf(context).enabled;
 

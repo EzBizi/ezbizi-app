@@ -74,6 +74,36 @@ void main() {
     expect(find.byKey(const ValueKey('chat-row-c-1')), findsOneWidget);
   });
 
+  // Design 213 B1: a technician's hands are busy. On a phone the thread
+  // offers one-tap replies and a hold-to-talk mic; a desk keeps its plain
+  // composer.
+  for (final phone in [true, false]) {
+    testWidgets(
+      'quick replies ${phone ? 'send in one tap on a phone' : 'stay off a desk'}',
+      (tester) async {
+        final fake = _Fake();
+        await _pump(
+          tester,
+          fake,
+          size: phone ? const Size(390, 800) : const Size(1280, 900),
+        );
+        await tester.tap(find.byKey(const ValueKey('chat-row-c-1')));
+        await tester.pumpAndSettle();
+        final onMyWay = find.byKey(const ValueKey('chat-quick-On my way'));
+        expect(onMyWay, phone ? findsOneWidget : findsNothing);
+        expect(find.byKey(const ValueKey('chat-mic-hold')), findsOneWidget);
+        if (!phone) return;
+        await tester.tap(onMyWay);
+        await tester.pumpAndSettle();
+        expect(fake.sent.last['body'], 'On my way');
+        // Typing hides them; the field is the message.
+        await tester.enterText(find.byKey(const ValueKey('chat-input')), 'Hi');
+        await tester.pump();
+        expect(onMyWay, findsNothing);
+      },
+    );
+  }
+
   testWidgets('a reply carries reply_to_id and the quote is drawn', (
     tester,
   ) async {

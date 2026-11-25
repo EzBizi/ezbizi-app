@@ -109,6 +109,9 @@ class EzChatHome extends StatefulWidget {
 }
 
 class _EzChatHomeState extends State<EzChatHome> {
+  int _tab = 0;
+  bool _inChat = false;
+
   @override
   void initState() {
     super.initState();
@@ -120,10 +123,41 @@ class _EzChatHomeState extends State<EzChatHome> {
     final theme = Theme.of(context);
     final me = widget.session.me!;
     final mayChat = me.permissions.contains('phone.chat.view');
+    // Chats · You (design 213 B1); Calls joins when GET chat/calls lands.
+    // The bar steps aside inside a chat, as WhatsApp's does.
     return Scaffold(
+      bottomNavigationBar: !mayChat || _inChat
+          ? null
+          : NavigationBar(
+              key: const ValueKey('ezchat-bar'),
+              selectedIndex: _tab,
+              onDestinationSelected: (i) => setState(() => _tab = i),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'Chats',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'You',
+                ),
+              ],
+            ),
       body: SafeArea(
         child: mayChat
-            ? ChatTab(api: widget.api, session: widget.session)
+            ? IndexedStack(
+                index: _tab,
+                children: [
+                  ChatTab(
+                    api: widget.api,
+                    session: widget.session,
+                    onOpenChanged: (open) => setState(() => _inChat = open),
+                  ),
+                  _You(session: widget.session),
+                ],
+              )
             : Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -154,6 +188,63 @@ class _EzChatHomeState extends State<EzChatHome> {
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// You: who is signed in, light or dark, and signing out.
+class _You extends StatelessWidget {
+  const _You({required this.session});
+
+  final Session session;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final me = session.me!;
+    final light = EzBiziTheme.modeFor(me.theme) == ThemeMode.light;
+    return ListView(
+      key: const ValueKey('ezchat-you'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('You', style: theme.textTheme.headlineSmall),
+        const SizedBox(height: 12),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: theme.colorScheme.primaryContainer,
+              foregroundColor: theme.colorScheme.onPrimaryContainer,
+              child: Text(me.name.isEmpty ? '?' : me.name[0].toUpperCase()),
+            ),
+            title: Text(me.name),
+            subtitle: Text(me.email),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          margin: EdgeInsets.zero,
+          child: SwitchListTile(
+            key: const ValueKey('ezchat-dark'),
+            title: const Text('Dark mode'),
+            value: !light,
+            onChanged: (dark) => session.setPreference(
+              'appearance.theme',
+              dark ? 'dark' : 'light',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            key: const ValueKey('ezchat-sign-out'),
+            leading: const Icon(Icons.logout),
+            title: Text('Sign out ${me.name}'),
+            onTap: session.signOut,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -81,6 +81,48 @@ class _ChatThreadState extends State<ChatThread> {
   // Voice message.
   AudioRecorder? _recorder;
   DateTime? _recordingSince;
+
+  /// Hold-to-talk (design 213 B1): pressed and held on the mic, recording;
+  /// let go sends, slid left past [_cancelAt] deletes.
+  bool _holding = false;
+  double _holdStart = 0;
+  double _holdDx = 0;
+  static const _cancelAt = -80.0;
+
+  /// One tap sends, for a technician with their hands busy (design 213 B1).
+  static const quickReplies = [
+    'On my way',
+    'Running late',
+    'Done',
+    'Need parts',
+  ];
+
+  Future<void> _quick(String text) async {
+    _text.text = text;
+    await _send();
+  }
+
+  void _letGo({bool cancelled = false}) {
+    if (!_holding) return;
+    final cancel = cancelled || _holdDx < _cancelAt;
+    setState(() {
+      _holding = false;
+      _holdDx = 0;
+    });
+    unawaited(_stopRecording(send: !cancel));
+  }
+
+  /// Around the whole composer, in both of its states: the hold that began
+  /// on the mic ends here after the mic itself has been swapped for the
+  /// recording bar.
+  Widget _holdable(Widget child) => Listener(
+    onPointerMove: (e) {
+      if (_holding) setState(() => _holdDx = e.position.dx - _holdStart);
+    },
+    onPointerUp: (_) => _letGo(),
+    onPointerCancel: (_) => _letGo(cancelled: true),
+    child: child,
+  );
   Timer? _recordTicker;
   bool _dropping = false;
 
@@ -1355,149 +1397,222 @@ class _ChatThreadState extends State<ChatThread> {
     final since = _recordingSince;
     if (since != null) {
       final d = DateTime.now().difference(since);
-      return Container(
-        color: theme.colorScheme.surfaceContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: SafeArea(
-          top: false,
-          child: Row(
-            children: [
-              IconButton(
-                key: const ValueKey('chat-voice-cancel'),
-                tooltip: 'Delete recording',
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: theme.colorScheme.error,
+      final cancelling = _holding && _holdDx < _cancelAt;
+      return _holdable(
+        Container(
+          color: theme.colorScheme.surfaceContainer,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                IconButton(
+                  key: const ValueKey('chat-voice-cancel'),
+                  tooltip: 'Delete recording',
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                  ),
+                  onPressed: () => _stopRecording(send: false),
                 ),
-                onPressed: () => _stopRecording(send: false),
-              ),
-              Icon(
-                Icons.fiber_manual_record,
-                color: theme.colorScheme.error,
-                size: 14,
-              ),
-              const SizedBox(width: 8),
-              Text(formatClock(d), style: theme.textTheme.titleMedium),
-              const Spacer(),
-              IconButton.filled(
-                key: const ValueKey('chat-voice-send'),
-                tooltip: 'Send voice message',
-                icon: const Icon(Icons.send),
-                onPressed: () => _stopRecording(send: true),
-              ),
-            ],
+                Icon(
+                  Icons.fiber_manual_record,
+                  color: theme.colorScheme.error,
+                  size: 14,
+                ),
+                const SizedBox(width: 8),
+                Text(formatClock(d), style: theme.textTheme.titleMedium),
+                const Spacer(),
+                if (_holding)
+                  Text(
+                    cancelling
+                        ? 'Let go to delete'
+                        : '‹ Slide to cancel · let go to send',
+                    key: const ValueKey('chat-voice-hold-hint'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cancelling
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  IconButton.filled(
+                    key: const ValueKey('chat-voice-send'),
+                    tooltip: 'Send voice message',
+                    icon: const Icon(Icons.send),
+                    onPressed: () => _stopRecording(send: true),
+                  ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     final hasText = _text.text.trim().isNotEmpty;
-    return Container(
-      color: theme.colorScheme.surfaceContainer,
-      padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            IconButton(
-              key: const ValueKey('chat-emoji'),
-              tooltip: 'Emoji',
-              icon: Icon(
-                _emoji ? Icons.keyboard : Icons.emoji_emotions_outlined,
-              ),
-              onPressed: () => setState(() => _emoji = !_emoji),
-            ),
-            PopupMenuButton<String>(
-              key: const ValueKey('chat-attach'),
-              tooltip: 'Attach',
-              icon: const Icon(Icons.add),
-              enabled: _mayWrite,
-              onSelected: (v) => unawaited(_attach(v)),
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'file',
-                  child: ListTile(
-                    leading: Icon(Icons.insert_drive_file_outlined),
-                    title: Text('Document'),
+    final quick = widget.phone && !hasText && _editing == null && _mayWrite;
+    return _holdable(
+      Container(
+        color: theme.colorScheme.surfaceContainer,
+        padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (quick)
+                SingleChildScrollView(
+                  key: const ValueKey('chat-quick-replies'),
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+                  child: Row(
+                    children: [
+                      for (final q in quickReplies)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ActionChip(
+                            key: ValueKey('chat-quick-$q'),
+                            label: Text(q),
+                            onPressed: () => unawaited(_quick(q)),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
-                  value: 'media',
-                  child: ListTile(
-                    leading: Icon(Icons.photo_library_outlined),
-                    title: Text('Photos & videos'),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  IconButton(
+                    key: const ValueKey('chat-emoji'),
+                    tooltip: 'Emoji',
+                    icon: Icon(
+                      _emoji ? Icons.keyboard : Icons.emoji_emotions_outlined,
+                    ),
+                    onPressed: () => setState(() => _emoji = !_emoji),
                   ),
-                ),
-                if (Files.canTakePhoto)
-                  const PopupMenuItem(
-                    value: 'camera',
-                    child: ListTile(
-                      leading: Icon(Icons.photo_camera_outlined),
-                      title: Text('Camera'),
+                  PopupMenuButton<String>(
+                    key: const ValueKey('chat-attach'),
+                    tooltip: 'Attach',
+                    icon: const Icon(Icons.add),
+                    enabled: _mayWrite,
+                    onSelected: (v) => unawaited(_attach(v)),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'file',
+                        child: ListTile(
+                          leading: Icon(Icons.insert_drive_file_outlined),
+                          title: Text('Document'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'media',
+                        child: ListTile(
+                          leading: Icon(Icons.photo_library_outlined),
+                          title: Text('Photos & videos'),
+                        ),
+                      ),
+                      if (Files.canTakePhoto)
+                        const PopupMenuItem(
+                          value: 'camera',
+                          child: ListTile(
+                            leading: Icon(Icons.photo_camera_outlined),
+                            title: Text('Camera'),
+                          ),
+                        ),
+                    ],
+                  ),
+                  Expanded(
+                    child: CallbackShortcuts(
+                      bindings: {
+                        // Enter sends on a keyboard; Shift+Enter is a new line.
+                        if (!widget.phone)
+                          const SingleActivator(LogicalKeyboardKey.enter): () =>
+                              unawaited(_send()),
+                        const SingleActivator(LogicalKeyboardKey.escape): () =>
+                            setState(() {
+                              _replyTo = null;
+                              if (_editing != null) _text.clear();
+                              _editing = null;
+                            }),
+                      },
+                      child: TextField(
+                        key: const ValueKey('chat-input'),
+                        controller: _text,
+                        focusNode: _focus,
+                        minLines: 1,
+                        maxLines: 6,
+                        textCapitalization: TextCapitalization.sentences,
+                        keyboardType: TextInputType.multiline,
+                        onChanged: (v) {
+                          if (v.isNotEmpty) store.typingIn(widget.chatId);
+                        },
+                        onTap: () => setState(() => _emoji = false),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Type a message',
+                          filled: true,
+                          fillColor: theme.colorScheme.surface,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-              ],
-            ),
-            Expanded(
-              child: CallbackShortcuts(
-                bindings: {
-                  // Enter sends on a keyboard; Shift+Enter is a new line.
-                  if (!widget.phone)
-                    const SingleActivator(LogicalKeyboardKey.enter): () =>
-                        unawaited(_send()),
-                  const SingleActivator(LogicalKeyboardKey.escape): () =>
-                      setState(() {
-                        _replyTo = null;
-                        if (_editing != null) _text.clear();
-                        _editing = null;
-                      }),
-                },
-                child: TextField(
-                  key: const ValueKey('chat-input'),
-                  controller: _text,
-                  focusNode: _focus,
-                  minLines: 1,
-                  maxLines: 6,
-                  textCapitalization: TextCapitalization.sentences,
-                  keyboardType: TextInputType.multiline,
-                  onChanged: (v) {
-                    if (v.isNotEmpty) store.typingIn(widget.chatId);
-                  },
-                  onTap: () => setState(() => _emoji = false),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: 'Type a message',
-                    filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+                  // The camera beside the field on a phone, one tap from a photo
+                  // of the job (design 213 B1).
+                  if (widget.phone && !hasText && Files.canTakePhoto)
+                    IconButton(
+                      key: const ValueKey('chat-camera'),
+                      tooltip: 'Take a photo',
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      onPressed: _mayWrite
+                          ? () => unawaited(_attach('camera'))
+                          : null,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
+                  const SizedBox(width: 6),
+                  if (hasText || _editing != null)
+                    IconButton.filled(
+                      key: const ValueKey('chat-send'),
+                      tooltip: _editing != null ? 'Save' : 'Send',
+                      icon: Icon(_editing != null ? Icons.check : Icons.send),
+                      onPressed: () => unawaited(_send()),
+                    )
+                  else
+                    // Tap: record, then Send or Delete. Hold: record while held.
+                    GestureDetector(
+                      key: const ValueKey('chat-mic-hold'),
+                      onLongPressStart: (d) {
+                        setState(() {
+                          _holding = true;
+                          _holdStart = d.globalPosition.dx;
+                          _holdDx = 0;
+                        });
+                        unawaited(_startRecording());
+                      },
+                      child: IconButton.filled(
+                        key: const ValueKey('chat-mic'),
+                        tooltip: 'Record a voice message (or hold to talk)',
+                        iconSize: widget.phone ? 26 : null,
+                        style: widget.phone
+                            ? IconButton.styleFrom(
+                                minimumSize: const Size(52, 52),
+                              )
+                            : null,
+                        icon: const Icon(Icons.mic),
+                        onPressed: () => unawaited(_startRecording()),
+                      ),
                     ),
-                  ),
-                ),
+                ],
               ),
-            ),
-            const SizedBox(width: 6),
-            if (hasText || _editing != null)
-              IconButton.filled(
-                key: const ValueKey('chat-send'),
-                tooltip: _editing != null ? 'Save' : 'Send',
-                icon: Icon(_editing != null ? Icons.check : Icons.send),
-                onPressed: () => unawaited(_send()),
-              )
-            else
-              IconButton.filled(
-                key: const ValueKey('chat-mic'),
-                tooltip: 'Record a voice message',
-                icon: const Icon(Icons.mic),
-                onPressed: () => unawaited(_startRecording()),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
