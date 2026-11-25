@@ -227,6 +227,7 @@ use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffHelpVideosController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
@@ -2851,6 +2852,34 @@ Route::prefix('v1')
         Route::get('staff-messages', [StaffMessagesController::class, 'index']);
         Route::get('staff-messages/unread', [StaffMessagesController::class, 'unread']);
         Route::post('staff-messages', [StaffMessagesController::class, 'store']);
+
+        // Chat: EzBizi's own WhatsApp between EzBizi accounts (Jose, 2026-11-25).
+        // The tab's key gates every route; inside, ChatController answers 404
+        // for any chat the caller is not a member of.
+        Route::middleware('permission:phone.chat.view')->group(function () {
+            Route::get('chat/pulse', [ChatController::class, 'pulse']);
+            Route::get('chat/contacts', [ChatController::class, 'contacts']);
+            Route::get('chat/starred', [ChatController::class, 'starred']);
+            Route::get('chat/search', [ChatController::class, 'search']);
+            Route::get('chat/chats', [ChatController::class, 'index']);
+            Route::post('chat/chats', [ChatController::class, 'store']);
+            Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
+            Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
+            Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
+            Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
+            Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
+            Route::get('chat/chats/{chat}/media', [ChatController::class, 'media']);
+            Route::post('chat/chats/{chat}/members', [ChatController::class, 'addMembers']);
+            Route::patch('chat/chats/{chat}/members/{user}', [ChatController::class, 'updateMember']);
+            Route::delete('chat/chats/{chat}/members/{user}', [ChatController::class, 'removeMember']);
+            Route::patch('chat/messages/{chatMessage}', [ChatController::class, 'edit']);
+            Route::delete('chat/messages/{chatMessage}', [ChatController::class, 'destroy']);
+            Route::post('chat/messages/{chatMessage}/react', [ChatController::class, 'react']);
+            Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
+            Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
+            Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+        });
 
         // Short numbers that reach one person. Twilio has no concept of an
         // extension; the digits are ours to resolve before we dial.

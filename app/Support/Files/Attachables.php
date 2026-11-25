@@ -81,6 +81,8 @@ final class Attachables
     {
         return [
             'jobs' => Job::class,
+            // Chat photos, files and voice notes; ChatMessagePolicy: members only.
+            'chat_messages' => \App\Models\ChatMessage::class,
             /*
              * Onboarding — the reason this primitive was built now rather than
              * later, arriving as promised above.

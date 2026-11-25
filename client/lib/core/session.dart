@@ -1072,6 +1072,9 @@ class Me {
   /// Records. Preferences, so leaving the tab does not reset them.
   double get leadsListShare => _width('leads.list_percent', 30, 15, 70) / 100;
 
+  /// Chat's list pane, dragged on its divider (Chat, 2026-11-25).
+  double get chatListWidth => _width('chat.list_width', 400, 300, 640);
+
   double get hrRecordsListWidth =>
       _width('hr.records.list_width', 300, 240, 900);
 
