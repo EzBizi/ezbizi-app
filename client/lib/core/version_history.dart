@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Monitoring: Activity (who changed what) and API activity moved here from Settings, between Desktop Monitoring and Lighting; everyone who could see them before still can',
+    ]),
     VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
       'Inspection and Customer Experience: Review QR sits in the middle of the page like New Inspection (at the top on phones, so the keyboard never covers it)',
       'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
