@@ -672,7 +672,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   null => '',
                 }}',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
+                  // Primary on the Task Board tint is 3.69:1 in dark (UI/UX 11-25).
+                  color: board == null
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
