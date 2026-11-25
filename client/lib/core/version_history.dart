@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0648', date: '25 Nov 2026', items: [
+      'Work Hours: you always find yourself in the people list and search, whichever company or branch is picked',
+      'Task Board: the board list shows every board you can reach by your own permissions, whatever the Company and Branch picker is set to',
+      'New: Leaderboard tab. The week top 3 (Sunday to Friday) among New Client Calls people, your own rank, and past weeks winners; My performance shows only your own numbers and calls',
+    ]),
     VersionRelease(version: '0.0.0647', date: '25 Nov 2026', items: [
       'Chat: voice and video calls, one to one and in groups, right from a chat (nothing is recorded)',
       'Notifications: new settings like Monday (bell, then the gear): a phone notifications switch, and In-app and Email switches for every kind, grouped as Communication, Collaboration, Automations, Sign-ups, Security and Admin',

@@ -32,7 +32,7 @@ class TaskBoardFoldersController extends Controller
         if (! $request->user()->hasPermission('tasks.create_boards')) {
             $parent = $folders->pluck('parent_id', 'id');
             $keep = [];
-            foreach (app(TaskBoards::class)->visibleTo($request->user())->pluck('folder_id')->filter()->unique() as $id) {
+            foreach (app(TaskBoards::class)->visibleTo($request->user(), byReach: true)->pluck('folder_id')->filter()->unique() as $id) {
                 for ($at = $id; $at !== null && ! isset($keep[$at]); $at = $parent[$at] ?? null) {
                     $keep[$at] = true;
                 }

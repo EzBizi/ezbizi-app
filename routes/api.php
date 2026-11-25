@@ -2900,6 +2900,7 @@ Route::prefix('v1')
             Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
             Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
             Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls', [ChatController::class, 'recentCalls']);
             Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
             Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
             Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);
