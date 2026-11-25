@@ -16,6 +16,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_note.dart';
@@ -831,7 +832,8 @@ class _ApplicantPanelState extends State<_ApplicantPanel> {
   bool _adding = false;
   final _phone = TextEditingController();
   final _email = TextEditingController();
-  final _notes = TextEditingController();
+  // Bold, italic, underline (Jose, 2026-11-25).
+  var _notes = FormattedNotesController();
 
   // A new interview, while it is being written.
   String _kind = 'phone';
@@ -863,7 +865,8 @@ class _ApplicantPanelState extends State<_ApplicantPanel> {
       _a = (r.data as Map).cast<String, dynamic>();
       _phone.text = '${_a!['phone'] ?? ''}';
       _email.text = '${_a!['email'] ?? ''}';
-      _notes.text = '${_a!['notes'] ?? ''}';
+      _notes.dispose();
+      _notes = FormattedNotesController(markup: _a!['notes'] as String?);
     });
   }
 
@@ -1059,7 +1062,27 @@ class _ApplicantPanelState extends State<_ApplicantPanel> {
                 ),
               ],
               const SizedBox(height: 16),
-              saveOnLeave('notes', 'Notes', _notes, 'notes', lines: 3),
+              if (!edit)
+                FormattedNotesText(_a?['notes'] as String?)
+              else
+                Focus(
+                  onFocusChange: (on) {
+                    if (!on &&
+                        _notes.markup.trim() != '${_a?['notes'] ?? ''}') {
+                      unawaited(
+                        _patch({
+                          'notes': _notes.text.trim().isEmpty
+                              ? null
+                              : _notes.markup.trim(),
+                        }),
+                      );
+                    }
+                  },
+                  child: FormattedNotesField(
+                    key: const ValueKey('applicant-notes'),
+                    controller: _notes,
+                  ),
+                ),
             ],
           );
 
@@ -1106,7 +1129,10 @@ class _InterviewTile extends StatelessWidget {
             style: theme.textTheme.titleSmall,
           ),
           if ('${interview['notes'] ?? ''}'.isNotEmpty)
-            Text('${interview['notes']}', style: theme.textTheme.bodySmall),
+            FormattedNotesText(
+              '${interview['notes']}',
+              style: theme.textTheme.bodySmall,
+            ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
