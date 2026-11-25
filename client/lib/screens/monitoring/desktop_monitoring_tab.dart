@@ -64,8 +64,10 @@ class DesktopMonitoringTab extends StatefulWidget {
   final ApiClient api;
   final Session session;
 
-  /// How many recent captures the filmstrip holds.
-  static const int filmstripLimit = 12;
+  /// Captures fetched per page. The filmstrip holds a whole day and loads the
+  /// next page as it is scrolled back (Jose, 2026-11-25: every stored capture
+  /// reachable, not only the newest 12). The API's own ceiling is 100.
+  static const int filmstripPage = 100;
 
   /// [ScreenshotService]'s own default interval (client/lib/core/
   /// screenshot_service.dart) — kept as a literal here rather than an
@@ -83,6 +85,9 @@ class DesktopMonitoringTab extends StatefulWidget {
 
   static const String noAgentNote =
       "No captures — this device can't be screen-captured.";
+
+  static const String noCapturesThatDayNote =
+      'No screenshots on this day. Step back a day with the arrow.';
 
   static const String noCapturesYetNote =
       'This device can capture screenshots, but none have landed yet.';
@@ -115,6 +120,15 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   // stepping the hero back and forth across the filmstrip never re-downloads
   // a frame it already has.
   final Map<String, Uint8List> _bytes = {};
+  final Set<String> _fetching = {};
+  final FocusNode _heroFocus = FocusNode(debugLabel: 'filmstrip-hero');
+
+  /// The local day the filmstrip shows; today by default.
+  DateTime _day = DateUtils.dateOnly(DateTime.now());
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  int? _dayCount;
+  int? _totalCount;
 
   /// Bumped every time a shots fetch STARTS — a device switch, a refresh of
   /// the same device, whatever. `_loadShots` captures the value at the top
@@ -246,6 +260,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
   @override
   void dispose() {
+    _heroFocus.dispose();
     _feed?.cancel();
     _watchTimer?.cancel();
     _frameTimer?.cancel();
@@ -358,7 +373,8 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
     final response = await widget.api.get('/monitoring/screenshots', {
       'device_id': deviceId,
-      'limit': '${DesktopMonitoringTab.filmstripLimit}',
+      'limit': '${DesktopMonitoringTab.filmstripPage}',
+      ..._dayRange(),
     });
 
     // A newer fetch (another switch, or a refresh) started while this one
@@ -375,34 +391,109 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
-    final shots = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
-    final kept = quiet && shots.any((s) => s['id'] == _heroId);
+    final page = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    final meta = response.body['meta'];
 
     setState(() {
       _loadingShots = false;
-      _shots = shots;
-      if (!kept) _heroId = shots.isEmpty ? null : shots.first['id'] as String?;
+      if (meta is Map) {
+        _dayCount = (meta['in_range'] as num?)?.toInt();
+        _totalCount = (meta['total'] as num?)?.toInt();
+      }
+      if (quiet && _shots.isNotEmpty) {
+        // A live re-read only ADDS the newest captures in front; the pages a
+        // person has already scrolled back through stay where they are.
+        final have = {for (final s in _shots) s['id']};
+        _shots = [...page.where((s) => !have.contains(s['id'])), ..._shots];
+      } else {
+        _shots = page;
+        _hasMore = page.length >= DesktopMonitoringTab.filmstripPage;
+        _heroId = page.isEmpty ? null : page.first['id'] as String?;
+      }
     });
-
-    await _fetchBytes(shots, generation);
   }
 
-  Future<void> _fetchBytes(List<Map<String, dynamic>> shots, int generation) async {
-    for (final shot in shots) {
-      // Same guard, per frame — a stale fetch stops downloading the moment
-      // a newer one has taken over, rather than continuing to work (and
-      // occasionally `setState`) on behalf of a selection nobody sees any
-      // more.
-      if (!mounted || generation != _loadGeneration) return;
+  /// The chosen local day as the server's [from, to).
+  Map<String, String> _dayRange() => {
+    'from': _day.toUtc().toIso8601String(),
+    'to': _day.add(const Duration(days: 1)).toUtc().toIso8601String(),
+  };
 
-      final id = shot['id'] as String?;
-      if (id == null || _bytes.containsKey(id)) continue;
+  /// The next page back through the day, from the oldest capture held.
+  Future<void> _loadMore() async {
+    final deviceId = _selectedDeviceId;
+    if (deviceId == null || !_hasMore || _loadingMore || _shots.isEmpty) return;
+    final generation = _loadGeneration;
+    setState(() => _loadingMore = true);
 
+    final response = await widget.api.get('/monitoring/screenshots', {
+      'device_id': deviceId,
+      'limit': '${DesktopMonitoringTab.filmstripPage}',
+      ..._dayRange(),
+      'before': _shots.last['captured_at'] as String,
+    });
+    if (!mounted || generation != _loadGeneration) return;
+
+    final page = response.ok
+        ? (response.data as List<dynamic>).cast<Map<String, dynamic>>()
+        : const <Map<String, dynamic>>[];
+    setState(() {
+      _loadingMore = false;
+      _shots = [..._shots, ...page];
+      _hasMore =
+          response.ok && page.length >= DesktopMonitoringTab.filmstripPage;
+    });
+  }
+
+  /// Fetch one frame's bytes once, when it is first drawn: a day can hold
+  /// hundreds, and only the ones on screen are downloaded.
+  void _ensureBytes(String id) {
+    if (_bytes.containsKey(id) || _fetching.contains(id)) return;
+    _fetching.add(id);
+    final generation = _loadGeneration;
+    Future.microtask(() async {
       final bytes = await widget.api.getBytes('/monitoring/screenshots/$id');
-      if (!mounted || generation != _loadGeneration || bytes == null) continue;
-
+      _fetching.remove(id);
+      if (!mounted || generation != _loadGeneration || bytes == null) return;
       setState(() => _bytes[id] = Uint8List.fromList(bytes));
+    });
+  }
+
+  void _setDay(DateTime day) {
+    final id = _selectedDeviceId;
+    setState(() {
+      _day = day;
+      _shots = [];
+      _heroId = null;
+      _dayCount = null;
+    });
+    if (id != null) _loadShots(id);
+  }
+
+  /// Left/right on the large view: newer/older, loading the next page at
+  /// the end of what is held.
+  KeyEventResult _onHeroKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
     }
+    final step = event.logicalKey == LogicalKeyboardKey.arrowRight
+        ? 1
+        : event.logicalKey == LogicalKeyboardKey.arrowLeft
+        ? -1
+        : 0;
+    if (step == 0 || _shots.isEmpty) return KeyEventResult.ignored;
+    final at = _shots.indexWhere((s) => s['id'] == _heroId);
+    final next = (at < 0 ? 0 : at) + step;
+    if (next >= _shots.length) {
+      _loadMore().then((_) {
+        if (mounted && next < _shots.length) {
+          setState(() => _heroId = _shots[next]['id'] as String?);
+        }
+      });
+    } else if (next >= 0) {
+      setState(() => _heroId = _shots[next]['id'] as String?);
+    }
+    return KeyEventResult.handled;
   }
 
   Map<String, dynamic>? _deviceById(String? id) =>
@@ -993,27 +1084,59 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
           )
         else if (_shotsError != null)
           ErrorNote(_shotsError!)
-        else if (_shots.isEmpty || hero == null)
+        else if (_shots.isEmpty && (_totalCount ?? 0) == 0)
           // The reason (when there is one) is already shown above, so this
           // does not repeat it — it just stops claiming nothing is wrong.
           NoteCard(captureError == null
               ? DesktopMonitoringTab.noCapturesYetNote
               : DesktopMonitoringTab.noCapturesFailingNote)
         else ...[
-          _Hero(
-            shot: hero,
-            bytes: _bytes[hero['id']],
-            stopped: stopped,
-            offline: !online,
-            newestAgo: newestAt == null ? '' : relativeAge(newestAt),
+          _DayBar(
+            day: _day,
+            dayCount: _dayCount,
+            totalCount: _totalCount,
+            onDay: _setDay,
           ),
           const SizedBox(height: 12),
-          _Filmstrip(
-            shots: _shots,
-            heroId: _heroId,
-            bytes: _bytes,
-            onSelect: (id) => setState(() => _heroId = id),
-          ),
+          if (hero == null)
+            NoteCard(DesktopMonitoringTab.noCapturesThatDayNote)
+          else ...[
+            Focus(
+              key: const Key('desktop-monitoring-hero-keys'),
+              // No autofocus (it raises the phone keyboard): a tap on the
+              // large view or a thumbnail gives it the arrow keys.
+              focusNode: _heroFocus,
+              onKeyEvent: _onHeroKey,
+              child: Builder(
+                builder: (context) {
+                  _ensureBytes(hero['id'] as String);
+                  return GestureDetector(
+                    onTap: _heroFocus.requestFocus,
+                    child: _Hero(
+                      shot: hero,
+                      bytes: _bytes[hero['id']],
+                      stopped: stopped,
+                      offline: !online,
+                      newestAgo: newestAt == null ? '' : relativeAge(newestAt),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Filmstrip(
+              shots: _shots,
+              heroId: _heroId,
+              bytes: _bytes,
+              onSelect: (id) {
+                setState(() => _heroId = id);
+                _heroFocus.requestFocus();
+              },
+              onShown: _ensureBytes,
+              onEnd: () => Future.microtask(_loadMore),
+              loadingMore: _loadingMore,
+            ),
+          ],
         ],
       ],
     );
@@ -1677,12 +1800,22 @@ class _Filmstrip extends StatelessWidget {
     required this.heroId,
     required this.bytes,
     required this.onSelect,
+    required this.onShown,
+    required this.onEnd,
+    required this.loadingMore,
   });
 
   final List<Map<String, dynamic>> shots;
   final String? heroId;
   final Map<String, Uint8List> bytes;
   final ValueChanged<String> onSelect;
+
+  /// A thumbnail was built: fetch its bytes if not held.
+  final ValueChanged<String> onShown;
+
+  /// Scrolled near the oldest held capture: fetch the next page.
+  final VoidCallback onEnd;
+  final bool loadingMore;
 
   @override
   Widget build(BuildContext context) {
@@ -1694,11 +1827,20 @@ class _Filmstrip extends StatelessWidget {
       height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: shots.length,
+        itemCount: shots.length + (loadingMore ? 1 : 0),
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
+          if (i >= shots.length) {
+            return const SizedBox(
+              width: 60,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          // Ten from the end of what is held: ask for the next page.
+          if (i >= shots.length - 10) onEnd();
           final shot = shots[i];
           final id = shot['id'] as String;
+          onShown(id);
           final selected = id == heroId;
           final thumb = bytes[id];
 
@@ -1729,4 +1871,71 @@ class _Filmstrip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The filmstrip's day: back and forward a day at a time (today is the
+/// furthest forward), and how many captures exist (Jose, 2026-11-25:
+/// "how many screenshots are available right now?").
+class _DayBar extends StatelessWidget {
+  const _DayBar({
+    required this.day,
+    required this.dayCount,
+    required this.totalCount,
+    required this.onDay,
+  });
+
+  final DateTime day;
+  final int? dayCount;
+  final int? totalCount;
+  final ValueChanged<DateTime> onDay;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final isToday = DateUtils.isSameDay(day, today);
+    final ml = MaterialLocalizations.of(context);
+    final label = isToday ? 'Today' : ml.formatMediumDate(day);
+    final count = [
+      if (dayCount != null)
+        '${_n(dayCount!)} ${isToday ? 'today' : 'that day'}',
+      if (totalCount != null) '${_n(totalCount!)} in 30 days',
+    ].join(' · ');
+
+    return Wrap(
+      key: const Key('desktop-monitoring-day-bar'),
+      spacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        IconButton(
+          key: const Key('desktop-monitoring-day-back'),
+          tooltip: 'Previous day',
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => onDay(day.subtract(const Duration(days: 1))),
+        ),
+        Text(label, style: Theme.of(context).textTheme.titleSmall),
+        IconButton(
+          key: const Key('desktop-monitoring-day-forward'),
+          tooltip: 'Next day',
+          icon: const Icon(Icons.chevron_right),
+          onPressed: isToday
+              ? null
+              : () => onDay(day.add(const Duration(days: 1))),
+        ),
+        if (count.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Text(
+              count,
+              key: const Key('desktop-monitoring-counts'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+      ],
+    );
+  }
+
+  static String _n(int v) => v.toString().replaceAllMapped(
+    RegExp(r'(\d)(?=(\d{3})+$)'),
+    (m) => '${m[1]},',
+  );
 }
