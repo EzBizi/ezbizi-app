@@ -79,8 +79,8 @@ class TaskBoardsController extends Controller
             ->when($archived, fn ($q) => $q->withCount(['tasks as open_tasks' => fn ($t) => $t
                 ->where('status', '!=', Task::STATUS_DONE)]))
             ->with([
-                'company:id,name',
-                'franchise' => fn ($q) => $q->withTrashed()->with('company:id,name'),
+                'company:id,name,parent_company_id',
+                'franchise' => fn ($q) => $q->withTrashed()->with('company:id,name,parent_company_id'),
                 'owner:id,name',
                 'members' => fn ($q) => $q->with('user:id,name'),
             ])
@@ -108,6 +108,8 @@ class TaskBoardsController extends Controller
                 'company_id' => ($b->company ?? $b->franchise?->company)?->id ?? $companyBoards[(string) $b->id] ?? null,
                 'company_name' => ($b->company ?? $b->franchise?->company)?->name
                     ?? (isset($companyBoards[(string) $b->id]) ? \App\Models\Company::query()->whereKey($companyBoards[(string) $b->id])->value('name') : null),
+                // Row 66: the company's parent, for the tree (a company with no branch is not in /me).
+                'parent_company_id' => ($b->company ?? $b->franchise?->company)?->parent_company_id,
                 // Row 66: its company's working board (Monday's "… - Operation", else the company board).
                 'company_board' => isset($companyBoards[(string) $b->id]),
                 'franchise_id' => $b->franchise_id,

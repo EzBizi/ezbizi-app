@@ -63,6 +63,8 @@ class TaskBoardListReachTest extends TestCase
         // And it opens.
         $board = collect($this->signedInAs($t['admin'])->getJson('/api/v1/task-boards')->json('data'))->firstWhere('name', 'Everdoors');
         $this->signedInAs($t['admin'])->getJson("/api/v1/task-boards/{$board['id']}")->assertOk();
+        $this->assertArrayHasKey('parent_company_id', $board, 'the tree reads parentage from the board itself');
+        $this->assertNull($board['parent_company_id']);
     }
 
     public function test_a_company_manager_sees_that_company_tree_and_not_another(): void
