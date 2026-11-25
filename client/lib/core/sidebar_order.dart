@@ -116,7 +116,10 @@ const List<({String label, List<String> keys})> sidebarGroups = [
     label: 'Operations',
     keys: ['services', 'inventory', 'fleet_management', 'tasks', 'company'],
   ),
-  (label: 'People', keys: ['hr', 'work_hours', 'training', 'guidelines']),
+  (
+    label: 'People',
+    keys: ['hr', 'work_hours', 'training', 'guidelines', 'leaderboard'],
+  ),
   (
     label: 'System',
     keys: [

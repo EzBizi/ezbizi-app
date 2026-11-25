@@ -2763,6 +2763,24 @@ class ModuleServiceProvider extends ServiceProvider
                     .'there is no event here that another module does not raise first.',
             ),
 
+            // Trey, approved by Jose 2026-11-25: "a new Leaderboard Tab where it
+            // will only the top 3 performers, and the person who is entering the
+            // tab should also see their own rank ... a separate new main tab",
+            // and "another sub tab for their own Performance". Scoring's numbers,
+            // narrowed to three names and the reader's own rows, so it asks for
+            // no Reports grant: dispatchers hold it, Scoring stays managers'.
+            new ModuleDefinition(
+                key: 'leaderboard',
+                label: 'Leaderboard',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('board', 'Leaderboard', action: 'view'),
+                    new TabDefinition('mine', 'My performance'),
+                ],
+                automationExemptBecause: 'The Leaderboard only reads the scores and calls Reports keeps; '
+                    .'it records nothing a rule could act on.',
+            ),
+
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',

@@ -333,6 +333,8 @@ class NotificationDispatcher
         }
 
         $devices = DeviceToken::query()
+            // EzChat handsets get chat messages and call rings only (ChatController).
+            ->where('app', 'ezbizi')
             ->whereIn('user_id', $recipients->map->getKey()->all())
             ->get();
 

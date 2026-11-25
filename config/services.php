@@ -547,6 +547,8 @@ return [
         'team_id' => env('APNS_TEAM_ID'),
         'key' => env('APNS_KEY_FILE'),
         'topic' => env('APNS_TOPIC', 'com.ezbizi.app'),
+        // EzChat, the chat companion app (its own bundle id).
+        'ezchat_topic' => env('APNS_EZCHAT_TOPIC', 'com.ezbizi.ezchat'),
         'production' => env('APNS_PRODUCTION', true),
     ],
 

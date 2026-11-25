@@ -28,6 +28,7 @@ import '../screens/project_board_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/company_screen.dart';
+import '../screens/leaderboard_screen.dart';
 import '../screens/task_board_screen.dart';
 import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
@@ -159,6 +160,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'company': ModuleScreen(
     Icons.account_tree_outlined,
     (api, session) => CompanyScreen(api: api, session: session),
+  ),
+  // Trey, 2026-11-25: the top three on new-client calls, and your own.
+  'leaderboard': ModuleScreen(
+    Icons.emoji_events_outlined,
+    (api, session) => LeaderboardScreen(api: api, session: session),
   ),
   'tasks': ModuleScreen(
     Icons.view_kanban_outlined,

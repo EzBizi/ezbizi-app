@@ -33,6 +33,35 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:247590132639:android:aa6880f1eb3a236ce37baa",
+        "android_client_info": {
+          "package_name": "com.ezbizi.ezchat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "247590132639-3of0uiddn0coo7sdun02vc6sqgjsmcg1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBUk8jQBM_iO3__TiQunKPARcUdC0PH4o8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "247590132639-3of0uiddn0coo7sdun02vc6sqgjsmcg1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
