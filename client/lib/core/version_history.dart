@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0643', date: '25 Nov 2026', items: [
+      'Monitoring: the nightly clean-up of old devices runs for every company again (one company with an ended plan was stopping it for all)',
+    ]),
     VersionRelease(version: '0.0.0642', date: '25 Nov 2026', items: [
       'Missed calls: "text the caller" works when the number was saved with a + but without the 1 (a US number like +860 442 ...)',
     ]),
