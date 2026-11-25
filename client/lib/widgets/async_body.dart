@@ -127,8 +127,13 @@ class HeaderAboveList extends StatelessWidget {
     // the outer's inner controller as its parent and the two overflowed the
     // stack (Inventory > Orders on a phone, mobile review 11-24). Nested, it
     // is a plain column; the outer one already scrolls.
+    //
+    // And short windows scroll too: a phone on its side is 923 wide but ~250
+    // tall under the bars, and the fixed header overflowed by 136 px
+    // (Android landscape, mobile review 11-24).
     final nested = context.getInheritedWidgetOfExactType<_ScrollingHeader>();
-    if (MediaQuery.sizeOf(context).width >= 600 || nested != null) {
+    final size = MediaQuery.sizeOf(context);
+    if ((size.width >= 600 && size.height >= 560) || nested != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

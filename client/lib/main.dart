@@ -1395,6 +1395,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     // A phone with the keyboard up keeps only the toolbar and "Viewing as".
     final folded = !wide && _typing;
+    // A phone on its side (or a 700+ tablet in portrait) has room in the bar:
+    // the company picker sits there and its own row goes, 44 px of a ~250 px
+    // landscape page (mobile review 11-24).
+    final roomyBar = !wide && MediaQuery.sizeOf(context).width >= 700;
     final barStates = _BarStates(
       // A state is not a control, and states already have a home here:
       // `_timeClockNotice` is described in this file as sitting "as a
@@ -1424,7 +1428,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // The company picker on its own row on a phone (live 0.0.0597 at 375:
       // between the hamburger and the icons it got ~20 px and drew an
       // empty box). Only when there is somewhere else to stand.
-      scope: !wide && !folded && ScopeSwitcher.hasChoices(me)
+      scope: !wide && !folded && !roomyBar && ScopeSwitcher.hasChoices(me)
           ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
           : null,
     );
@@ -1527,6 +1531,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 // still NAMES the company in words, which is what the logo was
                 // saying in pixels -- nothing that identifies the business is
                 // lost, only a second copy of it.
+                if (roomyBar) return Row(children: [Flexible(child: switcher)]);
                 if (!wide) {
                   // The switcher draws NOTHING for a single-company business
                   // (`ScopeSwitcher.hasChoices`) — there is nowhere else to
@@ -2324,6 +2329,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       destination.id,
       () => ValueNotifier<Widget?>(null),
     );
+    // A phone on its side leaves a page ~200 px tall: every module's fixed
+    // header took it all and its list got 0 px (10 overflows, Android landscape
+    // 11-24). Under the floor the page keeps [_pageFloor] and scrolls. The same
+    // scroll view is there at every height, so turning the phone or opening
+    // the keyboard never rebuilds the screen; while typing the floor is off and
+    // the keyboard fold above decides.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        key: const Key('module-page-scroll'),
+        primary: false,
+        child: SizedBox(
+          height: _typing ? box.maxHeight : math.max(box.maxHeight, _pageFloor),
+          child: _page(destination, toolbar, action),
+        ),
+      ),
+    );
+  }
+
+  /// Under this a module page scrolls as a whole. A portrait phone's page is
+  /// taller (iPhone SE ~480), so only a short window ever meets it.
+  static const double _pageFloor = 420;
+
+  Widget _page(
+    Destination destination,
+    ValueNotifier<Widget?> toolbar,
+    ValueNotifier<Widget?> action,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
