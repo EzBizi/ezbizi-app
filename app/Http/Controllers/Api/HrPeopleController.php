@@ -1263,6 +1263,8 @@ class HrPeopleController extends Controller
          * is drawn with; HR's `edit` on Records keeps working as it did.
          */
         $actor = $request->user();
+        // Not your own, through this door either (Jose, 2026-11-25), unless you hold own_schedule.
+        abort_if($actor->is($user) && ! $actor->hasPermission('work_hours.own_schedule'), 403, 'Your manager sets your work schedule.');
         if ($actor->hasPermission('work_hours.manage')) {
             app(TimeClock::class)->assertReaches($actor, $user);
         } else {
