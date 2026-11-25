@@ -117,6 +117,25 @@ class PruneDevicesTest extends TestCase
         $this->assertFileExists($bRecent['frameAbs']);
     }
 
+    public function test_a_read_only_organization_is_still_pruned_and_does_not_stop_the_others(): void
+    {
+        // 2026-11-25 04:31 UTC: a lapsed subscription's read-only guard refused
+        // the delete and the whole command exited 1. Retention is still owed.
+        $lapsed = $this->provisionTenant('Lapsed');
+        $active = $this->provisionTenant('Active');
+        $lapsedStale = $this->makeDevice($lapsed, now()->subDays(31))['device']->id;
+        $activeStale = $this->makeDevice($active, now()->subDays(31))['device']->id;
+        $lapsed['org']->forceFill(['is_active' => false])->save();
+        \App\Support\Subscriptions\SubscriptionGuard::flush();
+        $this->app->forgetScopedInstances();
+        $this->assertTrue($lapsed['org']->fresh()->isReadOnly(), 'the control: really read-only');
+
+        $this->assertSame(2, app(DevicePruner::class)->prune());
+
+        $this->inTenant($lapsed['org'], fn () => $this->assertNull(MonitoredDevice::find($lapsedStale)));
+        $this->inTenant($active['org'], fn () => $this->assertNull(MonitoredDevice::find($activeStale)));
+    }
+
     public function test_the_sweep_is_idempotent_and_self_healing(): void
     {
         $alpha = $this->provisionTenant('Alpha');
