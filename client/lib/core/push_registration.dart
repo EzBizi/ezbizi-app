@@ -181,10 +181,16 @@ class PushRegistration {
     }
   }
 
+  /// Which app this handset token belongs to: `ezbizi`, or `ezchat` for the
+  /// chat companion (main_ezchat.dart sets it). The server picks the APNs topic
+  /// by it and sends EzChat only chat messages and call rings.
+  static String app = 'ezbizi';
+
   static Future<void> _register(ApiClient api, String token, String platform) async {
     final response = await api.post('/notifications/devices', {
       'token': token,
       'platform': platform,
+      'app': app,
     });
 
     if (!response.ok) {
