@@ -16,7 +16,7 @@ set -euo pipefail
 AAB="${1:?usage: play-upload.sh <aab> [track] [release-name]}"
 TRACK="${2:-production}"
 NAME="${3:-}"
-PKG="com.ezbizi.app"
+PKG="${PLAY_PACKAGE:-com.ezbizi.app}"  # EzChat: PLAY_PACKAGE=com.ezbizi.ezchat
 SA="play-publisher@ezbizi-506117.iam.gserviceaccount.com"
 API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PKG"
 UPLOAD="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PKG"
