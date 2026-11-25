@@ -71,7 +71,9 @@ class _ChatCallsListState extends State<ChatCallsList> {
     final shown = [
       for (final c in calls ?? const <Map<String, dynamic>>[])
         if (q.isEmpty ||
-            '${(c['chat'] as Map?)?['name'] ?? ''}'.toLowerCase().contains(q))
+            '${c['chat_name'] ?? (c['chat'] as Map?)?['name'] ?? ''}'
+                .toLowerCase()
+                .contains(q))
           c,
     ];
     return Column(
@@ -121,19 +123,27 @@ class _ChatCallsListState extends State<ChatCallsList> {
                             final c = shown[i];
                             final meta = (c['meta'] as Map?) ?? const {};
                             final chat = (c['chat'] as Map?) ?? const {};
-                            final name = '${chat['name'] ?? ''}';
-                            final mine = c['mine'] == true;
+                            final name =
+                                '${c['chat_name'] ?? chat['name'] ?? ''}';
+                            final mine =
+                                c['direction'] == 'out' ||
+                                c['direction'] == null && c['mine'] == true;
                             final missed =
+                                c['missed'] == true ||
                                 !mine &&
-                                ['missed', 'declined'].contains(meta['status']);
+                                    [
+                                      'missed',
+                                      'declined',
+                                    ].contains(meta['status']);
                             final live = [
                               'ringing',
                               'ongoing',
                             ].contains(meta['status']);
-                            final video = meta['video'] == true;
-                            final seconds = meta['duration'];
+                            final video =
+                                c['video'] == true || meta['video'] == true;
+                            final seconds = c['duration_s'] ?? meta['duration'];
                             final when = DateTime.tryParse(
-                              '${c['sent_at'] ?? ''}',
+                              '${c['started_at'] ?? c['sent_at'] ?? ''}',
                             )?.toLocal();
                             return ListTile(
                               key: ValueKey('ezchat-call-${c['id']}'),

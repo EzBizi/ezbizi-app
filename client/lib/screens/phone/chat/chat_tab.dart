@@ -357,6 +357,8 @@ class _ChatTabState extends State<ChatTab> {
             'unread' =>
               (c['unread'] as int? ?? 0) > 0 || c['marked_unread'] == true,
             'groups' => c['type'] == 'group',
+            // Chats tied to a job (design 213 B1; Chat 9820ac23a).
+            'jobs' => c['job'] is Map,
             _ => true,
           },
         )
@@ -452,6 +454,7 @@ class _ChatTabState extends State<ChatTab> {
                   for (final (key, label) in const [
                     ('all', 'All'),
                     ('unread', 'Unread'),
+                    ('jobs', 'Jobs'),
                     ('groups', 'Groups'),
                   ])
                     ChoiceChip(
@@ -661,6 +664,20 @@ class _ChatTabState extends State<ChatTab> {
                         ),
                       ],
                     ),
+                    // The job a chat is about: "JOB-05112 · Hartford".
+                    if (c['job'] case final Map job)
+                      Text(
+                        [
+                          '${job['number'] ?? ''}',
+                          '${job['city'] ?? ''}',
+                        ].where((s) => s.isNotEmpty).join(' · '),
+                        key: ValueKey('chat-job-$id'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
                     const SizedBox(height: 2),
                     Row(
                       children: [

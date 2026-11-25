@@ -104,6 +104,32 @@ void main() {
     );
   }
 
+  // Design 213 B1 (Chat 9820ac23a): a chat tied to a job says which, and
+  // the Jobs chip keeps only those.
+  for (final tied in [true, false]) {
+    testWidgets(
+      'a chat ${tied ? 'tied to a job shows it and stays' : 'of no job leaves'} '
+      'under the Jobs chip',
+      (tester) async {
+        final fake = _Fake();
+        fake.chats.first['job'] = tied
+            ? {'id': 'j-1', 'number': 'JOB-05112', 'city': 'Hartford'}
+            : null;
+        await _pump(tester, fake, size: const Size(390, 800));
+        expect(
+          find.text('JOB-05112 · Hartford'),
+          tied ? findsOneWidget : findsNothing,
+        );
+        await tester.tap(find.byKey(const ValueKey('chat-filter-jobs')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('chat-row-c-1')),
+          tied ? findsOneWidget : findsNothing,
+        );
+      },
+    );
+  }
+
   testWidgets('a reply carries reply_to_id and the quote is drawn', (
     tester,
   ) async {
