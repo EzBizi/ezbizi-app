@@ -680,7 +680,24 @@ class _PtoTabState extends State<PtoTab> {
 
   // ── the panel both layouts share ─────────────────────────────────
 
+  /// The panel's own width decides too, not only the tab's: on the unfolded
+  /// Duo the tab is 640 wide but the panel beside the list ~290, and four
+  /// tiles in a row broke "Expired" and the reset dates mid-word.
   Widget _panel(
+    BuildContext context,
+    Map<String, dynamic> person, {
+    String? heading,
+    bool phone = false,
+  }) => LayoutBuilder(
+    builder: (context, box) => _panelAt(
+      context,
+      person,
+      heading: heading,
+      phone: phone || box.maxWidth < 480,
+    ),
+  );
+
+  Widget _panelAt(
     BuildContext context,
     Map<String, dynamic> person, {
     String? heading,
