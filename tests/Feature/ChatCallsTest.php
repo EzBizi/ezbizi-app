@@ -163,4 +163,19 @@ class ChatCallsTest extends TestCase
         $this->assertStringContainsString('integrity="sha384-', $html);
         $this->assertStringContainsString('location.hash', $html);
     }
+
+    public function test_recent_calls_lists_my_calls_across_chats_and_nothing_else(): void
+    {
+        $this->connect();
+        $chat = $this->direct();
+        $call = $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/calls", ['video' => true])->json('data.call_id');
+        $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/messages", ['body' => 'not a call'])->assertCreated();
+
+        $this->signedInAs($this->ana)->getJson('/api/v1/chat/calls')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $call)
+            ->assertJsonPath('data.0.meta.video', true)
+            ->assertJsonPath('data.0.chat.name', $this->bar->name);
+        $this->signedInAs($this->eve)->getJson('/api/v1/chat/calls')->assertJsonCount(0, 'data');
+    }
 }
