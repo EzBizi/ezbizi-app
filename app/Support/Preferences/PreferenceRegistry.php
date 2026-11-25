@@ -238,6 +238,24 @@ class PreferenceRegistry
             ],
 
             /*
+             * Zoom on the desktop apps (Kimberly 01a213cf, approved by Jose
+             * 2026-11-25). A percentage of the whole window, text and layout
+             * together, the way a browser zooms. The web keeps the browser's
+             * own zoom and phones the system text size, so only the Windows
+             * and macOS apps read it. Set with Ctrl/Cmd + and -, Ctrl/Cmd 0,
+             * or Ctrl and the mouse wheel; bounded so a typed value cannot make
+             * the app unusable.
+             */
+            'appearance.zoom' => [
+                'label' => 'Zoom',
+                'type' => 'int',
+                'default' => 100,
+                'min' => 50,
+                'max' => 200,
+                'help' => 'Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel. Desktop apps only.',
+            ],
+
+            /*
              * The two panes on Web Management → Widgets.
              *
              * Registered rather than kept in the screen because the screen is
