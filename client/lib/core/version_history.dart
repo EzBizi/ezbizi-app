@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0639', date: '24 Nov 2026', items: [
+      'Phones: turned sideways, every module keeps the phone layout and its lists stay usable on Android, iPhone and the iPhone Duo',
+      'Phones: screens hold together with large text sizes',
+      'Desktop: the sidebar scrolls instead of spilling over in a short window',
+    ]),
     VersionRelease(version: '0.0.0638', date: '24 Nov 2026', items: [
       'Financials › Bank: deposits are matched to recorded payments and open invoices, with a Money in, not matched filter; the dashboard shows cash in bank and owed on cards',
       'Phones: Inventory › Orders › Add purchase order opens properly',
