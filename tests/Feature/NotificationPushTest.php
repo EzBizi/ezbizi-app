@@ -732,4 +732,61 @@ class NotificationPushTest extends TestCase
 
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
     }
+
+    /**
+     * EzChat, the chat companion (Jose 2026-11-25), registers its handsets as
+     * `ezchat`; an EzBizi build that says nothing stays `ezbizi`.
+     */
+    public function test_a_handset_says_which_app_it_belongs_to(): void
+    {
+        $tenant = $this->provisionTenant('Ezc');
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-ezchat', 'platform' => 'android', 'app' => 'ezchat',
+        ])->assertOk();
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-ezbizi', 'platform' => 'android',
+        ])->assertOk();
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-other', 'platform' => 'android', 'app' => 'whatsapp',
+        ])->assertUnprocessable();
+
+        $apps = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->pluck('app', 'token')->all());
+        $this->assertSame(['token-ezbizi' => 'ezbizi', 'token-ezchat' => 'ezchat'], collect($apps)->sortKeys()->all());
+    }
+
+    /** EzBizi's notifications reach EzBizi handsets; EzChat gets chat and calls only. */
+    public function test_an_ezchat_handset_is_not_sent_ezbizi_notifications(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Ezd');
+        $this->device($tenant, $tenant['admin']->id, 'token-ezbizi-phone');
+        $chat = $this->device($tenant, $tenant['admin']->id, 'token-ezchat-phone');
+        $this->inTenant($tenant['org'], fn () => $chat->forceFill(['app' => 'ezchat'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead', subject: $tenant['org'], source: 'automation',
+        ));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-ezbizi-phone');
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-ezchat-phone');
+    }
+
+    /** An EzChat iPhone is pushed with EzChat's bundle id as the topic. */
+    public function test_an_ezchat_iphone_gets_its_own_apns_topic(): void
+    {
+        Http::fake([self::APNS => Http::response('', 200)]);
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Eze');
+        $device = $this->device($tenant, $tenant['admin']->id, 'token-ezchat-iphone');
+        $this->inTenant($tenant['org'], fn () => $device->forceFill(['platform' => 'ios', 'app' => 'ezchat'])->save());
+
+        $sent = app(\App\Support\Notifications\ApnsSender::class)->send(collect([$device->fresh()]), 'Ana', 'Hello');
+
+        $this->assertSame(1, $sent);
+        Http::assertSent(fn ($r) => $r->header('apns-topic')[0] === 'com.ezbizi.ezchat');
+    }
 }
