@@ -18,7 +18,8 @@ class VersionHistory {
       'People search keeps the nicknames people used on Monday (for example Chris for Kristopher)',
       'Desktop app: zoom in and out with Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel; it remembers your level',
     ]),
-    VersionRelease(version: '0.0.0649', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0649', date: '25 Nov 2026', deployed: '2026-11-25 21:50',
+      items: [
       'This build carries everything listed under 0.0.0648 and 0.0.0647 (those releases were folded into this one)',
       'Jobs: the Project tag is always offered when tagging a job, and you always find yourself in the technician picker',
       'Chat on phones: one-tap replies (On my way, Running late, Done, Need parts), a camera beside the message box, and hold-to-talk voice notes',
