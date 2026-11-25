@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0650', date: '25 Nov 2026', items: [
+      'Jobs on the web: Workiz photos open full screen instead of showing "Could not load"',
       'Task Board: the group menu matches Monday: change the group colour, collapse or expand all, select all, add a group above or below, duplicate, move to another board, archive (restorable) and more',
       'People search keeps the nicknames people used on Monday (for example Chris for Kristopher)',
       'Desktop app: zoom in and out with Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel; it remembers your level',
