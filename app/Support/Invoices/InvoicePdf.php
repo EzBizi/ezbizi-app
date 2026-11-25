@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Support\Files\FileStore;
+use App\Support\NotesMarkup;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Support\Facades\Storage;
@@ -91,7 +92,7 @@ final class InvoicePdf
             .($invoice->summary ? '<div class="summary">'.$e($invoice->summary).'</div>' : '')
             .'<table class="lines"><tr><th>Expenses Name</th><th class="n">Amount</th></tr>'.$rows.$tax.'</table>'
             .'<div class="total">'.$money($invoice->total_cents).'</div>'
-            .($invoice->notes ? '<div class="notes">'.nl2br($e($invoice->notes)).'</div>' : '')
+            .($invoice->notes ? '<div class="notes">'.nl2br($e(NotesMarkup::plain($invoice->notes))).'</div>' : '')
             .'</body></html>';
     }
 }
