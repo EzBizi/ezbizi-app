@@ -196,7 +196,8 @@ final class TimeClockReports
      */
     private function sectionOf(?User $user, int $seconds): string
     {
-        if ($seconds > self::OVERTIME_SECONDS) {
+        // On the minutes the report shows: 40:00 is not overtime even if a few seconds over.
+        if (intdiv(max(0, $seconds) + 30, 60) * 60 > self::OVERTIME_SECONDS) {
             return 'overtime';
         }
         // HR's own Full time / Part time when it is set (users.hours_type, 2026-11-25).
