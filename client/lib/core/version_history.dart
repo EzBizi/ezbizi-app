@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0655', date: '26 Nov 2026', items: [
       'Review auto-replies: a review Google removed is marked removed and skipped, and a listing Google calls unclaimed is parked with that reason, instead of failing every day',
+      'Desktop monitoring: a heartbeat that hit a brief database clash is retried instead of failing',
     ]),
     VersionRelease(version: '0.0.0654', date: '26 Nov 2026', deployed: '2026-11-26 07:36', items: [
       'Monday is switched off: EzBizi no longer syncs with Monday, and the Monday tile is gone from Integrations',
