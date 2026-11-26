@@ -13,8 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0652', date: '26 Nov 2026', items: [
+    VersionRelease(version: '0.0.0653', date: '26 Nov 2026', items: [
       'Weekly time report: someone at exactly 40:00 is no longer listed under Overtime',
+    ]),
+    VersionRelease(version: '0.0.0652', date: '26 Nov 2026', items: [
       'Task Board: quick filters like Monday, with every column value as a chip with its count, tap to filter, and Clear all',
     ]),
     VersionRelease(version: '0.0.0651', date: '25 Nov 2026', deployed: '2026-11-26 00:15',
