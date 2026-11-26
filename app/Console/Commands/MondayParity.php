@@ -37,7 +37,8 @@ class MondayParity extends Command
     public function handle(TenantContext $tenant, MondaySync $sync): int
     {
         $drift = 0;
-        foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')->get() as $connection) {
+        foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', 'monday')
+            ->where('status', SocialConnection::STATUS_CONNECTED)->get() as $connection) {
             $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
             $reader = new MondayBoardReader(MondayClient::for($connection));
             $missingThere = $tenant->run($org, function () use ($reader, $connection, &$drift) {

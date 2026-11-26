@@ -1330,7 +1330,7 @@ class AutomationsApiTest extends TestCase
         $this->assertSame(['Leads'], $list[$named]['task_board']['boards']);
 
         // A Monday copy's stored key is shown in words (Mobile UI-UX 11-25).
-        $this->assertSame('Copied from Monday (active there). Off here: this board has no group (removed on Monday).',
+        $this->assertSame('Brought over from Monday. Off here: this board has no group (removed on Monday).',
             AutomationsController::descriptionShown('monday:384190975 (Monday, active) — off: not here: group (gone on Monday)'));
         $this->assertSame('Mine', AutomationsController::descriptionShown('Mine'));
     }

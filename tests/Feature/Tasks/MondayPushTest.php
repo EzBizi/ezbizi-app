@@ -169,6 +169,15 @@ class MondayPushTest extends TestCase
         return json_decode((string) ($this->mutations[$i]['vars']['v'] ?? '{}'), true);
     }
 
+    /** Cut-over 11-26: with Monday off, a change here queues nothing for Monday. */
+    public function test_monday_off_queues_nothing(): void
+    {
+        config(['services.monday.enabled' => false]);
+        $before = \App\Models\MondayOutboxEntry::query()->withoutGlobalScopes()->count();
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['title' => 'Changed after Monday'], $this->jose));
+        $this->assertSame($before, \App\Models\MondayOutboxEntry::query()->withoutGlobalScopes()->count());
+    }
+
     /** Jose 11-18: the job-id columns (any text column made here) are made on Monday too, then filled. */
     public function test_a_text_column_monday_lacks_is_made_there_and_filled(): void
     {
@@ -432,7 +441,7 @@ class MondayPushTest extends TestCase
             'values' => [TaskColumn::query()->where('name', 'Area')->value('id') => 'monday-1'],
         ], $this->jose));
         $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->move($this->task->fresh(), $this->board->groups()->where('name', 'Completed Tasks')->firstOrFail(), null, $this->jose));
-        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->count()), 'one pending row per task, fields merged');
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->withoutGlobalScopes()->count()), 'one pending row per task, fields merged');
 
         $this->artisan('ezbizi:monday-push')->assertSuccessful();
 
@@ -634,7 +643,7 @@ class MondayPushTest extends TestCase
             $branch->forceFill(['external_ref' => 'monday:100'])->save(); // the merge
             app(TaskWriter::class)->update($old->fresh(), ['title' => 'Pre-merge job (edited)'], $this->jose);
             app(TaskWriter::class)->comment($old->fresh(), $this->jose, 'Called back');
-            $this->assertSame(0, MondayOutboxEntry::query()->count(), 'the past is not pushed');
+            $this->assertSame(0, MondayOutboxEntry::query()->withoutGlobalScopes()->count(), 'the past is not pushed');
             $new = app(TaskWriter::class)->create($branch->fresh(), ['title' => 'After ship job'], $this->jose);
             $sub = app(TaskWriter::class)->create($branch->fresh(), ['title' => 'Bring the ladder', 'parent_task_id' => $old->id], $this->jose);
 
@@ -663,7 +672,7 @@ class MondayPushTest extends TestCase
             $this->board->forceFill(['archived_at' => now()])->save();
             app(TaskWriter::class)->update($this->task->fresh(), ['status' => 'Done'], $this->jose);
             app(TaskWriter::class)->comment($this->task->fresh(), $this->jose, 'Seen');
-            $this->assertSame(0, MondayOutboxEntry::query()->count());
+            $this->assertSame(0, MondayOutboxEntry::query()->withoutGlobalScopes()->count());
         });
 
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
@@ -709,14 +718,14 @@ class MondayPushTest extends TestCase
     {
         $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(
             fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Done'], $this->jose)));
-        $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->count()));
+        $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->withoutGlobalScopes()->count()));
 
         // A board with no Monday board behind it records nothing either.
         $this->inTenant($this->tenant['org'], function () {
             $other = TaskBoard::query()->where('franchise_id', $this->tenant['franchise']->id)->firstOrFail();
             app(TaskWriter::class)->create($other, ['title' => 'Not on Monday'], $this->tenant['admin']);
         });
-        $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->count()));
+        $this->assertSame(0, $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->withoutGlobalScopes()->count()));
     }
 
     /** Row 43 (Sheryl, 11-23): the author edits an update; Monday gets edit_update; nobody else may. A delete sends delete_update. */

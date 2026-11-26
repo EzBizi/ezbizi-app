@@ -224,7 +224,7 @@ class TaskBoardSettingsController extends Controller
         $row->save();
         // Rename and colour go to Monday too (Jose 11-25: every setting, both ways).
         if ($pushed !== [] && str_starts_with((string) $row->external_ref, 'monday:')) {
-            \App\Jobs\PushMondayGroup::dispatch((string) $taskBoard->id, (string) $row->id, $pushed);
+            \App\Jobs\PushMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, (string) $row->id, $pushed);
         }
         if ($moveTo !== null) {
             // A place in the board's order (Jose 11-19: groups could not be reordered): the others
@@ -238,7 +238,7 @@ class TaskBoardSettingsController extends Controller
                 }
             }
             if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
-                MoveMondayGroup::dispatch((string) $taskBoard->id, (string) $row->id);
+                MoveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, (string) $row->id);
             }
         }
 
@@ -278,7 +278,7 @@ class TaskBoardSettingsController extends Controller
             app(MondayOutbox::class)->record($task, ['group']);
         }
         if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
-            ArchiveMondayGroup::dispatch((string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+            ArchiveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
         }
 
         return response()->noContent();
@@ -361,7 +361,7 @@ class TaskBoardSettingsController extends Controller
             $this->audit->log('task_board.group_archived', $row, actor: $request->user());
         });
         if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
-            ArchiveMondayGroup::dispatch((string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+            ArchiveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
         }
 
         return response()->json(['data' => self::presentGroup($row) + ['archived_at' => $at->toIso8601String()]]);
