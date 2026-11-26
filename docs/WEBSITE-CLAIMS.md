@@ -4010,3 +4010,39 @@ box) over the 10 LIVE pages ok - 4 terms, none present (control term `ezbizi` hi
 **Desk (11-24, ~23:20 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-24-desk-reply.md`):
 Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
 elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,215 all with `remote_id`. No new publisher.
+
+## 2026-11-25 (daily): 0.0.0636-0.0.0650 live, `/privacy/` now lists Chat messages
+
+Production web is 0.0.0650 at `46bdaea54`; `/download/windows.json` reads 0.0.0650 at `46bdaea54`. Before the edit all
+10 live pages contained their WP post_content (method of 11-15); page 8 had the 11-25 Chat-calls edit (6479e4937,
+`post_modified_gmt` 2026-11-25 18:37). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Plaid is live** (`af8f6b65d` is an ancestor of `46bdaea54`; desk: 0 bank accounts, 0 connections). The 11-25
+  Plaid section now describes shipped code; the 11-24 "re-check 0638" item is closed.
+- **One edit, WP page 8 `/privacy/`** (pre-edit copies `~/ezb-wp-bak-20261125/page-8-before-chat.html` and
+  `page-8-head-before-chat.html` on the websites box; live on bare and www): Chat (0647/0649) stores staff-to-staff
+  text, photos, files and voice notes (`chat_messages`, 24-month window). "What your organization enters" now reads
+  "...and their interviews, **the messages, photos, files and voice notes colleagues send each other in Chat**, and
+  files and photos attached to any of them." Deliberately **no retention sentence**: the sweep deletes rows by query
+  and a swept message's attachment file stays on disk (`ChatMessage::retention()` ponytail note), so "deleted after
+  two years" would be false for photos/files. Write it the day an attachment orphan sweep exists.
+  Also fixed the stale dates: visible "Last updated" 24 → 25 November 2026, `_ezb_head` `dateModified` 2026-11-23 →
+  2026-11-25 (the 11-24/11-25 edits had not moved them together).
+- No sentence moves for: sent-report bodies now kept (`whatsapp_messages.body` for report templates, new
+  `report_emails`) — `/privacy/` already says automation rules send reports by email/WhatsApp and makes no
+  "not kept" claim; per-kind notification email switches (existing mail path); public `GET v1/chat/call` (static page,
+  token in the fragment, no data); `sdk.twilio.com` (Twilio, already named for Chat calls); `x.monday.com` is a parsing
+  pattern, not a call. No new OAuth scope, Google/Meta write or publisher.
+- **EzChat** (`com.ezbizi.ezchat`, sister app, same backend): not in any store yet (Play 404, Apple `resultCount` 0).
+  **Trigger:** the day it lists, its store privacy URL points at `/privacy/`, which names only "EzBizi" — check the
+  page still reads true for an app called EzChat (the camera/mic Chat-call sentences already cover it).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all 10), re-run on `/privacy/` after the
+edit ok. Stores: Play `200`; Apple `resultCount` 1, **0.0631** (was 0.0.0559).
+
+**Desk (11-25, ~23:45 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-25-desk-reply.md`):
+0638, 0640-0644, 0646, 0649, 0650 live (0636/0637/0639/0645/0647/0648 folded after failed gates), nothing rolled back.
+Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
+elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,434 all with `remote_id`. No new publisher.
+chats 2, chat_messages 2 (test accounts).
