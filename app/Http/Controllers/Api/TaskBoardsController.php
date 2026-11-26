@@ -782,7 +782,7 @@ class TaskBoardsController extends Controller
             'role' => $input['role'],
         ]);
 
-        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+        PushBoardMembers::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id); // to Monday too (desk 11-18)
         // Row 67: Monday's board invitation; not when I add myself.
         if ((string) $input['user_id'] !== (string) $request->user()->id) {
             app(\App\Support\Notifications\NotificationDispatcher::class)->dispatch(
@@ -807,7 +807,7 @@ class TaskBoardsController extends Controller
             $member->update(['role' => $input['role']]);
         });
 
-        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+        PushBoardMembers::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id); // to Monday too (desk 11-18)
 
         return response()->json(['data' => self::presentMember($member->load('user:id,name'))]);
     }
@@ -826,7 +826,7 @@ class TaskBoardsController extends Controller
             $taskBoard->forceFill(['builtin_columns' => $cols])->save();
         });
 
-        PushBoardMembers::dispatch((string) $taskBoard->id); // to Monday too (desk 11-18)
+        PushBoardMembers::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id); // to Monday too (desk 11-18)
 
         return response()->noContent();
     }

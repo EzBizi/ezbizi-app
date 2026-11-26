@@ -2799,7 +2799,7 @@ class AutomationsController extends Controller
             return $description;
         }
 
-        return "Copied from Monday ({$m[1]} there)."
+        return 'Brought over from Monday.'
             .(($m[2] ?? '') !== '' ? ' Off here: this board has no '.str_replace('(gone on Monday)', '(removed on Monday)', $m[2]).'.' : '');
     }
 

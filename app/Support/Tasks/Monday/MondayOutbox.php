@@ -75,7 +75,7 @@ final class MondayOutbox
     /** @param  list<string>  $kinds  create, title, status, due, owners, group, values:<column id> */
     public function record(Task $task, array $kinds, ?TaskUpdate $update = null): void
     {
-        if (self::$suppressed > 0 || ($kinds === [] && $update === null) || ! $this->linked($task)) {
+        if (! config('services.monday.enabled') || self::$suppressed > 0 || ($kinds === [] && $update === null) || ! $this->linked($task)) {
             return;
         }
         // Jose, 2026-11-16: "why won't they be copied in monday from ezbizi, if everything else
