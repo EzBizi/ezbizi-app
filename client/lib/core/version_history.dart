@@ -13,7 +13,7 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0654', date: '26 Nov 2026', items: [
+    VersionRelease(version: '0.0.0654', date: '26 Nov 2026', deployed: '2026-11-26 07:36', items: [
       'Monday is switched off: EzBizi no longer syncs with Monday, and the Monday tile is gone from Integrations',
       'Automations brought over from Monday now say so',
     ]),
