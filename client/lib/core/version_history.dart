@@ -13,7 +13,7 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0653', date: '26 Nov 2026', items: [
+    VersionRelease(version: '0.0.0653', date: '26 Nov 2026', deployed: '2026-11-26 02:42', items: [
       'Weekly time report: someone at exactly 40:00 is no longer listed under Overtime',
     ]),
     VersionRelease(version: '0.0.0652', date: '26 Nov 2026', deployed: '2026-11-26 01:29', items: [
