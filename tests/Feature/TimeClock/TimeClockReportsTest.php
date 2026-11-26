@@ -80,7 +80,11 @@ class TimeClockReportsTest extends TestCase
             $this->shift($alpha['org'], $techs['ben'], "{$d} 12:00:00", "{$d} 18:00:00");   // 30 h
             $this->shift($alpha['org'], $techs['dee'], "{$d} 12:00:00", "{$d} 15:00:00");   // 15 h, part time
         }
-        $this->shift($alpha['org'], $techs['ana'], '2026-09-21 12:00:00', '2026-09-21 20:00:00');
+        // Ana: 40:00 shown, 20 seconds over. Not overtime (Rodrigo Mena, prod week of 11-16).
+        foreach (['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24'] as $d) {
+            $this->shift($alpha['org'], $techs['ana'], "{$d} 12:00:00", "{$d} 20:00:00");
+        }
+        $this->shift($alpha['org'], $techs['ana'], '2026-09-25 12:00:00', '2026-09-25 20:00:20');
         $this->shift($alpha['org'], $techs['cy'], '2026-09-21 12:00:00', '2026-09-21 14:00:00');
         $report = $this->report($alpha['org'], []);
 
