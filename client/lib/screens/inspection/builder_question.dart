@@ -711,6 +711,25 @@ class _QuestionEditorState extends State<QuestionEditor> {
             _changed();
           },
           onRemove: () {
+            final value = '${options[i]['value'] ?? ''}';
+            final shared = options.any(
+              (o) =>
+                  !identical(o, options[i]) && '${o['value'] ?? ''}' == value,
+            );
+            final waiting = shared
+                ? const <String>[]
+                : waitingForAnswer(widget.kit.definition, key, value);
+            if (waiting.isNotEmpty) {
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '${waiting.join(', ')} waits for this answer. '
+                    'Change that condition first.',
+                  ),
+                ),
+              );
+              return;
+            }
             (_field['options'] as List).removeAt(i);
             _openFollowUps.clear();
             _changed();
