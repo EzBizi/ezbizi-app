@@ -73,7 +73,6 @@ class _Reader {
   final ByteData d;
   int o = 0;
   int u16() => d.getUint16((o += 2) - 2, Endian.little);
-  int u32() => d.getUint32((o += 4) - 4, Endian.little);
   int i32() => d.getInt32((o += 4) - 4, Endian.little);
   String str() {
     final n = u16();

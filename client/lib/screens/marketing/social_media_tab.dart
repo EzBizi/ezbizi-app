@@ -4833,18 +4833,6 @@ String _stamp(_SentPost post, DisplayFormats formats) {
       '${formats.formatTime(when.hour, when.minute)} · ${_postWord(post)}';
 }
 
-/// A failure for the post list: the network's sentence when it reads as one,
-/// otherwise one plain line, because the raw text lives in the post's pane
-/// (deep dive 2026-11-02 #3: "unaudited_client_can_only_post_to_private_accounts").
-@visibleForTesting
-String plainFailure(String failure) {
-  final raw =
-      failure.contains('http') ||
-      RegExp(r'\b[a-z]+(_[a-z]+){2,}\b').hasMatch(failure) ||
-      failure.length > 90;
-  return raw ? "Didn't post. Open it for the details." : failure;
-}
-
 // ── The planner (UI queue 199; Rodrigo 01a1ef71 + 01a1ef57, approved) ──────
 //
 // Social opens on a calendar. A post sits on the day of its saved send time,

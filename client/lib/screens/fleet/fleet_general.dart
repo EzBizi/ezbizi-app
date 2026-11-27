@@ -36,9 +36,6 @@ class FleetGeneral extends StatefulWidget {
   final bool canAdd;
   final VoidCallback onAdd;
 
-  /// How far ahead Coming up looks - the server's own "soon".
-  static const soonDays = 30;
-
   @override
   State<FleetGeneral> createState() => _FleetGeneralState();
 }

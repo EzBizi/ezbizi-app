@@ -45,11 +45,6 @@ class ChatStore extends ChangeNotifier with WidgetsBindingObserver {
   /// ponytail: unbounded for the session; an LRU if memory ever shows it.
   static final Map<String, Uint8List> pictures = {};
 
-  int get unreadTotal => chats.fold(
-    0,
-    (n, c) => n + ((c['muted'] == true) ? 0 : (c['unread'] as int? ?? 0)),
-  );
-
   set visible(bool value) {
     if (_visible == value) return;
     _visible = value;
