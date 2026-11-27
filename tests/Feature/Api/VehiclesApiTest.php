@@ -491,4 +491,27 @@ class VehiclesApiTest extends TestCase
             $this->assertTrue(Vehicle::query()->whereKey($sold)->exists());
         });
     }
+    /** Without financials the toll rate is not shown, so it is not written either (audit 2026-11-27). */
+    public function test_toll_rate_is_not_written_without_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $vehicle = $this->inTenant($tenant['org'], fn () => Vehicle::factory()->create([
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+            'toll_flat_rate_cents' => 1500,
+        ]));
+        $editor = $this->userWithRole($tenant, 'Fleet editor', [
+            'fleet_management.view', 'fleet_management.vehicles.view', 'fleet_management.edit',
+        ]);
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/vehicles/'.$vehicle->id, ['toll_flat_rate_cents' => 9900, 'toll_plan' => 'E-ZPass'])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($vehicle) {
+            $fresh = $vehicle->fresh();
+            $this->assertSame(1500, $fresh->toll_flat_rate_cents);
+            $this->assertSame('E-ZPass', $fresh->toll_plan, 'control: the rest of the save still lands');
+        });
+    }
 }

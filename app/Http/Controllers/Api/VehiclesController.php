@@ -158,7 +158,7 @@ class VehiclesController extends Controller
 
         $vehicles = $query
             ->orderBy('label')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         return response()->json([
             'data' => collect($vehicles->items())->map(
@@ -277,6 +277,9 @@ class VehiclesController extends Controller
             foreach (VehicleFinancials::keys() as $key) {
                 unset($input['ownership'][$key]);
             }
+            // Top-level money too (audit 2026-11-27): the toll rate is shown
+            // only with financials, so it is written only with them.
+            unset($input['toll_flat_rate_cents']);
         }
 
         $vehicle = DB::transaction(function () use ($request, $input, $company, $franchise) {
@@ -371,6 +374,10 @@ class VehiclesController extends Controller
         $this->authorize('update', $vehicle);
 
         $input = $request->validate($this->updateRules($vehicle), $this->ownershipMessages());
+
+        if (! $request->user()->hasPermission('fleet_management.financials')) {
+            unset($input['toll_flat_rate_cents']);
+        }
 
         if (array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input)) {
             $companyId = array_key_exists('company_id', $input)
