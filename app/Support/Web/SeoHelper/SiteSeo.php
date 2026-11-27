@@ -126,6 +126,7 @@ final class SiteSeo
     private function http(WebSite $site): PendingRequest
     {
         return Http::withBasicAuth($site->service_user_login, $site->service_password)
+            ->withoutRedirecting() // audit 2026-11-27: a redirect would carry the call (and the password) past the host check
             ->accept('application/json')
             ->timeout(25);
     }

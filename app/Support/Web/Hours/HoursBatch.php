@@ -149,6 +149,11 @@ final class HoursBatch
     /** @return array{status: string, reason: ?string} */
     private function applyOne(HoursDestination $destination, Model $model, array $item): array
     {
+        // The kill switch can flip between review and apply (audit 2026-11-27).
+        if (($why = $destination->unavailable($model)) !== null) {
+            return ['status' => 'blocked', 'reason' => $why];
+        }
+
         try {
             $live = $destination->read($model);
         } catch (Throwable $e) {

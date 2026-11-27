@@ -113,12 +113,19 @@ class SiteListEditor extends StatefulWidget {
 
 class _Row {
   _Row(this.id, List<_Field> fields, Map<String, dynamic> values)
-      : boxes = {
+      : extra = {
+          // Fields this editor does not show (a location's country) ride
+          // along on Save instead of being wiped (audit 2026-11-27).
+          for (final e in values.entries)
+            if (!fields.any((f) => f.key == e.key)) e.key: e.value,
+        },
+        boxes = {
           for (final f in fields)
             f.key: TextEditingController(text: '${values[f.key] ?? ''}'),
         };
 
   final int id;
+  final Map<String, dynamic> extra;
   final Map<String, TextEditingController> boxes;
 
   void dispose() {
@@ -132,6 +139,9 @@ class _SiteListEditorState extends State<SiteListEditor> {
   final List<_Row> _rows = [];
   int _next = 0;
   bool _loading = true;
+  // Save stays off until a load succeeded: saving the empty list a failed
+  // load leaves would wipe the company's list (audit 2026-11-27).
+  bool _loaded = false;
   bool _saving = false;
   String? _error;
   String? _saved;
@@ -196,6 +206,7 @@ class _SiteListEditorState extends State<SiteListEditor> {
         _error = firstApiError(response);
         return;
       }
+      _loaded = true;
 
       final data = response.body['data'];
       final list = switch (widget.kind) {
@@ -215,6 +226,19 @@ class _SiteListEditorState extends State<SiteListEditor> {
   }
 
   Future<void> _save() async {
+    if (!_loaded) return;
+    // A number box that does not read as a number is refused, not sent as
+    // empty (audit 2026-11-27).
+    for (final r in _rows) {
+      for (final f in _fields.where((f) => f.number || f.whole)) {
+        final text = r.boxes[f.key]!.text.trim();
+        if (text.isNotEmpty &&
+            (f.whole ? int.tryParse(text) : double.tryParse(text)) == null) {
+          setState(() => _error = '"$text" is not a number (${f.label}).');
+          return;
+        }
+      }
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -224,6 +248,7 @@ class _SiteListEditorState extends State<SiteListEditor> {
     final items = [
       for (final r in _rows)
         {
+          ...r.extra,
           for (final f in _fields)
             f.key: () {
               final text = r.boxes[f.key]!.text.trim();
@@ -356,7 +381,7 @@ class _SiteListEditorState extends State<SiteListEditor> {
                 }),
               ),
               FilledButton(
-                onPressed: _saving ? null : _save,
+                onPressed: _saving || !_loaded ? null : _save,
                 child: Text(_saving ? 'Saving…' : 'Save list'),
               ),
             ],
