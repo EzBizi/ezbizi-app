@@ -125,7 +125,7 @@ class Exporter
                             $values = $this->readable($row, $columns, $user, $includeSensitive);
 
                             fputcsv($out, array_map(
-                                fn (string $c) => $this->cell($values[$c]),
+                                fn (string $c) => self::cell($values[$c]),
                                 $columns,
                             ));
                         }
@@ -303,7 +303,7 @@ class Exporter
      * escaped, because `+` genuinely starts a formula in Excel; Importer::parse
      * strips the marker back off, so a round trip is lossless.
      */
-    private function cell(mixed $value): string
+    public static function cell(mixed $value): string
     {
         if ($value === null || $value === false) {
             return $value === false ? '0' : '';

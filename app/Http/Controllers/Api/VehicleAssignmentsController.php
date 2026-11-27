@@ -58,6 +58,14 @@ class VehicleAssignmentsController extends Controller
             ? Company::findOrFail($input['company_id'])
             : null;
 
+        // A company the caller cannot reach is not theirs to list staff for
+        // (audit 2026-11-27).
+        abort_if(
+            $company !== null && ! $request->user()->canActOnCompany($company),
+            403,
+            Refusal::permission('see drivers for that company')->message(),
+        );
+
         $drivers = User::query()
             ->where('is_active', true)
             ->with('assignments.assignedCompany')

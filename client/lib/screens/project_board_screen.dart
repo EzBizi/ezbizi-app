@@ -144,6 +144,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   DateTime? _updated;
   String _q = '';
   int _page = 1;
+  int _loadSeq = 0;
   int _lastPage = 1;
   int _total = 0;
 
@@ -231,7 +232,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   Future<void> _load({int page = 1, bool quiet = false}) async {
     // Quiet: every page already shown, in one call of the same rows.
-    final shownPages = quiet ? _page.clamp(1, 4) : page;
+    final shownPages = quiet ? _page.clamp(1, 20) : page;
+    // Only the newest request's answer lands (audit 2026-11-27).
+    final seq = ++_loadSeq;
     setState(() {
       if (!quiet) _loading = true;
       _fetching = true;
@@ -251,7 +254,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       'sort': ?_sortKey,
       if (_sortKey != null) 'dir': _sortDesc ? 'desc' : 'asc',
     });
-    if (!mounted || franchise != _franchise || q != _q) return;
+    if (!mounted || seq != _loadSeq || franchise != _franchise || q != _q) return;
     setState(() {
       _loading = false;
       _fetching = false;
@@ -543,7 +546,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           id: '${row['id']}',
           initialTab: tab,
         ),
-      ).then((_) => _load());
+      ).then((_) => _load(quiet: true));
 
   /// A heading that drags onto another to take its place, with Move left
   /// and Move right beside it; one order for everyone on the board (Jose,
@@ -1007,11 +1010,12 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         ),
       ),
     );
-    final amount = double.tryParse(cost.text.trim().replaceAll(r'$', ''));
+    final amount = moneyMinor(cost.text);
     cost.dispose();
     if (saved != true || !mounted) return;
+    if (amount == badMoney) return _badMoney();
     final r = await widget.api.patch('/project-board/jobs/${row['id']}/cost', {
-      'job_cost_minor': amount == null ? null : (amount * 100).round(),
+      'job_cost_minor': amount,
       'production': production,
     });
     if (!mounted) return;
@@ -1025,14 +1029,14 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   /// A Project job's Parts cost and Labor: a contractor's set price, or a
   /// repair team's days, alone or with a helper, at the Settings day rate.
+  void _badMoney() => ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Not saved: the amount is not a number. Use digits, like 1300 or 1,300.50.')),
+  );
+
   Future<void> _editProjectCosts(Map<String, dynamic> row) async {
     String money(Object? minor) =>
         minor is int ? (minor / 100).toStringAsFixed(2) : '';
-    int? minor(TextEditingController c) =>
-        switch (double.tryParse(c.text.trim().replaceAll(r'$', ''))) {
-          final d? => (d * 100).round(),
-          null => null,
-        };
+    int? minor(TextEditingController c) => moneyMinor(c.text);
     final parts = TextEditingController(text: money(row['parts_cost']));
     final price = TextEditingController(text: money(row['labor_price']));
     final days = TextEditingController(text: '${row['labor_days'] ?? ''}');
@@ -1134,6 +1138,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     price.dispose();
     days.dispose();
     if (saved != true || !mounted) return;
+    if (body.values.contains(badMoney)) return _badMoney();
     final r = await widget.api.patch(
       '/project-board/jobs/${row['id']}/project-costs',
       body,
@@ -1742,6 +1747,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
   final _warnDays = TextEditingController();
   final _badDays = TextEditingController();
   bool _ready = false;
+  // The settings could not be read: nothing is shown or saved, so defaults
+  // never overwrite real settings (audit 2026-11-27).
+  bool _readFailed = false;
   String? _saving;
   String? _error;
 
@@ -1784,6 +1792,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
     final options = o.ok && o.data is Map ? o.data as Map : const {};
     setState(() {
       _error = r.ok ? null : r.message;
+      _readFailed = !r.ok;
       _knownStatuses = [
         for (final s in (options['statuses'] as List?) ?? const []) '$s',
       ];
@@ -1891,6 +1900,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
   }
 
   Future<void> _save(String card, Map<String, Object> values) async {
+    if (_readFailed) return;
     setState(() => _saving = card);
     String? failed;
     for (final MapEntry(:key, :value) in values.entries) {
@@ -2475,6 +2485,24 @@ class _BoardSettingsState extends State<_BoardSettings> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const LinearProgressIndicator();
+    if (_readFailed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ErrorNote('The settings could not be read: ${_error ?? 'try again'}'),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('project-board-settings-retry'),
+            onPressed: () {
+              setState(() => _ready = false);
+              _read();
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      );
+    }
     final theme = Theme.of(context);
     final phone = MediaQuery.sizeOf(context).width < 600;
 
@@ -2953,12 +2981,7 @@ class _PartsPanelState extends State<_PartsPanel> {
           'kind': r.kind,
           'item': r.item.text.trim(),
           'quantity': int.tryParse(r.quantity.text.trim()) ?? 1,
-          'price_minor': switch (double.tryParse(
-            r.price.text.trim().replaceAll(r'$', ''),
-          )) {
-            final d? => (d * 100).round(),
-            null => null,
-          },
+          'price_minor': moneyMinor(r.price.text),
           if (r.kind == 'order' && r.delivery.text.trim().isNotEmpty)
             'delivery_on': r.delivery.text.trim(),
           if (r.kind != 'stock') ...{
@@ -3239,7 +3262,11 @@ class _PartsPanelState extends State<_PartsPanel> {
       ),
       FilledButton(
         key: const Key('project-board-parts-save'),
-        onPressed: () => Navigator.of(context).pop(_value),
+        onPressed: () => _value.any((p) => p['price_minor'] == badMoney)
+            ? ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('A price is not a number. Use digits, like 1300 or 1,300.50.')),
+              )
+            : Navigator.of(context).pop(_value),
         child: const Text('Save'),
       ),
     ],
@@ -3871,8 +3898,14 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     _load();
   }
 
+  // Only the newest search's answer lands, after typing pauses (audit 2026-11-27).
+  int _loadSeq = 0;
+  Timer? _searchPause;
+  String? _listError;
+
   @override
   void dispose() {
+    _searchPause?.cancel();
     _draft.dispose();
     super.dispose();
   }
@@ -3883,14 +3916,17 @@ class _ProjectInboxState extends State<_ProjectInbox> {
   ];
 
   Future<void> _load() async {
+    final seq = ++_loadSeq;
     final r = await widget.api.get(
       '/project-board/inbox',
       _q.isEmpty ? null : {'q': _q},
     );
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
     setState(() {
-      _threads = r.ok ? _maps(r.data) : const [];
-      _error = r.ok ? null : r.reason;
+      // A failure says so, never an empty inbox.
+      if (r.ok) _threads = _maps(r.data);
+      _threads ??= const [];
+      _listError = r.ok ? null : r.reason;
     });
   }
 
@@ -3933,7 +3969,10 @@ class _ProjectInboxState extends State<_ProjectInbox> {
     setState(() {
       _sending = false;
       if (r.ok && r.data is Map) {
-        _messages = [..._messages, Map<String, dynamic>.from(r.data as Map)];
+        // Only into its own thread, if another was opened meanwhile.
+        if (_open == job) {
+          _messages = [..._messages, Map<String, dynamic>.from(r.data as Map)];
+        }
         _draft.clear();
       } else {
         _error = r.reason;
@@ -3965,10 +4004,25 @@ class _ProjectInboxState extends State<_ProjectInbox> {
             width: double.infinity,
             onChanged: (v) {
               _q = v.trim();
-              _load();
+              _searchPause?.cancel();
+              _searchPause = Timer(const Duration(milliseconds: 300), _load);
             },
           ),
         ),
+        if (_listError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                Expanded(child: ErrorNote(_listError!)),
+                TextButton(
+                  key: const Key('project-inbox-retry'),
+                  onPressed: _load,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 8),
         // Compact chips that wrap inside the list's width, never clipped
         // (Jose, 2026-11-24: "this is also overflowing").
@@ -4466,4 +4520,15 @@ class _ProjectInboxState extends State<_ProjectInbox> {
       },
     );
   }
+}
+
+/// Typed money to cents: "1,300", "$1,300.50" and " 12 " read; empty is
+/// null; anything else is [badMoney], never a silent null that clears the
+/// saved amount (audit 2026-11-27).
+const badMoney = -1;
+int? moneyMinor(String text) {
+  final t = text.trim().replaceAll(RegExp(r'[\$,\s]'), '');
+  if (t.isEmpty) return null;
+  final d = double.tryParse(t);
+  return d == null || d < 0 ? badMoney : (d * 100).round();
 }

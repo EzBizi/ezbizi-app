@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/reports/ops_reports.dart';
 import 'package:ezbizi_client/widgets/date_range_picker.dart';
+import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -189,6 +190,7 @@ void main() {
   };
 
   final asked = <Uri>[];
+  final opened = <String>[];
 
   Future<void> pump(WidgetTester tester, OpsSpec spec) async {
     tester.view.physicalSize = const Size(1400, 1000);
@@ -236,10 +238,13 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: OpsReport(
-            api: api,
-            span: DateSpan(DateTime(2026, 11, 10), DateTime(2026, 11, 16)),
-            spec: spec,
+          body: OpenDestination(
+            open: opened.add,
+            child: OpsReport(
+              api: api,
+              span: DateSpan(DateTime(2026, 11, 10), DateTime(2026, 11, 16)),
+              spec: spec,
+            ),
           ),
         ),
       ),
@@ -327,5 +332,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('tech-check-photos')));
     await tester.pumpAndSettle();
     expect(asked.last.queryParameters['check'], 'photos');
+
+    // A job opens Jobs from inside the panel too (audit 2026-11-27: the
+    // panel closed and nothing opened).
+    opened.clear();
+    await tester.tap(find.byKey(const ValueKey('tech-check-job-job-9')));
+    await tester.pumpAndSettle();
+    expect(opened, ['jobs']);
   });
 }

@@ -508,7 +508,14 @@ class OnboardingForm
             // Strict: 'next tuesday' is a date to Carbon and is not a date on a
             // contract. The wire format is the one the client sends and the one
             // the document prints, so there is no ambiguity to resolve later.
-            return Carbon::createFromFormat('Y-m-d', $value)->toDateString();
+            $date = Carbon::createFromFormat('Y-m-d', $value)->toDateString();
+            // Carbon rolls 2026-02-30 into March; a contract date that is not a
+            // real day is refused instead (full-code audit, 2026-11-27).
+            if ($date !== $value) {
+                throw new \InvalidArgumentException('Not a real date.');
+            }
+
+            return $date;
         } catch (\Throwable) {
             $errors[$at] = sprintf(
                 "'%s' takes a date written as YYYY-MM-DD, and '%s' is not one. One written "

@@ -269,6 +269,120 @@ void main() {
     });
   });
 
+  // Audit 11-27: a Mobile bar save must not drop unsaved permission edits.
+  testWidgets('the mobile bar cannot save over unsaved permission edits', (
+    tester,
+  ) async {
+    _wide(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Technician', permissions: const ['jobs.view'])],
+      onPatch: patches.add,
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(_tabCheckbox('customers'));
+    await tester.pumpAndSettle();
+
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    final save = find.byKey(const ValueKey('role-mobile-bar-save'));
+    await tester.ensureVisible(save);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    expect(find.byKey(const ValueKey('role-mobile-bar-blocked')), findsOneWidget);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(patches, isEmpty);
+    expect(find.text('Unsaved changes.'), findsOneWidget,
+        reason: 'the permission edit is still pending');
+  });
+
+  testWidgets('unsaved mobile bar slots hold back the permission Save', (
+    tester,
+  ) async {
+    _wide(tester);
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Technician', permissions: const ['jobs.view'])],
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-mobile-bar-slot-0')),
+        matching: find.byType(SearchPickerField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs › Estimates').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'))
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('Save the Mobile bar below first.'), findsOneWidget);
+  });
+
+  testWidgets('Rename sends the name alone and keeps pending edits', (
+    tester,
+  ) async {
+    _wide(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Technician', permissions: const ['jobs.view'])],
+      onPatch: patches.add,
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(_tabCheckbox('customers'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('role-rename')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Tech');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').last);
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {'name': 'Tech'},
+    ]);
+    expect(find.text('Unsaved changes.'), findsOneWidget);
+  });
+
+  testWidgets('mobile bar options that failed to load can be retried', (
+    tester,
+  ) async {
+    _wide(tester);
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Technician', permissions: const ['jobs.view'])],
+      optionsFailures: 1,
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    final retry = find.byKey(const ValueKey('role-mobile-bar-retry'));
+    expect(retry, findsOneWidget);
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(retry, findsNothing);
+    expect(find.byKey(const ValueKey('role-mobile-bar-slot-0')), findsOneWidget);
+  });
+
   // Jose, 2026-11-24: "this is hard to view, you can't tell stuff apart".
   testWidgets('the mobile bar preview is a readable 360 px phone', (
     tester,
@@ -1828,8 +1942,8 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Save').last);
       await tester.pumpAndSettle();
 
-      expect(sent!['name'], 'Brightside dispatch');
-      expect(sent!['permissions'], ['customers.view']);
+      // Audit 11-27: the name alone, never the pending permission edits.
+      expect(sent, {'name': 'Brightside dispatch'});
     });
 
     testWidgets('Compare with adds the other role, read-only', (tester) async {
@@ -2019,7 +2133,9 @@ Future<void> _pumpRoles(
   required List<Map<String, dynamic>> roles,
   List<Map<String, dynamic>>? catalogue,
   void Function(Map<String, dynamic> body)? onPatch,
+  int optionsFailures = 0,
 }) async {
+  var optionsFailed = 0;
   final api = ApiClient(client: MockClient((request) async {
     if (request.url.path.endsWith('/me')) return _json({'data': _me});
 
@@ -2043,6 +2159,10 @@ Future<void> _pumpRoles(
 
     // Design 208: what this role may put on the phone's bottom bar.
     if (request.url.path.endsWith('/mobile-bar/options')) {
+      if (optionsFailed < optionsFailures) {
+        optionsFailed++;
+        return http.Response('{"message":"Down"}', 500);
+      }
       return _json({
         'data': {
           'modules': [

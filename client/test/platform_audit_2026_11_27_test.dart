@@ -183,6 +183,28 @@ void main() {
 
   // ── session ────────────────────────────────────────────────────
 
+  test('the sign-out a person asks for revokes once, not twice', () async {
+    await launchWith({});
+    final revoked = <String?>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/auth/logout')) {
+          revoked.add(request.headers['Authorization']);
+          return json({'message': 'Signed out.'}, 200);
+        }
+        return json({'data': _me}, 200);
+      }),
+    );
+    final session = Session(api);
+    expect(await session.adopt('tok-1'), isTrue);
+
+    await session.logOut();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(revoked, ['Bearer tok-1']);
+    expect(session.signedIn, isFalse);
+  });
+
   test('signing out revokes the token on the server', () async {
     await launchWith({});
     final revoked = <String?>[];

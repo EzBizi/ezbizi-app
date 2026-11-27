@@ -161,12 +161,4 @@ class ViewAsUser extends User
     {
         return (new User)->newInstance($attributes, $exists);
     }
-
-    /** {kind, id, label} for audit metadata and /me. */
-    public function viewingAs(): array
-    {
-        return $this->viewAsRoleClone
-            ? ['kind' => 'role', 'id' => $this->role?->getKey(), 'label' => ViewAs::label($this->viewAsSession)]
-            : ['kind' => 'person', 'id' => $this->getKey(), 'label' => ViewAs::label($this->viewAsSession)];
-    }
 }

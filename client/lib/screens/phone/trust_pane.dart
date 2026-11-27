@@ -58,6 +58,7 @@ class _TrustPaneState extends State<TrustPane> {
   final _carrier = TextEditingController();
   final _observed = TextEditingController();
   String? _observedNumber;
+  List<String> _numbers = const [];
 
   @override
   void initState() {
@@ -95,6 +96,11 @@ class _TrustPaneState extends State<TrustPane> {
       _attestation = results[1].ok ? _Attestation.from(results[1].body) : null;
       _log = results[2].ok ? _Observation.listFrom(results[2].body) : const [];
       _observedNumber ??= _firstNumber(results[3]);
+      _numbers = [
+        if (results[3].ok)
+          for (final row in (results[3].body['data'] as List? ?? const []))
+            if (row is Map && row['e164'] is String) row['e164'] as String,
+      ];
       _error = results[0].ok ? null : results[0].reason;
     });
 
@@ -211,6 +217,14 @@ class _TrustPaneState extends State<TrustPane> {
           ),
         ] else ...[
           const SizedBox(height: 20),
+          PhoneAccountPicker(
+            accounts: _connections,
+            selected: _scope?.id,
+            onChanged: (id) {
+              setState(() => _scope = _connections.firstWhere((c) => c.id == id));
+              _loadStatus();
+            },
+          ),
           _profileStep(theme),
 
           const SizedBox(height: 12),
@@ -479,6 +493,17 @@ class _TrustPaneState extends State<TrustPane> {
             spacing: 12,
             runSpacing: 12,
             children: [
+              // Which line was observed (audit 11-27: always the first).
+              if (_numbers.length > 1)
+                DropdownButton<String>(
+                  key: const ValueKey('trust-observed-number'),
+                  value: _numbers.contains(_observedNumber) ? _observedNumber : null,
+                  items: [
+                    for (final n in _numbers)
+                      DropdownMenuItem(value: n, child: Text(n)),
+                  ],
+                  onChanged: (n) => setState(() => _observedNumber = n),
+                ),
               SizedBox(
                 width: 180,
                 child: TextField(

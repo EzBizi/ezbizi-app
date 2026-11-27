@@ -19,16 +19,29 @@ use Carbon\CarbonImmutable;
  */
 final class SlotOffer
 {
+    /**
+     * The branches of the lead's own company, so a ZIP resolves to that company's
+     * area and not a sister company's (audit 11-27). Null when the lead has none.
+     *
+     * @return ?list<string>
+     */
+    public static function reach(\App\Models\Lead $lead): ?array
+    {
+        $company = $lead->company_id ?? ($lead->franchise_id ? \App\Models\Franchise::query()->whereKey($lead->franchise_id)->value('company_id') : null);
+
+        return $company === null ? null : \App\Models\Franchise::query()->where('company_id', $company)->pluck('id')->all();
+    }
+
     public function __construct(private readonly NearbySuggestion $nearby) {}
 
     /**
      * @param  ?array{start: string, end: string}  $window  Y-m-d, inclusive
      * @return ?array{area_id: string, date: string, start_time: string, end_time: string, label: string, beside_booked_work: bool, in_requested_window: bool}
      */
-    public function for(string $zip, CarbonImmutable $from, ?array $window = null): ?array
+    public function for(string $zip, CarbonImmutable $from, ?array $window = null, ?array $franchiseIds = null): ?array
     {
         $zip = substr(str_pad(preg_replace('/\D+/', '', $zip), 5, '0', STR_PAD_LEFT), 0, 5);
-        $area = ServiceArea::forZip($zip);
+        $area = ServiceArea::forZip($zip, $franchiseIds);
         if ($area === null || ! Openings::hasCapacity($area)) {
             return null;
         }

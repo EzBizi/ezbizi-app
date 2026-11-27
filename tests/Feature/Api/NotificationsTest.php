@@ -437,6 +437,58 @@ class NotificationsTest extends TestCase
         $this->assertSame($this->org['admin']->id, $rows->first()->user_id);
     }
 
+    public function test_a_company_level_record_tells_only_people_who_reach_that_company(): void
+    {
+        // Audit 2026-11-27: a record with a company and no branch told everyone.
+        [$other, $outsider] = $this->inTenant(function () {
+            $other = \App\Models\Company::create(['organization_id' => $this->org['organization']->id, 'name' => 'Other']);
+            $outsider = User::query()->forceCreate([
+                'organization_id' => $this->org['organization']->id, 'name' => 'Outsider',
+                'email' => 'outsider@alpha.test', 'password' => bcrypt('a-real-password'),
+                // A plain role: an Administrator reaches every company.
+                'role_id' => \App\Models\Role::query()->forceCreate([
+                    'id' => (string) \Illuminate\Support\Str::uuid7(),
+                    'organization_id' => $this->org['organization']->id, 'name' => 'Tech',
+                ])->id,
+                'is_active' => true,
+            ]);
+            Assignment::query()->forceCreate([
+                'organization_id' => $this->org['organization']->id, 'user_id' => $outsider->id,
+                'assigned_company_id' => $other->id,
+            ]);
+
+            return [$other, $outsider];
+        });
+
+        $subject = new class extends Model { protected $guarded = []; };
+        $subject->forceFill(['company_id' => $this->org['company']->id]);
+
+        $told = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Company-level change', subject: $subject, source: 'system',
+        ));
+
+        $this->assertGreaterThan(0, $told, 'the admin reaches the company');
+        $this->assertSame(0, $this->inTenant(fn () => Notification::query()->where('user_id', $outsider->id)->count()), 'the outsider does not');
+    }
+
+    public function test_signing_out_removes_this_handsets_push_token_only(): void
+    {
+        $this->inTenant(function () {
+            foreach (['phone-a', 'phone-b'] as $t) {
+                \App\Models\DeviceToken::query()->forceCreate([
+                    'id' => (string) \Illuminate\Support\Str::uuid7(), 'organization_id' => $this->org['organization']->id,
+                    'user_id' => $this->org['admin']->id, 'token' => $t, 'platform' => 'android',
+                    'last_registered_at' => now(),
+                ]);
+            }
+        });
+
+        $this->as($this->org['admin'])->deleteJson('/api/v1/notifications/devices', ['token' => 'phone-a'])
+            ->assertOk()->assertJsonPath('data.deleted', 1);
+
+        $this->assertSame(['phone-b'], $this->inTenant(fn () => \App\Models\DeviceToken::query()->pluck('token')->all()));
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

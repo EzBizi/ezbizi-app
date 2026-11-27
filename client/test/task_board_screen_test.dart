@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:ezbizi_client/widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -594,13 +595,25 @@ void main() {
     );
   });
 
-  testWidgets('on a phone each task is a card with its status in words', (
-    tester,
-  ) async {
+  testWidgets('row 70: a phone has one header line and a floating pill; '
+      'its search opens the search line', (tester) async {
+    await pumpBoard(tester, size: const Size(390, 844));
+    expect(find.byKey(const Key('tasks-phone-pill')), findsOneWidget);
+    expect(find.byKey(const Key('tasks-quick-boards')), findsNothing);
+    expect(find.byType(ListSearch), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-pill-search')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ListSearch), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('row 70: a phone shows Monday\'s dense table, name pinned, '
+      'status in words, no drag handle or pick box', (tester) async {
     await pumpBoard(tester, size: const Size(390, 844));
 
-    expect(find.text('OWNER'), findsNothing);
     expect(find.byKey(const ValueKey('task-t2')), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('task-t2'))).height, lessThan(48));
+    expect(find.byKey(const ValueKey('task-pick-t2')), findsNothing);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('task-t2')),

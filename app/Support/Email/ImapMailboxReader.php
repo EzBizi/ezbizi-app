@@ -201,7 +201,7 @@ final class ImapMailboxReader implements MailboxReader
 
             $box = $imap->examine($folder);
 
-            $term = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], trim($query)).'"';
+            $term = self::searchTerm($query);
 
             try {
                 // CHARSET UTF-8 so that a search for a word with an accent in it
@@ -797,6 +797,16 @@ final class ImapMailboxReader implements MailboxReader
                 $imap->logout();
             }
         });
+    }
+
+    /**
+     * The searcher's words as one IMAP quoted string. A line break would end
+     * the command and start another one the searcher typed (audit 11-27); it
+     * means nothing in a search, so it becomes a space.
+     */
+    public static function searchTerm(string $query): string
+    {
+        return '"'.str_replace(['\\', '"', "\r", "\n", "\0"], ['\\\\', '\\"', ' ', ' ', ' '], trim($query)).'"';
     }
 
     /**

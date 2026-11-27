@@ -341,6 +341,8 @@ class _BookJobPanelState extends State<BookJobPanel> {
 
   /// GET /jobs/book/options for the branch, ZIP and area. With exactly one
   /// area matching the ZIP and none picked by hand, that one is chosen.
+  bool _optionsFailed = false;
+
   Future<void> _loadOptions() async {
     final franchise = _franchiseId;
     if (franchise == null) return;
@@ -354,8 +356,16 @@ class _BookJobPanelState extends State<BookJobPanel> {
     });
     if (!mounted || key != _optionsKey) return;
     if (!response.ok) {
-      setState(() => _error = response.message);
+      setState(() {
+        _error = response.message;
+        _optionsFailed = true;
+      });
       return;
+    }
+    // A later good read clears its own earlier failure (audit 2026-11-27).
+    if (_optionsFailed) {
+      _optionsFailed = false;
+      _error = null;
     }
     final data =
         (response.data is Map

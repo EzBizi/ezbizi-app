@@ -110,6 +110,16 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
     );
   }
 
+  /// Days from now to 14 days past the link's current expiry (at least 14).
+  static int _extendedDays(Map<String, dynamic> link) {
+    final at = DateTime.tryParse('${link['expires_at']}');
+    final base = (at == null || at.isBefore(DateTime.now()))
+        ? DateTime.now()
+        : at;
+    final days = base.add(const Duration(days: 14)).difference(DateTime.now());
+    return (days.inHours / 24).ceil().clamp(14, 365);
+  }
+
   String _placeName(Map<String, dynamic> link) {
     final value = '${link['scope_type']}:${link['scope_id']}';
     for (final scope in widget.options.scopes) {
@@ -385,14 +395,17 @@ class _InviteLinksPanelState extends State<InviteLinksPanel> {
                     icon: const Icon(Icons.download_outlined, size: 16),
                     label: const Text('Download PNG'),
                   ),
-                if (link['revoked_at'] == null)
+                // Fourteen days past the CURRENT expiry, never earlier than it;
+                // a link with no expiry has nothing to extend (full-code
+                // audit, 2026-11-27).
+                if (link['revoked_at'] == null && link['expires_at'] != null)
                   OutlinedButton(
                     onPressed: _busy
                         ? null
                         : () => _act(
                             () => widget.api.patch(
                               '/hr/invite-links/${link['id']}',
-                              {'expires_in_days': 14},
+                              {'expires_in_days': _extendedDays(link)},
                             ),
                             'Open for another 14 days.',
                           ),

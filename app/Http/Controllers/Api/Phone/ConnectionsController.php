@@ -78,6 +78,14 @@ class ConnectionsController extends Controller
      * deliberately narrow: an account this filter hides can still be adopted by
      * pasting its SID, where the token remains the gate.
      */
+    /** @return list<string> Twilio accounts another organization's connection holds (audit 11-27). */
+    private function heldByAnotherOrg(): array
+    {
+        return PhoneConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', '!=', $this->tenant->idOrFail())
+            ->pluck('account_sid')->filter()->all();
+    }
+
     public function subaccounts(Request $request): JsonResponse
     {
         $this->authorize('create', [PhoneConnection::class, 'organization', null]);
@@ -100,10 +108,12 @@ class ConnectionsController extends Controller
             ->all();
 
         $mine = $this->namesInReach($request->user());
+        $foreign = $this->heldByAnotherOrg();
 
         $rows = [];
         foreach ($available as $sub) {
-            if (! in_array($this->normalise($sub['friendly_name']), $mine, true)) {
+            if (! in_array($this->normalise($sub['friendly_name']), $mine, true)
+                || in_array($sub['account_sid'], $foreign, true)) {
                 continue;
             }
 
@@ -232,6 +242,12 @@ class ConnectionsController extends Controller
                     throw ValidationException::withMessages([
                         'auth_token' => 'Paste the auth token for that phone account. '
                             .'Twilio only shows it on the account itself, and EzBizi cannot read it back.',
+                    ]);
+                }
+
+                if (in_array((string) $input['account_sid'], $this->heldByAnotherOrg(), true)) {
+                    throw ValidationException::withMessages([
+                        'account_sid' => 'That phone account belongs to another EzBizi organization.',
                     ]);
                 }
 
@@ -483,10 +499,11 @@ class ConnectionsController extends Controller
             // whole desk out of the ring group for an hour after one call,
             // and would find out when the phone stopped ringing.
             'wrap_up_seconds' => ['sometimes', 'integer', 'min:0', 'max:300'],
-            'default_flow_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_hours_schedule_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_ring_group_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_voicemail_box_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            // Must exist on THIS account (audit 11-27).
+            'default_flow_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneFlow)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_hours_schedule_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneHoursSchedule)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_ring_group_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneRingGroup)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_voicemail_box_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneVoicemailBox)->getTable(), 'id')->where('connection_id', $connection->id)],
             'default_fallback_number' => ['sometimes', 'nullable', 'string', 'max:32'],
             'default_recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
             'default_record' => ['sometimes', 'boolean'],

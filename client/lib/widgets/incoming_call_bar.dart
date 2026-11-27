@@ -188,21 +188,29 @@ class _MoveCallButtonState extends State<_MoveCallButton> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (_error != null) {
-      return Text(
-        _error!,
-        key: const Key('on-call-move-error'),
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.error,
-        ),
-      );
-    }
-
-    return OutlinedButton.icon(
+    final button = OutlinedButton.icon(
       key: const Key('on-call-move'),
       icon: const Icon(Icons.phonelink_ring_outlined, size: 18),
       label: Text(_moving ? 'Moving…' : 'Move to my phone'),
       onPressed: _moving ? null : _move,
+    );
+    if (_error == null) return button;
+
+    // The reason beside the button, which stays to try again (audit 11-27:
+    // one failure removed it for the rest of the call).
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      children: [
+        button,
+        Text(
+          _error!,
+          key: const Key('on-call-move-error'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
     );
   }
 }

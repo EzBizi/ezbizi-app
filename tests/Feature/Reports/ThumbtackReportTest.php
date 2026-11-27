@@ -68,6 +68,18 @@ class ThumbtackReportTest extends TestCase
             ->assertJsonPath('data.rows.0.branch', null)
             ->assertJsonPath('data.rows.0.leads', 1);
 
+        // The days are the organization's, not UTC's (audit 2026-11-27): 10 pm
+        // in New York on the 7th is in, the evening of 30 September is not.
+        config(['app.timezone' => 'America/New_York']);
+        foreach (['2026-10-08 02:00:00' => 100, '2026-10-01 02:00:00' => 7] as $at => $cost) {
+            DB::table('leads')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+                'franchise_id' => $t['franchise']->id, 'source' => 'thumbtack', 'is_test' => false, 'remote_id' => Str::random(8),
+                'category' => 'Gutters', 'service_state' => 'CT', 'charge_status' => 'CHARGED', 'lead_cost_minor' => $cost,
+                'received_at' => $at, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->signedInAs($user)->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07&category=Gutters')
+            ->assertOk()->assertJsonPath('data.rows.0.leads', 1)->assertJsonPath('data.rows.0.spend_minor', 100);
+
         $this->signedInAs($this->userWithRole($t, 'Tech', []))
             ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07')
             ->assertForbidden();

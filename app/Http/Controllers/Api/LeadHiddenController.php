@@ -28,13 +28,15 @@ class LeadHiddenController extends Controller
         $match = fn ($query, string $name, string $phone) => $q === '' ? $query : $query->where(fn ($w) => $w->where($name, 'like', '%'.addcslashes($q, '%_').'%')
             ->when($digits !== '', fn ($w) => $w->orWhere($phone, 'like', '%'.$digits.'%')));
 
-        $leads = $match(Lead::query()->whereNotNull('hidden_at'), 'contact_name', 'phone_digits')
+        // The reader's reach and view, as every lead list (audit 11-27).
+        $mine = fn () => LeadsController::scopeToReader(Lead::query(), $request->user())->whereNotNull('leads.hidden_at');
+        $leads = $match($mine(), 'contact_name', 'phone_digits')
             ->orderByDesc('hidden_at')->limit(200)->get();
         $numbers = $match(LeadHiddenNumber::query(), 'digits', 'digits')->orderByDesc('created_at')->limit(200)->get();
         $always = LeadHiddenNumber::query()->pluck('digits');
         $names = User::query()->whereIn('id', $leads->pluck('hidden_by_user_id')->merge($numbers->pluck('hidden_by_user_id'))->filter()->unique())->pluck('name', 'id');
         $by = fn (?string $id) => $id !== null && isset($names[$id]) ? ['name' => $names[$id]] : null;
-        $counts = Lead::query()->whereNotNull('hidden_at')->whereNotNull('phone_digits')->get(['phone_digits'])
+        $counts = $mine()->whereNotNull('phone_digits')->get(['phone_digits'])
             ->countBy(fn (Lead $l) => LeadHiddenNumber::digitsOf($l->phone_digits));
 
         return response()->json(['data' => [

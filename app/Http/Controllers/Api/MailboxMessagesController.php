@@ -9,6 +9,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Email\CannotChangeMail;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\MailboxProvider;
 use App\Support\Email\DealtState;
 use App\Support\Email\EmailPictureLoader;
 use App\Support\Email\HeaderCache;
@@ -98,7 +99,12 @@ class MailboxMessagesController extends Controller
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
         $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
-        if ($request->boolean('unread')) {
+        // "is:unread" is Gmail's own syntax; to Outlook and IMAP it was two
+        // literal words to find (audit 11-27), so there the filter is not
+        // applied rather than returning nothing.
+        // ponytail: unread-only on Outlook/IMAP needs a per-provider flag.
+        if ($request->boolean('unread')
+            && in_array($mailbox->providerEnum(), [MailboxProvider::GmailOAuth, MailboxProvider::GmailWorkspace], true)) {
             $search = trim('is:unread '.$search);
         }
 

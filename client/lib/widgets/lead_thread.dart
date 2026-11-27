@@ -202,6 +202,8 @@ class _LeadThreadState extends State<LeadThread> {
 
   bool _editingNote = false;
   bool _savingNote = false;
+  // Audit 11-27: a double tap on Approve booked two jobs and sent two texts.
+  bool _bookingBusy = false;
   // Bold, italic, underline (Eric's suggestion 01a21365, Jose 11-25).
   var _note = FormattedNotesController();
 
@@ -467,6 +469,8 @@ class _LeadThreadState extends State<LeadThread> {
       return;
     }
 
+    // A read started before this send would land without it (audit 11-27).
+    _loadGen++;
     setState(() {
       _sending = false;
       _conversations = [
@@ -489,7 +493,11 @@ class _LeadThreadState extends State<LeadThread> {
   /// experience than the staleness it is fixing. A quiet pass changes the
   /// messages and nothing else - the compose box, the note editor and the
   /// recording player are all untouched, so a half-typed reply survives it.
+  /// Bumped per read and per send; an older read's answer is dropped.
+  int _loadGen = 0;
+
   Future<void> _load({bool quiet = false}) async {
+    final gen = ++_loadGen;
     if (!quiet) {
       setState(() {
         _loading = true;
@@ -499,6 +507,10 @@ class _LeadThreadState extends State<LeadThread> {
 
     final response = await widget.api.get('/leads/${widget.lead['id']}');
     if (!mounted) return;
+    if (gen != _loadGen) {
+      if (!quiet) setState(() => _loading = false);
+      return;
+    }
 
     // A quiet pass that fails says nothing. It will try again in ten seconds,
     // and replacing a readable conversation with an error because one poll
@@ -1490,6 +1502,7 @@ class _LeadThreadState extends State<LeadThread> {
       api: widget.api,
       lead: _lead,
       player: widget.player,
+      can: widget.session?.me?.can,
     );
     if (saved != null && mounted) setState(() => _lead = {..._lead, ...saved});
   }
@@ -2786,18 +2799,18 @@ class _LeadThreadState extends State<LeadThread> {
           else if (status == 'pending') ...[
             FilledButton(
               key: const ValueKey('booking-approve'),
-              onPressed: () => _decideBooking('approve'),
+              onPressed: _bookingBusy ? null : () => _decideBooking('approve'),
               child: const Text('Approve'),
             ),
             OutlinedButton(
               key: const ValueKey('booking-decline'),
-              onPressed: () => _decideBooking('decline'),
+              onPressed: _bookingBusy ? null : () => _decideBooking('decline'),
               child: const Text('Decline'),
             ),
             // Jose, 2026-11-16: another window, giving the asked-for one back.
             OutlinedButton(
               key: const ValueKey('booking-move'),
-              onPressed: () => _moveBooking(hm),
+              onPressed: _bookingBusy ? null : () => _moveBooking(hm),
               child: const Text('Another date…'),
             ),
           ] else
@@ -2971,9 +2984,11 @@ class _LeadThreadState extends State<LeadThread> {
         ]),
       ),
     );
-    if (pick == null || !mounted) return;
+    if (pick == null || !mounted || _bookingBusy) return;
+    setState(() => _bookingBusy = true);
     final response = await widget.api.post('/leads/$id/booking/move', {'date': pick.date, 'start_time': pick.start});
     if (!mounted) return;
+    setState(() => _bookingBusy = false);
     if (response.ok && response.data is Map) {
       setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
     } else {
@@ -2982,11 +2997,14 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   Future<void> _decideBooking(String decision) async {
+    if (_bookingBusy) return;
+    setState(() => _bookingBusy = true);
     // Two literal paths, so ClientCallsRealRoutesTest can match each route.
     final response = decision == 'approve'
         ? await widget.api.post('/leads/${widget.lead['id']}/booking/approve', const {})
         : await widget.api.post('/leads/${widget.lead['id']}/booking/decline', const {});
     if (!mounted) return;
+    setState(() => _bookingBusy = false);
     if (response.ok && response.data is Map) {
       setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
     } else {
@@ -3214,9 +3232,15 @@ class _LeadThreadState extends State<LeadThread> {
               label: const Text('Followed up'),
               onPressed: () async {
                 setState(() => _followedUp = true);
-                await widget.api.post(
+                final response = await widget.api.post(
                   '/leads/${widget.lead['id']}/follow-up-handled',
                   const {},
+                );
+                // A refusal puts it back and says why (audit 11-27).
+                if (!mounted || response.ok) return;
+                setState(() => _followedUp = false);
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  SnackBar(content: Text(response.message)),
                 );
               },
             ),

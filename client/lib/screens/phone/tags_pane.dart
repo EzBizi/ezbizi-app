@@ -8,6 +8,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/share_bar.dart';
 
+import 'phone_refs.dart';
 import 'phone_search.dart';
 
 /// Phone › Settings › Tags — what calls get counted by.
@@ -124,17 +125,35 @@ class _TagsPaneState extends State<TagsPane> {
     final response = await widget.api.get('/phone/connections');
     if (!mounted || !response.ok) return;
 
-    for (final row in (response.data as List? ?? const [])) {
-      if (row is! Map<String, dynamic>) continue;
+    _accountRows = [
+      for (final row in (response.data as List? ?? const []))
+        if (row is Map<String, dynamic>) row,
+    ];
+    _accounts = PhoneConnectionRef.listFrom(response.body);
+    final keep = _accountRows.where((r) => r['id'] == _connectionId);
+    _pickAccount(keep.isNotEmpty ? keep.first : _accountRows.firstOrNull);
+  }
 
-      setState(() {
-        _connectionId = row['id'] as String?;
-        _requireTag = row['require_call_tag'] == true;
-        _wrapUpSeconds = (row['wrap_up_seconds'] as num?)?.toInt() ?? 0;
-      });
+  /// The account whose rule this pane edits (audit 11-27: it used to be the
+  /// first one, whichever company that was).
+  List<Map<String, dynamic>> _accountRows = const [];
+  List<PhoneConnectionRef> _accounts = const [];
 
-      return;
-    }
+  /// Keep the saved account's row current, so switching back shows it.
+  void _remember(Object? data) {
+    if (data is! Map<String, dynamic>) return;
+    _accountRows = [
+      for (final r in _accountRows) r['id'] == data['id'] ? {...r, ...data} : r,
+    ];
+  }
+
+  void _pickAccount(Map<String, dynamic>? row) {
+    if (row == null) return;
+    setState(() {
+      _connectionId = row['id'] as String?;
+      _requireTag = row['require_call_tag'] == true;
+      _wrapUpSeconds = (row['wrap_up_seconds'] as num?)?.toInt() ?? 0;
+    });
   }
 
   Future<void> _add() async {
@@ -217,6 +236,7 @@ class _TagsPaneState extends State<TagsPane> {
       _savingRule = false;
       if (response.ok) {
         final data = response.data;
+        _remember(data);
         _requireTag = data is Map && data['require_call_tag'] == true;
       } else {
         _formError = response.message;
@@ -245,6 +265,7 @@ class _TagsPaneState extends State<TagsPane> {
       _savingRule = false;
       if (response.ok) {
         final data = response.data;
+        _remember(data);
         _wrapUpSeconds = data is Map
             ? ((data['wrap_up_seconds'] as num?)?.toInt() ?? 0)
             : 0;
@@ -305,6 +326,12 @@ class _TagsPaneState extends State<TagsPane> {
         ),
 
         const SizedBox(height: 12),
+        PhoneAccountPicker(
+          accounts: _accounts,
+          selected: _connectionId,
+          onChanged: (id) =>
+              _pickAccount(_accountRows.firstWhere((r) => r['id'] == id)),
+        ),
 
         // The rule, beside the thing it is a rule about.
         //
@@ -702,7 +729,7 @@ class _TagsPaneState extends State<TagsPane> {
     if (!mounted) return;
 
     if (!response.ok) {
-      setState(() => _error = response.reason);
+      setState(() => _formError = response.reason); // not the whole pane (audit 11-27)
       return;
     }
 

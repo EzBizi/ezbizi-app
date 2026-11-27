@@ -72,13 +72,15 @@ class GoogleConnectionEmailTest extends TestCase
         $make('2', 'with-email');
         $make('3', 'without');
         Http::fake(fn (Request $r) => str_contains($r->url(), 'tokeninfo')
-            ? Http::response(str_contains($r->url(), 'at-with-email') ? ['email' => 'Chaim@x.com'] : ['scope' => 'business.manage'])
+            ? Http::response(str_contains((string) $r['access_token'], 'at-with-email') ? ['email' => 'Chaim@x.com'] : ['scope' => 'business.manage'])
             : Http::response(['access_token' => 'at-'.$r['refresh_token']]));
 
         $this->artisan('ezbizi:google-connection-emails')->assertSuccessful();
 
         $this->assertSame(['chaim@x.com', 'chaim@x.com', null], SocialConnection::withoutGlobalScopes()->orderBy('remote_id')->pluck('account_email')->all());
         $this->assertCount(2, Http::recorded(fn (Request $r) => str_contains($r->url(), 'tokeninfo')));
+        // Audit 11-27: the token goes in the body, never the URL a failure logs.
+        $this->assertCount(0, Http::recorded(fn (Request $r) => str_contains($r->url(), 'access_token')));
     }
 
     public function test_disconnect_all_takes_one_logins_rows_and_unknown_is_its_own_set(): void

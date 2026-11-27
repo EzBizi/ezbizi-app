@@ -228,4 +228,32 @@ class VehicleListApiTest extends TestCase
             ['id' => 'general', 'name' => 'General', 'count' => 1],
         ], $places);
     }
+    /** The register's query count does not grow with its rows (audit 2026-11-27). */
+    public function test_the_list_does_not_query_per_vehicle(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $count = function (int $rows) use ($tenant): int {
+            $this->inTenant($tenant['org'], fn () => Vehicle::factory()->count($rows)->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => 'active',
+            ]));
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            $this->signedInAs($tenant['admin'])->getJson('/api/v1/vehicles?per_page=200')->assertOk();
+            $n = count(\Illuminate\Support\Facades\DB::getQueryLog());
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            return $n;
+        };
+
+        $count(1); // warm-up: first-request lookups are not the subject
+        $few = $count(2);
+        $many = $count(10);
+
+        // Per-vehicle loading was ~10 queries a row, so 10 more rows were
+        // ~100 more queries. A few constant lookups may vary by environment
+        // (the box ran 18 vs 21), so the bound is below one query per row.
+        $this->assertLessThan(10, $many - $few, "3 vehicles took {$few} queries, 13 took {$many}");
+    }
 }

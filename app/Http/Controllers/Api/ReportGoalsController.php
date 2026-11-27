@@ -69,7 +69,7 @@ class ReportGoalsController extends Controller
         DB::transaction(function () use ($goals) {
             foreach ($goals as $g) {
                 $where = ['organization_id' => app(TenantContext::class)->idOrFail(), 'franchise_id' => $g['franchise_id'] ?? null, 'key' => $g['key']];
-                $g['value'] === null
+                ($g['value'] ?? null) === null
                     ? ReportGoal::query()->where($where)->delete()
                     : ReportGoal::query()->updateOrCreate($where, ['value' => $g['value']]);
             }

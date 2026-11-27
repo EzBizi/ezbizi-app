@@ -5,6 +5,7 @@ import 'api_client.dart';
 import 'issue_reporter.dart';
 import 'password_policy.dart';
 import 'permissions.dart';
+import 'push_registration.dart';
 import 'timestamps.dart';
 import 'token_store.dart';
 import 'ui_strings.dart';
@@ -365,15 +366,29 @@ class Session extends ChangeNotifier {
     }
   }
 
-  /// Sign out, and ask the server to revoke the token.
+  /// The sign-out a person asks for: forget this device's push registration
+  /// and revoke the token on the server, then sign out here (audit 11-27).
+  /// EzChat, the shell and the lock screen all come through here. A server
+  /// that cannot be reached does not keep anybody signed in on this device.
+  Future<void> logOut() async {
+    await PushRegistration.unregister(_api);
+    try {
+      await _api.post('/auth/logout', {});
+    } catch (_) {}
+    signOut(revoke: false);
+  }
+
+  /// End the session on this device.
   ///
-  /// The revoke used to be each caller's job, and EzChat and the update
-  /// screen never did it: the token stayed valid for its 30 days on a device
-  /// somebody had signed out of. Fire-and-forget, and sent before the token
-  /// is dropped (the request's headers are taken as it is made): a server that
-  /// cannot be reached must not keep anybody signed in on this side.
-  void signOut() {
-    if (_api.hasToken) unawaited(_api.post('/auth/logout', const {}));
+  /// Revokes the token too unless [revoke] is false ([logOut] already did).
+  /// The revoke used to be each caller's job, and the update screen and
+  /// Delete account never did it: the token stayed valid for its 30 days on a
+  /// device somebody had left. Fire-and-forget, and sent before the token is
+  /// dropped (the request's headers are taken as it is made).
+  void signOut({bool revoke = true}) {
+    if (revoke && _api.hasToken) {
+      unawaited(_api.post('/auth/logout', const {}));
+    }
     _identityGeneration++;
     _waitingForServer = false;
     _scopeGeneration++;

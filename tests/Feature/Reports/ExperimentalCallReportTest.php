@@ -349,6 +349,47 @@ class ExperimentalCallReportTest extends TestCase
     }
 
     /**
+     * Jose, 2026-11-27: training calls and jobs must not move a dispatcher's
+     * numbers. A job tagged Training (any case) and every call to or from its
+     * number are left out; its untagged twin counts; a number that is also on
+     * a real customer's job keeps its calls.
+     */
+    public function test_a_training_job_and_its_calls_move_nobodys_numbers(): void
+    {
+        $call = fn (string $id, string $phone) => array_merge(
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+            ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
+        );
+        $this->fakeCallLog([
+            $call('c-twin', '+12125550101'),
+            $call('c-training', '+12125550102'),
+            $call('c-shared', '+12125550103'),
+            // A call we placed to the training number is training too.
+            ['id' => 'c-out', 'direction' => 'Outbound', 'result' => 'Call connected', 'startTime' => '2026-09-14T15:00:00Z',
+                'from' => ['phoneNumber' => '+12125550199', 'name' => 'Trey Brannan'], 'to' => ['phoneNumber' => '+12125550102'], 'legs' => []],
+        ]);
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $job = fn (string $phone, array $tags) => ['created_at' => '2026-09-14 10:00:00', 'phone' => $phone, 'created_by' => 'Trey Brannan', 'tags' => $tags];
+        $run = fn (array $jobs) => $this->inTenant($this->provisionTenant('Training '.substr(md5(json_encode($jobs)), 0, 8))['org'],
+            fn () => app(CallReconciliation::class)->forRange($calls, $jobs, '2026-09-14', '2026-09-14'));
+        $trey = fn (array $day) => array_intersect_key(array_column($day['people'], null, 'person')['Trey Brannan'],
+            array_flip(['rang', 'answered', 'outbound', 'new_client', 'booked_new', 'jobs']));
+
+        $twins = $run([$job('2125550101', ['Paid']), $job('(212) 555-0102', [])]);
+        $training = $run([$job('2125550101', ['Paid']), $job('(212) 555-0102', ['DEPOSIT RECEIVED', 'training'])]);
+
+        $this->assertSame(['rang' => 3, 'answered' => 3, 'outbound' => 1, 'new_client' => 3, 'booked_new' => 2, 'jobs' => 2], $trey($twins));
+        $this->assertSame(['rang' => 2, 'answered' => 2, 'outbound' => 0, 'new_client' => 2, 'booked_new' => 1, 'jobs' => 1], $trey($training));
+        $this->assertEqualsCanonicalizing(['c-training', 'c-out'], $training['training_calls']);
+        $this->assertSame([], $twins['training_calls']);
+        $this->assertNotContains('c-training', array_column($training['calls'], 'id'));
+
+        // The same number on a real customer's job: a real call, kept.
+        $shared = $run([$job('2125550103', ['Paid']), $job('2125550103', ['Training'])]);
+        $this->assertSame([], $shared['training_calls']);
+    }
+
+    /**
      * A call from the client's other number is booked too (Trey, 2026-11-03:
      * 10 of 43 "AI heard a booking, no job" calls in a week were).
      */
@@ -824,6 +865,22 @@ class ExperimentalCallReportTest extends TestCase
 
         $this->assertSame(['Trey Brannan'], array_column($again, 'answered_by'));
         $this->assertTrue(app(RingCentralCallLog::class)->hasDay($day));
+    }
+
+    /** Audit 2026-11-27: a day kept minutes after midnight lost its late calls for good. */
+    public function test_a_day_is_kept_only_once_it_has_settled(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
+        $log = app(RingCentralCallLog::class);
+        $day = CarbonImmutable::now()->subDays(2)->startOfDay();
+
+        $this->travelTo($day->addDay()->addMinutes(30));
+        $log->forPeriod($day, $day->endOfDay());
+        $this->assertFalse($log->hasDay($day), 'half past midnight: the log is still filling in');
+
+        $this->travelTo($day->addDay()->addHours(4));
+        $log->forPeriod($day, $day->endOfDay());
+        $this->assertTrue($log->hasDay($day));
     }
 
     /** One sign-in serves every request until it expires: RingCentral rate-limits the sign-in too. */

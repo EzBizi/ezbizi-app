@@ -30,6 +30,9 @@ class SuggestMetaCategories extends Command
 
         $campaigns = MetaAdCampaign::query()->withoutGlobalScopes()
             ->whereNull('suggested_at')
+            // An org with no categories would hold the same rows at the head of the queue forever (audit 11-27).
+            ->whereIn('organization_id', ServiceGroup::query()->withoutGlobalScopes()->select('organization_id'))
+            ->orderBy('id')
             ->limit((int) $this->option('limit'))
             ->get();
 
@@ -41,8 +44,8 @@ class SuggestMetaCategories extends Command
                 }
 
                 $list = $categories->map(fn ($name, $id) => "$id: $name")->implode("\n");
-                $answers = GrokCli::askMany($group->map(fn ($c) => "A home-services business (chimneys, fireplaces, "
-                    ."garage doors) runs this Facebook ad campaign. Pick the one service category it advertises, "
+                $answers = GrokCli::askMany($group->map(fn ($c) => 'A home-services business (chimneys, fireplaces, '
+                    .'garage doors) runs this Facebook ad campaign. Pick the one service category it advertises, '
                     ."by id, or \"none\" if the name does not say.\n\nCategories:\n$list\n\nCampaign name: ".$c->name)->values()->all(),
                     [
                         'type' => 'object',

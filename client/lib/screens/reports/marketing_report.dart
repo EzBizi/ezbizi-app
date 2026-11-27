@@ -86,7 +86,12 @@ class _MarketingReportState extends State<MarketingReport> {
     _load();
   }
 
+  int _loads = 0;
+
   Future<void> _load() async {
+    // Only the newest load lands: an older range answering late no longer
+    // replaces a newer one (audit 2026-11-27).
+    final ticket = ++_loads;
     setState(() {
       _loading = true;
       _error = null;
@@ -96,7 +101,7 @@ class _MarketingReportState extends State<MarketingReport> {
       'from': formatCalendarDay(from),
       'to': formatCalendarDay(to),
     });
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
 
     setState(() {
       _loading = false;

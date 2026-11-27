@@ -346,14 +346,23 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
   bool _using = false;
   StarterResolution _resolved = StarterResolution();
 
+  /// Pictures and booking link resolved; until then Use template waits.
+  bool _ready = true;
+
   @override
   void initState() {
     super.initState();
     final api = widget.api;
     final starters = NewsletterStarters.forCompany(widget.company);
     if (api != null && starters.isNotEmpty) {
+      _ready = false;
       StarterResolution.load(api, starters).then((r) {
-        if (mounted) setState(() => _resolved = r);
+        if (mounted) {
+          setState(() {
+            _resolved = r;
+            _ready = true;
+          });
+        }
       });
     }
   }
@@ -500,7 +509,7 @@ class _NewsletterTemplateGalleryState extends State<NewsletterTemplateGallery> {
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
             key: const ValueKey('newsletter-template-use'),
-            onPressed: widget.onUse == null || _using
+            onPressed: widget.onUse == null || _using || !_ready
                 ? null
                 : () async {
                     setState(() => _using = true);

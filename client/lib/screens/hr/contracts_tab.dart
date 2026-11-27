@@ -78,6 +78,10 @@ class _ContractsTabState extends State<ContractsTab> {
   /// unreadable, and blanking the page over it hides what somebody came to read.
   String? _cannotDesign;
 
+  /// One contract failing to open; kept apart from [_cannotDesign] so it does
+  /// not disable "New contract" (full-code audit, 2026-11-27).
+  String? _openError;
+
   /// Why the last draft download was refused, in the server's words.
   String? _draftError;
 
@@ -230,6 +234,11 @@ class _ContractsTabState extends State<ContractsTab> {
             ),
           ),
         ),
+        if (_openError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: ErrorNote(_openError!),
+          ),
         if (_cannotDesign != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
@@ -493,7 +502,10 @@ class _ContractsTabState extends State<ContractsTab> {
   /// rather than shipped with every row, so opening the tab does not pull down
   /// every question of every contract to draw six names.
   Future<void> _open(String id) async {
-    setState(() => _opening = id);
+    setState(() {
+      _opening = id;
+      _openError = null;
+    });
 
     final response = await widget.api.get('/hr/contracts/$id');
 
@@ -505,7 +517,7 @@ class _ContractsTabState extends State<ContractsTab> {
       if (!response.ok) {
         // Beside the list rather than over it: the rest of the page is fine,
         // and one row failing to open is not a reason to lose the others.
-        _cannotDesign = 'That contract could not be opened: ${response.reason}';
+        _openError = 'That contract could not be opened: ${response.reason}';
         return;
       }
 

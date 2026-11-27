@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -44,7 +45,8 @@ class InspectionSignatureField extends StatefulWidget {
   final ValueChanged<List<String>> onChanged;
 
   @override
-  State<InspectionSignatureField> createState() => _InspectionSignatureFieldState();
+  State<InspectionSignatureField> createState() =>
+      _InspectionSignatureFieldState();
 }
 
 class _InspectionSignatureFieldState extends State<InspectionSignatureField> {
@@ -251,14 +253,25 @@ class _InspectionSignatureFieldState extends State<InspectionSignatureField> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
+                  // Eager pan, so a vertical stroke draws instead of
+                  // scrolling the form underneath (audit 11-27).
+                  RawGestureDetector(
                     key: Key('signature-pad-${widget.label}'),
-                    onPanStart: (d) =>
-                        setState(() => _strokes.add([d.localPosition])),
-                    onPanUpdate: (d) => setState(() {
-                      if (_strokes.isEmpty) _strokes.add([]);
-                      _strokes.last.add(d.localPosition);
-                    }),
+                    gestures: {
+                      _EagerPan:
+                          GestureRecognizerFactoryWithHandlers<_EagerPan>(
+                            _EagerPan.new,
+                            (r) {
+                              r.onStart = (d) => setState(
+                                () => _strokes.add([d.localPosition]),
+                              );
+                              r.onUpdate = (d) => setState(() {
+                                if (_strokes.isEmpty) _strokes.add([]);
+                                _strokes.last.add(d.localPosition);
+                              });
+                            },
+                          ),
+                    },
                     child: Container(
                       height: _height,
                       width: size.width,
@@ -301,10 +314,7 @@ class _InspectionSignatureFieldState extends State<InspectionSignatureField> {
               );
             },
           ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
       ],
     );
   }
@@ -338,4 +348,13 @@ class _SignaturePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SignaturePainter old) => true;
+}
+
+/// Wins the arena at once, so the ListView never takes a signature stroke.
+class _EagerPan extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
 }

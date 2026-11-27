@@ -1086,8 +1086,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   });
 
   Future<void> _signOut() async {
-    // Session.signOut revokes the token on the server itself.
-    widget.session.signOut();
+    // One sign-out path: push withdrawn and token revoked before it goes
+    // (a shared phone kept the last person's pushes; audit 2026-11-27).
+    await widget.session.logOut();
   }
 
   /// Ask for another confirmation link.

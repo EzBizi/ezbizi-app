@@ -137,7 +137,12 @@ class _ReportsTabState extends State<ReportsTab> {
     await _run();
   }
 
+  /// Only the newest run may draw (audit 11-27: older answers overwrote
+  /// newer filters).
+  int _runSeq = 0;
+
   Future<void> _run() async {
+    final seq = ++_runSeq;
     setState(() {
       _running = true;
       _error = null;
@@ -160,7 +165,7 @@ class _ReportsTabState extends State<ReportsTab> {
     ]);
     final response = answers.first;
 
-    if (!mounted) return;
+    if (!mounted || seq != _runSeq) return;
 
     if (!response.ok) {
       setState(() {

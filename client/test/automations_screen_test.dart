@@ -739,7 +739,9 @@ void main() {
       expect(find.text('Test against a real event'), findsOneWidget);
       expect(
         find.textContaining('permission to change an automation'),
-        findsNWidgets(2),
+        findsNWidgets(
+          3,
+        ), // edit, test, and Run it now for real (audit 2026-11-27)
       );
       expect(
         find.textContaining('permission to delete an automation'),

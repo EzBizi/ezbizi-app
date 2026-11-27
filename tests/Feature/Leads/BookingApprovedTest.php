@@ -50,6 +50,14 @@ class BookingApprovedTest extends TestCase
         $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
             ->assertJsonPath('data.booking.fit.verdict', 'alone');
 
+        // Audit 11-27: a tap while another answer is still running is refused,
+        // and raises nothing.
+        $other = \Illuminate\Support\Facades\Cache::lock('lead-booking-decision:'.$lead->id, 120);
+        $this->assertTrue($other->get());
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertStatus(409);
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.booking_approved')->count());
+        $other->release();
+
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk()
             ->assertJsonPath('data.fit', null);
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk();
@@ -86,6 +94,13 @@ class BookingApprovedTest extends TestCase
         $this->assertMatchesRegularExpression('~^https://www\.a-1chimney\.com/b/[A-Za-z0-9]{7}$~', $link);
         $this->assertSame($lead->id, $this->inTenant($t['org'], fn () => BookingLink::leadId(basename($link))));
         $this->assertSame($link, $this->inTenant($t['org'], fn () => $lead->fresh()->booking_link), 'the same code is sent again');
+
+        // Audit 11-27: a lead filed under the branch only (no company_id) gets the link too.
+        $branchLead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
+        ]));
+        $this->assertNotSame('', $this->inTenant($t['org'], fn () => $branchLead->fresh()->booking_link));
     }
 
     /**

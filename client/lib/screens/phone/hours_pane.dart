@@ -12,6 +12,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
 
+import 'phone_refs.dart';
 import 'phone_search.dart';
 
 /// Phone › Settings › Hours — when a line is open, in its own wall clock.
@@ -156,6 +157,7 @@ class _HoursPaneState extends State<HoursPane> {
   }
 
   Future<void> _delete(_Schedule schedule) async {
+    if (!await confirmPhoneRemove(context, '"${schedule.name}"')) return;
     final response = await widget.api.delete('/phone/hours/${schedule.id}');
 
     if (!mounted) return;
@@ -391,6 +393,14 @@ class _HoursPaneState extends State<HoursPane> {
       key: const ValueKey('hours-form'),
       padding: const EdgeInsets.all(24),
       children: [
+        // Which company's account a NEW one goes on (audit 11-27: always
+        // the first account).
+        if (draft.id == null)
+          PhoneAccountPicker(
+            accounts: [for (final c in _connections) PhoneConnectionRef(c.id, c.label)],
+            selected: draft.connectionId,
+            onChanged: (id) => setState(() => draft.connectionId = id),
+          ),
         Row(
           children: [
             IconButton(
@@ -623,6 +633,21 @@ final List<TextInputFormatter> _timeInput = <TextInputFormatter>[
   // Insert the colon as they type, so 0900 becomes 09:00 without anybody
   // having to know the format is the thing being enforced.
   TextInputFormatter.withFunction((old, updated) {
+    // A colon they typed is respected: "9:00" is 09:00, not "90:0"
+    // (audit 11-27).
+    final typed = RegExp(r'^(\d{1,2}):(\d{0,2})$').firstMatch(updated.text);
+    if (typed != null) {
+      final text = '${typed.group(1)!.padLeft(2, '0')}:${typed.group(2)}';
+      if (typed.group(1)!.length == 2 || typed.group(2)!.isNotEmpty) {
+        return TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }
+
+      return updated;
+    }
+
     final digits = updated.text.replaceAll(':', '');
     if (digits.length < 3) return updated;
 
@@ -712,11 +737,21 @@ String _zoneLabel(String zone) {
 }
 
 class _DayDraft {
-  _DayDraft({required this.open, required this.from, required this.to});
+  _DayDraft({
+    required this.open,
+    required this.from,
+    required this.to,
+    this.extra = const [],
+  });
 
   bool open;
   String from;
   String to;
+
+  /// Periods after the first one the screen edits, kept as they were
+  /// (audit 11-27: saving deleted them).
+  // ponytail: an editor per interval when somebody needs to change a split day here.
+  final List<(String, String)> extra;
 }
 
 class _Draft {
@@ -730,7 +765,7 @@ class _Draft {
   });
 
   final String? id;
-  final String connectionId;
+  String connectionId;
   String name;
   String timezone;
   final Map<String, _DayDraft> week;
@@ -791,6 +826,7 @@ class _Draft {
             open: first != null,
             from: first?.$1 ?? '09:00',
             to: first?.$2 ?? '17:00',
+            extra: intervals.skip(1).toList(),
           );
         }(),
     },
@@ -802,6 +838,7 @@ class _Draft {
       entry.key: entry.value.open
           ? [
               [entry.value.from.trim(), entry.value.to.trim()],
+              for (final (from, to) in entry.value.extra) [from, to],
             ]
           : <List<String>>[],
   };

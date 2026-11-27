@@ -283,6 +283,20 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
      * Directory", not "a refresh token arrived". {@see connect} remains the
      * only writer of `credentials`.
      */
+    /**
+     * Drop the stored secret: the server it was handed to is no longer the one
+     * on the row. Pointing the host at a server the editor controls must not
+     * deliver somebody else's password on the next login (audit 11-27).
+     */
+    public function forgetCredential(): void
+    {
+        $this->forceFill([
+            'credentials'   => null,
+            'status'        => self::STATUS_UNCONFIGURED,
+            'status_reason' => 'The mail server changed, so the password has to be entered again.',
+        ]);
+    }
+
     public function markConnectedWithoutSecret(): void
     {
         $this->forceFill([
@@ -357,12 +371,6 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
             'status'          => self::STATUS_CONNECTED,
             'status_reason'   => null,
         ]);
-    }
-
-    /** Has EzBizi ever actually opened this mailbox? */
-    public function hasEverBeenReached(): bool
-    {
-        return $this->last_reached_at !== null;
     }
 
     // ── the watcher's position (see the 2026-08-13 migration) ────

@@ -129,7 +129,9 @@ class GoogleWorkspaceManagementTest extends TestCase
 
             // Stock signature photos: Ana has one, nobody else does.
             if (str_contains($url, 'example-photos/')) {
-                return Http::response('', str_contains($url, 'ana@') ? 200 : 404);
+                return str_contains($url, 'ana@')
+                    ? Http::response(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), 200, ['Content-Type' => 'image/png'])
+                    : Http::response('', 404);
             }
 
             return Http::response([], 404);
@@ -389,10 +391,10 @@ class GoogleWorkspaceManagementTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
         $c = $this->connect($t);
         $this->fakeGoogle();
-        $html = 'P{{^photo_url}}<img src="https://cdn.test/example-photos/{{email}}.jpg">{{/photo_url}}';
+        $html = 'P{{^photo_url}}<img src="https://93.184.216.34/example-photos/{{email}}.jpg">{{/photo_url}}';
 
         $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'ana@'.self::DOMAIN, 'html' => $html])
-            ->assertJsonPath('data.html', 'P<img src="https://cdn.test/example-photos/ana@'.self::DOMAIN.'.jpg">');
+            ->assertJsonPath('data.html', 'P<img src="https://93.184.216.34/example-photos/ana@'.self::DOMAIN.'.jpg">');
         $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'office@nj.'.self::DOMAIN, 'html' => $html])
             ->assertJsonPath('data.html', 'P');
     }
@@ -410,7 +412,7 @@ class GoogleWorkspaceManagementTest extends TestCase
         $this->fakeGoogle();
         $logo = app(\App\Support\Files\FileStore::class)->putContents('PNGBYTES', 'logos', 'png', 'local');
         $t['org']->forceFill(['logo_path' => $logo])->save();
-        $html = 'P<td>{{^photo_url}}<img src="https://cdn.test/example-photos/{{email}}.jpg" width="84">{{/photo_url}}</td>';
+        $html = 'P<td>{{^photo_url}}<img src="https://93.184.216.34/example-photos/{{email}}.jpg" width="84">{{/photo_url}}</td>';
 
         $out = $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'office@nj.'.self::DOMAIN, 'html' => $html])
             ->assertOk()->json('data.html');
@@ -422,7 +424,7 @@ class GoogleWorkspaceManagementTest extends TestCase
 
         // Ana's own photo is still hers.
         $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'ana@'.self::DOMAIN, 'html' => $html])
-            ->assertJsonPath('data.html', 'P<td><img src="https://cdn.test/example-photos/ana@'.self::DOMAIN.'.jpg" width="84"></td>');
+            ->assertJsonPath('data.html', 'P<td><img src="https://93.184.216.34/example-photos/ana@'.self::DOMAIN.'.jpg" width="84"></td>');
     }
 
     /** Their EzBizi photo is their signature photo, at a public address Gmail can fetch (Jose 11-13). */

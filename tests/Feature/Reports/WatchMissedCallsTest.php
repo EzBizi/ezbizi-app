@@ -26,7 +26,7 @@ class WatchMissedCallsTest extends TestCase
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
 
         config([
@@ -69,12 +69,36 @@ class WatchMissedCallsTest extends TestCase
         ], $events);
     }
 
+    /** Audit 2026-11-27: read outside the tenant, another organization raised A-1's (the env account's) missed calls. */
+    public function test_an_organization_without_an_account_raises_nothing(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York']);
+        $this->asRingCentralEnvOwner($this->provisionTenant('A1'));
+        $other = $this->provisionTenant('Alpha');
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/phone-number*' => Http::response(['records' => []]),
+            '*/call-log*' => Http::response(['records' => [$this->rc('a1s', 'Missed', 'A1 - New Client', '18:55')], 'paging' => ['page' => 1]]),
+        ]);
+
+        $this->artisan('ezbizi:watch-missed-calls', ['--organization' => $other['org']->id])->assertSuccessful();
+
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->where('event_key', 'reports.call.missed')->count());
+    }
+
     /** Notifications, 2026-10-23: each missed call names its company, for a per-person company filter. */
     public function test_a_missed_call_carries_the_accounts_company(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
@@ -99,7 +123,7 @@ class WatchMissedCallsTest extends TestCase
     /** 2026-11-17: Area on the missed-call task comes from the line's branch. */
     public function test_a_line_names_its_branch_by_number_then_by_market(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $s = app(\App\Support\Settings\SettingsResolver::class);
             $s->set('leads.line_markets', $tenant['org'], ['CLE' => 'Ohio']);
@@ -117,7 +141,7 @@ class WatchMissedCallsTest extends TestCase
     /** Desk, 2026-11-18: a missed call with no number made a task titled just "AngiSweep". */
     public function test_a_missed_call_task_title_says_when_there_is_no_number(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->inTenant($tenant['org'], function () {
             $w = \App\Console\Commands\WatchMissedCalls::class;
             $this->assertSame('AngiSweep +13055550101', $w::taskTitle('+13055550101', 'AngiSweep', '2026-11-18T20:44:05Z'));
@@ -129,7 +153,7 @@ class WatchMissedCallsTest extends TestCase
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
 
         config([

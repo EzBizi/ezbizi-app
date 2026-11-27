@@ -190,7 +190,8 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _transcribe = box?.transcribe ?? false;
       _greetingAudio = box?.greetingAudioUrl;
       _ownerType = switch (box?.ownerType) {
-        'user' || 'ring_group' => box!.ownerType!,
+        // 'number' kept too (audit 11-27: editing turned it into a company box).
+        'user' || 'ring_group' || 'number' => box!.ownerType!,
         _ => 'company',
       };
       _ownerId = _ownerType == 'company' ? null : box?.ownerId;
@@ -255,6 +256,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   }
 
   Future<void> _delete(_Box box) async {
+    if (!await confirmPhoneRemove(context, 'the mailbox "${box.name}"')) return;
     setState(() => _saving = true);
 
     final response = await widget.api.delete(
@@ -569,18 +571,20 @@ class _VoicemailPaneState extends State<VoicemailPane> {
               value: _ownerType,
               label: 'Whose mailbox',
               border: const OutlineInputBorder(),
-              options: const [
-                SearchOption(value: 'company', label: 'The company'),
-                SearchOption(value: 'user', label: 'A person'),
-                SearchOption(value: 'ring_group', label: 'A team'),
+              options: [
+                const SearchOption(value: 'company', label: 'The company'),
+                const SearchOption(value: 'user', label: 'A person'),
+                const SearchOption(value: 'ring_group', label: 'A team'),
+                if (_editing?.ownerType == 'number')
+                  const SearchOption(value: 'number', label: 'Its phone line'),
               ],
               onChanged: (v) => setState(() {
                 _ownerType = v ?? 'company';
-                // A person's id is not a team's.
-                _ownerId = null;
+                // A person's id is not a team's; a line keeps its own.
+                _ownerId = _ownerType == 'number' ? _editing?.ownerId : null;
               }),
             ),
-            if (_ownerType != 'company') ...[
+            if (_ownerType == 'user' || _ownerType == 'ring_group') ...[
               const SizedBox(height: 12),
               SearchPickerField<String>(
                 key: const ValueKey('voicemail-owner'),
@@ -597,7 +601,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
             ],
             const SizedBox(height: 8),
             Text(
-              _ownerType == 'company'
+              _ownerType == 'company' || _ownerType == 'number'
                   ? 'Takes messages for the lines that use it.'
                   : 'Takes the messages for calls that reached '
                         '${_ownerType == 'user' ? 'this person' : 'this team'} '

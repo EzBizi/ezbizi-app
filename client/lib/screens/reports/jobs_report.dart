@@ -82,15 +82,25 @@ class _JobsReportState extends State<JobsReport> {
     if (widget.span != old.span) _load();
   }
 
+  bool _paging = false;
+  int _loads = 0;
+
   /// The first page afresh, or [more] the next one under it.
   Future<void> _load({bool more = false}) async {
+    // One page at a time, and only the newest load lands: a second "Show
+    // more" added its page twice, and an older filter's answer replaced a
+    // newer one (audit 2026-11-27).
+    if (more && _paging) return;
+    final ticket = more ? _loads : ++_loads;
+    if (more) setState(() => _paging = true);
     final response = await widget.api.get('/reports/jobs', {
       ..._filters,
       'offset': '${more ? _rows.length : 0}',
       'limit': '$_page',
     });
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
     setState(() {
+      _paging = false;
       if (!response.ok) {
         _error = response.message;
         return;
@@ -378,7 +388,7 @@ class _JobsReportState extends State<JobsReport> {
             Center(
               child: OutlinedButton(
                 key: const ValueKey('jobs-more'),
-                onPressed: () => _load(more: true),
+                onPressed: _paging ? null : () => _load(more: true),
                 child: Text(
                   'Show ${formatCount((count - _rows.length).clamp(0, _page))} more '
                   'of ${formatCount(count - _rows.length)}',

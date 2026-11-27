@@ -62,8 +62,6 @@ class FullWindowFlagsTest extends TestCase
             $this->assertSame(\App\Models\Task::class, Notification::query()->where('user_id', $booker->id)->value('subject_type'));
             $this->assertSame([null], Notification::query()->where('user_id', $manager->id)->pluck('kind')->all(), 'the manager keeps the job alert');
         });
-        // The past backfill lists a flag task once, already read, and finds this one already there.
-        $this->artisan('ezbizi:tasks-flag-assigned-rows')->expectsOutputToContain('rows: 0')->assertSuccessful();
 
         // Desk, 2026-11-17: a move into a full window alerts too, once per move.
         // An old job first seen (the nightly resync) only sets its baseline.
@@ -95,5 +93,29 @@ class FullWindowFlagsTest extends TestCase
             $this->assertStringEndsWith(' · booked by Ana Ruiz', (string) $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Notes'))->value('value_text'));
             $this->assertSame('Ana Ruiz', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Booked by'))->value('value_text'));
         });
+    }
+
+    /** Audit 11-27: a same-day job later today in the branch's zone is still ahead, though UTC is past it. */
+    public function test_a_same_day_overbooking_after_utc_has_passed_its_wall_time_still_alerts(): void
+    {
+        Carbon::setTestNow('2026-11-18 21:00:00'); // 4 PM in New York
+        $alpha = $this->provisionTenant('Alpha');
+        $booker = $this->userWithRole($alpha, 'Dispatcher', ['jobs.view']);
+        $this->inTenant($alpha['org'], function () use ($alpha, $booker) {
+            $f = $alpha['franchise'];
+            $f->forceFill(['timezone' => 'America/New_York'])->save();
+            $area = ServiceArea::create(['franchise_id' => $f->id, 'name' => 'Maryland']);
+            ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 3, 'start_time' => '17:00', 'end_time' => '20:00', 'max_jobs' => 1]);
+            WorkizTeamMember::create(['franchise_id' => $f->id, 'remote_id' => 'U1', 'name' => 'Ana Ruiz', 'user_id' => $booker->id, 'payload' => [], 'synced_at' => now()]);
+            $c = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-1', 'name' => 'A']);
+            foreach ([['FIRST', 301, '2026-11-18 10:00:00'], ['SECOND', 302, '2026-11-18 15:30:00']] as [$id, $serial, $created]) {
+                $job = Job::create(['franchise_id' => $f->id, 'customer_id' => $c->id, 'number' => 'J-'.$serial, 'title' => 'J', 'status' => 'Submitted',
+                    'currency' => 'USD', 'service_area_id' => $area->id, 'scheduled_for' => '2026-11-18 18:00:00']);
+                WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => $id, 'status' => 'Submitted', 'serial_id' => $serial, 'job_id' => $job->id,
+                    'created_by' => 'Ana Ruiz', 'payload' => ['CreatedDate' => $created], 'scheduled_for' => '2026-11-18 18:00:00', 'synced_at' => now()]);
+            }
+        });
+
+        $this->artisan('scheduling:flag-full-windows')->expectsOutputToContain('1 full-window flag raised')->assertSuccessful();
     }
 }

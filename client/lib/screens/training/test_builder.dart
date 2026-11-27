@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
@@ -8,6 +11,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/tag.dart';
 
 /// The test builder — the right half of layout 8's storyboard
 /// (`docs/previews/training-layouts.html`, task-15 brief), and also its own
@@ -285,6 +289,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
           },
         )
         .toList();
+    _savedJson = jsonEncode(_body());
   }
 
   /// The one combination on this screen that can permanently lock a learner
@@ -326,8 +331,15 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
     );
   }
 
+  /// The body as last loaded or saved; differs from [_body] when there are unsaved edits.
+  String? _savedJson;
+
+  bool get _dirty => _savedJson != null && jsonEncode(_body()) != _savedJson;
+
   @override
   void dispose() {
+    // Leave, or switching tab, keeps the edits: they are saved on the way out.
+    if (_dirty) unawaited(widget.api.patch('/training/tests/${widget.testId}', _body()));
     _title.dispose();
     _passMark.dispose();
     _maxAttempts.dispose();
@@ -373,13 +385,57 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
 
   int? _parseInt(String text) => text.trim().isEmpty ? null : int.tryParse(text.trim());
 
-  Future<void> _save() async {
+  // Tests are created as drafts; without this nobody could ever take one.
+  late String _status = widget.test['status'] as String? ?? 'draft';
+
+  bool _publishing = false;
+
+  /// Saves unsaved edits first, so publishing never publishes the old version.
+  Future<void> _togglePublish() async {
+    if (_dirty && !await _save()) return;
+    setState(() => _publishing = true);
+    final next = _status == 'published' ? 'draft' : 'published';
+    final response = await widget.api.patch('/training/tests/${widget.testId}', {'status': next});
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      if (response.ok) {
+        _status = next;
+      } else {
+        _saveError = response.reason;
+      }
+    });
+  }
+
+  Future<bool> _save() async {
     setState(() {
       _saving = true;
       _saveError = null;
     });
 
-    final body = <String, dynamic>{
+    final body = _body();
+    final response = await widget.api.patch('/training/tests/${widget.testId}', body);
+    if (!mounted) return false;
+
+    if (!response.ok) {
+      setState(() {
+        _saving = false;
+        // The server's own sentence, shown verbatim (this file's docblock).
+        _saveError = response.reason;
+      });
+      return false;
+    }
+
+    setState(() {
+      _saving = false;
+      _savedJson = jsonEncode(body);
+    });
+    widget.onSaved?.call(Map<String, dynamic>.from(response.body['data'] as Map));
+    return true;
+  }
+
+  /// What Save sends, and what "unsaved" is measured against.
+  Map<String, dynamic> _body() => <String, dynamic>{
       'title': _title.text,
       'requires_guide': _requiresGuide,
       'guide_id': widget.guideIdFixed ?? _guideId,
@@ -396,28 +452,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
             ],
           },
       ],
-    };
-
-    final response = await widget.api.patch('/training/tests/${widget.testId}', body);
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() {
-        _saving = false;
-        // The server's own sentence, shown verbatim — see this file's own
-        // docblock, "The server's sentence, never this client's own
-        // wording". `response.reason` is `assertExactlyOneCorrectPerQuestion`
-        // or `assertGuideGateHasATarget`'s exact 422 text when either fires,
-        // and every other validation failure's field-level message
-        // otherwise.
-        _saveError = response.reason;
-      });
-      return;
-    }
-
-    setState(() => _saving = false);
-    widget.onSaved?.call(Map<String, dynamic>.from(response.body['data'] as Map));
-  }
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -533,13 +568,23 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         _lockoutWarning(),
         const SizedBox(height: 14),
         if (_saveError != null) ...[ErrorNote(_saveError!), const SizedBox(height: 12)],
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ElevatedButton(
-            key: const Key('training.save-test'),
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ElevatedButton(
+              key: const Key('training.save-test'),
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
+            Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
+            OutlinedButton(
+              key: const Key('training.publish-test'),
+              onPressed: _publishing ? null : _togglePublish,
+              child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
+            ),
+          ],
         ),
       ],
     );

@@ -783,9 +783,12 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     /** "Mark" from "Mark Mercer"; null for a phone number or an initial. */
     public static function firstNameOf(?string $name): ?string
     {
-        $word = preg_replace("/[^A-Za-z'’-]/u", '', explode(' ', trim((string) $name))[0]);
+        // \p{L}, not A-Z (audit 11-27: "José" became "Jos").
+        $word = preg_replace("/[^\p{L}'’-]/u", '', explode(' ', trim((string) $name))[0]);
 
-        return mb_strlen($word) < 2 ? null : ucfirst(mb_strtolower($word));
+        $word = mb_strtolower($word);
+
+        return mb_strlen($word) < 2 ? null : mb_strtoupper(mb_substr($word, 0, 1)).mb_substr($word, 1);
     }
 
     /**
@@ -868,7 +871,9 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     private function bookableOnline(): bool
     {
-        $companies = array_values(array_filter([$this->company_id, $this->company?->parent_company_id]));
+        // A branch-filed lead (Local Services, Thumbtack) has no company_id; its branch's company (audit 11-27).
+        $company = $this->company ?? $this->franchise?->company;
+        $companies = array_values(array_filter([$company?->getKey(), $company?->parent_company_id]));
         $zips = ServiceAreaZip::query()->whereIn('franchise_id', Franchise::query()->whereIn('company_id', $companies)->select('id'));
         if (preg_match('/^[0-9]{5}/', (string) $this->postal_code, $m) === 1) {
             $zips->where('zip', $m[0]);
@@ -895,7 +900,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         $said = (string) $this->conversations()->reorder()->where('participant', LeadConversation::FROM_CONSUMER)
             ->orderByDesc('occurred_at')->value('text');
         $offer = app(SlotOffer::class)
-            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
+            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today), SlotOffer::reach($this));
 
         return $offer['label'] ?? '';
     }

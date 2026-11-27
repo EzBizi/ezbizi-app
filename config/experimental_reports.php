@@ -41,20 +41,10 @@ return [
 
     // Labelling transcribed calls with AI, Claude and Grok side by side
     // (Jose, 2026-10-06: "build for both, so i can try both"). OFF until the
-    // privacy page names Anthropic and xAI. Each provider runs only with its key;
-    // the models are settings so either can change without code.
+    // privacy page names Anthropic and xAI. Each runs only when its AiProvider
+    // is set up (services.ai.claude, services.grok_cli).
     'tagging' => [
         'enabled' => (bool) env('REPORT_CALL_TAGGING', false),
-        'claude' => [
-            'key' => env('ANTHROPIC_API_KEY'),
-            'model' => env('REPORT_TAG_CLAUDE_MODEL', 'claude-opus-5-5'),
-        ],
-        'grok' => [
-            'key' => env('XAI_API_KEY'),
-            'model' => env('REPORT_TAG_GROK_MODEL', 'grok-4.6'),
-            // Through the CLI instead of the API when services.grok_cli.home
-            // is set (App\Support\Ai\GrokCli).
-        ],
     ],
 
     /*

@@ -503,6 +503,8 @@ class MailboxesController extends Controller
             ], 422);
         }
 
+        $serverBefore = $mailbox->mail_server;
+
         if (array_key_exists('mail_server', $input)) {
             $input['mail_server'] = $this->mailServerFor(
                 $mailbox->providerEnum() ?? MailboxProvider::Imap,
@@ -548,8 +550,12 @@ class MailboxesController extends Controller
             }
         }
 
-        DB::transaction(function () use ($mailbox, $input) {
+        DB::transaction(function () use ($mailbox, $input, $serverBefore) {
             $mailbox->fill($input);
+
+            if ($mailbox->hasCredential() && $mailbox->mail_server != $serverBefore) {
+                $mailbox->forgetCredential();
+            }
 
             $this->audit->logChange('mailbox.updated', $mailbox);
 

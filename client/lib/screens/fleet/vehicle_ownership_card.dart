@@ -94,6 +94,21 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
     final kind = _kind;
     if (kind == null) return;
 
+    // Parsed before the map, so a bad number shows an error instead of
+    // throwing out of Start period (audit 2026-11-27).
+    int? allowance;
+    try {
+      if (_kind == 'rented' && _mileageAllowance.text.trim().isNotEmpty) {
+        allowance = fleetParseInt(
+          _mileageAllowance.text,
+          'Mileage allowance has to be a whole number of miles.',
+        );
+      }
+    } on FormatException catch (e) {
+      setState(() => _error = e.message);
+      return;
+    }
+
     final ownership = <String, dynamic>{
       'kind': kind,
       if (_counterparty.text.trim().isNotEmpty)
@@ -102,11 +117,7 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
         'registered_owner': _registeredOwner.text.trim(),
       if (_kind == 'rented' && _rentalAgreementNumber.text.trim().isNotEmpty)
         'rental_agreement_number': _rentalAgreementNumber.text.trim(),
-      if (_kind == 'rented' && _mileageAllowance.text.trim().isNotEmpty)
-        'mileage_allowance': fleetParseInt(
-          _mileageAllowance.text,
-          'Mileage allowance has to be a whole number of miles.',
-        ),
+      'mileage_allowance': ?allowance,
       if (_startedOn.text.trim().isNotEmpty)
         'started_on': _startedOn.text.trim(),
     };
@@ -175,6 +186,26 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
     }
 
     setState(() => _starting = false);
+    // Emptied once saved, so the next entry does not start as a copy of
+    // this one and get saved twice (audit 2026-11-27).
+    for (final c in [
+      _counterparty,
+      _registeredOwner,
+      _rentalAgreementNumber,
+      _mileageAllowance,
+      _startedOn,
+      _purchasePrice,
+      _lienholder,
+      _loanAccount,
+      _loanPayment,
+      _loanPayoff,
+      _transport,
+      _rentalRate,
+      _rentalDeposit,
+      _rentalAccount,
+    ]) {
+      c.clear();
+    }
     await widget.onReload();
   }
 

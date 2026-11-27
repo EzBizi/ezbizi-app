@@ -1020,7 +1020,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: widget.onBack,
+                // Unsaved answers are saved on the way out, not thrown away
+                // (full-code audit, 2026-11-27).
+                onPressed: () async {
+                  if (_pending.isNotEmpty) await _save();
+                  if (mounted && _pending.isEmpty) widget.onBack!();
+                },
                 icon: const Icon(Icons.arrow_back, size: 18),
                 label: Text(widget.backLabel),
               ),
@@ -2182,7 +2187,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
                 SizedBox(
                   width: 80,
                   child: TextFormField(
-                    key: Key('rate-step-days-$i'),
+                    // Re-keyed when a row goes, so the boxes show their own
+                    // row's numbers rather than the removed one's (audit).
+                    key: Key('rate-step-days-$i-$_rateGen'),
                     initialValue: step['after_days'],
                     enabled: enabled,
                     keyboardType: TextInputType.number,
@@ -2195,7 +2202,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
                 SizedBox(
                   width: 90,
                   child: TextFormField(
-                    key: Key('rate-step-rate-$i'),
+                    key: Key('rate-step-rate-$i-$_rateGen'),
                     initialValue: step['rate'],
                     enabled: enabled,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -2211,7 +2218,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
                   tooltip: 'Remove this stage',
                   icon: const Icon(Icons.close, size: 18),
                   onPressed: enabled
-                      ? () => save([...steps]..removeAt(i))
+                      ? () {
+                          _rateGen++;
+                          save([...steps]..removeAt(i));
+                        }
                       : null,
                 ),
               ],
@@ -2231,6 +2241,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
       ],
     );
   }
+
+  int _rateGen = 0;
 
   List<Map<String, String>> _rateStepRows(OnboardingQuestion question) {
     final raw = _pending[question.key] ?? question.value;

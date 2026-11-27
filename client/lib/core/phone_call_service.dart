@@ -249,6 +249,12 @@ class PhoneCallService extends ChangeNotifier {
   /// The line calls go out on, for a screen that wants to name it.
   String? get callerId => _callerId;
 
+  /// The line the call in progress is on: an extra line's device for a call
+  /// that rang there, otherwise the primary. `on_call` is written and released
+  /// on THIS id (audit 11-27: the tab wrote the selected line, the service
+  /// released another, and people stayed on_call).
+  String? get callConnectionId => _activeConnection ?? _connectionId;
+
   /// Mounted by the shell. Null on every platform but Windows.
   Object? get platformView => _device?.platformView;
 
@@ -262,12 +268,18 @@ class PhoneCallService extends ChangeNotifier {
   /// Takes the connection rather than finding it, because the shell already
   /// knows whether this person has phone access and the service should not
   /// grow a second opinion about that.
+  /// Bumped by [restart]: a start that began before it stops at its next
+  /// await instead of registering a second device (audit 11-27).
+  int _generation = 0;
+
   Future<void> start(ApiClient api, {VoiceDevice? device}) async {
     if (_started || _starting) return;
     _starting = true;
+    final generation = _generation;
 
     try {
       final numbers = await api.get('/phone/numbers');
+      if (generation != _generation) return;
       final rows = (numbers.data as List? ?? const []);
       if (rows.isEmpty) return;
 
@@ -307,7 +319,11 @@ class PhoneCallService extends ChangeNotifier {
       notifyListeners();
       await WidgetsBinding.instance.endOfFrame;
 
+      // restart() already disposed this start's device.
+      if (generation != _generation) return;
       await _mintTokenAndRegister(api);
+      // restart() already disposed this start's device.
+      if (generation != _generation) return;
 
       _started = true;
       notifyListeners();
@@ -319,7 +335,7 @@ class PhoneCallService extends ChangeNotifier {
 
       unawaited(syncAccounts());
     } finally {
-      _starting = false;
+      if (generation == _generation) _starting = false;
     }
   }
 
@@ -597,6 +613,7 @@ class PhoneCallService extends ChangeNotifier {
     _device = null;
     _started = false;
     _starting = false;
+    _generation++;
     notifyListeners();
 
     await start(api, device: device);

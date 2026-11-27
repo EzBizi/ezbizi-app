@@ -238,6 +238,44 @@ void main() {
     },
   );
 
+  testWidgets('Add sale finds a customer beyond the first page by search', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      stock: [_balance],
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/customers')) return null;
+        final q = request.url.queryParameters['search'];
+        return _json({
+          'data': [
+            if (q == 'Zed') {'id': 'far', 'name': 'Zed Farcustomer'},
+          ],
+          'meta': {'total': q == 'Zed' ? 1 : 0, 'last_page': 1},
+        });
+      },
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add sale'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('sale-customer-search')),
+        matching: find.byType(TextField),
+      ),
+      'Zed',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Zed Farcustomer').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Zed Farcustomer'), findsOneWidget);
+  });
+
   testWidgets('Receive posts and Stock qty updates', (tester) async {
     var received = 0;
     Map<String, dynamic>? posted;
@@ -1220,12 +1258,17 @@ void main() {
 
     await tester.tap(find.byKey(const Key('orders-tile-receive')));
     await tester.pumpAndSettle();
-    expect(asked['purchase-orders'], {'filter': 'to_receive'});
+    expect(asked['purchase-orders'], {
+      'filter': 'to_receive',
+      'page': '1',
+      'per_page': '200',
+    });
 
     await tester.tap(find.byKey(const Key('orders-tile-sales')));
     await tester.pumpAndSettle();
-    expect(asked['sales'], {'filter': 'open'});
-    expect(asked['purchase-orders'], isEmpty);
+    expect(asked['sales'], {'filter': 'open', 'page': '1', 'per_page': '200'});
+    // Every page is read now (audit 11-27); no filter is the point.
+    expect(asked['purchase-orders'], {'page': '1', 'per_page': '200'});
     expect(find.byKey(const Key('order-row-po-po-1')), findsNothing);
   });
 

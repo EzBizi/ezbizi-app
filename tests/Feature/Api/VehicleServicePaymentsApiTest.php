@@ -148,4 +148,28 @@ class VehicleServicePaymentsApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors(['insurance_policy_id']);
     }
+    /** An older visit logged late keeps the newer visit's next service (audit 2026-11-27). */
+    public function test_an_older_visit_does_not_overwrite_the_next_service(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $vehicle = $this->inTenant($tenant['org'], fn () => Vehicle::factory()->create([
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+        ]));
+        $log = fn (string $on, string $next, int $miles) => $this->signedInAs($admin)
+            ->postJson('/api/v1/vehicles/'.$vehicle->id.'/service', [
+                'kind' => 'oil', 'occurred_on' => $on,
+                'next_service_on' => $next, 'next_service_miles' => $miles,
+            ])->assertOk();
+
+        $log(now()->toDateString(), now()->addMonths(3)->toDateString(), 15_000);
+        $log(now()->subMonths(2)->toDateString(), now()->addMonth()->toDateString(), 12_000);
+
+        $this->inTenant($tenant['org'], function () use ($vehicle) {
+            $fresh = $vehicle->fresh();
+            $this->assertSame(now()->addMonths(3)->toDateString(), $fresh->next_service_on?->toDateString());
+            $this->assertSame(15_000, $fresh->next_service_miles);
+        });
+    }
 }

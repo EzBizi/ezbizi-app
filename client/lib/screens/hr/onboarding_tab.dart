@@ -176,7 +176,12 @@ class _OnboardingTabState extends State<OnboardingTab> {
 
     final onboardings = answers[0];
     if (quiet && !onboardings.ok) {
-      setState(() => _fetching = false);
+      // And the spinner off: a failed quiet re-read on an empty list left it
+      // turning forever (full-code audit, 2026-11-27).
+      setState(() {
+        _fetching = false;
+        _loading = false;
+      });
       return;
     }
     final catalogue = answers[1];
@@ -736,7 +741,10 @@ class _StartPanelState extends State<_StartPanel> {
 
   Future<void> _load() async {
     final answers = await Future.wait([
-      widget.api.get('/hr/invitations'),
+      // The server's largest page, not its default 50: the newest 50 hid
+      // older invitations from this picker (full-code audit, 2026-11-27).
+      // ponytail: 200 is the server cap; page through if an org outgrows it.
+      widget.api.get('/hr/invitations', {'per_page': '200'}),
       widget.api.get('/hr/contracts'),
       widget.api.get('/hr/people/scope-options'),
     ]);

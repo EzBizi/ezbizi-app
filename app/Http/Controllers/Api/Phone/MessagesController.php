@@ -6,13 +6,10 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
-use App\Support\Automations\EventEmitter;
 use App\Support\Phone\NumberNames;
-use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\PhoneTexts;
 use App\Support\Phone\TextRefused;
-use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,10 +26,7 @@ class MessagesController extends Controller
 {
     public function __construct(
         private readonly PhoneNumberAccess $access,
-        private readonly TwilioGateway $twilio,
-        private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
-        private readonly PhoneLineHealth $health,
     ) {}
 
     /** GET /api/v1/phone/messages */
@@ -143,17 +137,6 @@ class MessagesController extends Controller
         return response()->json(['data' => $this->row($message)], Status::HTTP_CREATED);
     }
 
-    private function matchCustomer(string $e164): ?string
-    {
-        if ($e164 === '') {
-            return null;
-        }
-
-        return Customer::query()
-            ->where('phone', $e164)
-            ->value('id');
-    }
-
     /** @return array<string, mixed> */
     private function row(PhoneMessage $message): array
     {
@@ -169,20 +152,5 @@ class MessagesController extends Controller
             'customer_id' => $message->customer_id,
             'created_at' => $message->created_at?->toIso8601String(),
         ];
-    }
-
-    /** @return array<string, mixed> */
-    private function payload(PhoneMessage $message): array
-    {
-        return ['after' => [
-            'id' => $message->id,
-            'twilio_sid' => $message->twilio_sid,
-            'direction' => $message->direction,
-            'from_e164' => $message->from_e164,
-            'to_e164' => $message->to_e164,
-            'body' => $message->body,
-            'number_id' => $message->number_id,
-            'customer_id' => $message->customer_id,
-        ]];
     }
 }

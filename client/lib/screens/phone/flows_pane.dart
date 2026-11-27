@@ -258,6 +258,7 @@ class _FlowsPaneState extends State<FlowsPane> {
   }
 
   Future<void> _delete(_Flow flow) async {
+    if (!await confirmPhoneRemove(context, '"${flow.name}"')) return;
     final response = await widget.api.delete('/phone/flows/${flow.id}');
 
     if (!mounted) return;
@@ -493,6 +494,14 @@ class _FlowsPaneState extends State<FlowsPane> {
       key: const ValueKey('flow-form'),
       padding: const EdgeInsets.all(24),
       children: [
+        // Which company's account a NEW one goes on (audit 11-27: always
+        // the first account).
+        if (draft.id == null)
+          PhoneAccountPicker(
+            accounts: _connections,
+            selected: draft.connectionId,
+            onChanged: (id) => setState(() => draft.connectionId = id),
+          ),
         Row(
           children: [
             IconButton(
@@ -582,7 +591,12 @@ class _FlowsPaneState extends State<FlowsPane> {
         const SizedBox(height: 8),
 
         for (var i = 0; i < draft.options.length; i++)
-          _optionRow(draft, i, theme),
+          // Keyed by the option itself (audit 11-27): index keys moved field
+          // state onto the wrong row when a key above was removed.
+          KeyedSubtree(
+            key: ObjectKey(draft.options[i]),
+            child: _optionRow(draft, i, theme),
+          ),
 
         if (draft.options.length < 10)
           Align(
@@ -887,7 +901,7 @@ class _Draft {
   });
 
   final String? id;
-  final String connectionId;
+  String connectionId;
   String name;
   String prompt;
   final List<_OptionDraft> options;

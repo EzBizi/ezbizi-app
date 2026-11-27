@@ -328,19 +328,27 @@ class RouteMap extends StatefulWidget {
 
 /// Field's street map, when the organization has one set up; asked once a
 /// session per theme and shared by every map here.
-final _tiles = <String, Future<String?>>{};
+/// Audit 11-27: only a URL is kept, and for 30 minutes (its signed session
+/// expires); a failure is asked again next time.
+final _tiles = <String, (Future<String?>, DateTime)>{};
 
 /// The street map's tile URL for this theme, or null when there is none.
 Future<String?> mapTileUrl(ApiClient api, Brightness brightness) {
   final theme = brightness == Brightness.dark ? 'dark' : 'light';
-  return _tiles[theme] ??= api
-      .get('/field/map/tiles', {'theme': theme})
-      .then(
-        (r) => switch (r.body['data']) {
-          {'url': final String url} when r.ok => url,
-          _ => null,
-        },
-      );
+  final kept = _tiles[theme];
+  if (kept != null && DateTime.now().difference(kept.$2).inMinutes < 30) {
+    return kept.$1;
+  }
+  final asked = api.get('/field/map/tiles', {'theme': theme}).then((r) {
+    final url = switch (r.body['data']) {
+      {'url': final String url} when r.ok => url,
+      _ => null,
+    };
+    if (url == null) _tiles.remove(theme);
+    return url;
+  });
+  _tiles[theme] = (asked, DateTime.now());
+  return asked;
 }
 
 class _RouteMapState extends State<RouteMap>

@@ -130,6 +130,26 @@ class AuditEventsApiTest extends TestCase
         $this->assertSame(['robot.done'], collect($this->getJson('/api/v1/audit-events?source=system')->json('data'))->pluck('action')->all());
     }
 
+    // Audit 2026-11-27: 101 events in one second; "Show older" must reach the 101st.
+    public function test_show_older_reaches_rows_sharing_the_boundary_second(): void
+    {
+        $tenant = $this->provisionTenant();
+        $at = now()->subHour()->startOfSecond();
+        for ($i = 0; $i < 101; $i++) {
+            $this->event($tenant, "same.e{$i}", 'organization', $tenant['org']->id, ['occurred_at' => $at]);
+        }
+        $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['monitoring.activity.view']));
+
+        $first = $this->getJson('/api/v1/audit-events')->assertOk();
+        $this->assertTrue($first->json('meta.more'));
+        $last = collect($first->json('data'))->last();
+
+        $older = $this->getJson('/api/v1/audit-events?'.http_build_query(['before' => $last['occurred_at'], 'before_id' => $last['id']]))->assertOk();
+
+        $seen = collect($first->json('data'))->merge($older->json('data'))->pluck('id');
+        $this->assertCount(101, $seen->unique());
+    }
+
     // ── UI queue 111: who, where, module, search ─────────────────
 
     /** @return array<string, mixed> action => the field asked for */

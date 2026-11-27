@@ -25,7 +25,7 @@ class TasksDailyDigest extends Command
         foreach (Organization::query()->withoutGlobalScopes()->get() as $org) {
             $tenant->run($org, function () use ($bell, &$sent) {
                 $today = now()->toDateString();
-                $open = Task::query()->whereNull('completed_at')->whereNull('parent_task_id')
+                $open = Task::query()->whereHas('board')->whereNull('completed_at')->whereNull('parent_task_id')
                     ->join('task_assignees', 'task_assignees.task_id', '=', 'tasks.id')
                     ->get(['tasks.id', 'tasks.title', 'tasks.due_on', 'task_assignees.user_id as owner'])
                     ->groupBy('owner');

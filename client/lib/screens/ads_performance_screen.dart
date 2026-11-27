@@ -414,9 +414,14 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// With something remembered for this account and window, it is drawn at
   /// once and the request runs behind it - `_refreshing` shows a thin bar, not
   /// a spinner in place of the numbers. Without, it is the ordinary cold load.
+  /// Bumped per request; an answer to an older one is dropped (audit 11-27:
+  /// the key check compared the request's own window with itself).
+  int _reportTicket = 0;
+
   Future<void> _loadReport() async {
     final id = _selected;
     if (id == null) return;
+    final ticket = ++_reportTicket;
 
     _memory
       ..selected = id
@@ -459,7 +464,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
     // Somebody picked another account or range while this was in flight: its
     // answer belongs to a page that is no longer on screen.
-    if (!mounted || _selected != id || _reportKey(id, from, to) != key) return;
+    if (!mounted || _selected != id || ticket != _reportTicket) return;
 
     setState(() {
       _loadingReport = false;
@@ -553,7 +558,14 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       _changeResult = null;
     });
 
-    final asked = _picked.toList();
+    // Only rows on screen (audit 11-27: a filter hid ticked campaigns and
+    // Pause still acted on them).
+    final shown = {for (final c in _campaignRows().$2) '${c['id']}'};
+    final asked = _picked.where(shown.contains).toList();
+    if (asked.isEmpty) {
+      setState(() => _changing = false);
+      return;
+    }
     final response = await widget.api.post('/ads/campaigns/status', {
       'connection_id': id,
       'campaign_ids': asked,
@@ -652,6 +664,26 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   Widget _accountList(ThemeData theme) {
     if (_loadingAccounts) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // A failed list is not "nothing connected" (audit 11-27).
+    if (_accounts.isEmpty && _error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _error!,
+              key: const ValueKey('ads-accounts-error'),
+              textAlign: TextAlign.center,
+            ),
+            TextButton(
+              onPressed: _loadAccounts,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_accounts.isEmpty) {

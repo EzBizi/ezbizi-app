@@ -228,7 +228,18 @@ class ContractPageController extends ChangeNotifier {
     super.dispose();
   }
 
+  // The controller also notifies when only the caret moves; that is not a
+  // change worth a server render (full-code audit, 2026-11-27). Same text with
+  // the SAME selection still renders: that is a re-render asked for on purpose.
+  TextEditingValue? _last;
+
   void _typed() {
+    final now = body.value;
+    final caretOnly = _last != null &&
+        now.text == _last!.text &&
+        now.selection != _last!.selection;
+    _last = now;
+    if (caretOnly) return;
     _debounce?.cancel();
     _debounce = Timer(_settle, _render);
   }

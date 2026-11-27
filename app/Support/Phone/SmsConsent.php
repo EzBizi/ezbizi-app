@@ -74,6 +74,9 @@ final class SmsConsent
 
     public static function optedOut(string $organizationId, string $to): bool
     {
+        // Normalised (audit 11-27): "(203) 555-..." got past a raw compare.
+        $to = (string) (\App\Models\Lead::e164($to) ?? $to);
+
         return DB::table('sms_opt_outs')->where(['organization_id' => $organizationId, 'e164' => $to])->exists();
     }
 
@@ -87,6 +90,7 @@ final class SmsConsent
     public static function prepare(PhoneConnection $connection, string $to, string $body, bool $automated = false, bool $capped = false): ?string
     {
         $org = (string) $connection->organization_id;
+        $to = (string) (\App\Models\Lead::e164($to) ?? $to);
         if (self::optedOut($org, $to)) {
             return null;
         }
@@ -104,6 +108,12 @@ final class SmsConsent
             ->where('to_e164', $to)
             ->exists();
 
-        return $texted || stripos($body, 'STOP') !== false ? $body : rtrim($body)."\n\n".self::FOOTER;
+        return $texted || self::saysHowToStop($body) ? $body : rtrim($body)."\n\n".self::FOOTER;
+    }
+
+    /** Only an actual "reply/text STOP" instruction, not "stop by this week" (audit 11-27). */
+    public static function saysHowToStop(string $body): bool
+    {
+        return preg_match('/\b(reply|text|txt|send|respond)\b[^.\n]{0,20}\bstop\b/i', $body) === 1;
     }
 }

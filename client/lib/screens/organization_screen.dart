@@ -452,15 +452,16 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         fixedParent: parent == null
             ? null
             : (id: parent['id'] as String, name: parent['name'] as String),
+        onSave: (d) async {
+          final r = await widget.api.post('/companies', d.toJson());
+          return r.ok ? null : r.reason;
+        },
       ),
     );
 
-    if (draft == null) return;
-
-    await _send(
-      () => widget.api.post('/companies', draft.toJson()),
-      draft.parentId == null ? 'Company added' : 'Sub company added',
-    );
+    if (draft == null || !mounted) return;
+    _snack(draft.parentId == null ? 'Company added' : 'Sub company added');
+    _load();
   }
 
   /// Everything about a company that can change, in the form that created it.
@@ -472,16 +473,22 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   Future<void> _editCompany(Map<String, dynamic> company) async {
     final draft = await showSidePanel<CompanyDraft>(
       context,
-      builder: (_) => CompanyFormPanel.edit(api: widget.api, company: company),
+      builder: (_) => CompanyFormPanel.edit(
+        api: widget.api,
+        company: company,
+        onSave: (d) async {
+          final r = await widget.api.patch(
+            '/companies/${company['id']}',
+            d.toUpdateJson(),
+          );
+          return r.ok ? null : r.reason;
+        },
+      ),
     );
 
-    if (draft == null) return;
-
-    await _send(
-      () =>
-          widget.api.patch('/companies/${company['id']}', draft.toUpdateJson()),
-      'Saved',
-    );
+    if (draft == null || !mounted) return;
+    _snack('Saved');
+    _load();
   }
 
   /// Make a company a sub company, or make a sub company a company again.
@@ -646,7 +653,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       ),
     );
 
-    controller.dispose();
+    // ponytail: not disposed. The panel is still sliding out and its TextField
+    // still holds it (audit 2026-11-27); an unlistened controller is just GC'd.
 
     return (value == null || value.isEmpty) ? null : value;
   }

@@ -152,7 +152,9 @@ final class MicrosoftMailboxReader implements MailboxReader
     public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
         return $this->page($mailbox, $this->folderUrl($mailbox, $label), [
-            '$search' => '"'.$query.'"',
+            // A quote the searcher typed would end Graph's quoted string
+            // early (audit 11-27); it adds nothing to a word search.
+            '$search' => '"'.str_replace('"', '', $query).'"',
             '$select' => self::LIST_SELECT,
             '$top'    => (string) max(1, min($limit, 100)),
             ...$this->cursorQuery($cursor),
@@ -214,17 +216,20 @@ final class MicrosoftMailboxReader implements MailboxReader
     public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
     {
         $ids = [];
-        $pageToken = $mark;
-        $fresh = null;
+        // Page 2 on is Graph's own @odata.nextLink, followed as returned: it
+        // carries a $skiptoken, and sending that back as a $deltatoken failed
+        // every poll after a busy hour (audit 11-27).
+        $url = self::INBOX.'/delta';
+        $query = [
+            '$select'     => 'id,conversationId,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead',
+            '$deltatoken' => $mark,
+            '$top'        => (string) max(1, min($limit, 100)),
+        ];
 
         for ($page = 0; $page < self::MAX_DELTA_PAGES; $page++) {
             $response = $this->sendRaw($mailbox, fn (string $token) => Http::withToken($token)
                 ->timeout(self::TIMEOUT)
-                ->get(self::INBOX.'/delta', [
-                    '$select'     => 'id,conversationId,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead',
-                    '$deltatoken' => $pageToken,
-                    '$top'        => (string) max(1, min($limit, 100)),
-                ]));
+                ->get($url, $query));
 
             // 410: Graph's delta token has expired. Same polarity as Gmail 404 history.
             if ($response->status() === 410) {
@@ -240,16 +245,25 @@ final class MicrosoftMailboxReader implements MailboxReader
 
                 $id = (string) ($row['id'] ?? '');
 
-                if ($id !== '') {
+                // Graph's delta also returns mail that was only read, flagged
+                // or moved; announced as new, an auto-reply rule answered the
+                // customer again (audit 11-27). Mail older than a day is an
+                // update, and an id is announced once per mailbox.
+                $received = strtotime((string) ($row['receivedDateTime'] ?? ''));
+                if ($id === '' || ($received !== false && $received < now()->subDay()->getTimestamp())) {
+                    continue;
+                }
+
+                if (Cache::add('email.announced.'.$mailbox->getKey().'.'.sha1($id), true, now()->addDays(30))) {
                     $ids[$id] = $row;
                 }
             }
 
-            $next = $this->cursorFromLink($body['@odata.nextLink'] ?? null);
+            $next = (string) ($body['@odata.nextLink'] ?? '');
 
-            if ($next !== null) {
-                $pageToken = $next;
-                $fresh = $this->deltaTokenFromLink($body['@odata.deltaLink'] ?? null) ?? $fresh;
+            if ($next !== '' && str_starts_with($next, self::GRAPH.'/')) {
+                $url   = $next;
+                $query = [];
 
                 continue;
             }
@@ -270,7 +284,10 @@ final class MicrosoftMailboxReader implements MailboxReader
         $query = ['$select' => 'id', '$top' => '100'];
         $url = self::INBOX.'/delta';
 
-        for ($page = 0; $page < self::MAX_DELTA_PAGES; $page++) {
+        // The first mark walks every message once, ids only. Ten pages left
+        // any inbox over ~1,000 messages unwatched (audit 11-27).
+        // ponytail: 30,000 messages; past that the inbox is not watched.
+        for ($page = 0; $page < 300; $page++) {
             $body = $this->get($mailbox, $url, $query);
 
             $delta = $this->deltaTokenFromLink($body['@odata.deltaLink'] ?? null);

@@ -285,6 +285,22 @@ class ImportWorkizLeadsTest extends TestCase
             ->where('remote_id', 'wz-1')->count()), 'and not duplicated');
     }
 
+    /** Audit 11-27: a watermark at 9:30 PM Eastern is tomorrow in UTC; ask from the day before. */
+    public function test_an_evening_watermark_still_asks_for_that_evenings_date(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-24 12:00:00', 'UTC'));
+        $t = $this->provisionTenant('Echo');
+        $connection = $this->connection($t);
+        $this->seedWatermark($t, $connection);
+        $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', 'wz-seed')
+            ->update(['received_at' => Carbon::parse('2026-09-24 01:30:00', 'UTC')]));
+        Http::fake(['api.workiz.com/*' => Http::response(['flag' => true, 'data' => []])]);
+
+        $this->artisan('ezbizi:import-workiz-leads')->assertSuccessful();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'start_date=2026-09-23'));
+    }
+
     /** One unreachable branch does not stop the others. */
     public function test_a_branch_that_refuses_does_not_stop_the_run(): void
     {

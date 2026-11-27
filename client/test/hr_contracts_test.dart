@@ -1532,9 +1532,10 @@ void main() {
     expect(find.text('The logo you have already uploaded'), findsOneWidget);
     expect(find.text('A file of your own'), findsOneWidget);
 
-    // The one press. The mark is REFERENCED, not copied — so there is nothing
-    // to upload for it and a rebrand reaches every contract using it.
-    expect(find.textContaining('It is not copied'), findsOneWidget);
+    // The one press. Each published version keeps a copy of the logo as it
+    // was (HrContractsController::publish writes it), so a rebrand reaches a
+    // contract only when it is published again (full-code audit, 2026-11-27).
+    expect(find.textContaining('keeps the logo as it was'), findsOneWidget);
 
     // And the consequence, in the panel as well as on the step, because this
     // is the sentence that has to arrive before the press.

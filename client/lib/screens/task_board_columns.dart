@@ -932,12 +932,11 @@ class ColumnCell extends StatelessWidget {
                   value: ids.contains(o.id),
                   closeOnActivate: false,
                   onChanged: (on) {
-                    final next = [
-                      for (final id in ids)
-                        if (id != o.id) id,
-                      if (on == true) o.id,
-                    ];
-                    onChanged?.call(next.isEmpty ? null : next);
+                    // The menu stays open: quick ticks build on each other, not
+                    // on the value this menu opened with (audit 11-27).
+                    ids.remove(o.id);
+                    if (on == true) ids.add(o.id);
+                    onChanged?.call(ids.isEmpty ? null : [...ids]);
                   },
                   child: Text(o.label),
                 ),

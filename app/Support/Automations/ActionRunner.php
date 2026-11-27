@@ -542,9 +542,9 @@ class ActionRunner
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.complete_matching' => $this->completeMatching($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
-            'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
-            'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation),
-            'task.set_value' => $this->setTaskValue($action, $subject, $automation),
+            'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation, $event),
+            'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation, $event),
+            'task.set_value' => $this->setTaskValue($action, $subject, $automation, $event),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
             'report.text' => $this->reportText($action, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
@@ -1643,19 +1643,22 @@ class ActionRunner
             ];
         }
 
-        if ($subject instanceof User) {
-            try {
-                $this->administrators->assertNotTheLast($subject, 'is_active');
-            } catch (ValidationException $refusal) {
-                return [
-                    'type' => $type, 'ok' => false,
-                    'detail' => collect($refusal->errors())->flatten()->first()
-                        ?? $refusal->getMessage(),
-                ];
-            }
+        try {
+            // One transaction: the floor locks the administrator rows until
+            // this write lands, so two concurrent runs cannot both pass it.
+            DB::transaction(function () use ($subject) {
+                if ($subject instanceof User) {
+                    $this->administrators->assertNotTheLast($subject, 'is_active');
+                }
+                $subject->forceFill(['is_active' => false])->save();
+            });
+        } catch (ValidationException $refusal) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => collect($refusal->errors())->flatten()->first()
+                    ?? $refusal->getMessage(),
+            ];
         }
-
-        $subject->forceFill(['is_active' => false])->save();
 
         $this->audit->log('automation.deactivated', $subject);
 
@@ -2693,7 +2696,7 @@ class ActionRunner
         }
 
         $job = DB::transaction(function () use ($subject, $caller, $franchise, $status, $event) {
-            $customer = Customer::query()->where('phone', $caller)->first();
+            $customer = Customer::query()->where(fn ($q) => Customer::phoneLike($q, $caller))->first();
 
             if ($customer === null) {
                 $customer = Customer::create([
@@ -3933,7 +3936,7 @@ class ActionRunner
             : [];
 
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event)
+            $value = self::readable($subject, $m[1]) ?? $this->valueFromEvent($m[1], $event)
                 // {{branch}} on a record's event: the record's branch (its Area on a task, 2026-11-17).
                 ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
                     ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
@@ -3945,6 +3948,24 @@ class ActionRunner
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
         }, $template);
+    }
+
+    /**
+     * A record attribute a template may print: never a $hidden one, nor one
+     * cast encrypted or hashed. getAttribute decrypts and ignores $hidden, so
+     * {{totp_secret}} printed a 2FA seed into a dry run (audit 2026-11-27).
+     */
+    public static function readable(?Model $subject, string $key): mixed
+    {
+        if ($subject === null || in_array($key, $subject->getHidden(), true)) {
+            return null;
+        }
+        $cast = (string) ($subject->getCasts()[$key] ?? '');
+        if (str_starts_with($cast, 'encrypted') || $cast === 'hashed') {
+            return null;
+        }
+
+        return $subject->getAttribute($key);
     }
 
     /** Backslash every Markdown control character, so the text renders as itself. */
@@ -4227,7 +4248,7 @@ class ActionRunner
     }
 
     /** Task Board recipes (Jose, 2026-10-13): "when status becomes Done, move it to Finished". TaskWriter checks the group is on the task's board. */
-    private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation): array
+    private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
     {
         if (! $subject instanceof Task) {
             return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.move_group', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
@@ -4249,7 +4270,7 @@ class ActionRunner
      * due date (column_id "due") or a date column, later by days/weeks/months.
      * A date that is empty stays empty.
      */
-    private function shiftTaskDate(array $action, ?Model $subject, ?Automation $automation): array
+    private function shiftTaskDate(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
     {
         $type = 'task.shift_date';
         if (! $subject instanceof Task) {
@@ -4287,7 +4308,7 @@ class ActionRunner
      * label's name, a date or due date to "today" (the organization's day) or
      * a date, a checkbox to true/false, anything else as written.
      */
-    private function setTaskValue(array $action, ?Model $subject, ?Automation $automation): array
+    private function setTaskValue(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
     {
         $type = 'task.set_value';
         if (! $subject instanceof Task) {
@@ -4404,11 +4425,12 @@ class ActionRunner
                     Cache::forget("{$once}:{$user->id}");
                 }
 
-                return $refusal->getMessage();
+                // One refusal no longer stops everyone after them (audit 2026-11-27).
+                $refused ??= $refusal->getMessage();
             }
         }
 
-        return $sent;
+        return $sent === 0 && isset($refused) ? $refused : $sent;
     }
 
     /** Holds reports.view and reaches the rule's place (the organization when unscoped). */

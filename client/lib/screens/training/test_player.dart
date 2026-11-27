@@ -355,9 +355,15 @@ class _TestPlayerState extends State<TestPlayer> {
               style: theme.textTheme.bodyMedium,
             ),
           ),
+        // An attempt can be capped: an unanswered question would spend it on a blank.
+        if (_answers.contains(null))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('Answer every question to submit.', style: theme.textTheme.bodySmall),
+          ),
         ElevatedButton(
           key: const Key('training.submit-test'),
-          onPressed: (_submitting || _capReached) ? null : _submit,
+          onPressed: (_submitting || _capReached || _answers.contains(null)) ? null : _submit,
           child: Text(_submitting ? 'Submitting…' : 'Submit'),
         ),
       ],

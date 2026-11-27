@@ -304,7 +304,13 @@ class ViewScope
     public function companyIdsInView(): ?array
     {
         return match ($this->type) {
-            self::ORGANIZATION => null,
+            // No limit only when the organization is really theirs (assigned
+            // there, or an Administrator). The ORGANIZATION type is also what
+            // somebody who reaches nothing, and `reachOf`, get: for them it
+            // is their reached companies — none at all for a new invitee.
+            self::ORGANIZATION => $this->user->canActOnOrganization($this->user->organization)
+                ? null
+                : $this->user->reachableCompanies()->modelKeys(),
             self::COMPANY => $this->companyIds(),
             default => array_values(array_filter([Franchise::find($this->id)?->company_id])),
         };

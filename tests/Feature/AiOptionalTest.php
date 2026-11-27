@@ -23,7 +23,7 @@ class AiOptionalTest extends TestCase
 
     private function noAi(): void
     {
-        config(['services.grok_cli.home' => null, 'services.ai.claude.key' => null, 'experimental_reports.tagging.claude.key' => null, 'services.ai.provider' => 'auto']);
+        config(['services.grok_cli.home' => null, 'services.ai.claude.key' => null, 'services.ai.provider' => 'auto']);
         Process::fake();
     }
 

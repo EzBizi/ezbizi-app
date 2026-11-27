@@ -170,7 +170,13 @@ class ScreenshotsController extends Controller
 
         if ($before = $request->query('before')) {
             // An unencoded '+' in the offset arrives as a space; read it back.
-            $query->where('captured_at', '<', Carbon::parse(str_replace(' ', '+', $before))->utc());
+            try {
+                $cursor = Carbon::parse(str_replace(' ', '+', (string) $before))->utc();
+            } catch (\Throwable) {
+                // A cursor that is not a time is the caller's mistake, not a 500.
+                abort(422, 'The before cursor must be a date and time.');
+            }
+            $query->where('captured_at', '<', $cursor);
         }
 
         $limit = max(1, min((int) $request->query('limit', self::DEFAULT_LIMIT), self::MAX_LIMIT));

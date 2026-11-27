@@ -204,4 +204,45 @@ void main() {
     expect(result!.filters.single.value, ['stuck']);
     expect(result!.sort.single.field, 'title');
   });
+
+  // Audit 2026-11-27: the value box was keyed by position, so removing the
+  // first of two rules showed its typed value on the second.
+  testWidgets('removing a rule leaves the next one its own value box', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: FilterPanel(
+            fields: fields.values.toList(),
+            view: const ListQuery(
+              filters: [
+                (field: 'title', op: 'contains', value: 'Liner'),
+                (field: 'title', op: 'contains', value: 'Cap'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    String box(int i) => tester
+        .widget<TextField>(
+          find.descendant(
+            of: find.byKey(ValueKey('filter-value-$i')),
+            matching: find.byType(TextField),
+          ),
+        )
+        .controller!
+        .text;
+    expect(box(0), 'Liner');
+    expect(box(1), 'Cap');
+    await tester.tap(find.byTooltip('Remove').first);
+    await tester.pumpAndSettle();
+    expect(box(0), 'Cap');
+  });
 }

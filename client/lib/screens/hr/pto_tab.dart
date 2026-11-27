@@ -1661,7 +1661,11 @@ class _PtoTabState extends State<PtoTab> {
                       if (event.kind == PtoEventKind.daysOff && canEdit)
                         IconButton(
                           key: Key('pto-remove-${event.run!.ids.first}'),
-                          tooltip: 'Remove these days',
+                          // Two taps, and not while removing: one tap used
+                          // to delete a whole run (full-code audit, 2026-11-27).
+                          tooltip: _armed == event.run!.ids.first
+                              ? 'Tap again to remove ${event.run!.ids.length} day${event.run!.ids.length == 1 ? '' : 's'}'
+                              : 'Remove these days',
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
@@ -1669,8 +1673,16 @@ class _PtoTabState extends State<PtoTab> {
                             minHeight: 28,
                           ),
                           iconSize: 18,
-                          onPressed: () => _removeRun(person, event.run!),
-                          icon: const Icon(Icons.close),
+                          onPressed: _removing
+                              ? null
+                              : () => _armed == event.run!.ids.first
+                                    ? _removeRun(person, event.run!)
+                                    : setState(() => _armed = event.run!.ids.first),
+                          icon: Icon(
+                            _armed == event.run!.ids.first
+                                ? Icons.delete_forever
+                                : Icons.close,
+                          ),
                         ),
                     ],
                   ),
@@ -1692,9 +1704,16 @@ class _PtoTabState extends State<PtoTab> {
 
   String _orDash(num? value) => value == null ? '—' : _days(value);
 
+  String? _armed;
+  bool _removing = false;
+
   Future<void> _removeRun(Map<String, dynamic> person, PtoDayRun run) async {
     final pid = '${person['id']}';
-    setState(() => _removeError = null);
+    setState(() {
+      _removeError = null;
+      _armed = null;
+      _removing = true;
+    });
 
     Map<String, dynamic>? balance;
     for (final day in run.ids) {
@@ -1710,6 +1729,7 @@ class _PtoTabState extends State<PtoTab> {
     }
 
     if (balance != null) _merge(pid, balance, _daysKeys);
+    if (mounted) setState(() => _removing = false);
     await _load(quiet: true);
   }
 

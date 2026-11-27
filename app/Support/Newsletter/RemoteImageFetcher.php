@@ -177,7 +177,7 @@ class RemoteImageFetcher
             $this->refuse("{$host} could not be found.");
         }
         foreach ($ips as $ip) {
-            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_GLOBAL_RANGE)) {
                 $this->refuse("{$host} points at a private or local network address, so it was not copied.");
             }
         }

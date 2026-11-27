@@ -25,12 +25,13 @@ class TasksOverdue extends Command
     {
         $raised = 0;
 
-        $due = Task::query()->withoutGlobalScopes()
+        $due = Task::query()->withoutGlobalScopes()->whereHas('board', fn ($b) => $b->withoutGlobalScopes()->whereNull('deleted_at'))
             ->whereNull('deleted_at')
             ->whereNull('overdue_announced_at')
             ->where('status', '!=', Task::STATUS_DONE)
             ->whereNotNull('due_on')
-            ->whereDate('due_on', '<', now()->toDateString())
+            // A day past UTC covers every zone; each org's own today filters below (audit 11-27).
+            ->whereDate('due_on', '<', now()->addDay()->toDateString())
             ->get();
 
         foreach ($due->groupBy('organization_id') as $organizationId => $tasks) {
@@ -38,6 +39,8 @@ class TasksOverdue extends Command
             if ($organization === null) {
                 continue;
             }
+            $today = $tenant->run($organization, fn () => \Carbon\CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of($organization))->toDateString());
+            $tasks = $tasks->filter(fn (Task $t) => $t->due_on->toDateString() < $today);
 
             $tenant->run($organization, function () use ($tasks, $events, &$raised) {
                 foreach ($tasks as $task) {

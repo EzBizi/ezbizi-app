@@ -201,7 +201,7 @@ class _RoutingPaneState extends State<RoutingPane> {
   }
 
   void _step(int days) {
-    setState(() => _date = _date.add(Duration(days: days)));
+    setState(() => _date = DateUtils.addDaysToDate(_date, days));
     _load();
   }
 

@@ -252,12 +252,14 @@ class PtoPolicy
         // Every past reset, played forward from the start date: what was left
         // at each either carried into the next window or expired (Jose,
         // 2026-10-22: "show when past resets happened").
-        $bounds = [$startedOn->copy()];
-        $at = $startedOn->copy();
+        // A period reset steps from the day accumulation starts, so no window
+        // falls in the wait and earns days (full-code audit, 2026-11-27).
+        $bounds = [$reset === 'period' ? $origin->copy() : $startedOn->copy()];
+        $at = $bounds[0]->copy();
         for ($i = 0; $i < 600; $i++) {
             $at = match ($reset) {
                 'anniversary' => $startedOn->copy()->addYearsNoOverflow($i + 1),
-                'period' => $step($startedOn, $i + 1),
+                'period' => $step($origin, $i + 1),
                 default => $at->copy()->startOfYear()->addYear(),
             };
             if ($at->gt($from)) {

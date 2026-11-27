@@ -55,7 +55,6 @@ class SmsWebhookController extends Controller
             }
 
             $number = $this->line($connection, $to);
-            $this->lookupQuietly($from);
             $customerId = $this->matchCustomer($from);
 
             $message = PhoneMessage::query()->create([
@@ -114,20 +113,6 @@ class SmsWebhookController extends Controller
         return Customer::query()
             ->where('phone', $e164)
             ->value('id');
-    }
-
-    /** Lookup is optional. Miss / not enabled must not 500 the inbound store. */
-    private function lookupQuietly(string $e164): void
-    {
-        if ($e164 === '') {
-            return;
-        }
-
-        try {
-            $this->twilio->lookup($e164);
-        } catch (Throwable) {
-            // Show the number unmatched; never fail the webhook.
-        }
     }
 
     /** @return array<string, mixed> */

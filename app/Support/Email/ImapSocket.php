@@ -199,7 +199,10 @@ final class ImapSocket
         );
 
         if ($stream === false) {
-            throw ImapFailure::unreachable(sprintf(
+            // A connection that did not open is a network or DNS blip until it
+            // keeps happening: TIMEOUT, retried with backoff. As UNREACHABLE it
+            // marked the inbox broken on the first one (audit 11-27).
+            throw ImapFailure::notAnswering(sprintf(
                 'Could not open a connection to %s on port %d: %s.',
                 $approved->host,
                 $approved->port,

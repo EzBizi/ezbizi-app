@@ -81,7 +81,14 @@ class OwnershipController extends Controller
             // Reach says who this person may see; the view says who is in the
             // company they are standing in. See MonitoringView.
             ->tap(fn (Builder $q) => MonitoringView::people($q, $actor))
-            ->with('role:id,name')
+            // Assignments eager-loaded: the label below queried 1-4 times per
+            // person (audit 11-27).
+            ->with([
+                'role:id,name',
+                'assignments.assignedOrganization:id,name',
+                'assignments.assignedCompany:id,name',
+                'assignments.assignedFranchise:id,name',
+            ])
             ->orderBy('name')
             ->get();
 
@@ -278,13 +285,7 @@ class OwnershipController extends Controller
      */
     private function assignmentLabel(User $person): ?string
     {
-        $assignment = $person->assignments()
-            ->with([
-                'assignedOrganization:id,name',
-                'assignedCompany:id,name',
-                'assignedFranchise:id,name',
-            ])
-            ->first();
+        $assignment = $person->assignments->first();
 
         if ($assignment === null) {
             // Genuinely unplaced. This is the em dash the chart is FOR.

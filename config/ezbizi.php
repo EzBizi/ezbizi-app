@@ -64,18 +64,18 @@ return [
         // blaming the certificate rather than the configuration.
         'host' => env('EZBIZI_TLS_HOST')
             ?: (parse_url($hosts['customer'], PHP_URL_HOST) ?: $hosts['customer']),
-        'port' => (int) env('EZBIZI_TLS_PORT', 443),
+        'port' => 443,
 
         // Short on purpose: this runs inside a staff page request, and a health
         // screen that hangs waiting for a socket is reporting nothing while
         // looking like it is reporting something.
-        'timeout' => (int) env('EZBIZI_TLS_TIMEOUT_SECONDS', 5),
+        'timeout' => 5,
 
         // certbot starts renewing at 30 days out and retries twice a day, so a
         // healthy installation never gets near this. Below it means either the
         // renewal or the nginx reload after it has been failing for over a week,
         // which is still a fortnight of warning before anything breaks.
-        'min_days' => (int) env('EZBIZI_TLS_MIN_DAYS', 21),
+        'min_days' => 21,
     ],
 
     /*
@@ -92,7 +92,7 @@ return [
     'attachments' => [
         // 20MB. Big enough for a scanned multi-page contract or a photograph
         // straight off a phone, small enough that one upload is not an outage.
-        'max_kilobytes' => (int) env('EZBIZI_ATTACHMENT_MAX_KB', 20480),
+        'max_kilobytes' => 20480,
 
         /*
          * Extensions, checked against the DETECTED content type by the `mimes`
@@ -135,7 +135,7 @@ return [
         // Older than this and the backup is treated as failed, whatever the file
         // says. A job that stops running writes nothing at all, so "the last
         // result was a success" is exactly what a broken timer looks like.
-        'max_age_hours' => (int) env('EZBIZI_BACKUP_MAX_AGE_HOURS', 30),
+        'max_age_hours' => 30,
 
         // Who hears about it. Empty means nobody is emailed and the alert lives
         // only in the audit log and the Development screen — which is better
@@ -170,7 +170,7 @@ return [
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
         'url' => env('EZBIZI_PEER_URL'),
-        'max_age_minutes' => (int) env('EZBIZI_PEER_MAX_AGE_MINUTES', 15),
+        'max_age_minutes' => 15,
     ],
 
     /*
@@ -240,7 +240,7 @@ return [
          * asking means a public webhook endpoint and a subscription that expires
          * and has to be renewed, which is infrastructure rather than a setting.
          */
-        'interval_seconds' => (int) env('EZBIZI_MAIL_WATCH_INTERVAL', 300),
+        'interval_seconds' => 300,
 
         /*
          * How many mailboxes one sweep will take, and for how long.
@@ -257,9 +257,9 @@ return [
          * which is inside one cadence — so a hundred is comfortably within what
          * this configuration serves without any mailbox slipping behind.
          */
-        'per_sweep' => (int) env('EZBIZI_MAIL_WATCH_PER_SWEEP', 25),
+        'per_sweep' => 25,
 
-        'sweep_seconds' => (int) env('EZBIZI_MAIL_WATCH_SWEEP_SECONDS', 45),
+        'sweep_seconds' => 45,
 
         /*
          * How many arrivals one poll of one mailbox will announce.
@@ -273,7 +273,7 @@ return [
          * Gmail honours this loosely — its position can only be taken where its
          * history paging stops, and App\Support\Email\GmailMailboxReader says why.
          */
-        'per_poll' => (int) env('EZBIZI_MAIL_WATCH_PER_POLL', 50),
+        'per_poll' => 50,
 
         /*
          * How long a position may go unconfirmed before it is abandoned.
@@ -290,7 +290,7 @@ return [
          * thing that happens on the first sight of a mailbox, for the same
          * reason. It is stated in the log so a gap is never invisible.
          */
-        'stale_after_seconds' => (int) env('EZBIZI_MAIL_WATCH_STALE_AFTER', 86400),
+        'stale_after_seconds' => 86400,
 
         /*
          * The longest the backoff will wait after repeated failures.
@@ -302,7 +302,7 @@ return [
          * out of the sweep entirely and raises `email.mailbox_broken`, which is
          * the path that reaches somebody.
          */
-        'max_backoff_seconds' => (int) env('EZBIZI_MAIL_WATCH_MAX_BACKOFF', 21600),
+        'max_backoff_seconds' => 21600,
     ],
 
     /*

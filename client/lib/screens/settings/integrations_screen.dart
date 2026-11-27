@@ -1237,7 +1237,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           '${stays.isEmpty ? '' : ' ${stays.join(', ')} stays connected.'}',
       perform: (code) => widget.api.deleteWithBody(
         '/social/providers/$head/connections',
-        {'code': code, ...?_accountEmail(head)},
+        // Every login's rows: account_email would narrow it to the first one.
+        {'code': code},
       ),
     );
     if (done != null && mounted) {

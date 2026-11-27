@@ -7,7 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// figures scroll sideways, a line says when there is more to the right, and
 /// a loss is drawn in the bad tone.
 void main() {
-  Future<void> pump(WidgetTester tester, double width) async {
+  Future<void> pump(
+    WidgetTester tester,
+    double width, {
+    ValueChanged<int>? onTap,
+  }) async {
     tester.view.physicalSize = Size(width, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -16,6 +20,7 @@ void main() {
         theme: EzBiziTheme.light(),
         home: Scaffold(
           body: ReportGrid(
+            onTap: onTap,
             columns: [
               const GridColumn('Branch', pinned: true),
               for (final c in [
@@ -111,5 +116,29 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Total'), findsOneWidget);
+  });
+
+  // Audit 2026-11-27: on a phone the card's tap only expanded it, so a row's
+  // drill-down or job could not be reached.
+  testWidgets('a phone: a row that opens something opens on a tap', (
+    tester,
+  ) async {
+    final opened = <int>[];
+    await pump(tester, 390, onTap: opened.add);
+
+    final card = find.byKey(const ValueKey('report-grid-card-0'));
+    await tester.tap(find.descendant(of: card, matching: find.text('Clicks')));
+    await tester.pumpAndSettle();
+    expect(opened, [0]);
+    expect(find.descendant(of: card, matching: find.text('Gross')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('report-grid-more-0')));
+    await tester.pumpAndSettle();
+    expect(opened, [0], reason: 'more expands; it opens nothing');
+    expect(
+      find.descendant(of: card, matching: find.text('Gross')),
+      findsOneWidget,
+    );
+    expect(find.text('Less ▴'), findsOneWidget);
   });
 }

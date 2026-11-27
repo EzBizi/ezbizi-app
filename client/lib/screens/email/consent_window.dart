@@ -149,18 +149,28 @@ Future<Timer?> runConsentFlow({
   var asks = 150;
   final statusPath = startPath.replaceFirst('/start', '/status');
 
+  // One ask at a time: a slow answer overlapping the next tick could call
+  // onConnected twice (audit 11-27).
+  var asking = false;
+
   return Timer.periodic(const Duration(seconds: 2), (timer) async {
+    if (asking) return;
     asks -= 1;
 
     if (asks <= 0 || !isMounted()) {
       timer.cancel();
-      if (isMounted()) onEnd(null);
+      // Said, not silent: a spinner that just stopped reads as success.
+      if (isMounted()) {
+        onEnd('The sign-in was not finished in time. Start it again.');
+      }
       return;
     }
 
+    asking = true;
     final status = await api.get(statusPath, {'flow': flow});
+    asking = false;
 
-    if (!isMounted()) {
+    if (!isMounted() || !timer.isActive) {
       timer.cancel();
       return;
     }

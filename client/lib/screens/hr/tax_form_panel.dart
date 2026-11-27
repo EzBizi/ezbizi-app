@@ -180,8 +180,11 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
     return {
       'business_name': text('business_name'),
       'classification': _classification,
-      'llc_code': text('llc_code'),
-      'other_classification': text('other_classification'),
+      // Only for the classification that asks for it (audit, 2026-11-27).
+      'llc_code': _classification == 'llc' ? text('llc_code') : '',
+      'other_classification': _classification == 'other'
+          ? text('other_classification')
+          : '',
       'exempt_payee_code': text('exempt_payee_code'),
       'fatca_code': text('fatca_code'),
       'foreign_partners': _foreignPartners,

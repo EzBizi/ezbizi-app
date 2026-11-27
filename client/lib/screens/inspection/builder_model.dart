@@ -426,6 +426,42 @@ List<String> dependentsOf(Map<String, dynamic>? definition, String key) {
 /// An answer the Builder writes as plain words keeps its value equal to its
 /// words, so renaming the words renames the value — and every condition that
 /// was waiting for the old words has to follow, or it silently never matches.
+/// What waits for answer [value] of question [key]: removing that answer
+/// would leave them never shown (audit 11-27).
+List<String> waitingForAnswer(
+  Map<String, dynamic>? definition,
+  String key,
+  String value,
+) {
+  bool names(dynamic condition) {
+    if (condition is! Map) return false;
+    final op = '${condition['op'] ?? ''}';
+    if (op == 'and' || op == 'or') {
+      final children = condition['conditions'];
+      return children is List && children.any(names);
+    }
+    if ('${condition['field'] ?? ''}' != key) return false;
+    final values = condition['values'];
+    return '${condition['value'] ?? ''}' == value ||
+        (values is List && values.any((v) => '$v' == value));
+  }
+
+  final out = <String>[];
+  final screens = screensOf(definition);
+  for (var i = 0; i < screens.length; i++) {
+    if (names(screens[i]['visible_if'])) {
+      out.add('the screen “${screens[i]['name'] ?? 'Screen ${i + 1}'}”');
+    }
+    void check(Map<String, dynamic> field) {
+      if (names(field['visible_if'])) out.add('“${labelOf(field)}”');
+      followUpsOf(field).forEach(check);
+    }
+
+    fieldsOf(screens[i]).forEach(check);
+  }
+  return out;
+}
+
 void renameAnswer(
   Map<String, dynamic>? definition,
   String key,

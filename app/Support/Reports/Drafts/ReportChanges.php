@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\Texts\ReportGoals;
 use App\Support\Scoping\ViewScope;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -63,36 +64,47 @@ final class ReportChanges
             $refuse('Correcting the whole report is done from the organization view.');
         }
 
-        $settings = (array) ($batch->settings ?? []);
-        $jobs = fn () => array_values(array_unique(array_filter(array_map('strval', (array) ($params['jobs'] ?? [])))));
+        // Two corrections at once each read the same settings and the later
+        // one wrote over the other (audit 2026-11-27): lock the row, read it again.
+        $batch = DB::transaction(function () use ($batch, $key, $params, $by, $refuse) {
+            $batch = WhatsAppReportBatch::query()->lockForUpdate()->findOrFail($batch->getKey());
+            if ($batch->approved_at !== null) {
+                $refuse('That report is already approved and sent.');
+            }
 
-        switch ($key) {
-            case 'report.exclude_jobs':
-                $jobs() === [] && $refuse('Which jobs?');
-                $settings['exclude_jobs'] = array_values(array_unique([...($settings['exclude_jobs'] ?? []), ...$jobs()]));
-                break;
-            case 'report.include_jobs':
-                $settings['exclude_jobs'] = array_values(array_diff($settings['exclude_jobs'] ?? [], $jobs()));
-                break;
-            case 'report.company_order':
-                $ids = array_values(array_map('strval', (array) ($params['branches'] ?? [])));
-                $known = Franchise::query()->whereIn('id', $ids)->count();
-                ($ids === [] || $known !== count(array_unique($ids))) && $refuse('Those are not all branches of this organization.');
-                $settings['company_order'] = $ids;
-                break;
-            case 'report.goal':
-                $goal = (string) ($params['key'] ?? '');
-                isset(ReportGoals::KEYS[$goal]) || $refuse("There is no goal \"{$goal}\".");
-                $branch = $params['branch'] ?? null;
-                ($branch === null || Franchise::query()->whereKey($branch)->exists()) || $refuse('That is not a branch of this organization.');
-                $value = $params['value'] ?? null;
-                ($value === null || is_numeric($value)) || $refuse('A goal is a number.');
-                $settings['goals'][$branch ?? ''][$goal] = $value === null ? null : (float) $value;
-                break;
-        }
+            $settings = (array) ($batch->settings ?? []);
+            $jobs = fn () => array_values(array_unique(array_filter(array_map('strval', (array) ($params['jobs'] ?? [])))));
 
-        $settings['changes'][] = ['key' => $key, 'params' => $params, 'by' => $by->getKey(), 'at' => now()->toIso8601String()];
-        $batch->forceFill(['settings' => $settings, 'held_at' => null])->save();
+            switch ($key) {
+                case 'report.exclude_jobs':
+                    $jobs() === [] && $refuse('Which jobs?');
+                    $settings['exclude_jobs'] = array_values(array_unique([...($settings['exclude_jobs'] ?? []), ...$jobs()]));
+                    break;
+                case 'report.include_jobs':
+                    $settings['exclude_jobs'] = array_values(array_diff($settings['exclude_jobs'] ?? [], $jobs()));
+                    break;
+                case 'report.company_order':
+                    $ids = array_values(array_map('strval', (array) ($params['branches'] ?? [])));
+                    $known = Franchise::query()->whereIn('id', $ids)->count();
+                    ($ids === [] || $known !== count(array_unique($ids))) && $refuse('Those are not all branches of this organization.');
+                    $settings['company_order'] = $ids;
+                    break;
+                case 'report.goal':
+                    $goal = (string) ($params['key'] ?? '');
+                    isset(ReportGoals::KEYS[$goal]) || $refuse("There is no goal \"{$goal}\".");
+                    $branch = $params['branch'] ?? null;
+                    ($branch === null || Franchise::query()->whereKey($branch)->exists()) || $refuse('That is not a branch of this organization.');
+                    $value = $params['value'] ?? null;
+                    ($value === null || is_numeric($value)) || $refuse('A goal is a number.');
+                    $settings['goals'][$branch ?? ''][$goal] = $value === null ? null : (float) $value;
+                    break;
+            }
+
+            $settings['changes'][] = ['key' => $key, 'params' => $params, 'by' => $by->getKey(), 'at' => now()->toIso8601String()];
+            $batch->forceFill(['settings' => $settings, 'held_at' => null])->save();
+
+            return $batch;
+        });
 
         // A new revision, previewed for a new approval.
         SendWhatsAppPeriodReports::dispatch($batch->getKey(), null);

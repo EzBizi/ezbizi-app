@@ -178,7 +178,15 @@ final class RescheduleOffers
         abort_if($window === null || $window['remaining'] < 1, 409,
             'That window on '.$date->format('D M j').' is full now. Pick another time on the board.');
 
-        JobMove::to($job, $date->toDateString(), $window['start_time'], $window['end_time'], ['reschedule_offer' => $offer->id]);
+        // Audit 11-27: claimed first, so a double click moves once.
+        $claimed = SchedulingRescheduleOffer::query()->whereKey($offer->id)->whereNull('moved_at')->update(['moved_at' => now()]);
+        abort_if($claimed === 0, 409, 'This appointment was already moved.');
+        try {
+            JobMove::to($job, $date->toDateString(), $window['start_time'], $window['end_time'], ['reschedule_offer' => $offer->id]);
+        } catch (\Throwable $e) {
+            SchedulingRescheduleOffer::query()->whereKey($offer->id)->update(['moved_at' => null]);
+            throw $e;
+        }
         $offer->forceFill(['moved_at' => now(), 'start_time' => $window['start_time'], 'end_time' => $window['end_time']])->save();
 
         return $job;
@@ -273,7 +281,7 @@ final class RescheduleOffers
     public function absorbNo(string $from, string $body): void
     {
         $digits = Lead::digits($from);
-        if ($digits === '' || ! preg_match('/^\s*(n|no|nope|nah)\b/iu', $body)) {
+        if ($digits === '' || ! preg_match('/^\s*(n|no|nope|nah)(\s*,?\s*(thanks|thank you))?\s*[.!]*\s*$/iu', $body)) {
             return;
         }
         $offer = SchedulingRescheduleOffer::query()

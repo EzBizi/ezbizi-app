@@ -339,6 +339,11 @@ class ThumbtackAuthTest extends TestCase
         $this->artisan('ezbizi:thumbtack-keep-alive')->assertSuccessful();
 
         Http::assertSentCount(1);
+
+        // Audit 11-27: a second login in the same organization is its own grant, kept alive too.
+        $this->storedConnection($t, 'biz-3', 'other-access', 'other-refresh');
+        $this->artisan('ezbizi:thumbtack-keep-alive')->assertSuccessful();
+        Http::assertSentCount(3);
         $this->inTenant($t['org'], function () {
             $stored = SocialConnection::query()
                 ->where('provider', SocialProvider::Thumbtack->value)

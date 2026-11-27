@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../core/phone_numbers.dart';
 import 'dart:async';
 
@@ -356,6 +357,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// top so the list's own refresh does not drop it and jump to the newest.
   Map<String, dynamic>? _pinned;
 
+  /// The filters it was pinned under: other filters drop it (audit 11-27: it
+  /// showed, stale, under every filter).
+  String? _pinnedFor;
+
   /// The list's share of the two panes, dragged on the divider. Bounded in
   /// PIXELS so neither pane can be squeezed below what it lays out (Jose,
   /// 2026-09-09: "with limits of course to not break overflow"): the list
@@ -480,6 +485,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _loading = _leads.isEmpty;
       _refreshing = !quiet && _leads.isNotEmpty;
       _error = null;
+      _moreFailed = null;
     });
 
     final response = await widget.api.get('/leads', {
@@ -503,6 +509,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _leads = List<Map<String, dynamic>>.from(
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+      if (_pinnedFor != jsonEncode(_filters)) _pinned = null;
       final pinned = _pinned;
       if (pinned != null && !_leads.any((l) => l['id'] == pinned['id'])) {
         _leads = [pinned, ..._leads];
@@ -638,8 +645,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// The next ten older leads, when the list is scrolled to its end. Pages
   /// of ten line up with the first 50 because 50 is a whole number of them.
+  /// Why the last page failed. Auto-paging stops until Try again (audit
+  /// 11-27: offline or a 429 re-asked every frame).
+  String? _moreFailed;
+
   Future<void> _more() async {
-    if (_loadingMore || _shown >= _total) return;
+    if (_loadingMore || _moreFailed != null || _shown >= _total) return;
     final request = _request;
     setState(() => _loadingMore = true);
 
@@ -654,7 +665,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _loadingMore = false;
       // A filter changed while this was on its way: its rows belong to a
       // list that is no longer on screen.
-      if (!response.ok || request != _request) return;
+      if (request != _request) return;
+      if (!response.ok) {
+        _moreFailed = response.message;
+        return;
+      }
       final known = {for (final l in _leads) l['id']};
       _leads = [
         ..._leads,
@@ -677,6 +692,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (!mounted || !one.ok || one.data is! Map) return;
       lead = Map<String, dynamic>.from(one.data as Map);
       _pinned = lead;
+      _pinnedFor = jsonEncode(_filters);
       setState(() => _leads = [lead!, ..._leads]);
     }
 
@@ -1906,7 +1922,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (note != null || clearNote) 'note': note,
       if (mentions.isNotEmpty) 'mentions': mentions,
     });
-    _noteMentions.clear();
+    // Only once a note went (audit 11-27: a star cleared an unsaved note's @s).
+    if (note != null || clearNote) _noteMentions.clear();
     if (!mounted) return null;
     if (!response.ok) {
       setState(() => _notice = response.message);
@@ -2186,6 +2203,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _more());
         }
 
+        if (index == _leads.length && _moreFailed != null) {
+          return Center(
+            child: TextButton(
+              key: const ValueKey('leads-more-retry'),
+              onPressed: () {
+                setState(() => _moreFailed = null);
+                _more();
+              },
+              child: const Text('Could not load more. Try again'),
+            ),
+          );
+        }
         if (index == _leads.length) {
           return Padding(
             padding: const EdgeInsets.all(16),

@@ -53,9 +53,13 @@ class StaffMessagesController extends Controller
 
         $rows = StaffMessage::query()
             ->between($me->id, $other->id)
-            ->orderBy('created_at')
+            // The NEWEST 200, oldest first on screen (audit 11-27: oldest 200
+            // hid every new message in a busy thread).
+            ->orderByDesc('created_at')->orderByDesc('id')
             ->limit(200)
-            ->get();
+            ->get()
+            ->reverse()
+            ->values();
 
         // Only the ones written TO me. Marking my own sent messages read would
         // make "seen" mean nothing.

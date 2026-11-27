@@ -44,8 +44,18 @@ mixin RecordingControl<W extends RecordingControlWidget> on State<W> {
 
   Future<void> run(Future<void> Function() act) async {
     setState(() => busy = true);
-    await act();
-    if (mounted) setState(() => busy = false);
+    // A throw used to leave the control busy for good (audit 11-27).
+    try {
+      await act();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text('Recording: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 }
 

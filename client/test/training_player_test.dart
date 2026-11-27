@@ -219,6 +219,9 @@ void main() {
           attemptsTowardCap: 0,
         ),
       );
+      // Submit waits for every answer; give it one, so only the cap decides.
+      await tester.tap(find.text('One foot out for every four feet'));
+      await tester.pumpAndSettle();
 
       final button = tester.widget<ElevatedButton>(
         find.byKey(const Key('training.submit-test')),

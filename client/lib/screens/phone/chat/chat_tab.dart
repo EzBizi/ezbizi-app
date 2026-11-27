@@ -54,6 +54,7 @@ class _ChatTabState extends State<ChatTab> {
 
   // New group: who, then what it is called.
   final Set<String> _picked = {};
+  bool _creating = false;
   bool _naming = false;
   final _groupName = TextEditingController();
   String? _groupError;
@@ -414,15 +415,7 @@ class _ChatTabState extends State<ChatTab> {
                         } else if (v == 'archived') {
                           setState(() => _side = _Side.archived);
                         } else if (v == 'read') {
-                          for (final c in _store.chats) {
-                            if (c['marked_unread'] == true) {
-                              unawaited(
-                                _store.settings(c['id'] as String, {
-                                  'marked_unread': false,
-                                }),
-                              );
-                            }
-                          }
+                          unawaited(_store.readAll());
                         }
                       },
                       itemBuilder: (_) => const [
@@ -976,21 +969,29 @@ class _ChatTabState extends State<ChatTab> {
                 key: const ValueKey('chat-group-create'),
                 icon: const Icon(Icons.check),
                 label: const Text('Create group'),
-                onPressed: () async {
-                  final r = await widget.api.post('/chat/chats', {
-                    'name': _groupName.text.trim(),
-                    'user_ids': _picked.toList(),
-                  });
-                  if (!mounted) return;
-                  if (!r.ok || r.data is! Map) {
-                    setState(() => _groupError = r.reason);
-                    return;
-                  }
-                  _groupName.clear();
-                  _groupError = null;
-                  await _store.load();
-                  _openChat((r.data as Map)['id'] as String);
-                },
+                // One group per tap: a double tap made two (audit 11-27).
+                onPressed: _creating
+                    ? null
+                    : () async {
+                        setState(() => _creating = true);
+                        try {
+                          final r = await widget.api.post('/chat/chats', {
+                            'name': _groupName.text.trim(),
+                            'user_ids': _picked.toList(),
+                          });
+                          if (!mounted) return;
+                          if (!r.ok || r.data is! Map) {
+                            setState(() => _groupError = r.reason);
+                            return;
+                          }
+                          _groupName.clear();
+                          _groupError = null;
+                          await _store.load();
+                          _openChat((r.data as Map)['id'] as String);
+                        } finally {
+                          if (mounted) setState(() => _creating = false);
+                        }
+                      },
               ),
             ),
           ],

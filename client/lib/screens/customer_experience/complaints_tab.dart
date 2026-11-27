@@ -307,13 +307,15 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
     }
   }
 
-  Future<void> _write(Future<ApiResponse> call) async {
+  /// True when it saved, so a caller clears what was typed only then (audit 2026-11-27).
+  Future<bool> _write(Future<ApiResponse> call) async {
     setState(() => _busy = true);
     final response = await call;
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _busy = false);
     _take(response);
     if (response.ok) await _load();
+    return response.ok;
   }
 
   /// A card dropped on another column of the board.
@@ -1400,11 +1402,19 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
                 ),
               ),
           if (manage) ...[
+            // The pane covers the list on phones, so a refused save says so here too.
+            if (_notice != null)
+              Text(
+                _notice!,
+                key: const ValueKey('complaint-pane-notice'),
+                style: small?.copyWith(color: theme.colorScheme.error),
+              ),
             FormattedNotesField(
               fieldKey: const ValueKey('complaint-note'),
               controller: _note,
               label: 'Add a note',
-              minLines: 1, maxLength: 4000,
+              minLines: 1,
+              maxLength: 4000,
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -1412,14 +1422,15 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
                 key: const ValueKey('complaint-note-add'),
                 onPressed: _busy || _note.text.trim().isEmpty
                     ? null
-                    : () {
+                    : () async {
                         final text = _note.markup.trim();
-                        _note.clear();
-                        _write(
+                        if (await _write(
                           widget.api.post('/complaints/${row['id']}/notes', {
                             'text': text,
                           }),
-                        );
+                        )) {
+                          _note.clear();
+                        }
                       },
                 child: const Text('Add note'),
               ),
