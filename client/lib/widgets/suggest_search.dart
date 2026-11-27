@@ -125,7 +125,15 @@ class _SuggestSearchFieldState extends State<SuggestSearchField> {
   }
 
   void _submitted(String value) {
+    // Enter before the delay ran: the rows on screen answer an older term,
+    // so picking one could load the wrong record (audit 2026-11-27:
+    // Inspection > New). Search for what was typed instead.
+    final pending = _timer?.isActive ?? false;
     _timer?.cancel();
+    if (pending) {
+      widget.onChanged(value);
+      return;
+    }
     final rows = widget.suggestions.length;
     final pick = _highlight >= 0
         ? _highlight

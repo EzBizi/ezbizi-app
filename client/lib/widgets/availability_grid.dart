@@ -97,7 +97,9 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
     final days = _days;
     if (days.isEmpty) return;
     final first = DateTime.parse(days.first['date'] as String);
-    _from = first.add(Duration(days: by * widget.days));
+    // By calendar day: adding 24-hour days lands on 23:00 the day before
+    // across the spring change (audit 2026-11-27).
+    _from = DateTime(first.year, first.month, first.day + by * widget.days);
     reload();
   }
 
