@@ -229,7 +229,6 @@ class PushRegistration {
           'token': api.bearer,
           'api_base': ApiClient.baseUrl,
         });
-        // A runner without the channel (tests, an older build) is not a failure.
       } on PlatformException catch (_) {
       } on MissingPluginException catch (_) {}
     }

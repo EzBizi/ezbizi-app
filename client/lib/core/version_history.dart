@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0664', date: '27 Nov 2026', items: [
+      'Chat and EzChat: @mention people in groups, and a mention reaches them even when the group is muted',
+      'Chat: a switch to hide message text in notifications, and muting a chat Always now works',
+    ]),
     VersionRelease(version: '0.0.0663', date: '27 Nov 2026', items: [
       'Chat and EzChat: tapping a notification opens that chat, messages stack per chat with an unread badge on the app icon, calls ring by push even when the app is closed, missed calls notify, and computers and browsers show notifications for chats you are not looking at',
       'Android: chat notifications have Reply and Mark read buttons, calls ring like WhatsApp, and a chat read elsewhere clears its notification',
