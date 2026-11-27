@@ -157,7 +157,10 @@ final class AssistantBrain
         $entries = $this->entries($viewer);
         $library = $entries->map(fn (AssistantEntry $e) => "[{$e->id}] {$e->section} / {$e->title}\n"
             .trim(($e->description ? $e->description."\n" : '').$e->body))->implode("\n\n");
-        $sites = $this->locations($organization, $query)->take(5)
+        // Each place-like word on its own: the whole question as one LIKE never matched (audit 11-27).
+        preg_match_all('/\p{L}{4,}/u', mb_strtolower($query), $m);
+        $sites = collect(array_diff(array_unique($m[0]), self::STOPWORDS))
+            ->flatMap(fn ($word) => $this->locations($organization, $word))->unique()->take(5)
             ->map(fn (array $s) => json_encode($s))->implode("\n");
         $guides = $this->guideExcerpts($viewer, $query);
 
@@ -228,7 +231,9 @@ final class AssistantBrain
         }
 
         $scored = [];
-        foreach (TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED)->get() as $guide) {
+        // Only guides of companies the asker reaches (audit 11-27), as the Training screen reads them.
+        $readable = InventoryVisibility::constrain(TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED), $viewer, ViewScope::forUser($viewer));
+        foreach ($readable->get() as $guide) {
             $title = mb_strtolower((string) $guide->title);
             if (! collect($want)->contains(fn ($w) => str_contains($title, $w))) {
                 continue;

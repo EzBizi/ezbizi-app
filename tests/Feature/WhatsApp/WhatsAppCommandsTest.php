@@ -32,6 +32,8 @@ class WhatsAppCommandsTest extends TestCase
         // A lead's status, and nothing else on it.
         $this->assertTrue(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['status' => 'won']));
         $this->assertFalse(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['note' => 'x']));
+        // Audit 11-27: a query string carried fields past the body allow-list.
+        $this->assertFalse(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d?note=x', ['status' => 'won']));
         $this->assertFalse(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['status' => 'won', 'starred' => true]));
         $this->assertFalse(AppAct::writable('POST', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/book'));
         // Wrong method on an allowed path, and a path the model made up.

@@ -33,7 +33,8 @@ class AiBookedNoJob extends Command
             return self::SUCCESS;
         }
 
-        $zone = (string) config('app.timezone');
+        // The org's own day and clock, not UTC (audit 11-27).
+        $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $organization) ?: config('app.timezone'));
         $day = CarbonImmutable::parse($this->option('day') ?? 'yesterday', $zone)->startOfDay();
 
         $found = $tenant->run($organization, function () use ($calls, $workiz, $reconcile, $day) {

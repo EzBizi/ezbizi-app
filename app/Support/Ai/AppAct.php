@@ -177,7 +177,8 @@ final class AppAct
     /** A real tenant route, on the allowlist, and not forbidden. */
     public static function writable(string $method, string $path, array $body = []): bool
     {
-        if ($path === '') {
+        // A query string would carry fields past the body allow-list (audit 11-27).
+        if ($path === '' || strpbrk($path, '?#') !== false) {
             return false;
         }
 
