@@ -19,6 +19,10 @@ class VersionHistory {
       'Security: connection changes need reach over that connection, website chat and API keys are tighter, and errors no longer show bot tokens',
       'Payroll includes HR extra hours, a failed payroll email is retried, and nobody but an Administrator can approve their own hours',
       'Fixes from the full code audit across Services, Inventory, Dashboard, Workiz, Web Management, Monitoring, Marketing, Fleet, Roles, Notifications, MCP and UI',
+      'Financials: CSV import keeps cells with line breaks, an invoice with payments cannot be voided, invoices use the company time zone, and charge-sheet edits are kept',
+      'Inspections: a double Submit files one report, failed saves stop Next, and multi-select answers keep every pick',
+      'Chat: Mark all read really clears unread counts, a failed send keeps your text, and signing out of EzChat stops its notifications',
+      'Memberships, Training, Monitoring, Marketing, Plaid and Grok AI: more fixes from the code audit',
     ]),
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', deployed: '2026-11-27 17:59', items: [
       'Training: tests can now be published from their editor, so learners can take them',
