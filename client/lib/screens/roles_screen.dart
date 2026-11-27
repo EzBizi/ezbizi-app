@@ -1283,6 +1283,10 @@ class _RolePageState extends State<_RolePage> {
   /// Which modules are open to their full list.
   final Set<String> _expanded = {};
 
+  /// Rows closed by hand while a search is typed (a search opens every row it
+  /// finds). Emptied whenever the search changes.
+  final Set<String> _searchClosed = {};
+
   /// What "Find a permission" holds, lower-cased.
   String _query = '';
 
@@ -1308,7 +1312,10 @@ class _RolePageState extends State<_RolePage> {
   static const double _openWidth = 56;
   static const double _tabsWidth = 72;
   static const double _compareWidth = 96;
-  static const double _chevronWidth = 32;
+  static const double _chevronWidth = 28;
+
+  /// How far a child module (Customers › Memberships) sits in from its parent.
+  static const double _childIndent = 20;
 
   bool _labelMatches(PermissionModule module) =>
       _query.isEmpty || module.label.toLowerCase().contains(_query);
@@ -1329,11 +1336,56 @@ class _RolePageState extends State<_RolePage> {
       module.actions.any(_actionMatches) ||
       widget.inboxes.under(module.key).any(_inboxMatches);
 
-  /// Open when somebody opened it, or when the search found something INSIDE
-  /// it — a match nobody can see without a click is not much of a match.
-  bool _isExpanded(PermissionModule module) =>
-      _expanded.contains(module.key) ||
-      (_query.isNotEmpty && !_labelMatches(module));
+  /// A grant or inbox inside this module (not its children) matches the search.
+  bool _ownMatches(PermissionModule module) =>
+      module.actions.any(_actionMatches) ||
+      widget.inboxes.under(module.key).any(_inboxMatches);
+
+  /// Anything to open besides Open itself: a grant other than view, or an
+  /// inbox. Open IS view, so a module with only that has nothing below it.
+  bool _hasOwnDetail(PermissionModule module) =>
+      module.actions.any((a) => a.key != module.viewKey) ||
+      widget.inboxes.nests(module.key);
+
+  /// The modules drawn inside each tab (Customers › Memberships), by parent.
+  Map<String, List<PermissionModule>> get _childrenByParent {
+    final map = <String, List<PermissionModule>>{};
+    for (final section in _sections(widget.catalogue.modules)) {
+      if (section.isTab && section.modules.length > 1) {
+        map[section.modules.first.key] = section.modules.sublist(1);
+      }
+    }
+    return map;
+  }
+
+  /// One pattern for every row (Jose, 2026-11-27): anything under it means a
+  /// chevron, closed until opened. A search opens every row it leaves on
+  /// screen — a match nobody can see without a click is not much of a match.
+  bool _isExpanded(PermissionModule module, bool hasContent) {
+    if (!hasContent) return false;
+    if (_query.isNotEmpty) return !_searchClosed.contains(module.key);
+    return _expanded.contains(module.key);
+  }
+
+  void _toggle(PermissionModule module) => setState(() {
+    final set = _query.isNotEmpty ? _searchClosed : _expanded;
+    if (!set.remove(module.key)) set.add(module.key);
+  });
+
+  void _expandAll(bool open) => setState(() {
+    final children = _childrenByParent;
+    final keys = [
+      for (final m in widget.catalogue.modules)
+        if (_hasOwnDetail(m) || (children[m.key]?.isNotEmpty ?? false)) m.key,
+    ];
+    if (open) {
+      _expanded.addAll(keys);
+      _searchClosed.clear();
+    } else {
+      _expanded.clear();
+      _searchClosed.addAll(keys);
+    }
+  });
 
   /// What they can do there, not counting the tabs: the column of that name.
   Iterable<PermissionAction> _doActions(PermissionModule module) =>
@@ -1552,9 +1604,26 @@ class _RolePageState extends State<_RolePage> {
       child: ListSearch(
         key: const ValueKey('role-search'),
         hint: 'Find a module or tab',
-        onChanged: (value) =>
-            setState(() => _query = value.trim().toLowerCase()),
+        onChanged: (value) => setState(() {
+          _query = value.trim().toLowerCase();
+          _searchClosed.clear();
+        }),
       ),
+    );
+
+    final expandAll = Wrap(
+      children: [
+        TextButton(
+          key: const ValueKey('role-expand-all'),
+          onPressed: () => _expandAll(true),
+          child: const Text('Expand all'),
+        ),
+        TextButton(
+          key: const ValueKey('role-collapse-all'),
+          onPressed: () => _expandAll(false),
+          child: const Text('Collapse all'),
+        ),
+      ],
     );
 
     final compare = SizedBox(
@@ -1619,7 +1688,7 @@ class _RolePageState extends State<_RolePage> {
           counts,
           const SizedBox(height: 8),
           search,
-          const SizedBox(height: 8),
+          expandAll,
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1644,6 +1713,7 @@ class _RolePageState extends State<_RolePage> {
           ),
         ),
         search,
+        expandAll,
         compare,
         rename,
         delete,
@@ -1682,31 +1752,38 @@ class _RolePageState extends State<_RolePage> {
     final rows = <Widget>[];
 
     for (final section in _sections(widget.catalogue.modules)) {
+      // A tab's own row, with the modules drawn inside it (Customers ›
+      // Memberships) under it, closed like everything else (Jose, 2026-11-27).
+      if (section.isTab) {
+        final top = section.modules.first;
+        final children = section.modules.sublist(1);
+        if (!_matches(top) && !children.any(_matches)) continue;
+        rows.add(_moduleRow(top, theme, children: children));
+        continue;
+      }
+
       final visible = section.modules.where(_matches).toList();
       if (visible.isEmpty) continue;
 
-      if (!section.isTab) {
-        rows.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 16, bottom: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(section.label, style: theme.textTheme.titleSmall),
-                if (section.hint != null) ...[
-                  const SizedBox(height: 4),
-                  Text(section.hint!, style: theme.textTheme.bodySmall),
-                ],
+      // Organization and Settings: a heading, then their rows.
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(section.label, style: theme.textTheme.titleSmall),
+              if (section.hint != null) ...[
+                const SizedBox(height: 4),
+                Text(section.hint!, style: theme.textTheme.bodySmall),
               ],
-            ),
+            ],
           ),
-        );
-      }
+        ),
+      );
 
       for (final module in visible) {
-        // Indented under the tab it is drawn inside, which is the only thing
-        // on this screen that says so.
-        rows.add(_moduleRow(module, theme, indent: module.parent != null));
+        rows.add(_moduleRow(module, theme));
       }
     }
 
@@ -1751,7 +1828,13 @@ class _RolePageState extends State<_RolePage> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 3, child: cell('MODULE')),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(left: _chevronWidth),
+              child: cell('MODULE'),
+            ),
+          ),
           SizedBox(
             width: _openWidth,
             child: Center(child: cell('OPEN')),
@@ -1766,7 +1849,6 @@ class _RolePageState extends State<_RolePage> {
                 child: cell(other.name, key: const ValueKey('compare-heading')),
               ),
             ),
-          const SizedBox(width: _chevronWidth),
         ],
       ),
     );
@@ -1791,12 +1873,14 @@ class _RolePageState extends State<_RolePage> {
         : 'None granted',
   );
 
-  /// One module: its row in the grid, and under it, once opened, the full
-  /// list of what can be granted there.
+  /// One module: its row in the grid, and under it, once opened, the modules
+  /// drawn inside it (each a row of its own) and then the full list of what
+  /// can be granted there.
   Widget _moduleRow(
     PermissionModule module,
     ThemeData theme, {
-    required bool indent,
+    List<PermissionModule> children = const [],
+    bool indent = false,
   }) {
     // Two separate reasons a row can be dead, and they are not the same
     // sentence. One is about this person and this role; the other is about the
@@ -1811,7 +1895,24 @@ class _RolePageState extends State<_RolePage> {
         ? null
         : theme.colorScheme.onSurface.withValues(alpha: 0.45);
 
-    final expanded = _isExpanded(module);
+    final hasDetail = _hasOwnDetail(module);
+    final hasContent = hasDetail || children.isNotEmpty;
+    final expanded = _isExpanded(module, hasContent);
+
+    // While searching: every child when the parent's own name matched, else
+    // only the children the search found; the parent's own list only when it
+    // holds a match.
+    final shownChildren = _query.isEmpty || _labelMatches(module)
+        ? children
+        : children.where(_matches).toList();
+    final showDetail =
+        hasDetail &&
+        (_query.isEmpty || _labelMatches(module) || _ownMatches(module));
+
+    // The children's ticks, visible with the row closed: "+2 sections".
+    final childrenOpen = children
+        .where((c) => c.viewKey != null && _held.contains(c.viewKey))
+        .length;
     final viewKey = module.viewKey;
     final compare = widget.compare;
     final small = theme.textTheme.bodySmall;
@@ -1833,21 +1934,49 @@ class _RolePageState extends State<_RolePage> {
             style: small?.copyWith(color: theme.colorScheme.error),
           );
 
+    // The chevron's slot is kept on every row, so names line up whether or
+    // not there is anything under them.
     final name = Padding(
-      padding: EdgeInsets.only(left: indent ? 20 : 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      padding: EdgeInsets.only(left: indent ? _childIndent : 0),
+      child: Row(
         children: [
-          Text(
-            module.label,
-            key: ValueKey('module-name:${module.key}'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: muted,
+          SizedBox(
+            width: _chevronWidth,
+            child: hasContent
+                ? Icon(
+                    expanded ? Icons.expand_more : Icons.chevron_right,
+                    key: ValueKey('chevron:${module.key}'),
+                    size: 20,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  )
+                : null,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  module.label,
+                  key: ValueKey('module-name:${module.key}'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: muted,
+                  ),
+                ),
+                if (childrenOpen > 0)
+                  Text(
+                    '+$childrenOpen '
+                    '${childrenOpen == 1 ? 'section' : 'sections'}',
+                    key: ValueKey('children-summary:${module.key}'),
+                    style: small?.copyWith(
+                      color: muted ?? theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ?subtitle,
+              ],
             ),
           ),
-          ?subtitle,
         ],
       ),
     );
@@ -1868,7 +1997,7 @@ class _RolePageState extends State<_RolePage> {
               ),
             ),
           Text(
-            '${_phoneSummary(module)} ›',
+            _phoneSummary(module),
             key: ValueKey('module-summary:${module.key}'),
             style: small?.copyWith(color: muted),
           ),
@@ -1933,13 +2062,6 @@ class _RolePageState extends State<_RolePage> {
                 ),
               ),
             ),
-          SizedBox(
-            width: _chevronWidth,
-            child: Icon(
-              expanded ? Icons.expand_less : Icons.expand_more,
-              size: 20,
-            ),
-          ),
         ],
       );
     }
@@ -1955,18 +2077,21 @@ class _RolePageState extends State<_RolePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            onTap: () => setState(() {
-              if (!_expanded.remove(module.key)) _expanded.add(module.key);
-            }),
+            onTap: hasContent ? () => _toggle(module) : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: row,
             ),
           ),
           if (expanded)
+            for (final child in shownChildren)
+              _moduleRow(child, theme, indent: true),
+          if (expanded && showDetail)
             Padding(
               padding: EdgeInsets.only(
-                left: widget.narrow ? 8 : 40 + (indent ? 20 : 0),
+                left:
+                    (widget.narrow ? 8 : _chevronWidth) +
+                    (indent ? _childIndent : 0),
                 right: 8,
                 bottom: 8,
               ),

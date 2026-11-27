@@ -773,6 +773,11 @@ void main() {
       await tester.tap(_firstRole);
       await tester.pumpAndSettle();
 
+      // Closed like every other row with something under it (Jose, 11-27).
+      expect(find.byKey(const ValueKey('module:leads')), findsNothing);
+      await tester.tap(find.text('Marketing'));
+      await tester.pumpAndSettle();
+
       // Present and grantable — nesting hides nothing.
       expect(find.byKey(const ValueKey('module:leads')), findsOneWidget);
 
@@ -812,6 +817,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(_tabCheckbox('marketing'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Marketing'));
       await tester.pumpAndSettle();
 
       expect(_tabState('leads'), isFalse);
@@ -2039,7 +2046,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const ValueKey('module-summary:jobs')))
             .data,
-        '2 of 4 ›',
+        '2 of 4',
       );
       expect(
         tester
@@ -2047,7 +2054,7 @@ void main() {
               find.byKey(const ValueKey('module-summary:customers')),
             )
             .data,
-        'off ›',
+        'off',
       );
 
       // A row opens in place.
@@ -2085,6 +2092,184 @@ void main() {
       expect(find.byKey(const ValueKey('action:hr.hours')), findsOneWidget);
       // Only the row that matched, not the module's whole list.
       expect(find.byKey(const ValueKey('action:hr.edit')), findsNothing);
+    });
+  });
+
+  /// Jose, 2026-11-27: "they all need to follow one pattern". Every row with
+  /// anything under it — modules drawn inside it, tabs, ticks — has the same
+  /// chevron and starts closed.
+  group('one pattern for every row', () {
+    List<Map<String, dynamic>> catalogue() => [
+      _catalogueModule('dashboard', 'Dashboard', actions: const [
+        ('view', 'View'),
+      ]),
+      _catalogueModule(
+        'hr',
+        'Human Resources',
+        actions: const [
+          ('view', 'View'),
+          ('edit', 'Edit'),
+          ('records', 'Records'),
+          ('payroll', 'Payroll'),
+        ],
+        tabs: const ['records', 'payroll'],
+      ),
+      _catalogueModule(
+        'customers',
+        'Customers',
+        actions: const [
+          ('view', 'View'),
+          ('edit', 'Edit'),
+          ('list', 'List'),
+        ],
+        tabs: const ['list'],
+      ),
+      _catalogueModule('memberships', 'Memberships', parent: 'customers'),
+    ];
+
+    testWidgets('HR and Customers are both closed, and say what is inside', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Manager',
+            permissions: ['customers.view', 'memberships.view'],
+          ),
+        ],
+        catalogue: catalogue(),
+      );
+
+      expect(find.byKey(const ValueKey('chevron:hr')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chevron:customers')), findsOneWidget);
+      expect(find.byKey(const ValueKey('action:hr.records')), findsNothing);
+      expect(find.byKey(const ValueKey('module:memberships')), findsNothing);
+      expect(find.byKey(const ValueKey('action:customers.list')), findsNothing);
+
+      // Nothing under Dashboard: no chevron, but its name lines up.
+      expect(find.byKey(const ValueKey('chevron:dashboard')), findsNothing);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('module-name:dashboard'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('module-name:hr'))).dx,
+      );
+
+      // The child's tick shows on the closed parent.
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('children-summary:customers')),
+            )
+            .data,
+        '+1 section',
+      );
+      expect(find.byKey(const ValueKey('children-summary:hr')), findsNothing);
+    });
+
+    testWidgets('opening Customers shows Memberships, then its own tabs', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: catalogue(),
+      );
+
+      await tester.tap(find.text('Customers'));
+      await tester.pumpAndSettle();
+
+      final child = find.byKey(const ValueKey('module:memberships'));
+      expect(child, findsOneWidget);
+      expect(find.byKey(const ValueKey('action:customers.list')), findsOneWidget);
+      // Child modules first, then the parent's tabs.
+      expect(
+        tester.getTopLeft(child).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('action:customers.list')))
+              .dy,
+        ),
+      );
+      // The child is a row of its own, closed, with its own chevron.
+      expect(find.byKey(const ValueKey('chevron:memberships')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('action:memberships.edit')),
+        findsNothing,
+      );
+      // HR stayed closed.
+      expect(find.byKey(const ValueKey('action:hr.records')), findsNothing);
+    });
+
+    testWidgets('Expand all opens everything, Collapse all closes it', (
+      tester,
+    ) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: catalogue(),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('role-expand-all')));
+      await tester.pumpAndSettle();
+
+      for (final key in [
+        'action:hr.records',
+        'action:hr.edit',
+        'module:memberships',
+        'action:memberships.edit',
+        'action:customers.list',
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      }
+
+      await tester.tap(find.byKey(const ValueKey('role-collapse-all')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('action:hr.records')), findsNothing);
+      expect(find.byKey(const ValueKey('module:memberships')), findsNothing);
+    });
+
+    testWidgets('a search opens the rows it finds', (tester) async {
+      _wide(tester);
+
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: catalogue(),
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('role-search')),
+        'memberships',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('module:hr')), findsNothing);
+      expect(find.byKey(const ValueKey('module:memberships')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('action:memberships.edit')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('role-search')),
+        'payroll',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('action:hr.payroll')), findsOneWidget);
+
+      // Cleared: back to closed.
+      await tester.enterText(find.byKey(const ValueKey('role-search')), '');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('action:hr.payroll')), findsNothing);
     });
   });
 }
