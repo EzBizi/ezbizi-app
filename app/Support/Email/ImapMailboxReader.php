@@ -800,6 +800,16 @@ final class ImapMailboxReader implements MailboxReader
     }
 
     /**
+     * The searcher's words as one IMAP quoted string. A line break would end
+     * the command and start another one the searcher typed (audit 11-27); it
+     * means nothing in a search, so it becomes a space.
+     */
+    public static function searchTerm(string $query): string
+    {
+        return '"'.str_replace(['\\', '"', "\r", "\n", "\0"], ['\\\\', '\\"', ' ', ' ', ' '], trim($query)).'"';
+    }
+
+    /**
      * Turn a transport failure into the module's own vocabulary.
      *
      * ── One `match`, so the four cases cannot drift ──────────────
@@ -822,16 +832,6 @@ final class ImapMailboxReader implements MailboxReader
      * @param  callable(): T  $work
      * @return T
      */
-    /**
-     * The searcher's words as one IMAP quoted string. A line break would end
-     * the command and start another one the searcher typed (audit 11-27); it
-     * means nothing in a search, so it becomes a space.
-     */
-    public static function searchTerm(string $query): string
-    {
-        return '"'.str_replace(['\\', '"', "\r", "\n", "\0"], ['\\\\', '\\"', ' ', ' ', ' '], trim($query)).'"';
-    }
-
     private function translate(Mailbox $mailbox, callable $work): mixed
     {
         try {

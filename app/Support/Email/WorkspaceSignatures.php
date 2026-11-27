@@ -344,8 +344,13 @@ final class WorkspaceSignatures
             $url = html_entity_decode($src, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
             $ok = \Illuminate\Support\Facades\Cache::remember('signature-picture:'.sha1($url), 86400, function () use ($url) {
+                // Through the guarded fetcher, never a bare request: a template's
+                // picture address is tenant text, and a server request to it
+                // probed internal hosts (audit 11-27).
                 try {
-                    return Http::timeout(5)->head($url)->successful();
+                    app(RemotePictureFetcher::class)->fetch($url);
+
+                    return true;
                 } catch (\Throwable) {
                     return false;
                 }
