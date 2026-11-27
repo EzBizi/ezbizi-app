@@ -895,7 +895,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         $said = (string) $this->conversations()->reorder()->where('participant', LeadConversation::FROM_CONSUMER)
             ->orderByDesc('occurred_at')->value('text');
         $offer = app(SlotOffer::class)
-            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
+            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today), SlotOffer::reach($this));
 
         return $offer['label'] ?? '';
     }

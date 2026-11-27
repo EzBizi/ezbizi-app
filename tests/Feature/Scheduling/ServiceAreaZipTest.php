@@ -188,4 +188,22 @@ class ServiceAreaZipTest extends TestCase
 
         $this->assertStringContainsString('08753 is already in New Jersey', $message);
     }
+
+    /** Audit 11-27: add/remove changes only those zips; one added elsewhere since, and its source, stay. */
+    public function test_an_add_or_remove_keeps_zips_the_screen_did_not_know_about(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($alpha['org']);
+        $area = ServiceArea::create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Dallas']);
+        foreach ([['75201', null], ['75299', 'workiz_jobs']] as [$zip, $source]) {
+            ServiceAreaZip::create(['franchise_id' => $alpha['franchise']->id, 'service_area_id' => $area->id, 'zip' => $zip, 'source' => $source]);
+        }
+        $owner = $this->userWithRole($alpha, 'Owner', ['scheduling.view', 'scheduling.edit', 'scheduling.settings.view']);
+
+        $this->signedInAs($owner)->putJson("/api/v1/scheduling/areas/{$area->id}/zips", ['add' => [['zip' => '75202', 'city' => 'Plano']], 'remove' => ['75201']])->assertOk();
+
+        app(TenantContext::class)->set($alpha['org']);
+        $this->assertSame(['75202' => null, '75299' => 'workiz_jobs'],
+            ServiceAreaZip::where('service_area_id', $area->id)->orderBy('zip')->pluck('source', 'zip')->all());
+    }
 }
