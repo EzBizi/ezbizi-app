@@ -127,7 +127,7 @@ class InventoryLocationsController extends Controller
 
         $locations = $query
             ->orderBy('name')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         $page = collect($locations->items());
         $totals = $this->totalsFor($page, $user, $scope);
