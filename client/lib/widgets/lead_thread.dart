@@ -1492,6 +1492,7 @@ class _LeadThreadState extends State<LeadThread> {
       api: widget.api,
       lead: _lead,
       player: widget.player,
+      can: widget.session?.me?.can,
     );
     if (saved != null && mounted) setState(() => _lead = {..._lead, ...saved});
   }

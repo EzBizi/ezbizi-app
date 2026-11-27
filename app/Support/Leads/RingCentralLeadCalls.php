@@ -313,7 +313,10 @@ final class RingCentralLeadCalls
      */
     public function withdrawDuplicates(CarbonImmutable $since): int
     {
+        // Inbound only (audit 11-27): Google has no copy of our callback, and
+        // withdrawing it made the next sync file it again, every sync.
         $rows = LeadConversation::query()->where('remote_id', 'like', 'rc\_%')
+            ->where('participant', LeadConversation::FROM_CONSUMER)
             ->where('occurred_at', '>=', $since)->with('lead')->get();
         if ($rows->isEmpty()) {
             return 0;
