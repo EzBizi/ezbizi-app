@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -896,7 +898,11 @@ class _EstimatePanelState extends State<EstimatePanel> {
     _issued.text = '${row['issued_on'] ?? ''}';
     _row = row;
     _saved = _fingerprint();
+    _savedLines = _linesJson();
   }
+
+  String _savedLines = '[]';
+  String _linesJson() => jsonEncode([for (final l in _lines) l.toJson()]);
 
   static String _quantityText(Object? q) {
     final n = (q as num?) ?? 1;
@@ -966,7 +972,10 @@ class _EstimatePanelState extends State<EstimatePanel> {
         'title': _trimmed(_title),
         'note': _trimmed(_note),
         'issued_on': _trimmed(_issued),
-        if (_linesOpen) 'lines': [for (final l in _lines) l.toJson()],
+        // Only when they changed: an imported estimate's total has no lines,
+        // and sending none would zero it (audit 2026-11-27).
+        if (_linesOpen && _linesJson() != _savedLines)
+          'lines': [for (final l in _lines) l.toJson()],
       },
     });
 
