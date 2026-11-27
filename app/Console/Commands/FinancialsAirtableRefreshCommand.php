@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /** Refreshes every Financials table that mirrors the Airtable copy. Runs after ezbizi:airtable-snapshot. */
 class FinancialsAirtableRefreshCommand extends Command
 {
-    protected $signature = 'ezbizi:financials-airtable-refresh';
+    protected $signature = 'ezbizi:financials-airtable-refresh {--organization= : Only this organization}';
 
     protected $description = 'Bring every Financials table linked to Airtable up to date with the hourly Airtable copy';
 
@@ -20,6 +20,7 @@ class FinancialsAirtableRefreshCommand extends Command
     {
         // Every organization with an Airtable copy: its tables all mirror.
         $organizations = $tenant->runWithoutTenant(fn () => AirtableRecord::query()
+            ->when($this->option('organization'), fn ($q, $id) => $q->where('organization_id', $id))
             ->distinct()->pluck('organization_id'));
 
         foreach (Organization::query()->whereIn('id', $organizations)->get() as $organization) {

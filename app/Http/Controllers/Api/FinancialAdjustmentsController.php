@@ -43,6 +43,8 @@ class FinancialAdjustmentsController extends Controller
         $like = '%'.addcslashes($term, '%_\\').'%';
 
         $rows = FinancialAdjustment::query()->with('franchise:id,name')
+            // The view narrows in SQL, before the cap (audit 11-27).
+            ->whereIn('franchise_id', $scope->franchiseIds())
             ->whereBetween('date', [$input['from'], $input['to']])
             ->when($input['kind'] ?? null, fn ($q, $k) => $q->where('kind', $k))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('technician', 'like', $like)
