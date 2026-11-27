@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Meta and WhatsApp: access tokens never travel in URLs, customer erasure covers WhatsApp messages, and the staff bot Daily conversion uses your own day',
       'Leaderboard: a new full-width design with a podium for the top three, everyone else ranked by place and rate, and a You panel showing the bookings that move you up',
       'Monitoring: camera health only says OK when a stream is connected, and the recorder password is no longer left in a file on the recorder PC',
       'Task Board: deleting a folder moves its boards and subfolders up instead of removing them, sensitive task text stays hidden in the updates feed, plus 12 more fixes',
