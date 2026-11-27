@@ -26,9 +26,4 @@ class TaskLink extends Model implements StatesRetention
     {
         return $this->belongsTo(Task::class);
     }
-
-    public function linkedTask(): BelongsTo
-    {
-        return $this->belongsTo(Task::class, 'linked_task_id');
-    }
 }
