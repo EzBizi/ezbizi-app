@@ -43,6 +43,10 @@ class ApiClient {
   void setView(String? view) => _view = view;
   bool get hasToken => _token != null;
 
+  /// The bearer for native code that calls the API while Flutter is not
+  /// running (Android chat notification Reply / Mark read / Decline).
+  String? get bearer => _token;
+
   /// Called when the server refuses a request from a token we were holding.
   ///
   /// ── Why this exists at all ───────────────────────────────────
