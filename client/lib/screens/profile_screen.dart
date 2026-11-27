@@ -38,6 +38,22 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // A pushed phone page is its own route and does not rebuild with this State;
+  // it listens here instead (audit 2026-11-27: saves did not show).
+  final ValueNotifier<int> _changes = ValueNotifier(0);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _changes.value++;
+  }
+
+  @override
+  void dispose() {
+    _changes.dispose();
+    super.dispose();
+  }
+
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _sessions = [];
@@ -254,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         _group(context, 'You', key: const ValueKey('tour-account-group-You'), [
           _row(context, Icons.person_outline, 'Name', me?.name ?? '', () {
-            _open(context, 'Who you are', _identity());
+            _open(context, 'Who you are', () => _identity());
           }),
           _row(
             context,
@@ -265,14 +281,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // reason to come here at all — and +13055550107 is not something
             // anybody reads back.
             formatPhoneNumber(_profile['phone'] as String? ?? ''),
-            () => _open(context, 'Who you are', _identity()),
+            () => _open(context, 'Who you are', () => _identity()),
           ),
           _row(
             context,
             Icons.home_outlined,
             'Home address',
             _profile['address'] as String? ?? '',
-            () => _open(context, 'Who you are', _identity()),
+            () => _open(context, 'Who you are', () => _identity()),
           ),
           _row(
             context,
@@ -282,7 +298,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _profile['gender'] as String? ?? '',
               _profile['date_of_birth'] as String? ?? '',
             ].where((v) => v.isNotEmpty).join(' · '),
-            () => _open(context, 'Who you are', _identity()),
+            () => _open(context, 'Who you are', () => _identity()),
           ),
         ]),
 
@@ -295,14 +311,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _open(
                 context,
                 'Password',
-                PasswordCard(api: widget.api, session: widget.session),
+                () => PasswordCard(api: widget.api, session: widget.session),
               );
             }),
             _row(context, Icons.shield_outlined, 'Two-factor', null, () {
               _open(
                 context,
                 'Two-factor',
-                TwoFactorCard(api: widget.api, session: widget.session),
+                () => TwoFactorCard(api: widget.api, session: widget.session),
               );
             }),
 
@@ -313,7 +329,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _open(
                 context,
                 'Text me my codes',
-                SmsCodesCard(api: widget.api, session: widget.session),
+                () => SmsCodesCard(api: widget.api, session: widget.session),
               );
             }),
           ],
@@ -333,7 +349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _open(
                   context,
                   'Appearance',
-                  AppearanceCard(session: widget.session),
+                  () => AppearanceCard(session: widget.session),
                 );
               },
             ),
@@ -349,14 +365,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             () => _open(
               context,
               'Role and access',
-              AccountFactsCard(session: widget.session, dense: true),
+              () => AccountFactsCard(session: widget.session, dense: true),
             ),
           ),
           _row(context, Icons.mail_outline, 'Email', me?.email ?? '', () {
             _open(
               context,
               'Role and access',
-              AccountFactsCard(session: widget.session, dense: true),
+              () => AccountFactsCard(session: widget.session, dense: true),
             );
           }),
         ]),
@@ -370,7 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             () => _open(
               context,
               UiStrings.t('time_clock.work_schedule'),
-              _scheduleCard(),
+              () => _scheduleCard(),
             ),
           ),
         ]),
@@ -385,14 +401,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Icons.devices_outlined,
               'Where you are signed in',
               '${_sessions.length}',
-              () => _open(context, 'Where you are signed in', _sessionsCard()),
+              () => _open(
+                context,
+                'Where you are signed in',
+                () => _sessionsCard(),
+              ),
             ),
             _row(
               context,
               Icons.key_outlined,
               'API keys',
               _keyCount == null ? null : '$_keyCount',
-              () => _open(context, 'API keys', _apiKeysCard()),
+              () => _open(context, 'API keys', () => _apiKeysCard()),
             ),
           ],
         ),
@@ -613,7 +633,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ///
   /// Every card here saves itself, so nothing needs a Save of its own — and
   /// reloading on the way back is what keeps the row's value honest.
-  Future<void> _open(BuildContext context, String title, Widget body) async {
+  Future<void> _open(
+    BuildContext context,
+    String title,
+    Widget Function() body,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
@@ -624,7 +648,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             top: false,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              child: body,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _changes,
+                builder: (_, _, _) => body(),
+              ),
             ),
           ),
         ),

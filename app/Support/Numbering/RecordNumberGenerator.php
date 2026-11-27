@@ -160,7 +160,11 @@ class RecordNumberGenerator
         $number = str_pad((string) $value, $padding, '0', STR_PAD_LEFT);
 
         if ($this->settings->get('numbering.include_year', $scope)) {
-            return $prefix.now()->year.'-'.$number;
+            // The scope's own year: on Dec 31 evening in Florida UTC is already
+            // next year (audit 2026-11-27).
+            $timezone = (string) ($this->settings->get('timezone', $scope) ?: 'UTC');
+
+            return $prefix.now($timezone)->year.'-'.$number;
         }
 
         return $prefix.$number;

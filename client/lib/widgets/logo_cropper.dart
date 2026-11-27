@@ -86,9 +86,18 @@ class _LogoCropperState extends State<LogoCropper> {
     super.dispose();
   }
 
+  // An undecodable file spun forever (audit 2026-11-27).
+  bool _unreadable = false;
+
   Future<void> _decode() async {
-    final codec = await ui.instantiateImageCodec(widget.bytes);
-    final frame = await codec.getNextFrame();
+    final ui.FrameInfo frame;
+    try {
+      final codec = await ui.instantiateImageCodec(widget.bytes);
+      frame = await codec.getNextFrame();
+    } catch (_) {
+      if (mounted) setState(() => _unreadable = true);
+      return;
+    }
 
     if (!mounted) {
       frame.image.dispose();
@@ -212,7 +221,11 @@ class _LogoCropperState extends State<LogoCropper> {
           child: Text(_busy ? 'Working…' : 'Use this'),
         ),
       ],
-      child: image == null
+      child: _unreadable
+          ? const Center(
+              child: Text('This file is not an image we can read. Try a PNG or JPEG.'),
+            )
+          : image == null
           ? const Center(child: CircularProgressIndicator())
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
