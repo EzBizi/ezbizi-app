@@ -3131,7 +3131,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                             _toolbar(context, phone: cards),
                             // UI pass 11-16: on the toolbar line a phone's search
                             // was 110 wide and read "Se…". Its own line instead.
-                            if (MediaQuery.sizeOf(context).width < 600)
+                            if (MediaQuery.sizeOf(context).width < 600 &&
+                                (!_phoneTable || _phoneSearch))
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(
                                   16,
@@ -3142,7 +3143,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                 child: _search(),
                               ),
                             Expanded(
-                              child: switch (_view) {
+                              child: _withPhonePill(context, switch (_view) {
                                 'kanban' => _kanbanView(context, narrow: cards),
                                 'calendar' => _calendarView(phone: cards),
                                 'timeline' => _timelineView(phone: cards),
@@ -3154,7 +3155,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   onOpenTask: _openTaskById,
                                 ),
                                 _ => _tableView(context, cards: cards && !_phoneTable),
-                              },
+                              }),
                             ),
                           ],
                         ),
@@ -3245,7 +3246,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
           )
         : Text(text);
-    final buttons = quick.isEmpty
+    final buttons = quick.isEmpty || _phoneTable
         ? null
         : SegmentedButton<int>(
             key: const Key('tasks-quick-boards'),
@@ -4337,7 +4338,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             16,
             10,
             16,
-            _picked.isNotEmpty && !cards ? 96 : 24,
+            _picked.isNotEmpty && !cards ? 96 : (_phoneTable ? 80 : 24),
           ),
           sliver: SliverMainAxisGroup(
             slivers: [
@@ -5230,6 +5231,73 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// Set by [_screen] each layout: a phone shows Monday's dense table (row 70).
   bool _phoneTable = false;
+
+  /// The phone pill's search: the search line shows while this is on.
+  bool _phoneSearch = false;
+
+  /// Monday's floating bottom pill on a phone (row 70): search, quick
+  /// filters and the board's own filter/sort/hide, one tap each.
+  Widget _withPhonePill(BuildContext context, Widget view) {
+    if (!_phoneTable || _board == null) return view;
+    final theme = Theme.of(context);
+    final actions = [
+      ..._listToolbar().actions(context),
+      (
+        key: 'quick',
+        icon: Icons.bolt_outlined,
+        label: 'Quick filters',
+        count: 0,
+        onTap: _quickFilters,
+      ),
+    ];
+    Widget icon(Key key, IconData i, String tip, VoidCallback onTap, {bool on = false}) =>
+        IconButton(
+          key: key,
+          tooltip: tip,
+          isSelected: on,
+          onPressed: onTap,
+          icon: Icon(i),
+        );
+    return Stack(
+      children: [
+        Positioned.fill(child: view),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 12,
+          child: Center(
+            child: Material(
+              key: const Key('tasks-phone-pill'),
+              elevation: 6,
+              shape: const StadiumBorder(),
+              color: theme.colorScheme.surfaceContainerHigh,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    icon(
+                      const Key('tasks-pill-search'),
+                      Icons.search,
+                      'Search',
+                      () => setState(() => _phoneSearch = !_phoneSearch),
+                      on: _phoneSearch,
+                    ),
+                    for (final a in actions)
+                      Badge(
+                        isLabelVisible: a.count > 0,
+                        label: Text('${a.count}'),
+                        child: icon(Key('tasks-pill-${a.key}'), a.icon, a.label, a.onTap, on: a.count > 0),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
   double _phoneWidth = 400;
 
   void _rowLongPress(_Json t) {

@@ -1501,6 +1501,9 @@ void main() {
     tester,
   ) async {
     await pump(tester, width: 390);
+    // Row 70: the search line opens from the floating pill.
+    await tester.tap(find.byKey(const Key('tasks-pill-search')));
+    await tester.pumpAndSettle();
 
     final search = find.byKey(const Key('tasks-search'));
     expect(search, findsOneWidget);
