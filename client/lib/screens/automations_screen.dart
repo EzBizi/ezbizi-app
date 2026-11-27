@@ -64,6 +64,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   /// reading "Off" for a module that was on, until somebody navigated away.
   int _request = 0;
   String? _error;
+  String? _catalogueError;
   List<Map<String, dynamic>> _automations = [];
   AutomationCatalogue? _catalogue;
 
@@ -183,11 +184,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         // Nothing to say: a person without the build tab is not missing
         // anything they can see.
       } else if (catalogue.ok) {
+        _catalogueError = null;
         _catalogue = AutomationCatalogue.fromJson(
           catalogue.data as Map<String, dynamic>,
         );
       } else {
-        _error =
+        // Its own banner: the list stays usable, so a rule can still be switched off (audit 2026-11-27).
+        _catalogueError =
             'Could not load what this system can automate: ${catalogue.message}';
       }
     });
@@ -285,6 +288,21 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   // ── the list ─────────────────────────────────────────────────────
 
   Widget _listTab(BuildContext context) {
+    final catalogueError = _catalogueError;
+    if (catalogueError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ErrorNote(catalogueError),
+          Expanded(child: _listBody(context)),
+        ],
+      );
+    }
+
+    return _listBody(context);
+  }
+
+  Widget _listBody(BuildContext context) {
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -650,13 +668,15 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         value: 'runs',
                         child: Text('Run history'),
                       ),
-                      const PopupMenuItem(
+                      // Distinct from "Test against a real event", which
+                      // rehearses and performs nothing. This one really sends,
+                      // so the wording has to say so before it is pressed.
+                      // Needs `update`, like the server (audit 2026-11-27).
+                      refusedMenuItem(
+                        context,
                         value: 'run_now',
-                        // Distinct from "Test against a real event", which
-                        // rehearses and performs nothing. This one really sends,
-                        // so the wording has to say so before it is pressed
-                        // rather than after.
-                        child: Text('Run it now for real'),
+                        label: 'Run it now for real',
+                        reason: noEdit,
                       ),
                       // A rehearsal is authorized as `update`, not `view` —
                       // AutomationsController::test — because rehearsing is part
@@ -946,7 +966,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               // pressed: this one really sends.
               TextButton.icon(
                 key: const Key('automation-open-run-now'),
-                onPressed: () => then('run_now'),
+                onPressed: _noEdit == null ? () => then('run_now') : null,
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Run it now for real'),
               ),
