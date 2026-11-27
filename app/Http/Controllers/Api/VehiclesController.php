@@ -157,6 +157,10 @@ class VehiclesController extends Controller
         }
 
         $vehicles = $query
+            ->with([
+                'company:id,name', 'franchise:id,name', 'ownershipPeriods', 'insurancePolicies',
+                'assignments.user:id,name', 'serviceVisits', 'payments',
+            ])
             ->orderBy('label')
             ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 

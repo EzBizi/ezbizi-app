@@ -143,17 +143,25 @@ class Vehicle extends Model implements StatesRetention
 
     public function openOwnership(): ?VehicleOwnershipPeriod
     {
-        return $this->ownershipPeriods()->whereNull('ended_on')->first();
+        // From the loaded list when there is one: the register lists 200 rows
+        // and a query per row per relation was ~10 queries a vehicle (audit 2026-11-27).
+        return $this->relationLoaded('ownershipPeriods')
+            ? $this->ownershipPeriods->firstWhere('ended_on', null)
+            : $this->ownershipPeriods()->whereNull('ended_on')->first();
     }
 
     public function openInsurance(): ?VehicleInsurancePolicy
     {
-        return $this->insurancePolicies()->whereNull('ended_on')->first();
+        return $this->relationLoaded('insurancePolicies')
+            ? $this->insurancePolicies->firstWhere('ended_on', null)
+            : $this->insurancePolicies()->whereNull('ended_on')->first();
     }
 
     public function openAssignment(): ?VehicleAssignment
     {
-        return $this->assignments()->whereNull('released_at')->first();
+        return $this->relationLoaded('assignments')
+            ? $this->assignments->firstWhere('released_at', null)
+            : $this->assignments()->whereNull('released_at')->first();
     }
 
     // ── relations ────────────────────────────────────────────────
