@@ -372,10 +372,6 @@ return [
             'supply::webhooks.read',
             'supply::webhooks.write',
         ])),
-
-        // ORY Hydra supports PKCE and their spec does not mark it required, so
-        // this stays off until a live authorize call says otherwise.
-        'pkce' => env('THUMBTACK_PKCE', false),
     ],
 
     'x' => [
