@@ -182,8 +182,19 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
     setState(() => _cards = cards);
     for (var i = 0; i < cards.length; i++) {
       if (cards[i]['position'] == i) continue;
+      final r = await widget.api.patch('/guidelines/${cards[i]['id']}', {
+        'position': i,
+      });
+      // ponytail: one PATCH per moved card; a batch endpoint if lists grow big.
+      if (!r.ok) {
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('Order not saved: ${r.reason}')),
+        );
+        _load();
+        return;
+      }
       cards[i] = {...cards[i], 'position': i};
-      await widget.api.patch('/guidelines/${cards[i]['id']}', {'position': i});
     }
   }
 
@@ -576,6 +587,7 @@ class _EditPanelState extends State<_EditPanel> {
       TextEditingController(),
   ];
   bool _confirmDelete = false;
+  String? _createdId;
   late final _notes = FormattedNotesController(
     markup: widget.card?['notes'] as String?,
   );
@@ -610,7 +622,8 @@ class _EditPanelState extends State<_EditPanel> {
       'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
       'position': int.tryParse(_position.text.trim()) ?? 0,
     };
-    final id = widget.card?['id'];
+    // A retry after a failed image upload must not create the card twice.
+    final id = widget.card?['id'] ?? _createdId;
     var response = id == null
         ? await widget.api.post('/guidelines', {
             ...fields,
@@ -620,6 +633,7 @@ class _EditPanelState extends State<_EditPanel> {
           })
         : await widget.api.patch('/guidelines/$id', fields);
     final savedId = response.ok ? (response.data as Map)['id'] as String : null;
+    if (id == null) _createdId = savedId;
     if (savedId != null && _newImage != null) {
       response = await widget.api.postFile(
         '/guidelines/$savedId/image',
