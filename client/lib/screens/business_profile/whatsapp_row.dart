@@ -78,19 +78,20 @@ class WhatsAppRow extends StatelessWidget {
                     title: 'WhatsApp QR',
                     width: 360,
                     child: Center(
+                      // Paper colours in both themes: an inverted code does not scan (audit 2026-11-27).
                       child: ColoredBox(
-                        color: theme.colorScheme.surface,
+                        color: EzBiziTheme.paper,
                         child: QrImageView(
                           key: const ValueKey('cx-whatsapp-qr-code'),
                           data: link,
                           size: 240,
                           eyeStyle: QrEyeStyle(
                             eyeShape: QrEyeShape.square,
-                            color: theme.colorScheme.onSurface,
+                            color: EzBiziTheme.paperInk,
                           ),
                           dataModuleStyle: QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.square,
-                            color: theme.colorScheme.onSurface,
+                            color: EzBiziTheme.paperInk,
                           ),
                         ),
                       ),

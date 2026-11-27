@@ -59,10 +59,26 @@ void main() {
     expect(up.style?.color, isNot(down.style?.color));
   });
 
+  testWidgets('a partly filled period is compared with as many days before', (
+    tester,
+  ) async {
+    final from = _yesterday().subtract(const Duration(days: 27));
+    // Two of 28 days filled: the period before counts its first two days only (10+11 calls), not its 368.
+    await _pumpView(
+      tester,
+      _Fake()
+        ..lastDate = formatCalendarDay(
+          DateTime(from.year, from.month, from.day + 1),
+        ),
+    );
+    expect(_changeOf(tester, 'calls'), isNot('▼ 49%'));
+    expect(_changeOf(tester, 'calls'), startsWith('▲'));
+  });
+
   testWidgets('the freshness line names the last day Google filled in', (
     tester,
   ) async {
-    await _pumpView(tester, _Fake());
+    await _pumpView(tester, _Fake()..lastDate = '2026-10-17');
 
     expect(
       find.text(
@@ -277,6 +293,7 @@ class _Fake {
   bool termsFail = false;
   bool noListings = false;
   bool noData = false;
+  String? lastDate;
 
   final performance = <Map<String, String>>[];
   final terms = <Uri>[];
@@ -379,7 +396,7 @@ class _Fake {
     return {
       'from': q['from'],
       'to': q['to'],
-      'last_date': empty ? null : '2026-10-17',
+      'last_date': empty ? null : (lastDate ?? q['to']),
       'totals': empty ? _metrics() : totals,
       'daily': empty
           ? const []
