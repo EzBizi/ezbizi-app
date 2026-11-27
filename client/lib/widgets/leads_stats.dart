@@ -91,7 +91,8 @@ class _LeadsStatsState extends State<LeadsStats> {
     final query = {'from': from, 'to': to, 'franchise_id': ?_franchise};
     final results = await Future.wait([
       widget.api.get('/leads/stats', query),
-      widget.api.get('/leads/stats/points', {'from': from, 'to': to}),
+      // The branch filter too (audit 11-27).
+      widget.api.get('/leads/stats/points', query),
       widget.api.get('/field/coverage', {'from': from, 'to': to}),
       if (_tiles == null)
         widget.api.get('/field/map/tiles', {'theme': 'light'}),
@@ -506,17 +507,19 @@ class _LeadsStatsState extends State<LeadsStats> {
           onSelected: (v) => setState(() => set(v)),
         );
 
+    // Sized and counted by the outcomes ticked (audit 11-27).
+    int picked(Map r) => _outcomes.fold(0, (a, o) => a + _int(r[o]));
     final leadMarkers = <Marker>[
       if (_leads)
         for (final r in _zipRows)
           if (_zipPoints['${r['zip']}'] case final p?)
-            if (_outcomes.any((o) => _int(r[o]) > 0))
+            if (picked(r) > 0)
               Marker(
                 point: p,
-                width: 10.0 + math.min(18, _int(r['total']) * 2),
-                height: 10.0 + math.min(18, _int(r['total']) * 2),
+                width: 10.0 + math.min(18, picked(r) * 2),
+                height: 10.0 + math.min(18, picked(r) * 2),
                 child: Tooltip(
-                  message: '${r['zip']}: ${_int(r['total'])} leads',
+                  message: '${r['zip']}: ${picked(r)} leads',
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -625,6 +628,7 @@ class _LeadsStatsState extends State<LeadsStats> {
                 ('book', 'Book'),
                 ('support', 'Support'),
                 ('archive', 'Archive'),
+                ('unclassified', 'Not classified'),
               ])
                 chip(
                   label,

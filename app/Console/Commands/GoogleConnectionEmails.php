@@ -42,7 +42,14 @@ class GoogleConnectionEmails extends Command
 
                 continue;
             }
-            $email = Http::timeout(10)->get('https://oauth2.googleapis.com/tokeninfo', ['access_token' => $token])->json('email');
+            // In the body, not the URL (audit 11-27): a URL is what a failed call logs.
+            try {
+                $email = Http::timeout(10)->asForm()->post('https://oauth2.googleapis.com/tokeninfo', ['access_token' => $token])->json('email');
+            } catch (\Illuminate\Http\Client\ConnectionException) {
+                $this->warn($same->first()->display_name.': Google could not be reached.');
+
+                continue;
+            }
             if (is_string($email) && $email !== '') {
                 $named += SocialConnection::withoutGlobalScopes()->whereKey($same->modelKeys())->update(['account_email' => strtolower($email)]);
             }

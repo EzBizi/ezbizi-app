@@ -632,6 +632,8 @@ class _ManagerState extends State<ReplyTemplatesManager> {
           key: const ValueKey('template-name'),
           controller: d.name,
           enabled: _mayEdit,
+          // Held while saving: what was typed then was dropped (audit 11-27).
+          readOnly: _saving,
           maxLength: 40,
           decoration: const InputDecoration(
             labelText: 'Button name',
@@ -643,6 +645,8 @@ class _ManagerState extends State<ReplyTemplatesManager> {
           key: const ValueKey('template-text'),
           controller: d.text,
           enabled: _mayEdit,
+          // Held while saving: what was typed then was dropped (audit 11-27).
+          readOnly: _saving,
           minLines: 4,
           maxLines: 12,
           maxLength: 2000,

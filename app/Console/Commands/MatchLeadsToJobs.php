@@ -59,12 +59,21 @@ class MatchLeadsToJobs extends Command
                 // EzBizi is the master; Workiz a mirror (Jose, 2026-10-27). So
                 // EzBizi's own customers by the last ten digits, and their jobs
                 // by customer: one read each, not one per lead.
+                // Only the numbers of leads still unmatched, and only those
+                // customers' jobs (audit 11-27: every job, every 15 minutes).
+                $wanted = Lead::query()->whereNull('job_id')->whereNotNull('phone_digits')->whereNotNull('received_at')
+                    ->when($since, fn ($q) => $q->where('received_at', '>=', $since))
+                    ->pluck('phone_digits')->map(fn ($d) => substr((string) $d, -10))->flip();
+                if ($wanted->isEmpty()) {
+                    return;
+                }
                 $clients = Customer::query()->whereNotNull('phone')->get(['id', 'phone'])
-                    ->groupBy(fn (Customer $c) => substr((string) preg_replace('/\D/', '', (string) $c->phone), -10));
+                    ->groupBy(fn (Customer $c) => substr((string) preg_replace('/\D/', '', (string) $c->phone), -10))
+                    ->filter(fn ($group, $digits) => $wanted->has($digits));
                 // When it was booked: a Workiz-projected job's created_at is the
                 // moment it was imported, so its mirror's booked_at wins where
                 // there is one. Without Workiz, created_at is the booking.
-                $jobs = Job::query()->whereNotNull('customer_id')
+                $jobs = Job::query()->whereIn('customer_id', $clients->flatten()->map->getKey()->all())
                     ->select(['id', 'customer_id', 'created_at'])
                     ->selectSub(WorkizJob::query()->selectRaw('MIN(booked_at)')->whereColumn('workiz_jobs.job_id', 'jobs.id'), 'mirror_booked_at')
                     ->get()

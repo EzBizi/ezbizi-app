@@ -1922,7 +1922,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (note != null || clearNote) 'note': note,
       if (mentions.isNotEmpty) 'mentions': mentions,
     });
-    _noteMentions.clear();
+    // Only once a note went (audit 11-27: a star cleared an unsaved note's @s).
+    if (note != null || clearNote) _noteMentions.clear();
     if (!mounted) return null;
     if (!response.ok) {
       setState(() => _notice = response.message);
