@@ -245,10 +245,17 @@ final class DialPlan
 
         $fromRoles = [];
         if ($roleIds !== []) {
-            $fromRoles = User::query()
-                ->whereIn('role_id', $roleIds)
-                ->pluck('id')
-                ->all();
+            $people = User::query()->whereIn('role_id', $roleIds)->get();
+
+            // A company's line rings only people who reach that company
+            // (audit 11-27: "Everyone" rang every company's phone staff).
+            $connection = $group->connection;
+            if ($connection !== null && $connection->scope_type === PhoneConnection::SCOPE_COMPANY) {
+                $reach = app(\App\Support\Access\ScopeReach::class);
+                $people = $people->filter(fn (User $u) => $reach->covers($u, PhoneConnection::SCOPE_COMPANY, (string) $connection->scope_id));
+            }
+
+            $fromRoles = $people->modelKeys();
         }
 
         $seen = [];

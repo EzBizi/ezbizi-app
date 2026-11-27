@@ -108,7 +108,8 @@ class ExtensionsController extends Controller
         return response()->json([
             'data' => $rows,
             'connection_id' => $connection->id,
-            'people' => User::query()
+            // Only people this viewer reaches (audit 11-27).
+            'people' => \App\Support\Phone\PhoneScope::people(User::query(), $request->user())
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name'])

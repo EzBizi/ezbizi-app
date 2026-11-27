@@ -45,6 +45,27 @@ class StaffMessagesTest extends TestCase
      * Whichever of them wrote it, it belongs in the same list — a reply that
      * appeared in its own separate conversation would not be a conversation.
      */
+    /** Audit 11-27: a busy thread shows the NEWEST 200, oldest first. */
+    public function test_a_long_thread_shows_the_newest_messages(): void
+    {
+        $t = $this->provisionTenant();
+        $bar = $this->colleague($t, 'Bar');
+        $ana = $this->colleague($t, 'Ana');
+        $this->inTenant($t['org'], function () use ($t, $bar, $ana) {
+            foreach (range(1, 205) as $i) {
+                StaffMessage::query()->forceCreate([
+                    'organization_id' => $t['org']->id, 'sender_id' => $bar->id, 'recipient_id' => $ana->id,
+                    'body' => "m{$i}", 'created_at' => now()->subMinutes(300 - $i),
+                ]);
+            }
+        });
+
+        $bodies = array_column((array) $this->signedInAs($ana)->getJson('/api/v1/staff-messages?with='.$bar->id)->assertOk()->json('data'), 'body');
+        $this->assertCount(200, $bodies);
+        $this->assertSame('m6', $bodies[0]);
+        $this->assertSame('m205', end($bodies));
+    }
+
     public function test_a_thread_reads_both_directions(): void
     {
         $t = $this->provisionTenant();

@@ -141,6 +141,12 @@ class CallTagsController extends Controller
     public function tagCall(Request $request, PhoneCall $call): JsonResponse
     {
         $this->authorize('tag', PhoneCallTag::class);
+        // And this call's line, when it has one (audit 11-27).
+        abort_if(
+            $call->number !== null
+                && ! app(\App\Support\Phone\PhoneNumberAccess::class)->mayView($request->user(), $call->number),
+            Response::HTTP_FORBIDDEN,
+        );
 
         $input = $request->validate([
             'tag_id' => ['present', 'nullable', 'uuid'],

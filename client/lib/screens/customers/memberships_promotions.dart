@@ -623,7 +623,10 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
         .trim()
         .replaceAll('{first_name}', '${first?['first_name'] ?? 'there'}')
         .replaceAll('{company}', '${first?['company'] ?? ''}');
-    return body.toUpperCase().contains('STOP') ? body : '$body\n\n$_footer';
+    // Same rule as SmsConsent::saysHowToStop (audit 11-27).
+    return RegExp(r'\b(reply|text|txt|send|respond)\b[^.\n]{0,20}\bstop\b', caseSensitive: false).hasMatch(body)
+        ? body
+        : '$body\n\n$_footer';
   }
 
   Future<void> _addPicture() async {

@@ -54,7 +54,8 @@ class PhoneLookupTest extends TestCase
             'X-Twilio-Signature' => $signature,
         ])->assertOk();
 
-        $this->assertContains('lookup', array_column($gateway->calls, 'method'));
+        // Audit 11-27: the paid lookup no longer runs on inbound at all.
+        $this->assertNotContains('lookup', array_column($gateway->calls, 'method'));
 
         $this->inTenant($t['org'], function () use ($number) {
             $message = PhoneMessage::query()->first();
@@ -91,7 +92,8 @@ class PhoneLookupTest extends TestCase
             'X-Twilio-Signature' => $signature,
         ])->assertOk();
 
-        $this->assertContains('lookup', array_column($gateway->calls, 'method'));
+        // Audit 11-27: the paid lookup no longer runs on inbound at all.
+        $this->assertNotContains('lookup', array_column($gateway->calls, 'method'));
 
         $this->inTenant($t['org'], function () use ($number, $connection) {
             $call = PhoneCall::query()->first();

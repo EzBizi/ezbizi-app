@@ -1206,6 +1206,14 @@ class _LineFormState extends State<_LineForm> {
   late String? _groupId;
   late String? _scheduleId;
   late bool _record;
+
+  /// Still following the company: inherited and not changed here.
+  bool _inherited(String key, Object now, Object was) =>
+      widget.line.inherits.contains(key) && now == was;
+
+  /// null keeps "follow the company"; anything changed is the line's own.
+  Object? _keep(String key, Object now, Object was) =>
+      _inherited(key, now, was) ? null : now;
   late bool _leadLine;
   late bool _transcribe;
   late String _afterHours;
@@ -1436,6 +1444,7 @@ class _LineFormState extends State<_LineForm> {
           onChanged: (v) => setState(() => _record = v),
           title: const Text('Record calls on this line'),
           subtitle: Text(
+            '${_inherited('record', _record, widget.line.record) ? 'Follows the company. ' : ''}'
             '$_alsoInGeneral Callers are told out loud before the call '
             'connects.',
             style: theme.textTheme.bodySmall,
@@ -1509,10 +1518,11 @@ class _LineFormState extends State<_LineForm> {
                       'label': _label.text.trim(),
                       'ring_group_id': _groupId,
                       'hours_schedule_id': _scheduleId,
-                      'record': _record,
+                      // Unchanged and inherited stays inherited (null).
+                      'record': _keep('record', _record, widget.line.record),
                       'lead_line': _leadLine,
-                      'transcribe': _transcribe,
-                      'after_hours': _afterHours,
+                      'transcribe': _keep('transcribe', _transcribe, widget.line.transcribe),
+                      'after_hours': _keep('after_hours', _afterHours, widget.line.afterHours),
                       'after_hours_number': _afterHours == 'forward'
                           ? _forwardTo.text.trim()
                           : null,
@@ -1560,6 +1570,7 @@ class _Line {
     this.leadLine = false,
     required this.transcribe,
     required this.afterHours,
+    this.inherits = const {},
     required this.answers,
     required this.scopeId,
     required this.voiceCallerIdLookup,
@@ -1602,6 +1613,9 @@ class _Line {
   final bool leadLine;
   final bool transcribe;
   final String afterHours;
+
+  /// Settings this line takes from the company rather than setting itself.
+  final Set<String> inherits;
   final String? afterHoursNumber;
   final String? ringGroupId;
   final String? hoursScheduleId;
@@ -1653,10 +1667,19 @@ class _Line {
             id: row['id'].toString(),
             e164: row['e164']?.toString() ?? '',
             label: row['label']?.toString() ?? '',
-            record: row['record'] == true,
+            // What applies (resolved), and whether the line set it itself
+            // (audit 11-27: null on the line means "follow the company").
+            record: (row['resolved'] as Map?)?['record'] as bool? ?? row['record'] == true,
             leadLine: row['lead_line'] == true,
-            transcribe: row['transcribe'] == true,
-            afterHours: row['after_hours']?.toString() ?? 'voicemail',
+            transcribe:
+                (row['resolved'] as Map?)?['transcribe'] as bool? ?? row['transcribe'] == true,
+            afterHours: ((row['resolved'] as Map?)?['after_hours'] ?? row['after_hours'])
+                    ?.toString() ??
+                'voicemail',
+            inherits: {
+              for (final key in const ['record', 'transcribe', 'after_hours'])
+                if (row.containsKey('resolved') && row[key] == null) key,
+            },
             afterHoursNumber: row['after_hours_number'] as String?,
             ringGroupId: row['ring_group_id'] as String?,
             hoursScheduleId: row['hours_schedule_id'] as String?,

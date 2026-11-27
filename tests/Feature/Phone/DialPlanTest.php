@@ -184,6 +184,32 @@ class DialPlanTest extends TestCase
         $this->assertCount(2, $batches[0]);
     }
 
+    /** Audit 11-27: a company's line rings only role members who reach that company. */
+    public function test_role_members_outside_the_company_do_not_ring_its_line(): void
+    {
+        $t = $this->provisionTenant();
+        $inside = $this->userWithRole($t, 'Dispatcher', ['phone.view']);
+
+        $ids = $this->inTenant($t['org'], function () use ($t, $inside) {
+            $outside = User::create([
+                'organization_id' => $t['org']->id, 'role_id' => $inside->role_id, 'name' => 'Elsewhere',
+                'email' => 'elsewhere@'.$t['org']->slug.'.test', 'password' => 'a-real-password', 'is_active' => true,
+            ]);
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY, 'scope_id' => $t['company']->id,
+            ]);
+            $group = PhoneRingGroup::query()->create([
+                'connection_id' => $connection->id, 'name' => 'Everyone', 'mode' => 'simultaneous',
+                'timeout_seconds' => 30, 'member_user_ids' => [], 'member_role_ids' => [$inside->role_id], 'overflow' => 'voicemail',
+            ]);
+
+            return [DialPlan::memberUserIds($group), $outside->id];
+        });
+
+        $this->assertContains($inside->id, $ids[0]);
+        $this->assertNotContains($ids[1], $ids[0]);
+    }
+
     public function test_batches_cap_at_ten_clients(): void
     {
         $t = $this->provisionTenant();

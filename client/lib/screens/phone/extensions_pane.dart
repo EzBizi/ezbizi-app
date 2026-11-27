@@ -347,6 +347,8 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
             key: const Key('extension-digits'),
             controller: _digits,
             keyboardType: TextInputType.number,
+            // Redraw so Add enables as digits are typed (audit 11-27).
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Extension',
               hintText: '0101',

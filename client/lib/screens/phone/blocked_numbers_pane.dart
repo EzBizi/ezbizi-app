@@ -52,6 +52,7 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
   bool _saving = false;
 
   String? _connectionId;
+  List<String> _connectionIds = const [];
   List<_Blocked> _rows = const [];
 
   /// `month` when the "Added this month" tile is picked, else null. The list
@@ -113,12 +114,16 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
     final response = await widget.api.get('/phone/connections');
     if (!mounted || !response.ok) return;
 
-    for (final row in (response.data as List? ?? const [])) {
-      if (row is! Map<String, dynamic>) continue;
-      setState(() => _connectionId = row['id'] as String?);
-
-      return;
-    }
+    // Every account this person reaches (audit 11-27: only the first was
+    // blocked, so other companies' lines still rang).
+    final ids = [
+      for (final row in (response.data as List? ?? const []))
+        if (row is Map<String, dynamic> && row['id'] is String) row['id'] as String,
+    ];
+    setState(() {
+      _connectionIds = ids;
+      _connectionId = ids.firstOrNull;
+    });
   }
 
   /// Accept what somebody would actually type, and send E.164.
@@ -163,15 +168,21 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
     });
 
     final reason = _reason.text.trim();
-    final response = await widget.api.post('/phone/blocked-numbers', {
-      'connection_id': id,
-      'e164': e164,
-      if (reason.isNotEmpty) 'reason': reason,
-    });
+    ApiResponse? failed;
+    for (final connection in _connectionIds.isEmpty ? [id] : _connectionIds) {
+      final r = await widget.api.post('/phone/blocked-numbers', {
+        'connection_id': connection,
+        'e164': e164,
+        if (reason.isNotEmpty) 'reason': reason,
+      });
+      // Already blocked there is fine.
+      if (!r.ok && r.statusCode != 409) failed ??= r;
+    }
+    final response = failed;
 
     if (!mounted) return;
 
-    if (!response.ok) {
+    if (response != null) {
       setState(() {
         _saving = false;
         _formError = response.reason;
@@ -242,7 +253,7 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
         const SizedBox(height: 4),
         Text(
           'These callers are turned away before any phone rings. It applies to '
-          'every line this company answers, and the call still shows in '
+          'every phone account you can reach, and the call still shows in '
           'Records so you can see it happened.',
           style: theme.textTheme.bodySmall,
         ),

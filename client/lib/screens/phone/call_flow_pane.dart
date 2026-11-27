@@ -131,7 +131,12 @@ class _CallFlowPaneState extends State<CallFlowPane> {
       if (!_companies.any((c) => c.id == _companyId)) {
         _companyId = _companies.firstOrNull?.id;
       }
-      _notice.text = _company?.recordingNotice ?? '';
+      // Keep wording somebody is still typing (audit 11-27: any other save
+      // overwrote an unsaved recording notice).
+      if (_notice.text == _noticeLoaded) {
+        _notice.text = _company?.recordingNotice ?? '';
+      }
+      _noticeLoaded = _company?.recordingNotice ?? '';
     });
   }
 
@@ -140,6 +145,9 @@ class _CallFlowPaneState extends State<CallFlowPane> {
   /// The whole `default_*` set goes, with the one change applied, exactly as
   /// General's Save sent it: nothing here assumes the server leaves out what a
   /// partial body omits.
+  /// The notice as last read, to tell an edit in progress from stale text.
+  String _noticeLoaded = '';
+
   Future<void> _save(Map<String, Object?> change) async {
     final company = _company;
     if (company == null || !_canEdit) return;
@@ -158,7 +166,8 @@ class _CallFlowPaneState extends State<CallFlowPane> {
 
     setState(() {
       _saving = false;
-      _typing = null;
+      // A failed save keeps the field open with what was typed (audit 11-27).
+      if (response.ok) _typing = null;
     });
 
     if (!response.ok) {
@@ -251,7 +260,7 @@ class _CallFlowPaneState extends State<CallFlowPane> {
               onChanged: (id) => setState(() {
                 _companyId = id;
                 _typing = null;
-                _notice.text = _company?.recordingNotice ?? '';
+                _notice.text = _noticeLoaded = _company?.recordingNotice ?? '';
               }),
             ),
           ),
