@@ -73,7 +73,7 @@ class ApnsSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): int
+    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null): int
     {
         if ($devices->isEmpty() || ! $this->configured()) {
             return 0;
@@ -93,7 +93,7 @@ class ApnsSender
         $sent = 0;
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $jwt, $title, $body, $notificationId, $subtitle)) {
+            if ($this->deliver($device, $jwt, $title, $body, $notificationId, $subtitle, $thread, $badge)) {
                 $sent++;
             }
         }
@@ -114,7 +114,7 @@ class ApnsSender
      * environment, and deleting on it would throw away a good token every time
      * somebody pointed a sandbox build at production.
      */
-    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): bool
+    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -126,10 +126,13 @@ class ApnsSender
                     'apns-priority' => '10',
                 ])
                 ->post($this->endpoint().$device->token, array_filter([
-                    'aps' => [
+                    'aps' => array_filter([
                         'alert' => array_filter(['title' => $title, 'subtitle' => $subtitle, 'body' => $body]),
                         'sound' => 'default',
-                    ],
+                        // One stack per chat on the lock screen, and the icon's count.
+                        'thread-id' => $thread,
+                        'badge' => $badge,
+                    ], fn ($v) => $v !== null),
                     // Which bell row a tap opens — a custom key beside `aps`,
                     // which is where APNs puts app data (Bar, 2026-10-12).
                     'notification_id' => $notificationId,

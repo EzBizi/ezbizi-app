@@ -25,6 +25,7 @@ import '../../../core/timestamps.dart';
 import '../../../widgets/user_avatar.dart';
 import '../recording_player.dart';
 import 'chat_job_link.dart';
+import 'chat_alerts.dart';
 import 'chat_calls.dart';
 import 'chat_store.dart';
 import 'chat_tab.dart' show ReceiptTicks, confirmClear, pickMuteHours;
@@ -136,6 +137,8 @@ class _ChatThreadState extends State<ChatThread> {
     final c = _chat;
     _unreadAtOpen = (c?['unread'] as int?) ?? 0;
     store.addListener(_storeMoved);
+    // On screen: its messages make no OS notification while the app is in front.
+    ChatAlerts.visibleChat = widget.chatId;
     _scroll.addListener(_scrolled);
     _text.addListener(() => setState(() {}));
     final jump = ChatThread.jumpTo;
@@ -145,6 +148,7 @@ class _ChatThreadState extends State<ChatThread> {
 
   @override
   void dispose() {
+    if (ChatAlerts.visibleChat == widget.chatId) ChatAlerts.visibleChat = null;
     store.removeListener(_storeMoved);
     _scroll.dispose();
     _text.dispose();

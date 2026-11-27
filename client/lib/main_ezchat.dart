@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'core/api_client.dart';
 import 'core/client_platform.dart';
+import 'core/os_notifications.dart';
 import 'core/push_registration.dart';
 import 'core/session.dart';
 import 'core/theme.dart';
@@ -118,6 +119,23 @@ class _EzChatHomeState extends State<EzChatHome> {
   void initState() {
     super.initState();
     if (!ClientPlatform.isWeb) unawaited(PushRegistration.start(widget.api));
+    // A tapped push or desktop notification opens its chat (Jose 11-27).
+    OsNotifications.onClick = _tapped;
+    unawaited(OsNotifications.listenForPushTaps());
+    if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+  }
+
+  void _tapped(String? payload) {
+    final chat = ChatTab.chatOf(payload);
+    if (chat == null || !mounted) return;
+    setState(() => _tab = 0);
+    ChatTab.openRequest.value = chat;
+  }
+
+  @override
+  void dispose() {
+    if (OsNotifications.onClick == _tapped) OsNotifications.onClick = null;
+    super.dispose();
   }
 
   @override

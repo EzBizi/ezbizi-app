@@ -17,6 +17,7 @@ import '../../../core/api_client.dart';
 import '../../../core/call_alerts.dart';
 import '../../../core/session.dart';
 import '../../../widgets/user_avatar.dart';
+import 'chat_alerts.dart';
 import 'call_view.dart';
 import 'chat_store.dart';
 
@@ -223,11 +224,15 @@ class ChatCallLayer extends StatefulWidget {
     required this.api,
     required this.session,
     this.calls,
+    this.alerts,
   });
 
   final ApiClient api;
   final Session session;
   final ChatCalls? calls;
+
+  /// A test's own; the app's is [ChatAlerts.instance].
+  final ChatAlerts? alerts;
 
   @override
   State<ChatCallLayer> createState() => _ChatCallLayerState();
@@ -258,6 +263,7 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
     // The layer lives as long as the app; a test tearing the tree down must
     // not leave the ring poll running.
     _calls.stop();
+    (widget.alerts ?? ChatAlerts.instance).stop();
     _calls.removeListener(_changed);
     widget.session.removeListener(_signedInChanged);
     unawaited(_refusals?.cancel());
@@ -274,6 +280,10 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
         widget.session.me?.permissions.contains('phone.chat.view') ?? false;
     if (may && !_calls.started) _calls.start(widget.api);
     if (!may && _calls.started) _calls.stop();
+    // And the OS notifications for new messages, alongside the ring.
+    final alerts = widget.alerts ?? ChatAlerts.instance;
+    if (may && !alerts.started) alerts.start(widget.api);
+    if (!may && alerts.started) alerts.stop();
   }
 
   @override

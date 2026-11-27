@@ -100,4 +100,21 @@ class ChatMessage extends Model implements HoldsPersonalData
     {
         return $this->belongsTo(self::class, 'reply_to_id');
     }
+
+    /**
+     * Messages from others this person has not read, in these chats (cleared
+     * and deleted ones and system lines left out): the chat list's counts and
+     * the app icon's badge.
+     */
+    public static function unreadFor(string $userId, array $chatIds): Builder
+    {
+        return static::query()->withoutGlobalScopes()
+            ->join('chat_members as m', fn ($j) => $j->on('m.chat_id', '=', 'chat_messages.chat_id')->where('m.user_id', $userId))
+            ->whereIn('chat_messages.chat_id', $chatIds)
+            ->where(fn ($q) => $q->whereNull('chat_messages.sender_id')->orWhere('chat_messages.sender_id', '!=', $userId))
+            ->whereNull('chat_messages.deleted_at')
+            ->whereNotIn('chat_messages.kind', ['system'])
+            ->whereRaw('chat_messages.created_at > COALESCE(m.read_at, ?)', ['1970-01-01'])
+            ->whereRaw('chat_messages.created_at > COALESCE(m.cleared_at, ?)', ['1970-01-01']);
+    }
 }

@@ -86,14 +86,7 @@ class ChatController extends Controller
         $mine = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->get()->keyBy('chat_id');
         $chats = Chat::query()->whereIn('id', $mine->keys())->with(['activeMembers.user:id,name', 'job.customer:id,city'])->get();
 
-        $unread = ChatMessage::query()
-            ->join('chat_members as m', fn ($j) => $j->on('m.chat_id', '=', 'chat_messages.chat_id')->where('m.user_id', $me->id))
-            ->whereIn('chat_messages.chat_id', $mine->keys())
-            ->where(fn ($q) => $q->whereNull('chat_messages.sender_id')->orWhere('chat_messages.sender_id', '!=', $me->id))
-            ->whereNull('chat_messages.deleted_at')
-            ->whereNotIn('chat_messages.kind', ['system'])
-            ->whereRaw('chat_messages.created_at > COALESCE(m.read_at, ?)', ['1970-01-01'])
-            ->whereRaw('chat_messages.created_at > COALESCE(m.cleared_at, ?)', ['1970-01-01'])
+        $unread = ChatMessage::unreadFor($me->id, $mine->keys()->all())
             ->groupBy('chat_messages.chat_id')
             ->select('chat_messages.chat_id', DB::raw('COUNT(*) as n'))
             ->pluck('n', 'chat_id');
@@ -438,6 +431,13 @@ class ChatController extends Controller
         $me = $request->user();
         $this->pulse->seen($me->id);
         $chatIds = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->pluck('chat_id')->all();
+        // This handset has this chat on screen: its pushes for it stay quiet
+        // there, and only there (WhatsApp; desk 11-27).
+        $viewing = $request->query('viewing');
+        $device = $request->query('device');
+        if (is_string($viewing) && in_array($viewing, $chatIds, true) && is_string($device) && $device !== '' && strlen($device) <= 255) {
+            $this->pulse->viewing($device, $viewing);
+        }
 
         return response()->json(['data' => [
             'rev' => $this->pulse->rev($me->id),
@@ -916,6 +916,18 @@ class ChatController extends Controller
             $row->forceFill(['meta' => $meta])->save();
         });
         $this->calls->silence($call);
+
+        // Nobody answered: "Missed voice call" on everyone else's phone.
+        $call->refresh();
+        if ($status === 'missed' && ($call->meta['status'] ?? null) === 'missed') {
+            $chat = $call->chat;
+            $others = $chat->activeMembers()->where('user_id', '!=', $call->sender_id)->pluck('user_id')->all();
+            if ($others !== []) {
+                $from = $call->sender?->name ?? 'Someone';
+                $this->push($others, $chat->type === 'group' ? (string) $chat->name : $from,
+                    ($chat->type === 'group' ? $from.': ' : '').$this->callLine($call), $chat->organization_id, $chat->id);
+            }
+        }
     }
 
     private function callChat(ChatMessage $call, User $me): Chat
@@ -1049,32 +1061,57 @@ class ChatController extends Controller
         $chat->members()->whereNotNull('archived_at')->where(fn ($q) => $q->whereNull('muted_until')->orWhere('muted_until', '<', now()))->update(['archived_at' => null]);
         $this->pulse->bump($chat);
 
-        $recipients = $chat->activeMembers()->with('user:id,name')->where('user_id', '!=', $message->sender_id)->get()
-            ->reject(fn (ChatMember $m) => $m->isMuted());
-        $absent = array_diff($recipients->pluck('user_id')->all(), $this->pulse->online($recipients->pluck('user_id')->all()));
-        if ($absent === []) {
-            return;
-        }
-
         $sender = $message->sender?->name ?? 'Someone';
         $title = $chat->type === 'group' ? (string) $chat->name : $sender;
         $line = ($chat->type === 'group' ? $sender.': ' : '').$this->preview($message);
-        $this->push($absent, $title, $line, $chat->organization_id);
+
+        // A ringing call reaches every phone, muted chat or not, whatever else is open.
+        if ($message->kind === 'call' && ($message->meta['status'] ?? null) === 'ringing') {
+            $everyone = $chat->activeMembers()->where('user_id', '!=', $message->sender_id)->pluck('user_id')->all();
+            if ($everyone !== []) {
+                $this->push($everyone, $title, $line, $chat->organization_id, $chat->id, urgent: true);
+            }
+
+            return;
+        }
+
+        // Every phone of everyone not muting it, open elsewhere or not; only a
+        // handset with this chat on screen stays quiet (see push()).
+        $recipients = $chat->activeMembers()->where('user_id', '!=', $message->sender_id)->get()
+            ->reject(fn (ChatMember $m) => $m->isMuted())->pluck('user_id')->all();
+        if ($recipients === []) {
+            return;
+        }
+
+        $this->push($recipients, $title, $line, $chat->organization_id, $chat->id);
     }
 
     /** @param string[] $userIds push to these people's devices, after the response is sent */
-    private function push(array $userIds, string $title, string $line, string $organization): void
+    /**
+     * A push per person: tapping it opens the chat (`chat:{id}`, read by the
+     * app as it reads the bell's rows), one stack per chat, and the icon's
+     * badge is everything they have not read (WhatsApp, Jose 11-27). `urgent`
+     * uses Android's urgent channel: an incoming call.
+     */
+    private function push(array $userIds, string $title, string $line, string $organization, string $chatId, bool $urgent = false): void
     {
         $userIds = array_values($userIds);
-        dispatch(function () use ($userIds, $title, $line, $organization) {
+        dispatch(function () use ($userIds, $title, $line, $organization, $chatId, $urgent) {
             $push = app(PushSender::class);
             $org = \App\Models\Organization::query()->find($organization);
             if (! $push->configured() || $org === null || ! app(SettingsResolver::class)->get('notifications.push_enabled', $org)) {
                 return;
             }
+            $pulse = app(ChatPulse::class);
             DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get()
+                // Not the handset with this very chat open.
+                ->reject(fn (DeviceToken $d) => ! $urgent && $pulse->isViewing($d->token, $chatId))
                 ->groupBy('user_id')
-                ->each(fn (Collection $devices) => $push->send($devices, $title, $line));
+                ->each(function (Collection $devices, string $userId) use ($push, $title, $line, $chatId, $urgent) {
+                    $chats = ChatMember::query()->withoutGlobalScopes()->where('user_id', $userId)->whereNull('left_at')->pluck('chat_id')->all();
+                    $push->send($devices, $title, $line, urgent: $urgent, notificationId: 'chat:'.$chatId,
+                        thread: 'chat-'.$chatId, badge: ChatMessage::unreadFor($userId, $chats)->count());
+                });
         })->afterResponse();
     }
 
