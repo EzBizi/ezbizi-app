@@ -18,9 +18,21 @@ use App\Support\Scoping\ViewScope;
  */
 final class SocialConnectionAccess
 {
+    /** @var array<string, mixed>|null lookups shared across one presentableInView() pass */
+    private ?array $memo = null;
+
+    private function once(string $key, \Closure $load): mixed
+    {
+        if ($this->memo === null) {
+            return $load();
+        }
+
+        return array_key_exists($key, $this->memo) ? $this->memo[$key] : ($this->memo[$key] = $load());
+    }
+
     public function inView(User $user, SocialConnection $connection): bool
     {
-        $view = ViewScope::forUser($user);
+        $view = $this->once('view:'.$user->getKey(), fn () => ViewScope::forUser($user));
 
         // Answered from reach, not from the scope: ViewScope::forUser falls back
         // to an organization view for anyone who never touched the switcher, so
@@ -31,7 +43,7 @@ final class SocialConnectionAccess
             return match ($connection->scope_type) {
                 SocialConnection::SCOPE_ORGANIZATION => true,
                 SocialConnection::SCOPE_COMPANY => $this->reaches($user, $connection)
-                    || $user->reachableFranchises()->contains('company_id', $connection->scope_id),
+                    || $this->once('reach:'.$user->getKey(), fn () => $user->reachableFranchises())->contains('company_id', $connection->scope_id),
                 default => $this->reaches($user, $connection),
             };
         }
@@ -45,7 +57,7 @@ final class SocialConnectionAccess
             };
         }
 
-        $franchise = Franchise::find($view->id);
+        $franchise = $this->once('f:'.$view->id, fn () => Franchise::find($view->id));
 
         return match ($connection->scope_type) {
             SocialConnection::SCOPE_ORGANIZATION => true,
@@ -66,10 +78,20 @@ final class SocialConnectionAccess
      */
     public function presentableInView(?User $user, SocialProvider $provider): array
     {
-        return SocialConnection::query()
-            ->where('provider', $provider->value)
-            ->get()
-            ->filter(fn (SocialConnection $c) => $user !== null && $this->inView($user, $c))
+        // One view, one reach list, one lookup per company/branch for the
+        // whole list — not a fresh set of queries per row.
+        $this->memo = [];
+
+        try {
+            $rows = SocialConnection::query()
+                ->where('provider', $provider->value)
+                ->get()
+                ->filter(fn (SocialConnection $c) => $user !== null && $this->inView($user, $c));
+        } finally {
+            $this->memo = null;
+        }
+
+        return $rows
             ->map(fn (SocialConnection $c) => [
                 'id'           => $c->getKey(),
                 'provider'     => $c->provider,
@@ -92,10 +114,10 @@ final class SocialConnectionAccess
                 && $scopeId === $user->organization_id
                 && $user->canActOnOrganization($user->organization),
 
-            SocialConnection::SCOPE_COMPANY => ($company = Company::find($scopeId)) !== null
+            SocialConnection::SCOPE_COMPANY => ($company = $this->once('c:'.$scopeId, fn () => Company::find($scopeId))) !== null
                 && $user->canActOnCompany($company),
 
-            SocialConnection::SCOPE_FRANCHISE => ($franchise = Franchise::find($scopeId)) !== null
+            SocialConnection::SCOPE_FRANCHISE => ($franchise = $this->once('f:'.$scopeId, fn () => Franchise::find($scopeId))) !== null
                 && $user->canActOnFranchise($franchise),
 
             default => false,
