@@ -34,7 +34,7 @@ class MetaCallbacksTest extends TestCase
     {
         $payload = $this->base64url(json_encode([
             'algorithm' => 'HMAC-SHA256',
-            'user_id'   => $userId,
+            'user_id' => $userId,
             'issued_at' => 1787000000,
         ]));
 
@@ -56,13 +56,13 @@ class MetaCallbacksTest extends TestCase
 
         return $this->inTenant($tenant['org'], fn () => SocialConnection::forceCreate([
             'organization_id' => $tenant['org']->id,
-            'scope_type'      => 'organization',
-            'scope_id'        => $tenant['org']->id,
-            'provider'        => $provider,
-            'remote_id'       => 'page-'.$metaUserId,
-            'meta_user_id'    => $metaUserId,
-            'display_name'    => 'A Page',
-            'status'          => SocialConnection::STATUS_CONNECTED,
+            'scope_type' => 'organization',
+            'scope_id' => $tenant['org']->id,
+            'provider' => $provider,
+            'remote_id' => 'page-'.$metaUserId,
+            'meta_user_id' => $metaUserId,
+            'display_name' => 'A Page',
+            'status' => SocialConnection::STATUS_CONNECTED,
         ]));
     }
 
@@ -95,6 +95,18 @@ class MetaCallbacksTest extends TestCase
         $this->assertNull(SocialConnection::withoutGlobalScopes()->find($row->id));
     }
 
+    // Audit 11-27: Ads tokens from the same Facebook login were kept after a deletion request.
+    public function test_data_deletion_also_deletes_that_persons_facebook_ads_connections(): void
+    {
+        $ads = $this->connectionFor('meta-user-ads', SocialProvider::FacebookAds->value);
+
+        $this->postJson('/api/v1/social/meta/data-deletion', [
+            'signed_request' => $this->signedRequest('meta-user-ads'),
+        ])->assertOk();
+
+        $this->assertNull(SocialConnection::withoutGlobalScopes()->find($ads->id));
+    }
+
     public function test_a_forged_signature_changes_nothing(): void
     {
         $row = $this->connectionFor('meta-user-3', SocialProvider::FacebookPage->value);
@@ -122,7 +134,7 @@ class MetaCallbacksTest extends TestCase
 
     public function test_another_organizations_connections_are_untouched(): void
     {
-        $mine    = $this->connectionFor('meta-user-4', SocialProvider::FacebookPage->value);
+        $mine = $this->connectionFor('meta-user-4', SocialProvider::FacebookPage->value);
         $someone = $this->connectionFor('meta-user-5', SocialProvider::FacebookPage->value);
 
         $this->postJson('/api/v1/social/meta/deauthorize', [

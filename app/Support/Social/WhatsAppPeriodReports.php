@@ -13,6 +13,7 @@ use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
+use App\Support\Settings\OrgTimezone;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -38,7 +39,7 @@ final class WhatsAppPeriodReports
     /** The batch for the period that just ended, made once. */
     public function batchFor(string $period, ?Carbon $today = null): WhatsAppReportBatch
     {
-        $today = ($today ?? Carbon::now(\App\Support\Settings\OrgTimezone::of()))->copy()->startOfDay();
+        $today = ($today ?? Carbon::now(OrgTimezone::of()))->copy()->startOfDay();
 
         [$from, $to] = $period === 'month'
             ? [$today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow()->endOfMonth()]
@@ -204,9 +205,10 @@ final class WhatsAppPeriodReports
         }
 
         $approver = $this->approver($from);
-        $batch = WhatsAppReportBatch::query()->whereNull('approved_at')->latest('starts_on')->first();
+        // The newest batch only: once it is approved, a second APPROVE must not reach an older, stale one (audit 11-27).
+        $batch = WhatsAppReportBatch::query()->latest('starts_on')->first();
 
-        if ($approver === null || $batch === null) {
+        if ($approver === null || $batch === null || $batch->approved_at !== null) {
             return false;
         }
 
@@ -240,9 +242,15 @@ final class WhatsAppPeriodReports
     public function approve(WhatsAppReportBatch $batch, User $approver): void
     {
         $consolidated = $this->files($batch)->last();
-        $batch->forceFill(['approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null,
-            'approved_revision' => $batch->revision, 'approved_sha256' => $consolidated?->sha256])->save();
-        SendWhatsAppPeriodReports::dispatch($batch->getKey(), $approver->getKey());
+        // Conditional: two APPROVEs at once change one row, and only that one sends (audit 11-27).
+        $changed = WhatsAppReportBatch::query()->whereKey($batch->getKey())->whereNull('approved_at')->update([
+            'approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null,
+            'approved_revision' => $batch->revision, 'approved_sha256' => $consolidated?->sha256]);
+
+        if ($changed === 1) {
+            $batch->refresh();
+            SendWhatsAppPeriodReports::dispatch($batch->getKey(), $approver->getKey());
+        }
     }
 
     /** Whether this person is in the approval group, who may APPROVE. */

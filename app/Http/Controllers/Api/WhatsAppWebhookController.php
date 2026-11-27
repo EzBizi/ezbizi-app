@@ -207,14 +207,6 @@ class WhatsAppWebhookController extends Controller
              * Meta makes more likely - earns a retry, and the retry earns the
              * person a second copy of every answer.
              */
-            // A report held for them (WhatsAppGroups) goes as soon as they
-            // write; a "Show report" tap is answered by that and nothing else.
-            $flushed = $row->wasRecentlyCreated ? $this->flush($phoneNumberId, (string) $row->counterparty) : 0;
-
-            if ($flushed > 0 && ($message['type'] ?? null) === 'button') {
-                continue;
-            }
-
             // The bookkeeper's APPROVE / REFRESH for the weekly and monthly PDFs.
             if ($row->wasRecentlyCreated && $this->approval($phoneNumberId, $row)) {
                 continue;
@@ -447,22 +439,6 @@ class WhatsAppWebhookController extends Controller
             ]);
 
             return false;
-        }
-    }
-
-    private function flush(string $phoneNumberId, string $counterparty): int
-    {
-        $number = WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
-
-        try {
-            return $number === null ? 0 : $this->groups->flushPending($number, $counterparty);
-        } catch (Throwable $e) {
-            Log::warning('A held WhatsApp report could not be sent.', [
-                'phone_number_id' => $phoneNumberId,
-                'reason' => $e->getMessage(),
-            ]);
-
-            return 0;
         }
     }
 

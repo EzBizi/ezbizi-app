@@ -791,13 +791,13 @@ final class WhatsAppStaffBot
     /** ReadWhatsAppBill's half: the lines read back, held for a YES. */
     public function billRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
     {
-        $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption), preview: false);
+        $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption, $number->phone_number_id), preview: false);
     }
 
     /** ReadWhatsAppResults' half: the rows read back as pending, held for a YES. */
     public function resultsRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
     {
-        $this->text($number, $to, app(WhatsAppResults::class)->read($viewer, $mediaId, $caption), preview: false);
+        $this->text($number, $to, app(WhatsAppResults::class)->read($viewer, $mediaId, $caption, $number->phone_number_id), preview: false);
     }
 
     /** PlanReportCorrection's half: repeat the changes back in our words, run nothing. */

@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\Automation;
+use App\Models\AutomationEvent;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
+use App\Support\Automations\ActionRunner;
 use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -262,19 +265,6 @@ class WhatsAppGroupsTest extends TestCase
             WhatsAppGroups::lineValues('Jobs · Mon, Nov 9', implode("\n", array_map(fn ($i) => "• *Tech {$i}*: 1 job", range(1, 30))), 6));
     }
 
-    public function test_show_report_delivers_what_was_held_and_nothing_else(): void
-    {
-        // Held before 2026-11-09, when reports stopped waiting behind a notice.
-        $this->inTenant($this->t['org'], fn () => WhatsAppPendingReport::create(['organization_id' => $this->t['org']->id,
-            'phone_number_id' => self::NUMBER, 'counterparty' => '13055550102', 'body' => 'NJ: 50 jobs']));
-
-        $this->inbound(['type' => 'button', 'button' => ['text' => 'Show report', 'payload' => 'Show report']])->assertOk();
-
-        $this->assertCount(1, $this->sent); // the report, and no bot menu after it
-        $this->assertSame('NJ: 50 jobs', $this->sent[0]['text']['body']);
-        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->whereNull('delivered_at')->count());
-    }
-
     public function test_making_the_group_keeps_its_id_and_invite_link(): void
     {
         $group = $this->group();
@@ -296,11 +286,11 @@ class WhatsAppGroupsTest extends TestCase
             DB::table('whatsapp_numbers')->update(['purpose' => 'support']);
             DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'phone_number_id' => 'REPORTS-1',
                 'waba_id' => 'W2', 'display_number' => '+18774508572', 'purpose' => 'reports', 'created_at' => now(), 'updated_at' => now()]);
-            $rule = \App\Models\Automation::create(['name' => 'Digest', 'trigger_key' => 'lead.daily_digest', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
+            $rule = Automation::create(['name' => 'Digest', 'trigger_key' => 'lead.daily_digest', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
 
-            $done = app(\App\Support\Automations\ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert', 'from' => '+19545162455',
+            $done = app(ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert', 'from' => '+19545162455',
                 'to_field' => 'user:'.$user->id, 'parameters' => ['Morning leads digest', '{{summary_lines}}']],
-                new \App\Models\AutomationEvent(['event_key' => 'lead.daily_digest', 'payload' => ['after' => ['summary_lines' => "Calls: 3\nBooked: 1"]]]), null, automation: $rule);
+                new AutomationEvent(['event_key' => 'lead.daily_digest', 'payload' => ['after' => ['summary_lines' => "Calls: 3\nBooked: 1"]]]), null, automation: $rule);
 
             $this->assertTrue($done['ok'], $done['detail']);
         });
@@ -320,11 +310,11 @@ class WhatsAppGroupsTest extends TestCase
                 $u->forceFill(['phone' => '(305) 555-01'.random_int(10, 99)])->save();
             }
             DB::table('whatsapp_numbers')->update(['purpose' => 'reports']);
-            $rule = \App\Models\Automation::create(['name' => 'Shift', 'trigger_key' => 'timeclock.technician_clocked_out', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
+            $rule = Automation::create(['name' => 'Shift', 'trigger_key' => 'timeclock.technician_clocked_out', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
 
-            return app(\App\Support\Automations\ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert',
+            return app(ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert',
                 'to_field' => 'branch_managers:', 'parameters' => ['Shift finished', 'done']],
-                new \App\Models\AutomationEvent(['event_key' => 'timeclock.technician_clocked_out', 'payload' => ['user_id' => $tech->id]]), null, automation: $rule);
+                new AutomationEvent(['event_key' => 'timeclock.technician_clocked_out', 'payload' => ['user_id' => $tech->id]]), null, automation: $rule);
         });
 
         $this->assertTrue($done['ok'], $done['detail']);

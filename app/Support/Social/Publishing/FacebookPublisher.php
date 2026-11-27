@@ -199,16 +199,13 @@ final class FacebookPublisher implements DeletesPosts, LinksToPosts, SocialPubli
      */
     public function deleteRemote(SocialConnection $connection, string $remoteId): void
     {
-        $this->call(fn () => Http::timeout(self::TIMEOUT)->delete(self::API.'/'.$remoteId, [
-            'access_token' => $this->token($connection),
-        ]));
+        $this->call(fn () => Http::withToken($this->token($connection))->timeout(self::TIMEOUT)->delete(self::API.'/'.$remoteId));
     }
 
     public function permalink(SocialConnection $connection, string $remoteId): ?string
     {
-        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
+        $url = Http::withToken($this->token($connection))->timeout(10)->get(self::API.'/'.$remoteId, [
             'fields' => 'permalink_url',
-            'access_token' => $this->token($connection),
         ])->json('permalink_url');
 
         // A video's link comes back relative ("/reel/1792…/", measured

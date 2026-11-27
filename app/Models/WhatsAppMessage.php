@@ -118,8 +118,21 @@ class WhatsAppMessage extends Model implements HoldsPersonalData, StatesRetentio
         ];
     }
 
+    /**
+     * A customer's messages, matched on their phone as counterparty holds it:
+     * digits, country code first (audit 11-27: erasure used to skip these).
+     * ponytail: the customer's one `phone`, 10 digits read as US; WhatsApp contacts and leads not matched yet.
+     */
     public static function personalDataAbout(Model $subject): ?Builder
     {
-        return null;
+        if (! $subject instanceof Customer) {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', (string) $subject->phone) ?? '';
+        $digits = strlen($digits) === 10 ? '1'.$digits : $digits;
+
+        return strlen($digits) >= 8
+            ? static::query()->where('organization_id', $subject->organization_id)->where('counterparty', $digits)
+            : null;
     }
 }
