@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leaderboard, more elaborate</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-width:1100px}
+.opt{margin-bottom:40px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 10px;color:var(--mut);font-size:12.5px;max-width:1100px}
+.rec{color:var(--pri)}
+.l{--cv:#f3f6f9;--sf:#ffffff;--tx:#16191c;--mt:#5b6670;--ln:#dde2e7;--sel:#c6e7ff;--pr:#00708f;--up:#0a8a4a;--dn:#c0392b;--trk:#e6ebef}
+.d{--cv:#0b0f14;--sf:#151b21;--tx:#e8ecef;--mt:#9aa6b0;--ln:#2c343d;--sel:#004c6b;--pr:#00aeef;--up:#4fd18b;--dn:#ff7b6b;--trk:#2c343d}
+.app{border-radius:12px;border:1px solid var(--ln);background:var(--cv);color:var(--tx);overflow:hidden;margin-bottom:12px}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.bar .t{font-weight:800;font-size:17px}.tab{padding:5px 12px;border-radius:14px;color:var(--mt);font-weight:600;font-size:12px}.tab.on{background:var(--sel);color:var(--tx)}
+.wk{margin-left:auto;color:var(--mt);font-size:12px}.wk b{color:var(--tx)}
+.body{padding:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:12px 14px}
+.card h3{margin:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mt)}
+.grid{display:grid;gap:12px}
+.strip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px}
+.stat .v{font-size:22px;font-weight:800}.stat .k{font-size:11px;color:var(--mt)}
+.up{color:var(--up)}.dn{color:var(--dn)}
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:14px;padding-top:4px}
+.pc{flex:1;max-width:230px;text-align:center}
+.av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;flex:none}
+.pc .nm{font-weight:800;font-size:14px;margin-top:6px}.pc .big{font-size:28px;font-weight:800}
+.pc .sub{font-size:11.5px;color:var(--mt)}
+.step{border-radius:10px 10px 0 0;margin-top:8px;color:#fff;font-weight:800;font-size:22px;display:flex;justify-content:center;padding-top:8px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:11px;color:var(--mt);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--ln)}
+td{padding:7px 8px;border-bottom:1px solid var(--ln);white-space:nowrap}
+tr.me td{background:var(--sel)}
+.rate{display:flex;align-items:center;gap:8px}.trk{flex:1;min-width:60px;height:6px;border-radius:3px;background:var(--trk);overflow:hidden}.trk i{display:block;height:100%;background:var(--pr)}
+.medal{display:inline-flex;width:22px;height:22px;border-radius:11px;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px}
+.you{background:var(--sel);border-color:var(--pr)}
+.you .big{font-size:34px;font-weight:800}
+.hint{font-size:12.5px;margin-top:6px}
+.pw{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--ln);font-size:12px}.pw:first-of-type{border-top:0}
+.pcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.pcard .top{display:flex;align-items:center;gap:8px}
+.phones{display:flex;gap:14px;flex-wrap:wrap}
+.phone{width:300px;height:640px;border:6px solid #2a2f35;border-radius:30px;overflow:hidden;display:flex;flex-direction:column;flex:none;background:var(--cv);color:var(--tx)}
+.phone .bar{padding:12px}.phone .scr{flex:1;overflow:hidden;padding:10px}
+.phone .strip{grid-template-columns:repeat(2,1fr);gap:8px}
+.phone .pc .big{font-size:20px}.phone .pc .nm{font-size:12px}
+.phone table{font-size:12px}
+.theme-btn{position:fixed;top:12px;right:16px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:5px 12px;font:inherit;cursor:pointer;z-index:2}
+@media (max-width:900px){.strip{grid-template-columns:repeat(2,1fr)}.pcards{grid-template-columns:1fr 1fr}.theme-btn{position:static;margin-bottom:10px}}
+</style></head>
+<body>
+<button class="theme-btn" onclick="flip()">Page light / dark</button>
+<h1>214 · Leaderboard, more elaborate</h1>
+<p class="lead">Jose 11-27 on 0.0.0657: <i>"make something better for the leaderboard ui, more elaborate"</i>. Today it is a narrow column in an empty page. Every option fills the width and keeps Trey's ranking: <b>booking rate</b> on New client calls, with answer rate and score shown but not ranked by. New: a podium, the whole ranked list, each person's last six weeks as a sparkline, change since last week, the team's totals, and a You panel that says what moves you up. <b>One question for Jose:</b> Trey first asked for "only the top 3"; the full list shows everyone's rate. Drawn here with names; without your yes, places 4 and down show as "#5 · 64%" with no name. Names are invented.</p>
+<div id="out"></div>
+<script>
+const P=[['Natalie Cruz','#579bfc',73,41,56,85,7.3,[58,61,66,64,70,73],1],['Adeline Ruiz','#00c875',73,49,67,98,7.5,[66,70,69,71,68,73],-1],['Jennine Park','#fdab3d',69,61,88,82,7.4,[60,62,61,65,67,69],2],['Marco Diaz','#e2445c',66,33,50,90,7.0,[70,68,66,67,69,66],-1],['Ana Lopez','#0086c0',64,29,45,88,6.9,[55,58,60,59,62,64],1],['You','#00708f',61,22,36,86,7.6,[50,54,57,58,59,61],0],['Ben Ito','#a1b0bd',58,19,33,79,6.5,[61,60,59,57,60,58],-2],['Cara Wynn','#7f5347',52,14,27,75,6.1,[49,50,52,51,50,52],0]];
+const medal=['#b8901f','#8e979f','#a5672f'];
+const E=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const ini=n=>n.split(' ').map(w=>w[0]).join('').slice(0,2);
+const av=(p,s=32)=>`<span class="av" style="width:${s}px;height:${s}px;background:${p[1]};font-size:${s*.38}px">${ini(p[0])}</span>`;
+function spark(v,w=90,h=24,c='var(--pr)'){const mn=Math.min(...v)-2,mx=Math.max(...v)+2;const pts=v.map((x,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(h-(x-mn)/(mx-mn)*h).toFixed(1)}`).join(' ');const last=pts.split(' ').pop().split(',');return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible"><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.6" fill="${c}"/></svg>`}
+const chg=d=>d>0?`<span class="up">▲ ${d}</span>`:d<0?`<span class="dn">▼ ${-d}</span>`:`<span style="color:var(--mt)">–</span>`;
+const bar=(t)=>`<div class="bar"><span class="t">Leaderboard</span><span class="tab on">Leaderboard</span><span class="tab">My performance</span><span class="wk">‹ <b>This week</b> · Sun Nov 22 – Fri Nov 27 ›</span></div>`;
+const strip=`<div class="strip">${[['New client calls','402','▲ 6%','up'],['Booked','247','▲ 4%','up'],['Team booking rate','61%','▲ 2 pts','up'],['Answer rate','87%','▼ 1 pt','dn'],['Avg score','7.1 / 10','–','']].map(s=>`<div class="card stat"><div class="v">${s[1]}</div><div class="k">${s[0]} <span class="${s[3]}">${s[2]}</span></div></div>`).join('')}</div>`;
+const podium=(phone)=>`<div class="card"><h3>Top 3 · booking rate · New client calls</h3><div class="pod">${[1,0,2].map(i=>{const p=P[i];return `<div class="pc">${av(p,phone?36:52)}<div class="nm">${E(p[0])}</div><div class="big">${p[2]}%</div><div class="sub">${p[3]} of ${p[4]} booked</div>${phone?'':`<div class="sub">Answer ${p[5]}% · Score ${p[6]}</div><div style="margin-top:4px">${spark(p[7],110,26)}</div>`}<div class="step" style="height:${phone?[54,40,30][i]:[90,66,50][i]}px;background:${medal[i]}">${i+1}</div></div>`}).join('')}</div></div>`;
+const ranking=(phone)=>`<div class="card"><h3>Everyone ranked</h3><table><tr><th>#</th><th>Person</th><th>Booking rate</th>${phone?'':'<th>Booked</th><th>Answer</th><th>Score</th><th>6 weeks</th>'}<th>vs last wk</th></tr>${P.map((p,i)=>`<tr class="${p[0]=='You'?'me':''}"><td>${i<3?`<span class="medal" style="background:${medal[i]}">${i+1}</span>`:i+1}</td><td><span style="display:inline-flex;align-items:center;gap:8px">${av(p,24)}${E(p[0])}</span></td><td><div class="rate"><b>${p[2]}%</b>${phone?'':`<span class="trk"><i style="width:${p[2]}%"></i></span>`}</div></td>${phone?'':`<td>${p[3]} / ${p[4]}</td><td>${p[5]}%</td><td>${p[6]}</td><td>${spark(p[7],80,20)}</td>`}<td>${chg(p[8])}</td></tr>`).join('')}</table></div>`;
+const you=`<div class="card you"><h3>You</h3><div style="display:flex;align-items:baseline;gap:10px"><span class="big">#6</span><span style="color:var(--mt)">of 8 ranked</span><span style="margin-left:auto">${chg(0)}</span></div><div style="font-weight:700;font-size:16px">61% · 22 of 36 booked</div><div style="margin:8px 0">${spark(P[5][7],220,40)}</div><div class="hint"><b>3 more bookings</b> at your call count put you past Ana Lopez (#5).</div><div class="hint" style="color:var(--mt)">Your AI score's biggest gap: <b>Offered a time</b>, 74%. Offering two times is how the top 3 book.</div></div>`;
+const past=`<div class="card"><h3>Past weeks</h3>${[['Nov 15 – 20','Adeline Ruiz',71],['Nov 8 – 13','Natalie Cruz',66],['Nov 1 – 6','Jennine Park',68],['Oct 25 – 30','Natalie Cruz',69]].map(w=>`<div class="pw"><span style="width:84px;color:var(--mt)">${w[0]}</span><span class="medal" style="background:${medal[0]}">1</span><b>${w[1]}</b> ${w[2]}%<span style="margin-left:auto;color:var(--mt)">›</span></div>`).join('')}</div>`;
+const pcards=`<div class="pcards">${P.slice(0,8).map((p,i)=>`<div class="card pcard" style="${p[0]=='You'?'background:var(--sel)':''}"><div class="top">${i<3?`<span class="medal" style="background:${medal[i]}">${i+1}</span>`:`<b style="width:22px;text-align:center">${i+1}</b>`}${av(p,28)}<b>${E(p[0])}</b><span style="margin-left:auto">${chg(p[8])}</span></div><div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px"><div><div style="font-size:24px;font-weight:800">${p[2]}%</div><div style="font-size:11px;color:var(--mt)">${p[3]} of ${p[4]} · Answer ${p[5]}% · ${p[6]}</div></div>${spark(p[7],80,28)}</div></div>`).join('')}</div>`;
+const D=[
+ t=>`${bar()}<div class="body">${strip}<div class="grid" style="grid-template-columns:2fr 1fr"><div class="grid">${podium()}${ranking()}</div><div class="grid" style="align-content:start">${you}${past}</div></div></div>`,
+ t=>`${bar()}<div class="body">${strip}<div class="grid" style="grid-template-columns:3fr 1fr"><div>${ranking()}</div><div class="grid" style="align-content:start">${you}${past}</div></div></div>`,
+ t=>`${bar()}<div class="body">${strip}<div class="grid" style="grid-template-columns:3fr 1fr"><div>${pcards}</div><div class="grid" style="align-content:start">${you}${past}</div></div></div>`,
+];
+const phone=(t,inner)=>`<div class="phone ${t}"><div class="bar"><span class="t">Leaderboard</span><span class="wk"><b>This week</b> ›</span></div><div class="scr">${inner}</div></div>`;
+const PH=[
+ `${strip.replace('class="strip"','class="strip" style="grid-template-columns:repeat(2,1fr)"').split('<div class="card stat">').slice(0,5).join('<div class="card stat">')}${podium(true)}<div style="height:10px"></div>${you}`,
+ `${ranking(true)}<div style="height:10px"></div>${you}`,
+ `<div class="grid">${pcards.replace('class="pcards"','class="pcards" style="grid-template-columns:1fr"')}</div>`,
+];
+const OPTS=[
+ ['1 · Team strip, a podium, everyone ranked, and You beside it',' (recommended)','Five team numbers across the top (calls, booked, team booking rate, answer rate, score, each with its change since last week). Left: the podium (2 · 1 · 3 with the rate, booked of calls, answer rate, score and their six weeks), then everyone ranked with a rate bar, booked, answer, score, a 6-week sparkline and ▲▼ places since last week; your row highlighted. Right: You (rank, change, your six weeks, how many bookings pass the person above, your biggest score gap) and Past weeks. Phone 4: the strip, a compact podium, You; the list below.',`${['l','d'].map(t=>`<div class="app ${t}">${D[0](t)}</div>`).join('')}<div class="phones">${phone('l',PH[0])}${phone('d',PH[0])}${phone('d',PH[1])}</div>`],
+ ['2 · Table first','','No podium: the ranked table is the page, medals on the first three rows. Densest, least celebratory.',`<div class="app d">${D[1]('d')}</div><div class="phones">${phone('d',PH[1])}</div>`],
+ ['3 · A card per person','','Everyone as a card (rank, change, rate, six weeks), four across. Easy to scan on a wall screen; more scrolling past 8 people.',`<div class="app d">${D[2]('d')}</div><div class="phones">${phone('d',PH[2])}</div>`],
+];
+document.getElementById('out').innerHTML=OPTS.map(([h,r,p,b])=>`<section class="opt"><h2>${h}<span class="rec">${r}</span></h2><p>${p}</p>${b}</section>`).join('');
+function flip(){const d=document.documentElement;const dark=d.dataset.theme?d.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'}
+</script>
+</body></html>
