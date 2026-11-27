@@ -205,7 +205,8 @@ class ChatController extends Controller
             'description' => $chat->description,
             'only_admins_send' => $chat->only_admins_send,
             'created_at' => $chat->created_at?->toIso8601String(),
-            'i_am_admin' => $member->is_admin,
+            // An automatic group's admins are the organization's administrators.
+            'i_am_admin' => $chat->auto_key !== null ? $me->isAdministrator() : $member->is_admin,
             'muted' => $member->isMuted(),
             'muted_until' => $member->muted_until?->toIso8601String(),
             'pinned' => $member->pinned_at !== null,
@@ -294,7 +295,7 @@ class ChatController extends Controller
         }
         $this->pulse->bump($chat);
 
-        return $this->show($request, $chat);
+        return $this->showOrOk($request, $chat);
     }
 
     /** PATCH chat/chats/{chat}/members/{user} — make or dismiss an admin. */
@@ -307,23 +308,37 @@ class ChatController extends Controller
         $row->forceFill(['is_admin' => $input['is_admin']])->save();
         $this->pulse->bump($chat);
 
-        return $this->show($request, $chat);
+        return $this->showOrOk($request, $chat);
+    }
+
+    /** An administrator outside an automatic group changed it: nothing of theirs to show. */
+    private function showOrOk(Request $request, Chat $chat): JsonResponse
+    {
+        $in = $chat->members()->where('user_id', $request->user()->id)->whereNull('left_at')->exists();
+
+        return $in ? $this->show($request, $chat) : response()->json(['ok' => true]);
     }
 
     /** DELETE chat/chats/{chat}/members/{user} — an admin removes someone, or you leave. */
     public function removeMember(Request $request, Chat $chat, string $user): JsonResponse
     {
         $me = $request->user();
-        $member = $this->member($chat, $me);
-        abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'You cannot leave a direct chat; archive or clear it instead.');
-        abort_unless($user === $me->id || $member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can remove people.');
+        if ($chat->auto_key !== null) {
+            // Nobody leaves an automatic group or removes from it, but an administrator.
+            $this->adminOfGroup($chat, $me);
+        } else {
+            $member = $this->member($chat, $me);
+            abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'You cannot leave a direct chat; archive or clear it instead.');
+            abort_unless($user === $me->id || $member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can remove people.');
+        }
 
         $row = $chat->activeMembers()->where('user_id', $user)->firstOrFail();
         $row->forceFill(['left_at' => now(), 'is_admin' => false])->save();
         $this->system($chat, $me, $user === $me->id ? 'left' : 'removed', ['user_id' => $user, 'name' => $row->user?->name]);
 
         // A group never loses its last admin: the longest-standing member takes over.
-        if (! $chat->activeMembers()->where('is_admin', true)->exists()) {
+        // An automatic group has none; the administrators look after it.
+        if ($chat->auto_key === null && ! $chat->activeMembers()->where('is_admin', true)->exists()) {
             $chat->activeMembers()->oldest()->first()?->forceFill(['is_admin' => true])->save();
         }
         $this->pulse->bump($chat, also: [$user]);
@@ -980,8 +995,16 @@ class ChatController extends Controller
         return $member;
     }
 
-    private function adminOfGroup(Chat $chat, User $me): ChatMember
+    private function adminOfGroup(Chat $chat, User $me): ?ChatMember
     {
+        // An automatic group follows the role (ChatAutoGroups); only an
+        // administrator changes who is in it (Jose, 11-27).
+        if ($chat->auto_key !== null) {
+            abort_unless($me->isAdministrator(), Response::HTTP_FORBIDDEN, 'This group follows the role by itself; only an administrator changes it.');
+
+            return $chat->members()->where('user_id', $me->id)->whereNull('left_at')->first();
+        }
+
         $member = $this->member($chat, $me);
         abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'A direct chat has no members to manage.');
         abort_unless($member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can do that.');
@@ -1082,6 +1105,8 @@ class ChatController extends Controller
         return [
             'id' => $chat->id,
             'type' => $chat->type,
+            // Automatic (Dispatchers / Technicians): no Leave, no Remove.
+            'auto' => $chat->auto_key !== null,
             'name' => $chat->type === 'direct' ? ($other?->user?->name ?? 'Former colleague') : $chat->name,
             'user_id' => $other?->user_id,
             'member_count' => $members->count(),

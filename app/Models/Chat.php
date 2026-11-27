@@ -17,7 +17,7 @@ class Chat extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'type', 'name', 'description', 'only_admins_send',
-        'created_by', 'direct_key', 'job_id', 'last_message_at',
+        'created_by', 'direct_key', 'auto_key', 'job_id', 'last_message_at',
     ];
 
     protected $dateFormat = 'Y-m-d H:i:s.u';

@@ -256,6 +256,51 @@ class ChatTest extends TestCase
         $this->signedInAs($this->ana)->get("/api/v1/attachments/{$sent['attachment']['id']}")->assertForbidden();
     }
 
+    /**
+     * Jose 11-27: automatic Dispatchers / Technicians / Leadership groups, fed by
+     * role lists an administrator edits, joined and left by the role itself.
+     */
+    public function test_automatic_groups_follow_the_role_lists(): void
+    {
+        $disp = $this->userWithRole($this->t, 'Dispatcher', ['phone.chat.view'], 'disp@alpha.test');
+        $remote = $this->userWithRole($this->t, 'Remote Dispatcher', ['phone.chat.view'], 'remote@alpha.test');
+        $tech = $this->userWithRole($this->t, 'Technician', ['phone.chat.view'], 'tech@alpha.test');
+        $lead = $this->userWithRole($this->t, 'Lead Manager', ['phone.chat.view'], 'lead@alpha.test');
+        $settings = app(\App\Support\Settings\SettingsResolver::class);
+        $this->inTenant($this->t['org'], function () use ($settings, $disp, $remote, $tech, $lead) {
+            $settings->set('phone.chat_groups_dispatchers', $this->t['org'], [$disp->role_id, $remote->role_id, $lead->role_id]);
+            $settings->set('phone.chat_groups_technicians', $this->t['org'], [$tech->role_id, $lead->role_id]);
+            $settings->set('phone.chat_groups_leadership', $this->t['org'], [$lead->role_id]);
+        });
+        $this->artisan('chat:auto-groups')->assertSuccessful();
+        $c = $this->t['company']->name;
+
+        $groups = fn (User $u) => collect($this->signedInAs($u)->getJson('/api/v1/chat/chats')->json('data'))
+            ->where('auto', true)->pluck('name')->sort()->values()->all();
+        $this->assertSame(["{$c} Dispatchers"], $groups($disp));
+        $this->assertSame(["{$c} Dispatchers"], $groups($remote));
+        $this->assertSame(["{$c} Technicians"], $groups($tech));
+        $this->assertSame(["{$c} Dispatchers", "{$c} Leadership", "{$c} Technicians"], $groups($lead));
+        $this->assertSame([], $groups($this->bar), 'a role in no list is in no group');
+
+        // Members cannot leave, nor remove each other.
+        $chat = collect($this->signedInAs($disp)->getJson('/api/v1/chat/chats')->json('data'))->firstWhere('auto', true)['id'];
+        $this->signedInAs($disp)->deleteJson("/api/v1/chat/chats/{$chat}/members/{$disp->id}")->assertForbidden();
+        $this->signedInAs($disp)->deleteJson("/api/v1/chat/chats/{$chat}/members/{$remote->id}")->assertForbidden();
+
+        // A role change moves the technician over; deactivation takes the remote dispatcher out.
+        $this->inTenant($this->t['org'], fn () => $tech->forceFill(['role_id' => $disp->role_id])->save());
+        $this->assertSame(["{$c} Dispatchers"], $groups($tech));
+        $this->inTenant($this->t['org'], fn () => $remote->forceFill(['is_active' => false])->save());
+        $members = \App\Models\ChatMember::query()->withoutGlobalScopes()->where('chat_id', $chat)->whereNull('left_at')->pluck('user_id')->all();
+        $this->assertEqualsCanonicalizing([$disp->id, $tech->id, $lead->id], $members);
+
+        // The backfill is quiet and idempotent: no lines, nothing doubled.
+        $this->artisan('chat:auto-groups')->assertSuccessful();
+        $this->assertSame(0, ChatMessage::query()->withoutGlobalScopes()->where('chat_id', $chat)->count());
+        $this->assertSame(3, \App\Models\Chat::query()->withoutGlobalScopes()->whereNotNull('auto_key')->count());
+    }
+
     public function test_a_call_is_recorded_as_a_line(): void
     {
         $chat = $this->direct($this->bar, $this->ana);
