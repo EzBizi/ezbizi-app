@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
+      'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
     ]),
     VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
