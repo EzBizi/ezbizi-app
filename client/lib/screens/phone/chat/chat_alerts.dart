@@ -90,12 +90,17 @@ class ChatAlerts with WidgetsBindingObserver {
     }
   }
 
-  /// The Mac's dock count (Apple, 11-27); iPhones take theirs from the push.
+  /// The Mac's dock count and the Windows taskbar button's (11-27); phones
+  /// take theirs from the push.
   static const _dock = MethodChannel('ezbizi/badge');
   int? _shownBadge;
 
   Future<void> _badge(int unread) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) return;
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.macOS &&
+            defaultTargetPlatform != TargetPlatform.windows)) {
+      return;
+    }
     if (unread == _shownBadge) return;
     _shownBadge = unread;
     try {
