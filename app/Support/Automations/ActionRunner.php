@@ -3933,7 +3933,7 @@ class ActionRunner
             : [];
 
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event)
+            $value = self::readable($subject, $m[1]) ?? $this->valueFromEvent($m[1], $event)
                 // {{branch}} on a record's event: the record's branch (its Area on a task, 2026-11-17).
                 ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
                     ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
@@ -3945,6 +3945,24 @@ class ActionRunner
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
         }, $template);
+    }
+
+    /**
+     * A record attribute a template may print: never a $hidden one, nor one
+     * cast encrypted or hashed. getAttribute decrypts and ignores $hidden, so
+     * {{totp_secret}} printed a 2FA seed into a dry run (audit 2026-11-27).
+     */
+    public static function readable(?Model $subject, string $key): mixed
+    {
+        if ($subject === null || in_array($key, $subject->getHidden(), true)) {
+            return null;
+        }
+        $cast = (string) ($subject->getCasts()[$key] ?? '');
+        if (str_starts_with($cast, 'encrypted') || $cast === 'hashed') {
+            return null;
+        }
+
+        return $subject->getAttribute($key);
     }
 
     /** Backslash every Markdown control character, so the text renders as itself. */

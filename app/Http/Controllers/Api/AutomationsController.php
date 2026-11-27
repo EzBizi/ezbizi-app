@@ -770,6 +770,25 @@ class AutomationsController extends Controller
             ->values();
     }
 
+    /**
+     * The event Test / Run now acts on: this rule's trigger, inside the rule's
+     * scope AND the caller's view. Tenant scope alone let a branch rule fire on
+     * another company's newest event (audit 2026-11-27). A named event outside
+     * that set is a 404, never a fallback.
+     */
+    private function eventToTry(Request $request, Automation $automation, ?string $eventId): ?AutomationEvent
+    {
+        $event = $this->recentInView($request, $automation->trigger_key)
+            ->filter(fn (AutomationEvent $e) => $automation->coversScope($e->scope_snapshot['type'] ?? null,
+                $e->scope_snapshot['id'] ?? null, companyChain: $e->scope_snapshot['company_chain'] ?? []))
+            ->when($eventId !== null, fn ($c) => $c->where('id', $eventId))
+            ->first();
+
+        abort_if($eventId !== null && $event === null, Response::HTTP_NOT_FOUND);
+
+        return $event;
+    }
+
     public function triggerFields(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Automation::class);
@@ -1557,11 +1576,7 @@ class AutomationsController extends Controller
             'event_id' => ['nullable', 'uuid'],
         ]);
 
-        $event = $input['event_id'] ?? null
-            ? AutomationEvent::findOrFail($input['event_id'])
-            : AutomationEvent::where('event_key', $automation->trigger_key)
-                ->latest('occurred_at')
-                ->first();
+        $event = $this->eventToTry($request, $automation, $input['event_id'] ?? null);
 
         if ($event === null) {
             return response()->json([
@@ -1602,11 +1617,7 @@ class AutomationsController extends Controller
             'event_id' => ['nullable', 'uuid'],
         ]);
 
-        $event = ($input['event_id'] ?? null) !== null
-            ? AutomationEvent::findOrFail($input['event_id'])
-            : AutomationEvent::where('event_key', $automation->trigger_key)
-                ->latest('occurred_at')
-                ->first();
+        $event = $this->eventToTry($request, $automation, $input['event_id'] ?? null);
 
         if ($event === null) {
             return response()->json([
