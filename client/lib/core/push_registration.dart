@@ -35,6 +35,7 @@ class PushRegistration {
   /// than a common file three sessions edit, and a wrong name throws
   /// MissingPluginException rather than failing quietly.
   static const _channel = MethodChannel('com.ezbizi.app/fcm');
+  static const _nativeSession = MethodChannel('com.ezbizi.app/native_session');
 
   /// One flag PER PATH, because they guard different handlers.
   ///
@@ -204,14 +205,31 @@ class PushRegistration {
     } catch (_) {}
     _lastToken = null;
     _registered = false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _nativeSession.invokeMethod('clear');
+      } on PlatformException catch (_) {}
+    }
   }
 
   static Future<void> _register(ApiClient api, String token, String platform) async {
+    final android = platform == 'android';
     final response = await api.post('/notifications/devices', {
       'token': token,
       'platform': platform,
       'app': app,
+      // Android draws chat pushes itself (call ring, Reply, Mark read), so it
+      // asks for data-only chat messages. See ChatPush.kt.
+      if (android) 'capabilities': ['chat_native'],
     });
+    if (android) {
+      try {
+        await _nativeSession.invokeMethod('set', {
+          'token': api.bearer,
+          'api_base': ApiClient.baseUrl,
+        });
+      } on PlatformException catch (_) {}
+    }
 
     if (!response.ok) {
       debugPrint('push: register failed ${response.statusCode}');

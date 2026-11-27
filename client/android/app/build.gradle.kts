@@ -163,6 +163,8 @@ dependencies {
     // dependency. Pinned to the exact version twilio_voice resolves so there is
     // never a second one to reconcile; no download size is added.
     implementation("com.google.firebase:firebase-messaging:24.1.0")
+    // NotificationCompat.CallStyle / MessagingStyle for chat pushes (ChatPush.kt).
+    implementation("androidx.core:core-ktx:1.13.1")
 }
 
 flutter {
