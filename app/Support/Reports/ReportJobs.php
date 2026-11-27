@@ -152,6 +152,16 @@ final class ReportJobs
         return $jobs->reject(fn ($job) => self::tagged(data_get($job, 'tags') ?? [], $skip) || self::copy($job))->values();
     }
 
+    /**
+     * A job staff made in training (Jose, 2026-11-27): Workiz's tag "Training",
+     * in any case. Out of every performance and scoring number, with its calls
+     * (CallReconciliation::withoutTraining).
+     */
+    public static function training(mixed $job): bool
+    {
+        return self::tagged(data_get($job, 'tags') ?? [], ['Training' => 'training']);
+    }
+
     /** A tag as a person reads it, letters and digits only: "Paid – Estimated" with any dot in front is "paidestimated". */
     public static function tagKey(string $tag): string
     {

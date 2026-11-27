@@ -92,11 +92,15 @@ class ScoringReportTest extends TestCase
                 }
             }
         });
-        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([
-            'Ada' => ['new_client' => 10, 'booked_new' => 4, 'jobs' => 9, 'tag' => 'new'],
-            'Cris' => ['new_client' => 5, 'booked_new' => 5, 'jobs' => 30, 'tag' => 'existing'],
-            'Few' => ['new_client' => 1, 'booked_new' => 1, 'jobs' => 6, 'tag' => null],
-        ]);
+        $this->mock(PerformancePeople::class, function ($mock) {
+            $mock->shouldReceive('for')->andReturn([
+                'Ada' => ['new_client' => 10, 'booked_new' => 4, 'jobs' => 9, 'tag' => 'new'],
+                'Cris' => ['new_client' => 5, 'booked_new' => 5, 'jobs' => 30, 'tag' => 'existing'],
+                'Few' => ['new_client' => 1, 'booked_new' => 1, 'jobs' => 6, 'tag' => null],
+            ]);
+            // Ada's third call was to a Training job's number (Jose, 2026-11-27).
+            $mock->shouldReceive('trainingCalls')->andReturn(['Ada2']);
+        });
 
         $people = collect($this->signedInAs($t['admin'])->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')
             ->assertOk()->json('data.people'))->keyBy('person');
@@ -106,6 +110,7 @@ class ScoringReportTest extends TestCase
         $this->assertSame([4, 10], [$people['Ada']['booked'], $people['Ada']['decided']]);
         $this->assertNull($people['Cris']['conversion'], 'handles Existing');
         $this->assertNull($people['Few']['conversion'], 'one new call is no rate');
+        $this->assertSame([2, 3], [$people['Ada']['calls_scored'], $people['Cris']['calls_scored']], 'a training call is not scored work');
     }
 
     /** Jose, 2026-11-04: the minimum is a setting, not a constant; raised, Ada's three calls rank her no more. */
@@ -121,7 +126,10 @@ class ScoringReportTest extends TestCase
                     'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
             }
         });
-        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([]);
+        $this->mock(PerformancePeople::class, function ($mock) {
+            $mock->shouldReceive('for')->andReturn([]);
+            $mock->shouldReceive('trainingCalls')->andReturn([]);
+        });
         $ada = fn () => $this->signedInAs($t['admin'])->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data');
 
         $this->assertSame(1, $ada()['people'][0]['rank']);
@@ -152,7 +160,10 @@ class ScoringReportTest extends TestCase
         });
         // Performance's People row for Ada: 4 new-client calls answered, 1 of
         // them booked. Her 3 jobs (some for existing clients) are not the rate.
-        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn(['Ada' => ['new_client' => 4, 'booked_new' => 1, 'jobs' => 3]]);
+        $this->mock(PerformancePeople::class, function ($mock) {
+            $mock->shouldReceive('for')->andReturn(['Ada' => ['new_client' => 4, 'booked_new' => 1, 'jobs' => 3]]);
+            $mock->shouldReceive('trainingCalls')->andReturn([]);
+        });
 
         $admin = $this->signedInAs($t['admin']);
         $ada = fn () => $admin->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data.people.0');

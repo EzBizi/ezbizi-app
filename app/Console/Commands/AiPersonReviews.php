@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\CallReportPersonReview;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
+use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -39,12 +40,15 @@ class AiPersonReviews extends Command
         [$prevFrom, $prevTo] = $weekly ? [$from->subWeek(), $to->subWeek()] : [$from->subDay(), $to->subDay()];
 
         foreach (Organization::query()->withoutGlobalScopes()->get() as $organization) {
-            $people = $this->calls($organization->getKey(), $from, $to)->groupBy('answered_by')
+            // Training calls are nobody's work (CallReconciliation::withoutTraining);
+            // with RingCentral unreadable, none is known and none left out.
+            $training = fn ($a, $b) => rescue(fn () => $tenant->run($organization, fn () => app(PerformancePeople::class)->trainingCalls($a, $b)), []);
+            $people = $this->calls($organization->getKey(), $from, $to, $training($from, $to))->groupBy('answered_by')
                 ->filter(fn ($calls) => $calls->count() >= ReportView::minCalls());
             if ($people->isEmpty()) {
                 continue;
             }
-            $previous = $this->calls($organization->getKey(), $prevFrom, $prevTo)->groupBy('answered_by')
+            $previous = $this->calls($organization->getKey(), $prevFrom, $prevTo, $training($prevFrom, $prevTo))->groupBy('answered_by')
                 ->map(fn ($calls) => $calls->avg('score'));
 
             $names = $people->keys()->values();
@@ -84,13 +88,15 @@ class AiPersonReviews extends Command
     }
 
     /** One row per scored call in the window, with who answered it. */
-    private function calls(string $organizationId, CarbonImmutable $from, CarbonImmutable $to)
+    /** @param  list<string>  $training  call ids left out */
+    private function calls(string $organizationId, CarbonImmutable $from, CarbonImmutable $to, array $training = [])
     {
         return DB::table('call_report_scores as s')
             ->join('call_report_transcripts as t', fn ($j) => $j->on('t.organization_id', '=', 's.organization_id')->on('t.call_id', '=', 's.call_id'))
             ->where('s.organization_id', $organizationId)
             ->whereNotNull('s.score')
             ->whereNotNull('t.answered_by')
+            ->whereNotIn('t.call_id', $training)
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->get(['t.answered_by', 's.score', 's.checks', 's.strength', 's.improve']);
     }

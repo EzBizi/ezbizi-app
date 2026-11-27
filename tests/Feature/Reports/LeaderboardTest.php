@@ -73,6 +73,7 @@ class LeaderboardTest extends TestCase
         $this->mock(PerformancePeople::class, function ($mock) use ($people) {
             // The week of 11-16 October holds them; the next one nobody yet.
             $mock->shouldReceive('for')->andReturnUsing(fn ($user, $from) => $from->toDateString() < '2026-10-17' ? $people : []);
+            $mock->shouldReceive('trainingCalls')->andReturn([]);
             $mock->shouldReceive('report')->andReturn(['people' => array_values($people), 'calls' => [
                 ['id' => 'k1', 'answered_by' => 'Di', 'rang' => ['Di']],
                 ['id' => 'k2', 'answered_by' => 'Ada', 'rang' => ['Ada', 'Di']],
