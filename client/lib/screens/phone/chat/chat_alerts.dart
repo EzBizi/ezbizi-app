@@ -10,6 +10,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../core/api_client.dart';
@@ -48,6 +50,8 @@ class ChatAlerts with WidgetsBindingObserver {
   }
 
   void stop() {
+    // Signed out: the dock forgets their count.
+    if (_shownBadge != null && _shownBadge != 0) unawaited(_badge(0));
     _timer?.cancel();
     _timer = null;
     WidgetsBinding.instance.removeObserver(this);
@@ -73,14 +77,31 @@ class ChatAlerts with WidgetsBindingObserver {
       final r = await api.get('/chat/chats');
       if (!r.ok || r.data is! List) return;
       _rev = rev;
+      var unread = 0;
       for (final c in (r.data as List).whereType<Map>()) {
         _consider(Map<String, dynamic>.from(c));
+        unread += ((c['unread'] as num?) ?? 0).toInt();
       }
+      unawaited(_badge(unread));
       // The first read only learns what is already there: no burst at sign-in.
       _primed = true;
     } finally {
       _busy = false;
     }
+  }
+
+  /// The Mac's dock count (Apple, 11-27); iPhones take theirs from the push.
+  static const _dock = MethodChannel('ezbizi/badge');
+  int? _shownBadge;
+
+  Future<void> _badge(int unread) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) return;
+    if (unread == _shownBadge) return;
+    _shownBadge = unread;
+    try {
+      await _dock.invokeMethod('set', unread);
+    } on PlatformException catch (_) {
+    } on MissingPluginException catch (_) {}
   }
 
   void _consider(Map<String, dynamic> chat) {
