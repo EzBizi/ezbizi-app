@@ -79,7 +79,7 @@ class _AddSalePaneState extends State<AddSalePane> {
       'per_page': '200',
       'active_only': '1',
     });
-    final items = await widget.api.get('/inventory/items', {'per_page': '200'});
+    final items = await inventoryAllPages(widget.api, '/inventory/items');
     if (!mounted) return;
 
     if (!items.ok) {

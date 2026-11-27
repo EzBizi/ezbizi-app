@@ -98,7 +98,7 @@ class _PurchaseOrderPaneState extends State<PurchaseOrderPane> {
   }
 
   Future<void> _loadLocations() async {
-    final response = await widget.api.get('/inventory/locations');
+    final response = await inventoryAllPages(widget.api, '/inventory/locations');
     if (!mounted) return;
 
     if (!response.ok) {
