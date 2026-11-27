@@ -102,7 +102,14 @@ class DeepLinks {
   /// address.
   static String? appPath(String url) {
     final uri = Uri.tryParse(url.trim());
-    if (uri == null || !uri.hasScheme) return null;
+    // A web address with a host, nothing else: on a native build Uri.base has
+    // no host, so `mailto:` and `tel:` (host '') matched the check below and
+    // were opened as paths inside the app.
+    if (uri == null ||
+        !(uri.scheme == 'http' || uri.scheme == 'https') ||
+        uri.host.isEmpty) {
+      return null;
+    }
     final host = uri.host.toLowerCase();
     if (host != 'app.ezbizi.com' && host != Uri.base.host.toLowerCase()) {
       return null;

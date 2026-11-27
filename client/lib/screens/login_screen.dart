@@ -197,6 +197,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _pendingChoice = choice;
         _needsCode = true;
         _error = null;
+        // The picker is drawn ahead of the code step, so while the list was
+        // kept the code form never appeared and the tap seemed to do nothing.
+        _choices = null;
       });
       return;
     }

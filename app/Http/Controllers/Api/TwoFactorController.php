@@ -8,6 +8,7 @@ use App\Support\Auth\TwoFactorPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -37,6 +38,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class TwoFactorController extends Controller
 {
+    /** Wrong passwords or codes per user per fifteen minutes, as the login allows. */
+    private const REAUTH_ATTEMPTS = 5;
+
     public function __construct(
         private readonly TotpEnrolment $totp,
         private readonly TwoFactorPolicy $policy,
@@ -46,13 +50,13 @@ class TwoFactorController extends Controller
     /** GET /api/v1/me/totp — what state am I in? */
     public function show(Request $request): JsonResponse
     {
-        $user    = $request->user();
+        $user = $request->user();
         $subject = $this->subject($request);
 
         return response()->json(['data' => [
-            'enabled'              => $subject->hasTotp(),
-            'pending'              => $subject->hasPendingTotp(),
-            'recovery_code_count'  => $subject->recoveryCodeCount(),
+            'enabled' => $subject->hasTotp(),
+            'pending' => $subject->hasPendingTotp(),
+            'recovery_code_count' => $subject->recoveryCodeCount(),
             'required_by_organization' => $this->required($user),
 
             // A linked account's factor lives on the staff record. It used to
@@ -102,7 +106,7 @@ class TwoFactorController extends Controller
             $refusal = $this->reauthenticate($request, $subject);
 
             if ($refusal !== null) {
-                return $this->refuse($refusal);
+                return $refusal;
             }
         }
 
@@ -124,7 +128,7 @@ class TwoFactorController extends Controller
         $input = $request->validate(['code' => ['required', 'string']]);
 
         $subject = $this->subject($request);
-        $user    = $request->user();
+        $user = $request->user();
 
         if (! $subject->hasPendingTotp()) {
             return $this->refuse('There is no pending authenticator to confirm.');
@@ -157,12 +161,12 @@ class TwoFactorController extends Controller
     public function disable(Request $request): JsonResponse
     {
         $subject = $this->subject($request);
-        $user    = $request->user();
+        $user = $request->user();
 
         $refusal = $this->reauthenticate($request, $subject);
 
         if ($refusal !== null) {
-            return $this->refuse($refusal);
+            return $refusal;
         }
 
         if ($this->required($user)) {
@@ -215,15 +219,54 @@ class TwoFactorController extends Controller
      * for. So when a factor is already enrolled, a current code is required as
      * well — you must hold the thing you are about to remove.
      *
-     * @return string|null  the refusal, or null if they proved it
+     * Failures are counted per user. Without a limit a stolen session could
+     * guess the password here as fast as it liked (the distinct "password is
+     * not right" answer confirms a hit), then grind the code, then switch the
+     * second factor off.
+     *
+     * @return JsonResponse|null the refusal, or null if they proved it
      */
-    private function reauthenticate(Request $request, $subject): ?string
+    private function reauthenticate(Request $request, $subject): ?JsonResponse
     {
         $input = $request->validate([
             'password' => ['required', 'string'],
-            'code'     => ['nullable', 'string'],
+            'code' => ['nullable', 'string'],
         ]);
 
+        $key = 'me-totp-reauth|'.$request->user()->getKey();
+
+        if (RateLimiter::tooManyAttempts($key, self::REAUTH_ATTEMPTS)) {
+            return response()->json([
+                'message' => 'Too many attempts. Try again shortly.',
+                'code' => 'throttled',
+                'retry_after' => RateLimiter::availableIn($key),
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        $refusal = $this->proofRefusal($input, $subject);
+
+        if ($refusal === null) {
+            RateLimiter::clear($key);
+
+            return null;
+        }
+
+        RateLimiter::hit($key, decaySeconds: 900);
+
+        // One line in the security record when somebody runs out, rather than
+        // nothing: the limiter's counter expires in fifteen minutes and is the
+        // only other trace an attempt would leave.
+        if (RateLimiter::attempts($key) >= self::REAUTH_ATTEMPTS) {
+            $this->audit->log('user.two_factor_reauth_throttled', $request->user(), metadata: [
+                'ip' => $request->ip(),
+            ]);
+        }
+
+        return $this->refuse($refusal);
+    }
+
+    private function proofRefusal(array $input, $subject): ?string
+    {
         if (! Hash::check($input['password'], $subject->password)) {
             return 'That password is not right.';
         }

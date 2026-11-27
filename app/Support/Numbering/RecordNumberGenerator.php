@@ -123,6 +123,45 @@ class RecordNumberGenerator
         return $this->format($sequenceKey, $scope, $value);
     }
 
+    /**
+     * Make sure next() will never hand out [$number] — a number that arrived
+     * from outside (an import) rather than from this generator.
+     *
+     * Only a number in this scope's own format moves anything: "C-00042" is
+     * one next() would produce, so the sequence goes past 42; "LEGACY-7" or a
+     * number from last year's include_year prefix never could, and is left
+     * alone. Never moves the sequence backwards.
+     */
+    public function advancePast(string $sequenceKey, Organization|Company|Franchise $scope, string $number): void
+    {
+        if (! preg_match('/(\d+)$/', $number, $m)) {
+            return;
+        }
+
+        $value = (int) $m[1];
+
+        if ($value < 1 || $this->format($sequenceKey, $scope, $value) !== $number) {
+            return;
+        }
+
+        $organizationId = $this->tenant->idOrFail();
+
+        DB::table('record_sequences')->insertOrIgnore([
+            'id' => (string) Str::uuid7(),
+            'organization_id' => $organizationId,
+            'sequence_key' => $sequenceKey,
+            'next_value' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('record_sequences')
+            ->where('organization_id', $organizationId)
+            ->where('sequence_key', $sequenceKey)
+            ->where('next_value', '<=', $value)
+            ->update(['next_value' => $value + 1, 'updated_at' => now()]);
+    }
+
     /** The number next() would give now, without taking it (for "next: INV-00145"). */
     public function peek(string $sequenceKey, Organization|Company|Franchise $scope): string
     {

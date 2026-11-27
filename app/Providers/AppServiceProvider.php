@@ -9,26 +9,46 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\ReportEmail;
+use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Observers\JobThumbtackObserver;
 use App\Services\Leads\LocalServicesLeads;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
+use App\Support\CustomerExperience\ComplaintBoardMirror;
 use App\Support\Files\Attachables;
+use App\Support\Integrations\Dependents\Counters\AirtableTablesCounter;
+use App\Support\Integrations\Dependents\Counters\AutomationsCounter;
+use App\Support\Integrations\Dependents\Counters\BusinessLocationsCounter;
+use App\Support\Integrations\Dependents\Counters\PhoneNumbersCounter;
+use App\Support\Integrations\Dependents\Counters\ProviderFeaturesCounter;
+use App\Support\Integrations\Dependents\Counters\QueuedNewslettersCounter;
+use App\Support\Integrations\Dependents\Counters\ScheduledPostsCounter;
+use App\Support\Integrations\Dependents\Counters\TelegramLinksCounter;
+use App\Support\Integrations\Dependents\Counters\WhatsAppNumbersCounter;
+use App\Support\Integrations\Dependents\Counters\WorkspaceMailboxesCounter;
+use App\Support\Integrations\Dependents\DependentRegistry;
+use App\Support\Leads\EzTextReplies;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\LeadTexts;
 use App\Support\Leads\LeadThread;
+use App\Support\Leads\SmsLeadReplies;
+use App\Support\Live\ChangeFeed;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Phone\HttpTwilioGateway;
+use App\Support\Phone\PhoneTexts;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\MetaMessageReplies;
-use App\Support\Social\WhatsAppReplies;
 use App\Support\Social\MetaMessages;
+use App\Support\Social\WhatsAppReplies;
 use App\Support\Subscriptions\SubscriptionGuard;
+use App\Support\Tasks\ModuleBoard;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteChatReplies;
+use App\Support\Workiz\WorkizTagColours;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
@@ -38,6 +58,7 @@ use Illuminate\Mail\MailManager;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
@@ -55,22 +76,22 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TenantContext::class);
 
         // One tag-colour map per request, read once for every job it shows.
-        $this->app->scoped(\App\Support\Workiz\WorkizTagColours::class);
+        $this->app->scoped(WorkizTagColours::class);
 
         // What stops working when an integration is disconnected. Each module
         // adds its own counter here; the disconnect panel lists them all.
         $this->app->tag([
-            \App\Support\Integrations\Dependents\Counters\AutomationsCounter::class,
-            \App\Support\Integrations\Dependents\Counters\ScheduledPostsCounter::class,
-            \App\Support\Integrations\Dependents\Counters\QueuedNewslettersCounter::class,
-            \App\Support\Integrations\Dependents\Counters\BusinessLocationsCounter::class,
-            \App\Support\Integrations\Dependents\Counters\WhatsAppNumbersCounter::class,
-            \App\Support\Integrations\Dependents\Counters\AirtableTablesCounter::class,
-            \App\Support\Integrations\Dependents\Counters\PhoneNumbersCounter::class,
-            \App\Support\Integrations\Dependents\Counters\WorkspaceMailboxesCounter::class,
-            \App\Support\Integrations\Dependents\Counters\TelegramLinksCounter::class,
-            \App\Support\Integrations\Dependents\Counters\ProviderFeaturesCounter::class,
-        ],\App\Support\Integrations\Dependents\DependentRegistry::TAG);
+            AutomationsCounter::class,
+            ScheduledPostsCounter::class,
+            QueuedNewslettersCounter::class,
+            BusinessLocationsCounter::class,
+            WhatsAppNumbersCounter::class,
+            AirtableTablesCounter::class,
+            PhoneNumbersCounter::class,
+            WorkspaceMailboxesCounter::class,
+            TelegramLinksCounter::class,
+            ProviderFeaturesCounter::class,
+        ], DependentRegistry::TAG);
 
         /*
          * Where a reply to a lead goes, per source.
@@ -110,9 +131,9 @@ class AppServiceProvider extends ServiceProvider
 
         // EZ Texts and EZ Calls: a text back from the EzBizi line (2026-10-16).
         foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_PROMOTIONS] as $source) {
-            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\EzTextReplies(
+            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new EzTextReplies(
                 $source,
-                $app->make(\App\Support\Phone\PhoneTexts::class),
+                $app->make(PhoneTexts::class),
                 $app->make(LeadThread::class),
             ));
         }
@@ -120,9 +141,9 @@ class AppServiceProvider extends ServiceProvider
         // A call, a form or an online booking has no chat: the answer is a
         // text (SmsLeadReplies; bookings added 2026-11-06, lead parity audit).
         foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_BOOKING] as $source) {
-            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\SmsLeadReplies(
+            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new SmsLeadReplies(
                 $source,
-                $app->make(\App\Support\Leads\LeadTexts::class),
+                $app->make(LeadTexts::class),
             ));
         }
 
@@ -244,8 +265,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // The change feed flushes when a process ends, and a queue worker ends
+        // after an hour: a job's changes sat unseen by every live screen until
+        // then. Flushed after each job instead, succeeded or failed.
+        Queue::after(fn () => ChangeFeed::flush());
+        Queue::failing(fn () => ChangeFeed::flush());
+
         // A person's edit on a Reviews & Complaints card comes back to the complaint (CX, 2026-11-20).
-        \App\Support\Tasks\ModuleBoard::listen('complaint:', [\App\Support\CustomerExperience\ComplaintBoardMirror::class, 'heard']);
+        ModuleBoard::listen('complaint:', [ComplaintBoardMirror::class, 'heard']);
 
         /*
          * Sanctum resolves a bearer token to the account that issued it, and
@@ -308,7 +335,7 @@ class AppServiceProvider extends ServiceProvider
                 'inspection_reports' => InspectionReport::class,
                 // Files on a task update arrive through POST tasks/{id}/updates
                 // only, never by naming the update to POST attachments.
-                'task_updates' => \App\Models\TaskUpdate::class,
+                'task_updates' => TaskUpdate::class,
             ],
         );
 

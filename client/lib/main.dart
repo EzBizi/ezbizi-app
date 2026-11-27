@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'core/address.dart';
 import 'core/app_window.dart';
 import 'core/api_client.dart';
-import 'core/push_registration.dart';
 import 'core/contracts.dart';
 import 'core/deep_links.dart';
 import 'core/deployment.dart';
@@ -40,6 +39,7 @@ import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
 import 'widgets/open_destination.dart';
+import 'widgets/server_unreachable_screen.dart';
 import 'widgets/side_panel.dart';
 import 'widgets/view_as_panel.dart';
 import 'widgets/shift_reminder.dart';
@@ -425,6 +425,12 @@ class _EzBiziAppState extends State<EzBiziApp> {
       }
 
       return HomeShell(api: _api, session: _session, address: _address);
+    }
+
+    // A kept session the server could not be asked about: wait for it,
+    // rather than offer a sign-in that would replace the kept token.
+    if (_session.waitingForServer) {
+      return ServerUnreachableScreen(session: _session);
     }
 
     if (_signingUp) {
@@ -1080,11 +1086,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   });
 
   Future<void> _signOut() async {
-    // Before the token goes: a shared phone kept the last person's pushes
-    // (audit 2026-11-27).
-    await PushRegistration.unregister(widget.api);
-    await widget.api.post('/auth/logout', {});
-    widget.session.signOut();
+    // One sign-out path: push withdrawn and token revoked before it goes
+    // (a shared phone kept the last person's pushes; audit 2026-11-27).
+    await widget.session.logOut();
   }
 
   /// Ask for another confirmation link.

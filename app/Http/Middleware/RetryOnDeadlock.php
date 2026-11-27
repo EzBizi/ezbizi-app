@@ -26,13 +26,28 @@ class RetryOnDeadlock
     {
         for ($attempt = 1; ; $attempt++) {
             try {
-                return $next($request);
+                $response = $next($request);
             } catch (QueryException $e) {
                 if ($attempt >= self::ATTEMPTS || ! self::isDeadlock($e)) {
                     throw $e;
                 }
                 usleep(random_int(20, 80) * 1000);
+
+                continue;
             }
+
+            // Inside the router the exception never reaches here as a throw:
+            // the routing pipeline renders it into a 500 first and hangs it on
+            // the response. Reading it there is what makes the retry real.
+            $thrown = $response->exception ?? null;
+
+            if ($thrown instanceof QueryException && self::isDeadlock($thrown) && $attempt < self::ATTEMPTS) {
+                usleep(random_int(20, 80) * 1000);
+
+                continue;
+            }
+
+            return $response;
         }
     }
 
