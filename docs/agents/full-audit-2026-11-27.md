@@ -502,7 +502,7 @@ None survived verification.
 
 ### Task Board (22)
 
-- [performance] **Monday parity re-reads the whole task table once per board** — `app/Console/Commands/MondayParity.php:78` — Fix: compute the known refs once before the loop.
+- [performance] **Monday parity re-reads the whole task table once per board** — `app/Console/Commands/MondayParity.php:78` — Fix: compute the known refs once before the loop. — held: hoisting the known refs is unsafe while --fix imports mid-loop (desk 11-27)
 - [bug] **Scheduled record fill aborts for all remaining orgs on any concurrent event** — `app/Console/Commands/TasksFillFromRecord.php:55` — Fix: count only events this command causes; catch per org.
 - [bug] **Tasks on deleted boards keep raising nudges, overdue alerts and digests for 30 days** — `app/Console/Commands/TasksNudges.php:42` — Also TasksOverdue, TasksDailyDigest, TasksDatesArrived. Fix: `whereHas('board')`.
 - [security] **Mirror columns read connected tasks' values without a view check** — `app/Http/Controllers/Api/TasksController.php:847` — Fix: filter by `can('view')`; validate connect ids.
@@ -515,13 +515,13 @@ None survived verification.
 - [concurrency] **Activity log filters can show results for an older filter** — `client/lib/screens/task_board_activity.dart:47` — Fix: request counter.
 - [data-loss] **Status rename debounce is one shared timer cancelled on dispose, dropping typed names** — `client/lib/screens/task_board_columns.dart:2602` — Fix: per-status timers flushed on dispose.
 - [data-loss] **Number/currency typed with a comma or $ is silently discarded** — `client/lib/screens/task_board_columns.dart:1324` — Fix: normalise like paste; show an error otherwise.
-- [performance] **One board drag renumbers every unfiled board with one PATCH each** — `client/lib/screens/task_board_sidebar.dart:196` — Fix: scope siblings; one ordered-list call.
+- [performance] **One board drag renumbers every unfiled board with one PATCH each** — `client/lib/screens/task_board_sidebar.dart:196` — Fix: scope siblings; one ordered-list call. — held: only changed positions are sent, in parallel; scoping unfiled boards by company risks misplacing them (desk 11-27)
 - [performance] **Board tree sorts all boards three times per tile on every rebuild** — `client/lib/screens/task_board_sidebar.dart:839` — Fix: lazy menu; compute order once.
 - [data-loss] **Import truncates every pasted title at its first comma** — `client/lib/screens/task_board_screen.dart:3692` — Fix: split only on tabs.
 - [ux] **Dropping a task on a board says "Moved" even when the move failed** — `client/lib/screens/task_board_screen.dart:913` — Fix: report only on success.
 - [bug] **Undo, bulk Duplicate and Move to top ignore failed requests** — `client/lib/screens/task_board_screen.dart:984` — Fix: collect and report failures.
 - [bug] **Drop and "Create below" positions come from the filtered/sorted list** — `client/lib/screens/task_board_screen.dart:4651` — Fix: send target task id, or disable under sort/filter.
-- [performance] **Every column heading scans all tasks twice per build** — `client/lib/screens/task_board_screen.dart:2335` — Fix: lazy menus or memoised values.
+- [performance] **Every column heading scans all tasks twice per build** — `client/lib/screens/task_board_screen.dart:2335` — Fix: lazy menus or memoised values. — held: memoising needs invalidation on every write, riskier than the cost (desk 11-27)
 - [bug] **Hide panel skips remaining built-in column changes after the first failure** — `client/lib/screens/task_board_screen.dart:2535` — Fix: attempt all, report count.
 - [bug] **Due/Created labels wrong on DST change days** — `client/lib/screens/task_board_screen.dart:328` — Fix: compare UTC calendar days.
 
