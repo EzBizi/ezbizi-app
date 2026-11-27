@@ -16,6 +16,7 @@
 #include "monitoring_screenshot.h"
 #include "monitoring_specs.h"
 #include "platform_task.h"
+#include "taskbar_badge.h"
 #include "watchdog.h"
 
 namespace {
@@ -136,6 +137,9 @@ bool FlutterWindow::OnCreate() {
       });
 
   watchdog_channel_ = RegisterWatchdogChannel(flutter_controller_->engine());
+  // Chat's unread count on the taskbar button (taskbar_badge.h).
+  taskbar_badge_channel_ =
+      RegisterTaskbarBadgeChannel(flutter_controller_->engine(), GetHandle());
 
   window_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
