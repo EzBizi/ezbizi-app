@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
+      'Reports: a WhatsApp report request no longer leaves the asker signed in on the queue worker for later jobs',
       'Leads: approving or booking a request twice no longer books two jobs or sends two texts',
       'Phone: the Windows softphone keeps ringing after its hourly token renewal, and people are no longer left stuck as on a call',
       'Automations: Test and Run now only use events the rule and the person can see, and rule templates never read secret fields',
