@@ -39,6 +39,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Chat calls ring full screen over the lock screen. Android 14+ grants
+         it only to calling apps declared in Play Console. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <!--
       Download on a how-to video (Jose, 2026-10-14) saves it to the gallery
       through `gal`. Android 10 and later need no permission for that; 8 and 9
@@ -92,8 +95,12 @@
              The firebase_messaging Dart plugin would normally contribute this
              declaration. We deliberately do not use it (see MainActivity.kt),
              so it has to be here. -->
+        <!-- 2026-11-27: EzMessagingService (ChatPush.kt) replaces twilio's
+             VoiceFirebaseMessagingService here. Only ONE MESSAGING_EVENT
+             service receives messages; ours draws chat pushes natively and
+             hands everything else to TwilioVoiceFcm exactly as twilio's did. -->
         <service
-            android:name="com.twilio.twilio_voice.fcm.VoiceFirebaseMessagingService"
+            android:name=".EzMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -112,6 +119,8 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="ezbizi_notifications" />
+
+        <receiver android:name=".ChatActionReceiver" android:exported="false"/>
 
         <meta-data
             android:name="flutterEmbedding"
