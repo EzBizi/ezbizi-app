@@ -618,8 +618,12 @@ bool validColumnText(String type, String v) => switch (type) {
   'email' => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v),
   'url' => RegExp(r'^https?://\S+\.\S+', caseSensitive: false).hasMatch(v),
   'datetime' => RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$').hasMatch(v),
+  'number' || 'currency' => columnNumber(v) != null,
   _ => true,
 };
+
+/// A typed or pasted number: "$1,200.50" and " 1 200 " read as numbers (audit 11-27).
+num? columnNumber(String v) => num.tryParse(v.trim().replaceAll(RegExp(r'[,$\s]'), ''));
 
 class ColumnCell extends StatelessWidget {
   const ColumnCell({
@@ -1312,6 +1316,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
                 'phone' => 'A phone number, 7 to 15 digits.',
                 'email' => 'An email address.',
                 'url' => 'Starts with http:// or https://',
+                'number' || 'currency' => 'A number.',
                 _ => 'YYYY-MM-DD HH:MM',
               }
             : null,
@@ -1319,7 +1324,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
     }
     if (bad) return;
     if (widget.column.type == 'number' || widget.column.type == 'currency') {
-      final n = typed.isEmpty ? null : num.tryParse(typed);
+      final n = typed.isEmpty ? null : columnNumber(typed);
       if (typed.isNotEmpty && n == null) return;
       if (n != widget.value) _send(n);
       widget.onDone?.call();
@@ -2457,7 +2462,13 @@ class _StatusesPanelState extends State<StatusesPanel> {
 
   @override
   void dispose() {
-    _typing?.cancel();
+    // A name still waiting on its pause is saved, not dropped (audit 11-27).
+    for (final t in _typing.values) {
+      t.cancel();
+    }
+    for (final (s, v) in _pendingNames.values) {
+      _rename(s, v);
+    }
     for (final c in _names.values) {
       c.dispose();
     }
@@ -2484,7 +2495,9 @@ class _StatusesPanelState extends State<StatusesPanel> {
     }
   }
 
-  Timer? _typing;
+  /// One pause per status: typing in a second name never cancels the first.
+  final Map<String, Timer> _typing = {};
+  final Map<String, (Map<String, dynamic>, String)> _pendingNames = {};
 
   /// A row dropped at [to]: the new order, each moved label's position saved.
   Future<void> _reorder(int from, int to) async {
@@ -2498,7 +2511,8 @@ class _StatusesPanelState extends State<StatusesPanel> {
   }
 
   void _rename(Map<String, dynamic> s, String v) {
-    _typing?.cancel();
+    _typing.remove('${s['id']}')?.cancel();
+    _pendingNames.remove('${s['id']}');
     if (v.trim().isNotEmpty && v.trim() != s['name']) {
       _patch(s, {'name': v.trim()});
     }
@@ -2599,8 +2613,9 @@ class _StatusesPanelState extends State<StatusesPanel> {
                               // Done, anywhere) saves too, not only on Enter.
                               onSubmitted: (v) => _rename(s, v),
                               onChanged: (v) {
-                                _typing?.cancel();
-                                _typing = Timer(
+                                _typing.remove('${s['id']}')?.cancel();
+                                _pendingNames['${s['id']}'] = (s, v);
+                                _typing['${s['id']}'] = Timer(
                                   const Duration(milliseconds: 700),
                                   () => _rename(s, v),
                                 );
