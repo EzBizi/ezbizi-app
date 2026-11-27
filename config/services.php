@@ -210,7 +210,7 @@ return [
         | It authenticates nothing afterwards; the POST signature does that,
         | using META_APP_SECRET above.
         */
-        'whatsapp_version' => env('META_WHATSAPP_VERSION', 'v21.0'),
+        'whatsapp_version' => 'v21.0',
         'whatsapp_token' => env('META_WHATSAPP_TOKEN'),
         'whatsapp_verify_token' => env('META_WHATSAPP_VERIFY_TOKEN'),
 
@@ -310,8 +310,8 @@ return [
          * Still env-overridable, because "Hydra" is ORY Hydra and a partner
          * tenant can be moved.
          */
-        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL', 'https://auth.thumbtack.com/oauth2/auth'),
-        'token_url' => env('THUMBTACK_TOKEN_URL', 'https://auth.thumbtack.com/oauth2/token'),
+        'authorize_url' => 'https://auth.thumbtack.com/oauth2/auth',
+        'token_url' => 'https://auth.thumbtack.com/oauth2/token',
 
         /*
          * The API host, which is NOT the auth host and switches per
@@ -359,7 +359,7 @@ return [
          * registry — declared, and marked not raised. Dropping the scope now
          * would mean re-consenting every connected business the day that lands.
          */
-        'scopes' => env('THUMBTACK_SCOPES', implode(',', [
+        'scopes' => implode(',', [
             'offline_access',
             'supply::users.disconnect',
             'supply::businesses.list',
@@ -371,7 +371,7 @@ return [
             'supply::messages.write',
             'supply::webhooks.read',
             'supply::webhooks.write',
-        ])),
+        ]),
     ],
 
     'x' => [
@@ -435,7 +435,7 @@ return [
         // Google retires Ads API versions on a published schedule and a retired
         // one answers 404 to everything. Pinned here so the day it moves is an
         // env change on the box, not a release.
-        'version' => env('GOOGLE_ADS_API_VERSION', 'v24'),
+        'version' => 'v24',
     ],
 
     /*
@@ -626,7 +626,7 @@ return [
         'claude' => [
             'key' => env('AI_CLAUDE_KEY'),   // falls back to ANTHROPIC_API_KEY (Reports' tagger)
             'model' => env('AI_CLAUDE_MODEL', 'claude-opus-5-5'),
-            'effort' => env('AI_CLAUDE_EFFORT', 'low'),
+            'effort' => 'low',
         ],
     ],
 
@@ -634,7 +634,7 @@ return [
         // Questions asked side by side (GrokCli::askMany); 1 if rate-limited.
         'concurrency' => (int) env('GROK_CLI_CONCURRENCY', 4),
         // Grok's reasoning effort; 'low' is ~3.5x faster on transcripts.
-        'effort' => env('GROK_CLI_EFFORT', 'low'),
+        'effort' => 'low',
         // Jose, 2026-10-13: "just new stuff from now on" - AI reads nothing older.
         'since' => env('GROK_AI_SINCE', '2026-10-13'),
         'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
