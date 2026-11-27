@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'Roles: every module with anything under it now opens the same way, showing its sub-modules then its tabs, with Expand all and Collapse all',
+      'EzChat: sign in with email and password, no authenticator code; the EzChat sign-in only works for chat, and the main EzBizi app still asks for the code',
       'Task Board on phones: tapping the board title opens a home with your favourite boards, recently visited boards and the workspace tree, like Monday',
       'Task Board notifications show who did it, with their picture',
       'Notifications on phones look like Monday: an Unread tab, the person who did it as an avatar with a badge for what they did, and a board and item line',
@@ -24,7 +26,7 @@ class VersionHistory {
       'If the server cannot be reached when the app opens, it keeps you signed in and retries instead of showing the sign-in screen',
       'The app own customer export can be imported back, and attachments are only removed after their record is really deleted',
     ]),
-    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', deployed: '2026-11-27 21:04', items: [
       'Task Board on phones: a one-line header and a floating bar for search, filter, sort, hide and quick filters, like Monday',
       'Training: overdue and expiry dates use your local day, and unsaved edits and blank answers are handled before submit',
       'Scheduling: same-day overbookings are flagged in local time, each company can own its own ZIP codes, slot offers use the lead company, and clearing a map drawing asks first',
