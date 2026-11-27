@@ -43,7 +43,8 @@ class InventoryAudit1127Test extends TestCase
             InventoryLocation::factory()->create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id]),
         ]);
 
-        $this->assertTrue((new InventoryTransferPolicy)->create($tenant['admin'], $from, $to)->allowed());
+        // Inside the tenant, as a request runs it: the policy reads the role.
+        $this->assertTrue($this->inTenant($tenant['org'], fn () => (new InventoryTransferPolicy)->create($tenant['admin'], $from, $to)->allowed()));
     }
 
     public function test_low_and_out_count_only_shelves_the_reader_sees(): void
