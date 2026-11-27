@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0665', date: '27 Nov 2026', items: [
       'Android: chat notifications now use the phone own call screen and Reply and Mark read buttons, Answer joins the call, and a chat read elsewhere clears its notification',
+      'Mac: the dock icon shows your unread chat count',
       'iPhone: chat calls ring on the iPhone call screen once the app update lands, and message notifications get Reply and Mark read',
     ]),
     VersionRelease(version: '0.0.0664', date: '27 Nov 2026', items: [

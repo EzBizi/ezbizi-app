@@ -27,6 +27,16 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Dock badge = unread chat total; Dart calls set(int), 0 clears it.
+    FlutterMethodChannel(
+      name: "ezbizi/badge", binaryMessenger: flutterViewController.engine.binaryMessenger
+    ).setMethodCallHandler { call, result in
+      guard call.method == "set" else { return result(FlutterMethodNotImplemented) }
+      let n = call.arguments as? Int ?? 0
+      NSApp.dockTile.badgeLabel = n > 0 ? String(n) : nil
+      result(nil)
+    }
+
     super.awakeFromNib()
   }
 }
