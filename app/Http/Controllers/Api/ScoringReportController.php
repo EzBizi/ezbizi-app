@@ -64,10 +64,13 @@ class ScoringReportController extends Controller
             ->whereNotNull('answered_by')->distinct()->pluck('answered_by')
             ->filter(fn ($n) => ($names->canonical($n) ?? $n) === $q['person'])->push($q['person'])->unique()->values()->all();
 
+        // Training calls are nobody's work (CallReconciliation::withoutTraining).
+        $training = app(PerformancePeople::class)->trainingCalls($from, $to);
         $base = fn () => DB::table('call_report_scores as s')
             ->join('call_report_transcripts as t', fn ($j) => $j->on('t.organization_id', '=', 's.organization_id')->on('t.call_id', '=', 's.call_id'))
             ->where('s.organization_id', app(TenantContext::class)->idOrFail())
             ->whereNotNull('s.score')
+            ->whereNotIn('t.call_id', $training)
             ->whereIn('t.answered_by', $spellings)
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->select(['t.call_id', 't.call_started_at', 't.caller_number', 't.recording_id', 's.score', 's.strength', 's.improve', 't.transcript_labelled', 't.transcript']);
@@ -169,6 +172,9 @@ class ScoringReportController extends Controller
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->orderByDesc('t.call_started_at')
             ->get(['t.answered_by', 't.call_id', 't.call_started_at', 's.score', 's.checks', 's.strength', 's.improve']);
+        // Training calls are nobody's work: out of the score, the checks and the count.
+        $training = array_flip($performance->trainingCalls($from, $to));
+        $rows = $rows->reject(fn ($r) => isset($training[$r->call_id]))->values();
         // A stored name as Performance shows it today: a pair added since the
         // call was transcribed applies to it too, with nothing rewritten.
         $names = PersonNames::forTenant();
