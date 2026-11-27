@@ -417,7 +417,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final values = _puts.last['values'] as Map<String, dynamic>;
-    expect(values.keys, contains('hours'));
+    // Unchanged fields are not sent either (audit 2026-11-27: Save sent every field).
+    expect(values.keys, isNot(contains('hours')));
     expect(values.keys, isNot(contains('about_us_field_1')));
     expect(values.keys, isNot(contains('template_1')));
     expect(_puts.last.containsKey('hours_timezone'), isFalse);

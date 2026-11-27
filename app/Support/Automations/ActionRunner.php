@@ -1643,19 +1643,22 @@ class ActionRunner
             ];
         }
 
-        if ($subject instanceof User) {
-            try {
-                $this->administrators->assertNotTheLast($subject, 'is_active');
-            } catch (ValidationException $refusal) {
-                return [
-                    'type' => $type, 'ok' => false,
-                    'detail' => collect($refusal->errors())->flatten()->first()
-                        ?? $refusal->getMessage(),
-                ];
-            }
+        try {
+            // One transaction: the floor locks the administrator rows until
+            // this write lands, so two concurrent runs cannot both pass it.
+            DB::transaction(function () use ($subject) {
+                if ($subject instanceof User) {
+                    $this->administrators->assertNotTheLast($subject, 'is_active');
+                }
+                $subject->forceFill(['is_active' => false])->save();
+            });
+        } catch (ValidationException $refusal) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => collect($refusal->errors())->flatten()->first()
+                    ?? $refusal->getMessage(),
+            ];
         }
-
-        $subject->forceFill(['is_active' => false])->save();
 
         $this->audit->log('automation.deactivated', $subject);
 

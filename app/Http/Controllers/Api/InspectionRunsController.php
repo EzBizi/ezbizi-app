@@ -347,6 +347,11 @@ class InspectionRunsController extends Controller
         );
 
         $report = DB::transaction(function () use ($request, $inspectionRun, $answers) {
+            // A second, overlapping submit waits here, then finds the run gone
+            // (the first deleted it) and files nothing (audit 11-27).
+            abort_if(InspectionRun::query()->whereKey($inspectionRun->getKey())->lockForUpdate()->doesntExist(), 409,
+                'This inspection was already submitted.');
+
             $report = InspectionReport::create([
                 'customer_id' => $inspectionRun->customer_id,
                 'job_id' => $inspectionRun->job_id,

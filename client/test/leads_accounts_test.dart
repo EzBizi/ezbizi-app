@@ -18,6 +18,7 @@ import 'package:http/testing.dart';
 /// twenty-two Google Ads accounts in the same second and the screen showed one
 /// of them. Twenty-one were invisible.
 final _deleted = <String>[];
+final _deletedBodies = <Map>[];
 final _patched = <String, Map<String, dynamic>>{};
 final _posted = <Map<String, dynamic>>[];
 
@@ -57,8 +58,14 @@ void main() {
       find.byKey(const ValueKey('accounts-disconnect-all-confirm')),
     );
     await tester.pumpAndSettle();
+    // Audit 11-27: the server requires the authenticator code; it is asked for.
+    expect(_deleted, isEmpty);
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
 
     expect(_deleted, ['/api/v1/social/providers/thumbtack/connections']);
+    expect(_deletedBodies.last['code'], '123456');
     expect(reloaded, 1);
   });
 
@@ -771,6 +778,9 @@ Future<void> _pump(
       }
       if (request.method == 'DELETE') {
         _deleted.add(request.url.path);
+        _deletedBodies.add(
+          request.body.isEmpty ? const {} : jsonDecode(request.body) as Map,
+        );
         return _json({
           'data': {'disconnected': 3, 'problems': []},
         });

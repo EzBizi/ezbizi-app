@@ -80,12 +80,14 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
   bool _loading = true;
   bool _busy = false;
   bool _reassigning = false;
+  bool _confirmDelete = false;
   String? _error;
   String? _newOwnerId;
 
   Me get _me => widget.session.me!;
 
-  String? get _editRefusal => _me.refusal('customers.edit', 'change a customer');
+  String? get _editRefusal =>
+      _me.refusal('customers.edit', 'change a customer');
   String? get _deleteRefusal =>
       _me.refusal('customers.delete', 'delete a customer');
 
@@ -122,15 +124,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _load();
     // Live: a sync, webhook or another person changing this customer shows
     // here, unless something is being typed.
-    _live = LiveChanges.of(widget.api).subscribe(
-      {'customers'},
-      (batch) {
-        if (batch.reload || batch.touched('customers').contains(widget.id)) {
-          return _refresh();
-        }
-      },
-      active: LiveChanges.visible(this),
-    );
+    _live = LiveChanges.of(widget.api).subscribe({'customers'}, (batch) {
+      if (batch.reload || batch.touched('customers').contains(widget.id)) {
+        return _refresh();
+      }
+    }, active: LiveChanges.visible(this));
   }
 
   LiveSubscription? _live;
@@ -149,6 +147,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       _row = row;
     });
     _loaded = _typed;
+    _sent = _body();
     widget.dirty?.value = false;
   }
 
@@ -213,6 +212,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     });
 
     _loaded = _typed;
+    _sent = _body();
     widget.dirty?.value = false;
   }
 
@@ -237,23 +237,36 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _postal.text = address['postal_code'] as String? ?? '';
   }
 
+  /// [_body] as last loaded or saved.
+  Map<String, Object?> _sent = const {};
+
+  /// The editable fields as the server stores them.
+  Map<String, Object?> _body() => {
+    'name': _name.text.trim(),
+    // Stored as E.164, never as the pretty form the field is showing.
+    'phone': toE164(_phone.text),
+    'email': _email.text.trim().isEmpty ? null : _email.text.trim(),
+    'address_line1': _line1.text.trim().isEmpty ? null : _line1.text.trim(),
+    'address_line2': _line2.text.trim().isEmpty ? null : _line2.text.trim(),
+    'city': _city.text.trim().isEmpty ? null : _city.text.trim(),
+    'state': _state.text.trim().isEmpty
+        ? null
+        : _state.text.trim().toUpperCase(),
+    'postal_code': _postal.text.trim().isEmpty ? null : _postal.text.trim(),
+    'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
+  };
+
   Future<void> _save({bool? active}) async {
     setState(() {
       _busy = true;
       _error = null;
     });
 
+    // Only what changed here: a field nobody touched must not overwrite an
+    // edit somebody else saved since this panel loaded (audit 2026-11-27).
     final response = await widget.api.patch('/customers/${widget.id}', {
-      'name': _name.text.trim(),
-      // Stored as E.164, never as the pretty form the field is showing.
-      'phone': toE164(_phone.text),
-      'email': _email.text.trim().isEmpty ? null : _email.text.trim(),
-      'address_line1': _line1.text.trim().isEmpty ? null : _line1.text.trim(),
-      'address_line2': _line2.text.trim().isEmpty ? null : _line2.text.trim(),
-      'city': _city.text.trim().isEmpty ? null : _city.text.trim(),
-      'state': _state.text.trim().isEmpty ? null : _state.text.trim().toUpperCase(),
-      'postal_code': _postal.text.trim().isEmpty ? null : _postal.text.trim(),
-      'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
+      for (final e in _body().entries)
+        if (_sent[e.key] != e.value) e.key: e.value,
       'is_active': ?active,
     });
 
@@ -297,8 +310,9 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   /// Tags save on their own, at once, with the whole list (UI queue 174).
   Future<bool> _saveTags(List<String> tags) async {
-    final response =
-        await widget.api.patch('/customers/${widget.id}', {'tags': tags});
+    final response = await widget.api.patch('/customers/${widget.id}', {
+      'tags': tags,
+    });
     if (!mounted) return false;
     if (!response.ok) {
       setState(() => _error = response.reason);
@@ -375,7 +389,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     final owner = row?['owning_franchise'] as Map<String, dynamic>?;
     final active = row?['is_active'] as bool? ?? true;
     final jobs = row?['jobs_count'] as int? ?? 0;
-    final editable = _editRefusal == null && !_busy && !_loading;
+    final editable = row != null && _editRefusal == null && !_busy && !_loading;
 
     return SidePanel(
       title: row == null ? 'Customer' : row['name'] as String,
@@ -387,7 +401,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       actions: [
         // Save and Cancel belong to the Customer tab's fields; Money and the
         // Workiz notes are read only (deep dive 2026-11-02).
-        if (_tab != 'money' && _tab != 'notes') ...[
+        if (row != null && _tab != 'money' && _tab != 'notes') ...[
           TextButton(
             onPressed: _busy ? null : () => _done(null),
             child: const Text('Cancel'),
@@ -406,6 +420,12 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
           ? const Padding(
               padding: EdgeInsets.all(32),
               child: Center(child: CircularProgressIndicator()),
+            )
+          // A failed load never shows the form: its Save would blank the record.
+          : row == null
+          ? ErrorRetry(
+              _error ?? 'This customer could not be loaded.',
+              onRetry: _load,
             )
           : _tabbed(context, row, owner, active, jobs, editable),
     );
@@ -435,7 +455,8 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                 Tone.bad,
               )
             : ('money', 'Money', Icons.payments_outlined, null),
-      if (linked) ('notes', 'Notes from Workiz', Icons.sticky_note_2_outlined, null),
+      if (linked)
+        ('notes', 'Notes from Workiz', Icons.sticky_note_2_outlined, null),
     ];
     final current = tabs.any((t) => t.$1 == _tab) ? _tab : 'customer';
 
@@ -555,220 +576,210 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     bool editable,
   ) {
     return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (row != null) _head(context, row, owner, active, jobs),
+        if (row != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: CustomerTagsEditor(
+              tags: customerTags(row),
+              suggestions: widget.knownTags,
+              enabled: _editRefusal == null && !_loading,
+              onChanged: _saveTags,
+            ),
+          ),
+        TextField(
+          controller: _name,
+          decoration: const InputDecoration(labelText: 'Name'),
+          enabled: editable,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _phone,
+          decoration: InputDecoration(
+            labelText: 'Phone',
+            suffixIcon: _copyOf(_phone, 'Number', 'copy-phone'),
+          ),
+          keyboardType: TextInputType.phone,
+          inputFormatters: const [PhoneNumberInputFormatter()],
+          enabled: editable,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _email,
+          decoration: InputDecoration(
+            labelText: 'Email',
+            suffixIcon: _copyOf(_email, 'Email', 'copy-email'),
+          ),
+          keyboardType: TextInputType.emailAddress,
+          enabled: editable,
+        ),
+        // Newsletters skip this customer (customers.email_opt_out_at).
+        // Saves at once, like the tags, behind customers.edit.
+        if (row != null)
+          SwitchListTile(
+            key: const ValueKey('customer-email-opt-out'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('No marketing email'),
+            subtitle: const Text('Newsletters are not sent to them.'),
+            value: row['email_opt_out'] == true,
+            onChanged: _editRefusal == null && !_loading ? _saveOptOut : null,
+          ),
+        const SizedBox(height: 12),
+        // Found with the lookup, kept in parts (Jose, 2026-09-30).
+        AddressFields(
+          api: widget.api,
+          line1: _line1,
+          line2: _line2,
+          city: _city,
+          state: _state,
+          postal: _postal,
+          enabled: editable,
+          dense: false,
+        ),
+        if (_addressLine.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (row != null) _head(context, row, owner, active, jobs),
-                if (row != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: CustomerTagsEditor(
-                      tags: customerTags(row),
-                      suggestions: widget.knownTags,
-                      enabled: _editRefusal == null && !_loading,
-                      onChanged: _saveTags,
-                    ),
-                  ),
-                TextField(
-                  controller: _name,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _phone,
-                  decoration: InputDecoration(
-                    labelText: 'Phone',
-                    suffixIcon: _copyOf(_phone, 'Number', 'copy-phone'),
-                  ),
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: const [PhoneNumberInputFormatter()],
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _email,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    suffixIcon: _copyOf(_email, 'Email', 'copy-email'),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  enabled: editable,
-                ),
-                // Newsletters skip this customer (customers.email_opt_out_at).
-                // Saves at once, like the tags, behind customers.edit.
-                if (row != null)
-                  SwitchListTile(
-                    key: const ValueKey('customer-email-opt-out'),
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('No marketing email'),
-                    subtitle: const Text('Newsletters are not sent to them.'),
-                    value: row['email_opt_out'] == true,
-                    onChanged: _editRefusal == null && !_loading
-                        ? _saveOptOut
-                        : null,
-                  ),
-                const SizedBox(height: 12),
-                // Found with the lookup, kept in parts (Jose, 2026-09-30).
-                AddressFields(
-                  api: widget.api,
-                  line1: _line1,
-                  line2: _line2,
-                  city: _city,
-                  state: _state,
-                  postal: _postal,
-                  enabled: editable,
-                  dense: false,
-                ),
-                if (_addressLine.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Copy the address',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        CopyButton(
-                          _addressLine,
-                          key: const ValueKey('copy-address'),
-                          what: 'Address',
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                if (editable)
-                  FormattedNotesField(controller: _notes, minLines: 2)
-                else
-                  InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Notes'),
-                    child: FormattedNotesText(_notes.markup),
-                  ),
-                const SizedBox(height: 20),
-                if (row != null && _me.can('jobs.view')) ...[
-                  _CustomerJobs(
-                    api: widget.api,
-                    session: widget.session,
-                    customerId: widget.id,
-                    total: jobs,
-                  ),
-                  const SizedBox(height: 20),
-                ],
                 Text(
-                  'Accountability',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Moving who is accountable is a separate, audited step — not '
-                  'something an ordinary save can do by accident.',
+                  'Copy the address',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: 12),
-                if (!_reassigning)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Refused(
-                      reason: _editRefusal,
-                      child: OutlinedButton(
-                        onPressed: editable
-                            ? () => setState(() => _reassigning = true)
-                            : null,
-                        child: const Text('Reassign owner'),
-                      ),
-                    ),
-                  )
-                else ...[
-                  FranchiseField(
-                    me: _me,
-                    value: _newOwnerId,
-                    label: 'New owning ${_me.organization.franchiseLabel}',
-                    enabled: !_busy,
-                    onChanged: (v) => setState(() => _newOwnerId = v),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _reason,
-                    decoration: const InputDecoration(
-                      labelText: 'Reason',
-                      helperText: 'Optional. Kept on the audit record.',
-                    ),
-                    enabled: !_busy,
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() {
-                                _reassigning = false;
-                                _newOwnerId = null;
-                              }),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: (_busy || _newOwnerId == null)
-                            ? null
-                            : _reassign,
-                        child: const Text('Hand over'),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 20),
-                Text(
-                  'This record',
-                  style: Theme.of(context).textTheme.titleSmall,
+                CopyButton(
+                  _addressLine,
+                  key: const ValueKey('copy-address'),
+                  what: 'Address',
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Refused(
-                      reason: _editRefusal,
-                      child: OutlinedButton(
-                        onPressed: editable
-                            ? () => _save(active: !active)
-                            : null,
-                        child: Text(active ? 'Deactivate' : 'Reactivate'),
-                      ),
-                    ),
-                    Refused(
-                      reason: _deleteRefusal,
-                      child: OutlinedButton(
-                        // Red: it destroys the record (phone audit 2026-11-04).
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error,
-                        ),
-                        onPressed:
-                            (_deleteRefusal == null && !_busy && !_loading)
-                            ? _delete
-                            : null,
-                        child: const Text('Delete'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (jobs > 0) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'This customer has $jobs ${jobs == 1 ? 'job' : 'jobs'}. '
-                    'Deleting them would leave that work with no one attached '
-                    'to it — deactivate instead.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
-                ],
               ],
-            );
+            ),
+          ),
+        const SizedBox(height: 12),
+        if (editable)
+          FormattedNotesField(controller: _notes, minLines: 2)
+        else
+          InputDecorator(
+            decoration: const InputDecoration(labelText: 'Notes'),
+            child: FormattedNotesText(_notes.markup),
+          ),
+        const SizedBox(height: 20),
+        if (row != null && _me.can('jobs.view')) ...[
+          _CustomerJobs(
+            api: widget.api,
+            session: widget.session,
+            customerId: widget.id,
+            total: jobs,
+          ),
+          const SizedBox(height: 20),
+        ],
+        Text('Accountability', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Text(
+          'Moving who is accountable is a separate, audited step — not '
+          'something an ordinary save can do by accident.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        if (!_reassigning)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Refused(
+              reason: _editRefusal,
+              child: OutlinedButton(
+                onPressed: editable
+                    ? () => setState(() => _reassigning = true)
+                    : null,
+                child: const Text('Reassign owner'),
+              ),
+            ),
+          )
+        else ...[
+          FranchiseField(
+            me: _me,
+            value: _newOwnerId,
+            label: 'New owning ${_me.organization.franchiseLabel}',
+            enabled: !_busy,
+            onChanged: (v) => setState(() => _newOwnerId = v),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _reason,
+            decoration: const InputDecoration(
+              labelText: 'Reason',
+              helperText: 'Optional. Kept on the audit record.',
+            ),
+            enabled: !_busy,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                        _reassigning = false;
+                        _newOwnerId = null;
+                      }),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: (_busy || _newOwnerId == null) ? null : _reassign,
+                child: const Text('Hand over'),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 20),
+        Text('This record', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Refused(
+              reason: _editRefusal,
+              child: OutlinedButton(
+                onPressed: editable ? () => _save(active: !active) : null,
+                child: Text(active ? 'Deactivate' : 'Reactivate'),
+              ),
+            ),
+            Refused(
+              reason: _deleteRefusal,
+              child: OutlinedButton(
+                // Red: it destroys the record (phone audit 2026-11-04).
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: (_deleteRefusal == null && !_busy && !_loading)
+                    ? () {
+                        if (_confirmDelete) {
+                          _delete();
+                          return;
+                        }
+                        setState(() => _confirmDelete = true);
+                      }
+                    : null,
+                child: Text(_confirmDelete ? 'Confirm delete' : 'Delete'),
+              ),
+            ),
+          ],
+        ),
+        if (jobs > 0) ...[
+          const SizedBox(height: 8),
+          Text(
+            'This customer has $jobs ${jobs == 1 ? 'job' : 'jobs'}. '
+            'Deleting them would leave that work with no one attached '
+            'to it — deactivate instead.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        if (_error != null) ...[const SizedBox(height: 14), ErrorNote(_error!)],
+      ],
+    );
   }
 }
 
@@ -812,13 +823,9 @@ class _CustomerJobsState extends State<_CustomerJobs> {
     super.initState();
     _load();
     // A job booked, moved or closed for this customer anywhere: read again.
-    _live = LiveChanges.of(widget.api).subscribe(
-      {'jobs'},
-      (_) {
-        if (_jobs != null) return _load(quiet: true);
-      },
-      active: LiveChanges.visible(this),
-    );
+    _live = LiveChanges.of(widget.api).subscribe({'jobs'}, (_) {
+      if (_jobs != null) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
   LiveSubscription? _live;

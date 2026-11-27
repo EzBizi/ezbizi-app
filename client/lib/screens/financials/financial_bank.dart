@@ -51,6 +51,7 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
   final _search = TextEditingController();
   Timer? _debounce;
   Timer? _watch;
+  int _txnSeq = 0;
   String? _accountId;
   String _direction = 'all';
 
@@ -69,33 +70,44 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
   }
 
   Future<void> _load() async {
+    await _loadBanks();
+    await _loadTxns(reset: true);
+  }
+
+  Future<void> _loadBanks() async {
     final r = await widget.api.get('/financials/bank');
     if (!mounted) return;
     setState(() {
       _data = r.ok ? r.body['data'] as Map : null;
       _error = r.ok ? null : r.message;
     });
-    await _loadTxns(reset: true);
   }
 
+  /// The first page ([reset]) or the next one. Only the newest request may
+  /// land: an older answer (other filters) is dropped, and the page number
+  /// moves only when its page actually arrived.
   Future<void> _loadTxns({bool reset = false}) async {
-    if (reset) _page = 1;
+    final page = reset ? 1 : _page + 1;
+    final seq = ++_txnSeq;
     setState(() => _loadingTxns = true);
     final r = await widget.api.get('/financials/bank/transactions', {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'account_id': ?_accountId,
       if (_direction == 'in' || _direction == 'out') 'direction': _direction,
       if (_direction == 'unmatched') 'unmatched': '1',
-      'page': '$_page',
+      'page': '$page',
     });
-    if (!mounted) return;
+    if (!mounted || seq != _txnSeq) return;
     setState(() {
       _loadingTxns = false;
       _txnError = r.ok ? null : r.message;
       if (r.ok) {
         final rows = (r.body['data'] as List).cast<Map>();
+        _page = page;
         _txns = reset ? rows : [..._txns, ...rows];
         _lastPage = (r.body['meta']?['last_page'] as num?)?.toInt() ?? 1;
+      } else if (reset) {
+        _txns = const [];   // never the last filter's rows under a new filter
       }
     });
   }
@@ -120,14 +132,21 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
     }
     window?.goTo(url);
     var asks = 100;
+    var busy = false;
     _watch?.cancel();
     _watch = Timer.periodic(const Duration(seconds: 3), (t) async {
       if (--asks <= 0 || !mounted) return t.cancel();
-      await _load();
+      if (busy) return;   // the last ask has not answered yet
+      busy = true;
+      await _loadBanks();   // the bank's status only; transactions stay put
+      busy = false;
       final now = (_data?['banks'] as List? ?? const [])
           .cast<Map>()
           .where((b) => b['id'] == bank['id']);
-      if (now.isNotEmpty && now.first['status'] == 'connected') t.cancel();
+      if (now.isNotEmpty && now.first['status'] == 'connected') {
+        t.cancel();
+        if (mounted) await _loadTxns(reset: true);
+      }
     });
   }
 
@@ -274,9 +293,10 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
             ],
           ),
           const SizedBox(height: 8),
+          // A failed next page keeps the rows already shown and its button.
           if (_txnError != null)
-            Text(_txnError!, style: TextStyle(color: theme.colorScheme.error))
-          else if (_txns.isEmpty && !_loadingTxns)
+            Text(_txnError!, style: TextStyle(color: theme.colorScheme.error)),
+          if (_txns.isEmpty && !_loadingTxns && _txnError == null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
@@ -286,7 +306,7 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
                 textAlign: TextAlign.center,
               ),
             )
-          else
+          else if (_txns.isNotEmpty)
             Card(
               child: Column(
                 children: [
@@ -300,10 +320,7 @@ class _FinancialBankTabState extends State<FinancialBankTab> {
                       key: const Key('financials-bank-more'),
                       onPressed: _loadingTxns
                           ? null
-                          : () {
-                              _page += 1;
-                              _loadTxns();
-                            },
+                          : () => _loadTxns(),
                       child: const Text('Show more'),
                     ),
                 ],

@@ -56,7 +56,7 @@ class ComplaintsReportController extends Controller
 
         $complaints = DB::table('complaints as c')->where('c.organization_id', $org)
             // A complaint with no branch is the organization's: only its view shows it.
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('c.franchise_id', $ids))
+            ->where(fn ($w) => ReportView::whereInView($w, 'c.franchise_id'))
             ->whereBetween('c.raised_at', [CarbonImmutable::parse($q['from'], $zone)->utc(), CarbonImmutable::parse($q['to'], $zone)->endOfDay()->utc()])
             ->leftJoin('leads as l', fn ($on) => $on->on('l.id', '=', 'c.source_id')->where('c.source_type', 'lead'))
             ->leftJoin('reviews as r', fn ($on) => $on->on('r.id', '=', 'c.source_id')->where('c.source_type', 'review'))

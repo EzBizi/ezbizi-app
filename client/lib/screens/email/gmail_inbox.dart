@@ -182,10 +182,9 @@ class _GmailInboxState extends State<GmailInbox> {
   String _submittedSearch = '';
   Timer? _debounce;
 
-  /// The cursor this page was asked with (null is the first page), the ones
-  /// before it for ‹, and the server's for Older ›.
+  /// The cursor this page was asked with (null is the first page), and the
+  /// server's for the next page appended below.
   String? _cursor;
-  final List<String?> _previous = [];
   String? _next;
 
   int _listRequest = 0;
@@ -233,7 +232,11 @@ class _GmailInboxState extends State<GmailInbox> {
     };
     DeepLinks.pending.addListener(_followLink);
     // Connecting an inbox happens in the browser; coming back must show it.
-    _resume = AppLifecycleListener(onResume: _loadMailboxes);
+    // Back from the browser (a connect) refreshes the inboxes; the page on
+    // screen stays where it was, appended pages and all (audit 11-27).
+    _resume = AppLifecycleListener(
+      onResume: () => _loadMailboxes(keepList: _rows.isNotEmpty),
+    );
     _loadMailboxes();
     // New mail (the watcher moved an inbox's mark), or a colleague seeing,
     // dealing with or snoozing a message: the page on screen re-reads in
@@ -268,7 +271,7 @@ class _GmailInboxState extends State<GmailInbox> {
 
   // ── loading ─────────────────────────────────────────────────────────
 
-  Future<void> _loadMailboxes() async {
+  Future<void> _loadMailboxes({bool keepList = false}) async {
     setState(() {
       _loadingMailboxes = _mailboxes.isEmpty;
       _mailboxesError = null;
@@ -301,7 +304,7 @@ class _GmailInboxState extends State<GmailInbox> {
       ].where((mailbox) => mailbox.mayRead).toList();
     });
 
-    if (_mailboxes.isNotEmpty) _loadList();
+    if (_mailboxes.isNotEmpty && !keepList) _loadList();
     _loadFilterFolders();
 
     // A notification tapped before the inboxes were known waited for them.
@@ -312,9 +315,13 @@ class _GmailInboxState extends State<GmailInbox> {
   /// that stopped at Nov 1 read as "there is no older mail" (Jose, 11-04).
   bool _appending = false;
 
+  /// A failed older page, said under the rows instead of replacing them
+  /// (audit 11-27). Cleared by a retry.
+  String? _appendError;
+
   void _appendOlder() {
     final next = _next;
-    if (next == null || _appending) return;
+    if (next == null || _appending || _appendError != null) return;
     _appending = true;
     _loadList(
       cursor: next,
@@ -365,9 +372,14 @@ class _GmailInboxState extends State<GmailInbox> {
       // The server's sentence where the rows would have been, never an empty
       // list: "no mail" is the sentence nobody investigates.
       if (!response.ok) {
-        _listError = response.message;
+        if (append) {
+          _appendError = response.message;
+        } else {
+          _listError = response.message;
+        }
         return;
       }
+      if (append) _appendError = null;
 
       final page = InboxPage.fromResponse(response.data, response.body['meta']);
       if (append) {
@@ -378,6 +390,7 @@ class _GmailInboxState extends State<GmailInbox> {
         return;
       }
       _appended = false;
+      _appendError = null;
       _rows = page.rows;
       _cursor = cursor;
       _next = page.cursor;
@@ -397,7 +410,6 @@ class _GmailInboxState extends State<GmailInbox> {
     setState(() {
       change();
       _cursor = null;
-      _previous.clear();
       _next = null;
       _rows = const [];
       _checked = {};
@@ -1566,6 +1578,25 @@ class _GmailInboxState extends State<GmailInbox> {
                 itemCount: _rows.length + (_next != null ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == _rows.length) {
+                    final failed = _appendError;
+                    if (failed != null) {
+                      return Padding(
+                        key: const ValueKey('email-more-failed'),
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(failed)),
+                            TextButton(
+                              onPressed: () {
+                                setState(() => _appendError = null);
+                                _appendOlder();
+                              },
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     WidgetsBinding.instance.addPostFrameCallback(
                       (_) => _appendOlder(),
                     );

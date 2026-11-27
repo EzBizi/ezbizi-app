@@ -4,6 +4,7 @@ import '../core/app_window.dart';
 import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/dashboard_card.dart';
 import '../widgets/tab_bar_like.dart';
 import 'customer_experience/review_qr_panel.dart';
 import 'inspection/builder_tab.dart';
@@ -143,7 +144,15 @@ class _InspectionScreenState extends State<InspectionScreen> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3(),
+          child: tabs.isEmpty
+              // Not a blank page (audit 11-27): say what is missing.
+              ? const Center(
+                  child: DashboardNote(
+                    'Your role has no Inspection tabs. Ask an admin to tick '
+                    'one under Roles & permissions › Inspection.',
+                  ),
+                )
+              : tabs[selected].$3(),
         ),
       ],
     );

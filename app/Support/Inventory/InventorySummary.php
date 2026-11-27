@@ -65,7 +65,7 @@ final class InventorySummary
                 ->where('status', InventoryItemStatus::Active)
                 ->get(['id', 'reorder_at', 'last_cost_minor']);
 
-            $qtyByItem = self::qtyOnHandByItemId($activeItems->pluck('id'));
+            $qtyByItem = self::qtyOnHandByItemId($activeItems->pluck('id'), $user, $scope);
 
             foreach ($activeItems as $item) {
                 $qty = $qtyByItem[$item->id] ?? '0.000';
@@ -468,7 +468,7 @@ final class InventorySummary
      * @param  Collection<int, string>  $itemIds
      * @return array<string, string> item id → qty decimal string (scale 3)
      */
-    private static function qtyOnHandByItemId(Collection $itemIds): array
+    private static function qtyOnHandByItemId(Collection $itemIds, User $user, ViewScope $scope): array
     {
         if ($itemIds->isEmpty()) {
             return [];
@@ -476,6 +476,8 @@ final class InventorySummary
 
         return InventoryBalance::query()
             ->whereIn('item_id', $itemIds->all())
+            // Only shelves the reader can see, as the Stock list counts them.
+            ->whereHas('location', fn ($q) => InventoryVisibility::constrain($q, $user, $scope))
             ->groupBy('item_id')
             ->selectRaw('item_id, SUM(qty_on_hand) as qty_on_hand')
             ->pluck('qty_on_hand', 'item_id')

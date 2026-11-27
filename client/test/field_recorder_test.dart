@@ -115,7 +115,12 @@ void main() {
       );
       await recorder.start();
       online = false;
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      // By outcome, not the clock, as above: a loaded machine rotates late.
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      while (recorder.state.value.unsent == 0 &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
       // The app dies here: no stop().
       recorder.dispose();
       expect(recorder.state.value.unsent, greaterThan(0));

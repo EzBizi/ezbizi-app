@@ -112,6 +112,47 @@ class TimeClockPayrollTest extends TestCase
             && $m->week['week_start'] === self::WEEK && $m->week['totals']['pay'] == 200 && str_starts_with($m->xlsx, 'PK'));
     }
 
+    /** Audit 2026-11-27: HR's extra hours on a day are paid, as Work Hours counts them. */
+    public function test_extra_hours_hr_added_to_a_day_are_paid(): void
+    {
+        [$t, $manager, $hourly] = $this->tenant();
+        $this->shift($t, $hourly, '2026-10-19 12:00', '2026-10-19 20:00');   // 8 h
+        $this->rate($t, $hourly, 'hourly', '25.00', 'hour');
+        $this->inTenant($t['org'], fn () => \App\Models\TimeClockDay::query()->create([
+            'organization_id' => $t['org']->id, 'user_id' => $hourly->id, 'date' => '2026-10-20', 'extra_minutes' => 90,
+        ]));
+
+        $row = collect($this->signedInAs($manager)->getJson('/api/v1/hr/time-clock/payroll?week='.self::WEEK)->assertOk()->json('data.rows'))
+            ->firstWhere('person.id', $hourly->id);
+        $this->assertSame([9.5, 237.5], [$row['hours'], $row['pay']]);
+    }
+
+    /** Audit 2026-11-27: a manager neither bonuses nor approves their own week or day. */
+    public function test_a_manager_cannot_set_or_approve_their_own_pay(): void
+    {
+        [$t, $manager] = $this->tenant();
+        $this->signedInAs($manager)->putJson("/api/v1/hr/time-clock/payroll/{$manager->id}", ['week' => self::WEEK, 'bonus' => 500])->assertForbidden();
+        $this->signedInAs($manager)->postJson('/api/v1/hr/time-clock/payroll/approve', ['user_id' => $manager->id, 'week' => self::WEEK])->assertForbidden();
+    }
+
+    /** Audit 2026-11-27: a send that fails is not marked sent; the next run sends it. */
+    public function test_a_failed_monday_send_is_tried_again(): void
+    {
+        [$t, , $hourly] = $this->tenant();
+        $this->shift($t, $hourly, '2026-10-19 12:00', '2026-10-19 20:00');
+        $this->rate($t, $hourly, 'hourly', '25.00', 'hour');
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('time_clock.payroll_recipients', $t['org'], 'merav@alpha.test'));
+        Carbon::setTestNow(Carbon::parse('2026-10-26 12:05', 'UTC'));   // Monday 8:05 AM
+
+        $this->mock(\App\Support\Mail\MailDispatcher::class, fn ($m) => $m->shouldReceive('platformForTenant')->once()->andThrow(new \RuntimeException('SES down')));
+        $this->artisan('ezbizi:time-clock-payroll')->assertSuccessful();
+
+        $this->forgetMock(\App\Support\Mail\MailDispatcher::class);
+        Mail::fake();
+        $this->artisan('ezbizi:time-clock-payroll')->assertSuccessful();
+        Mail::assertSent(PayrollSheetMail::class, 1);
+    }
+
     /** @return array{0: array, 1: User, 2: User, 3: User, 4: User} */
     private function tenant(): array
     {

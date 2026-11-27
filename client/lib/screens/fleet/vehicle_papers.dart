@@ -28,6 +28,11 @@ class _VehiclePapersState extends State<VehiclePapers> {
   String? _accept;
   bool _loading = true;
   bool _busy = false;
+
+  /// Only the newest load may land: a slow answer for the previous record
+  /// must not replace this one's files, or Remove would aim at its file
+  /// (audit 2026-11-27).
+  int _loadSeq = 0;
   String? _error;
 
   @override
@@ -46,6 +51,7 @@ class _VehiclePapersState extends State<VehiclePapers> {
   }
 
   Future<void> _load() async {
+    final seq = ++_loadSeq;
     setState(() {
       _loading = _files.isEmpty;
       _error = null;
@@ -56,7 +62,7 @@ class _VehiclePapersState extends State<VehiclePapers> {
       'attachable_id': widget.attachableId,
     });
 
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
 
     if (!response.ok) {
       setState(() {

@@ -46,6 +46,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// answer lands LAST used to win regardless of which was asked for last, and
   /// nothing was scheduled afterwards to correct it.
   int _request = 0;
+
+  /// Layout saves, one after another in the order they were made, so an
+  /// older save can never land after a newer one (last write wins).
+  Future<void> _writes = Future.value();
   bool _loaded = false;
   String? _error;
 
@@ -198,6 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       for (final glance in _glances) glance['key'] as String: glance,
     };
 
+    _request++;
     setState(() {
       _glances = [
         for (final key in keys)
@@ -223,10 +228,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
+  /// PUT the layout behind every earlier save. Local edits also bump
+  /// [_request], so a load that started before the edit is discarded.
+  Future<ApiResponse> _putLayout(Map<String, dynamic> body) {
+    final result = _writes.then(
+      (_) => widget.api.put('/dashboard/layout', body),
+    );
+    _writes = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
   /// Save every box as it now is. A failed save says why and reloads, which
   /// puts the boxes back where the server still has them.
   Future<void> _saveLayout() async {
-    final response = await widget.api.put('/dashboard/layout', {
+    final response = await _putLayout({
       'glances': [for (final glance in _glances) _entryFor(glance)],
     });
 
@@ -247,6 +262,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _setSize(String key, String size) async {
     if (!_glances.any((g) => g['key'] == key && g['size'] != size)) return;
 
+    _request++;
     setState(() {
       _glances = [
         for (final glance in _glances)
@@ -263,6 +279,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Take a box off the dashboard, on this frame, and save.
   Future<void> _hide(String key) async {
+    _request++;
     setState(() {
       _glances = [
         for (final glance in _glances)
@@ -295,6 +312,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     if (key == null || !mounted) return;
 
+    _request++;
     setState(() {
       _glances = [
         for (final glance in _glances)
@@ -342,7 +360,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String said,
   }) async {
     final before = [for (final glance in _glances) _entryFor(glance)];
-    final response = await widget.api.put('/dashboard/layout', {
+    _request++;
+    final response = await _putLayout({
       'glances': glances,
     });
     if (!mounted) return;
@@ -363,8 +382,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final applied = _applied;
     if (applied == null) return;
 
+    _request++;
     setState(() => _applied = null);
-    final response = await widget.api.put('/dashboard/layout', {
+    final response = await _putLayout({
       'glances': applied.before,
     });
     if (!mounted) return;
@@ -380,9 +400,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _setPeriod(String period) async {
     if (period == _period) return;
 
+    _request++;
     setState(() => _period = period);
 
-    final response = await widget.api.put('/dashboard/layout', {
+    final response = await _putLayout({
       'period': period,
       'glances': [for (final glance in _glances) _entryFor(glance)],
     });
@@ -415,6 +436,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (current == null) return;
     if ((current['presentation'] ?? 'text') == presentation) return;
 
+    _request++;
     setState(() {
       _glances = [
         for (final glance in _glances)

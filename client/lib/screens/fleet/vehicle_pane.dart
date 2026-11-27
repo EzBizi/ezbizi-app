@@ -179,12 +179,14 @@ class _VehiclePaneState extends State<VehiclePane> {
               const SizedBox(height: 16),
               if (id != null)
                 VehiclePhotosCard(
+                  key: ValueKey('VehiclePhotosCard-$id'),
                   api: widget.api,
                   vehicleId: id,
                   canEdit: widget.session.me!.can('fleet_management.edit'),
                 ),
               const SizedBox(height: 16),
               VehicleIdentityCard(
+                key: ValueKey('VehicleIdentityCard-$id'),
                 api: widget.api,
                 session: widget.session,
                 vehicle: _vehicle,
@@ -196,6 +198,7 @@ class _VehiclePaneState extends State<VehiclePane> {
               ),
               const SizedBox(height: 16),
               VehicleAssignmentCard(
+                key: ValueKey('VehicleAssignmentCard-$id'),
                 api: widget.api,
                 session: widget.session,
                 vehicle: _vehicle,
@@ -203,6 +206,7 @@ class _VehiclePaneState extends State<VehiclePane> {
               ),
               const SizedBox(height: 16),
               VehicleOwnershipCard(
+                key: ValueKey('VehicleOwnershipCard-$id'),
                 api: widget.api,
                 session: widget.session,
                 vehicle: _vehicle,
@@ -210,6 +214,7 @@ class _VehiclePaneState extends State<VehiclePane> {
               ),
               const SizedBox(height: 16),
               VehicleInsuranceCard(
+                key: ValueKey('VehicleInsuranceCard-$id'),
                 api: widget.api,
                 session: widget.session,
                 vehicle: _vehicle,
@@ -217,6 +222,7 @@ class _VehiclePaneState extends State<VehiclePane> {
               ),
               const SizedBox(height: 16),
               VehicleServiceCard(
+                key: ValueKey('VehicleServiceCard-$id'),
                 api: widget.api,
                 session: widget.session,
                 vehicle: _vehicle,
@@ -225,6 +231,7 @@ class _VehiclePaneState extends State<VehiclePane> {
               if (_financials) ...[
                 const SizedBox(height: 16),
                 VehiclePaymentsCard(
+                  key: ValueKey('VehiclePaymentsCard-$id'),
                   api: widget.api,
                   session: widget.session,
                   vehicle: _vehicle,

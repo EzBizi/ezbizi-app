@@ -65,6 +65,14 @@ class VehicleServiceController extends Controller
 
             $dirty = false;
 
+            // Only the latest visit speaks for the vehicle's next service: an
+            // older visit logged late must not overwrite it (audit 2026-11-27).
+            $latest = ! VehicleServiceVisit::query()
+                ->where('vehicle_id', $vehicle->getKey())
+                ->whereKeyNot($visit->getKey())
+                ->whereDate('occurred_on', '>', $input['occurred_on'])
+                ->exists();
+
             if (array_key_exists('odometer_miles', $input) && $input['odometer_miles'] !== null) {
                 $visitMiles = (int) $input['odometer_miles'];
                 if ($vehicle->odometer_miles === null || $visitMiles > $vehicle->odometer_miles) {
@@ -73,12 +81,12 @@ class VehicleServiceController extends Controller
                 }
             }
 
-            if (array_key_exists('next_service_on', $input) && $input['next_service_on'] !== null) {
+            if ($latest && array_key_exists('next_service_on', $input) && $input['next_service_on'] !== null) {
                 $vehicle->next_service_on = $input['next_service_on'];
                 $dirty = true;
             }
 
-            if (array_key_exists('next_service_miles', $input) && $input['next_service_miles'] !== null) {
+            if ($latest && array_key_exists('next_service_miles', $input) && $input['next_service_miles'] !== null) {
                 $vehicle->next_service_miles = $input['next_service_miles'];
                 $dirty = true;
             }

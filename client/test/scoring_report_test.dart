@@ -30,8 +30,12 @@ void main() {
       'person': 'Maya Ortiz',
       'calls_scored': 12,
       'conversion': 25,
-      'jobs': 1,
-      'new_client': 4,
+      // 1 booked of 4 decided: one of the 5 Needs Attention, and 3 jobs
+      // created over the calls, which the rate does not count.
+      'jobs': 3,
+      'new_client': 5,
+      'booked': 1,
+      'decided': 4,
       'avg_score': 8.5,
       'checks': checks(price: 75),
       'strengths': ['Opens with the company name'],
@@ -230,7 +234,7 @@ void main() {
     expect(find.text('#1 of 2'), findsOneWidget);
     expect(find.text('12 scored calls in these dates'), findsOneWidget);
     expect(
-      find.text('Conversion rate: 25% (1 job from 4 new-client calls)'),
+      find.text('Conversion rate: 25% (1 booked of 4 new-client calls)'),
       findsOneWidget,
     );
     expect(

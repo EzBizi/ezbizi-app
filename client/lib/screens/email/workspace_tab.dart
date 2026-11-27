@@ -1513,6 +1513,9 @@ class _PersonPaneState extends State<PersonPane> {
   /// Their own signature as it is being typed, with their values filled in
   /// (Jose 11-13: "i should be able to see it"). Asked of the server, which
   /// owns the filling, a moment after the typing stops.
+  /// What the editor was last filled with from the server.
+  String? _loadedOwn;
+
   String? _livePreview;
   Timer? _liveTimer;
 
@@ -1648,7 +1651,12 @@ class _PersonPaneState extends State<PersonPane> {
       _own = data['own'] as String?;
       _preview = data['preview'] as String?;
       _ownChosen = _own != null || widget.person['has_own_signature'] == true;
-      if (_own != null) _editor.text = _own!;
+      // Only into an editor nobody has typed in since the last load: a
+      // reload overwrote unsaved edits (audit 11-27).
+      if (_own != null && _editor.text == (_loadedOwn ?? '')) {
+        _editor.text = _own!;
+      }
+      _loadedOwn = _own;
       if (!response.ok) _note = response.reason;
     });
   }
@@ -1803,10 +1811,18 @@ class _PersonPaneState extends State<PersonPane> {
                 key: const ValueKey('workspace-use-template'),
                 label: const Text('Use a template'),
                 selected: !_ownChosen,
+                // One tap deleted somebody's own signature (audit 11-27).
+                // With one saved, this only switches the view; removing it
+                // is the explicit button below.
                 onSelected: _busy
                     ? null
                     : (_) {
-                        if (_ownChosen) _useTemplate();
+                        if (!_ownChosen) return;
+                        if (_own == null) {
+                          _useTemplate();
+                        } else {
+                          setState(() => _ownChosen = false);
+                        }
                       },
               ),
               ChoiceChip(
@@ -1819,6 +1835,22 @@ class _PersonPaneState extends State<PersonPane> {
               ),
             ],
           ),
+          if (!_ownChosen && _own != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Their own signature is kept until you remove it.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                key: const ValueKey('workspace-drop-own'),
+                onPressed: _busy ? null : _useTemplate,
+                child: const Text('Remove their own signature'),
+              ),
+            ),
+          ],
           if (_ownChosen) ...[
             const SizedBox(height: 10),
             TextField(

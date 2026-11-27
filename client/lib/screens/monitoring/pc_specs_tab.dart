@@ -122,7 +122,8 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
       _loading = false;
 
       if (!response.ok) {
-        _error = response.message;
+        // A failed background refresh keeps what is on screen (audit 11-27).
+        if (_devices.isEmpty) _error = response.message;
         return;
       }
 

@@ -180,7 +180,8 @@ class _InvoicePanelState extends State<InvoicePanel> {
   }
 
   /// POST or PATCH, then take the invoice it answers.
-  Future<void> _act(
+  /// True when the server took it.
+  Future<bool> _act(
     Future<ApiResponse> Function() call, {
     bool sending = false,
   }) async {
@@ -190,7 +191,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
       _needsMailServer = false;
     });
     final r = await call();
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _busy = false);
     if (!r.ok) {
       final errors = r.body['errors'];
@@ -203,13 +204,14 @@ class _InvoicePanelState extends State<InvoicePanel> {
             errors.containsKey('send') &&
             RegExp('mail server|mailbox').hasMatch(r.reason);
       });
-      return;
+      return false;
     }
     final data = r.body['data'];
     final invoice = data is List ? data.cast<Map>().first : data as Map;
     _adopt(invoice);
     setState(() => _mode = _Mode.view);
     widget.onChanged(invoice);
+    return true;
   }
 
   String get _id => widget.invoiceId;
@@ -301,7 +303,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
   }
 
   /// PATCHes who it bills: `bill_to_emails` or `bill_to_phones`.
-  Future<void> _saveContacts(String field, List<String> values) =>
+  Future<bool> _saveContacts(String field, List<String> values) =>
       _act(() => widget.api.patch('/invoices/$_id', {field: values}));
 
   void _addAddress() {
@@ -1040,11 +1042,15 @@ class _InvoicePanelState extends State<InvoicePanel> {
       String hint,
       TextInputType type,
     ) {
-      void add() {
+      // One add at a time; the typed address stays until the server takes
+      // it, so a refused one can be fixed rather than retyped.
+      Future<void> add() async {
         final v = controller.text.trim();
-        if (v.isEmpty || values.contains(v)) return;
-        controller.clear();
-        _saveContacts(field, [...values, v]);
+        if (_busy || v.isEmpty || values.contains(v)) return;
+        if (await _saveContacts(field, [...values, v]) &&
+            controller.text.trim() == v) {
+          controller.clear();
+        }
       }
 
       return Padding(
@@ -1075,6 +1081,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
                 child: TextField(
                   key: ValueKey('$prefix-add'),
                   controller: controller,
+                  readOnly: _busy,
                   keyboardType: type,
                   decoration: InputDecoration(isDense: true, hintText: hint),
                   onSubmitted: (_) => add(),

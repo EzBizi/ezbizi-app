@@ -162,13 +162,6 @@ class InvitationActions
             throw new CannotActOnInvitation('That invitation opened your own account, so withdrawing '
                 .'it would switch you off. Ask a colleague to do it if you mean it.');
         }
-        if ($account !== null && $account->is_active) {
-            try {
-                app(AdministratorFloor::class)->assertNotTheLast($account, 'is_active');
-            } catch (ValidationException $refusal) {
-                throw new CannotActOnInvitation((string) collect($refusal->errors())->flatten()->first());
-            }
-        }
 
         // Read before the write, so the event can say what it was withdrawn
         // FROM — one somebody had opened and one nobody ever looked at are
@@ -177,6 +170,16 @@ class InvitationActions
         $before = $invitation->status();
 
         DB::transaction(function () use ($invitation, $before, $account, $by) {
+            // Inside the transaction: the floor locks the administrator rows
+            // until the switch-off below lands.
+            if ($account !== null && $account->is_active) {
+                try {
+                    app(AdministratorFloor::class)->assertNotTheLast($account, 'is_active');
+                } catch (ValidationException $refusal) {
+                    throw new CannotActOnInvitation((string) collect($refusal->errors())->flatten()->first());
+                }
+            }
+
             $invitation->forceFill(['revoked_at' => now()])->save();
 
             Onboarding::query()->where('invitation_id', $invitation->getKey())

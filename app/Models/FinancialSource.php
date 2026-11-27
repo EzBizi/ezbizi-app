@@ -153,7 +153,34 @@ class FinancialSource extends Model implements StatesRetention
     }
 
     /** @return list<array{id: string, fields: array<string, mixed>}> the Airtable copy, live rows */
+    /** @var array<string, array>|null rows read during remembering(), by table; null = not remembering */
+    private static ?array $memo = null;
+
+    /**
+     * Runs $fn reading each table's rows once, however many weeks or reports
+     * ask (Financials home, production cost: audit 11-27). Cleared after.
+     */
+    public static function remembering(callable $fn): mixed
+    {
+        $outer = self::$memo;
+        self::$memo ??= [];
+        try {
+            return $fn();
+        } finally {
+            self::$memo = $outer;
+        }
+    }
+
     public static function airtableRows(string $baseId, string $tableId): array
+    {
+        if (self::$memo !== null) {
+            return self::$memo["a:{$baseId}/{$tableId}"] ??= self::readAirtableRows($baseId, $tableId);
+        }
+
+        return self::readAirtableRows($baseId, $tableId);
+    }
+
+    private static function readAirtableRows(string $baseId, string $tableId): array
     {
         return AirtableRecord::query()->where('base_id', $baseId)->where('table_id', $tableId)
             ->whereNull('gone_at')->get(['record_id', 'fields'])
