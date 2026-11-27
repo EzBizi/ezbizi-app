@@ -71,6 +71,7 @@ void main() {
                       'rank': i + 1,
                       'person': n,
                       'user_id': null,
+                      'booking_rate': 70 - i,
                       'score': 8.9 - i,
                       'calls_scored': 10,
                     },
@@ -92,6 +93,10 @@ void main() {
                       'rank': i + 1,
                       'person': n,
                       'user_id': null,
+                      'booking_rate': 75 - 5 * i,
+                      'booked': 9 - i,
+                      'decided': 12,
+                      'answer_rate': 88,
                       'score': 9.0 - i,
                       'calls_scored': 12,
                     },
@@ -102,6 +107,10 @@ void main() {
                     'person': 'Di',
                     'rank': 4,
                     'of': 6,
+                    'booking_rate': 50,
+                    'booked': 5,
+                    'decided': 10,
+                    'answer_rate': 91,
                     'score': 6.2,
                     'calls_scored': 9,
                     'why': null,
@@ -209,8 +218,29 @@ void main() {
         ),
         findsOneWidget,
       );
-      // You: the rank, of how many, the score.
+      // Ranked by booking rate; answer rate and score shown (Trey, 11-27).
+      final first = find.byKey(const ValueKey('leaderboard-top-1'));
+      expect(find.descendant(of: first, matching: find.text('75%')), findsOne);
+      expect(
+        find.descendant(of: first, matching: find.text('9 of 12 booked')),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: first,
+          matching: find.text('Answer rate 88% · Score 9.0 / 10'),
+        ),
+        findsOne,
+      );
+      // You: the rank, of how many, your rates and score.
       final you = find.byKey(const ValueKey('leaderboard-me'));
+      expect(
+        find.descendant(
+          of: you,
+          matching: find.text('50% booked · answer rate 91% · 6.2 / 10'),
+        ),
+        findsOne,
+      );
       expect(
         find.descendant(of: you, matching: find.text('#4')),
         findsOneWidget,
@@ -309,7 +339,7 @@ void main() {
   // Design 212's empty states, in the You card.
   for (final (why, says) in [
     ('not_new', 'Not on New Client Calls'),
-    ('too_few_calls', '2 of 3 scored calls'),
+    ('too_few_calls', '2 of 3 new-client calls'),
     ('not_matched', 'Your calls are not linked yet'),
   ]) {
     testWidgets('outside the board, it says why: $why', (tester) async {
@@ -320,8 +350,10 @@ void main() {
           'person': 'Ed',
           'rank': null,
           'of': 6,
+          'booking_rate': null,
+          'decided': 2,
           'score': 8.1,
-          'calls_scored': 2,
+          'calls_scored': 9,
           'why': why,
         },
       );
@@ -334,7 +366,9 @@ void main() {
         expect(
           find.descendant(
             of: you,
-            matching: find.textContaining('1 more scored call this week'),
+            matching: find.textContaining(
+              'Answer 1 more new-client call this week',
+            ),
           ),
           findsOneWidget,
         );

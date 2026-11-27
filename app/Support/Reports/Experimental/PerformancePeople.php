@@ -48,7 +48,7 @@ class PerformancePeople
     {
         $this->calls->only($connection);
         try {
-            return $this->read[serialize([app(TenantContext::class)->id(), auth()->id(), $start, $end, $connection, $branches])] ??= $this->reconciled($start, $end, $branches);
+            return $this->read[serialize([app(TenantContext::class)->id(), auth()->id(), $start->toIso8601String(), $end->toIso8601String(), $connection, $branches])] ??= $this->reconciled($start, $end, $branches);
         } finally {
             $this->calls->only(null);
         }

@@ -970,7 +970,8 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-leaderboard-tabs',
         title: 'Leaderboard',
         body:
-            'The top three on new-client calls and your own rank, then your '
+            'The top three by booking rate on new-client calls, with answer '
+            'rate and score beside it, and your own rank; then your '
             'own calls and scores in My performance.',
       ),
     ],

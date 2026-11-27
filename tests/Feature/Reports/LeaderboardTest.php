@@ -63,10 +63,16 @@ class LeaderboardTest extends TestCase
             }
         });
 
-        // No new-client calls to judge a booking rate on: the score is the calls'.
-        $people = ['Di' => ['person' => 'Di', 'answered' => 4], 'Ada' => ['person' => 'Ada', 'answered' => 9]];
+        // Booking rates, in another order than the scores: Cy 3/4, Di 2/3 (one
+        // call Needs Attention, else 2/4), Ada 6/10, Bo 6/12; Fe decided two,
+        // too few; Ed books 9/10 and handles Existing.
+        $row = fn (string $who, int $booked, int $new, int $attention = 0) => ['person' => $who, 'rang' => 5, 'answered' => 4,
+            'new_client' => $new, 'booked_new' => $booked, 'needs_attention' => $attention, 'awaiting_review' => 0];
+        $people = collect([$row('Ada', 6, 10), $row('Bo', 6, 12), $row('Cy', 3, 4), $row('Di', 2, 4, 1), $row('Ed', 9, 10), $row('Fe', 2, 2)])
+            ->keyBy('person')->all();
         $this->mock(PerformancePeople::class, function ($mock) use ($people) {
-            $mock->shouldReceive('for')->andReturn($people);
+            // The week of 11-16 October holds them; the next one nobody yet.
+            $mock->shouldReceive('for')->andReturnUsing(fn ($user, $from) => $from->toDateString() < '2026-10-17' ? $people : []);
             $mock->shouldReceive('report')->andReturn(['people' => array_values($people), 'calls' => [
                 ['id' => 'k1', 'answered_by' => 'Di', 'rang' => ['Di']],
                 ['id' => 'k2', 'answered_by' => 'Ada', 'rang' => ['Ada', 'Di']],
@@ -81,15 +87,19 @@ class LeaderboardTest extends TestCase
         $board = $this->signedInAs($this->users['Di'])->getJson('/api/v1/leaderboard'.self::WEEK)->assertOk()->json('data');
 
         $this->assertSame(['from' => '2026-10-11', 'to' => '2026-10-16'], $board['week']);
-        $this->assertSame(['Ada', 'Bo', 'Cy'], array_column($board['top'], 'person'), 'Ed handles Existing; Fe has too few calls');
-        $this->assertSame([1, 2, 3], array_column($board['top'], 'rank'));
-        $this->assertSame(['rank', 'person', 'user_id', 'score', 'calls_scored'], array_keys($board['top'][0]), 'three names and scores, nothing else of theirs');
-        $this->assertSame(['person' => 'Di', 'rank' => 4, 'of' => 4, 'calls_scored' => 3, 'why' => null],
+        // By booking rate (Trey, 11-27), not by score (Ada 9, Bo 8, Cy 7, Di 6).
+        $this->assertSame(['Cy', 'Di', 'Ada'], array_column($board['top'], 'person'), 'Ed handles Existing; Fe decided too few');
+        $this->assertSame([[1, 75, 80], [2, 67, 80], [3, 60, 80]],
+            array_map(fn ($p) => [$p['rank'], $p['booking_rate'], $p['answer_rate']], $board['top']), 'answer rate shown, not ranked by');
+        $this->assertSame(['rank', 'person', 'user_id', 'booking_rate', 'booked', 'decided', 'answer_rate', 'score', 'calls_scored'],
+            array_keys($board['top'][0]), 'three names and their numbers, nothing else of theirs');
+        $this->assertSame([$this->users['Di']->id, true], [$board['top'][1]['user_id'], is_numeric($board['top'][0]['score'])], 'a photo; the score still shown');
+        $this->assertSame(['person' => 'Di', 'rank' => 2, 'of' => 4, 'booking_rate' => 67, 'booked' => 2, 'decided' => 3, 'answer_rate' => 80, 'calls_scored' => 3, 'why' => null],
             array_diff_key($board['me'], ['score' => true]));
 
         $why = fn (string $who) => $this->signedInAs($this->users[$who])->getJson('/api/v1/leaderboard'.self::WEEK)->assertOk()->json('data.me');
-        $this->assertSame([null, 'not_new'], [$why('Ed')['rank'], $why('Ed')['why']]);
-        $this->assertSame([null, 'too_few_calls', 2], [$why('Fe')['rank'], $why('Fe')['why'], $why('Fe')['calls_scored']]);
+        $this->assertSame([null, 'not_new', 90], [$why('Ed')['rank'], $why('Ed')['why'], $why('Ed')['booking_rate']]);
+        $this->assertSame([null, 'too_few_calls', 2, null], [$why('Fe')['rank'], $why('Fe')['why'], $why('Fe')['decided'], $why('Fe')['booking_rate']]);
     }
 
     /** Trey: "each week it would start over on sunday, and you can check previous weeks winners". */
@@ -103,7 +113,7 @@ class LeaderboardTest extends TestCase
         // The database store, as on the box (its key column is 255).
         config(['cache.default' => 'database']);
         $weeks = $this->signedInAs($this->users['Di'])->getJson('/api/v1/leaderboard/weeks?limit=8')->assertOk()->json('data');
-        $this->assertSame([['2026-10-11', '2026-10-16', ['Ada', 'Bo', 'Cy']]],
+        $this->assertSame([['2026-10-11', '2026-10-16', ['Cy', 'Di', 'Ada']]],
             array_map(fn ($w) => [$w['from'], $w['to'], array_column($w['top'], 'person')], $weeks));
 
         // A company with many branches: its branch list in the key 500'd 0.0.0649.
