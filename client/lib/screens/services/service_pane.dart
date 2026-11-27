@@ -54,6 +54,10 @@ class _ServicePaneState extends State<ServicePane> {
   String? _error;
 
   bool get _canEdit => widget.session.me!.can('services.edit');
+  // Two taps: the first arms, the second deletes. A service delete cannot be
+  // undone, and it used to happen on one tap (audit 2026-11-27).
+  bool _confirmDelete = false;
+
   bool get _canDelete => widget.session.me!.can('services.delete');
 
   @override
@@ -319,14 +323,43 @@ class _ServicePaneState extends State<ServicePane> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.delete_outline),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                      onPressed: _busy ? null : _delete,
-                      label: const Text('Delete service'),
-                    ),
+                    child: _confirmDelete
+                        ? Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              const Text('Delete this service for good?'),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.error,
+                                ),
+                                onPressed: _busy ? null : _delete,
+                                child: const Text('Delete'),
+                              ),
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => setState(
+                                        () => _confirmDelete = false,
+                                      ),
+                                child: const Text('Keep'),
+                              ),
+                            ],
+                          )
+                        : TextButton.icon(
+                            icon: const Icon(Icons.delete_outline),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.error,
+                            ),
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() => _confirmDelete = true),
+                            label: const Text('Delete service'),
+                          ),
                   ),
                 ],
               ],

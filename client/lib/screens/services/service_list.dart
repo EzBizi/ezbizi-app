@@ -100,6 +100,10 @@ class _ServiceListState extends State<ServiceList> {
 
     final response = await widget.api.get('/services', {
       'page': '$page',
+      // The whole catalogue in one page (server cap 200), so the kind chips
+      // and their counts describe every service, not the first 50.
+      'per_page': '200',
+      if (_sort == 'price') 'sort': 'price',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -276,7 +280,10 @@ class _ServiceListState extends State<ServiceList> {
                   ButtonSegment(value: 'price', label: Text('Price')),
                 ],
                 selected: {_sort},
-                onSelectionChanged: (v) => setState(() => _sort = v.first),
+                onSelectionChanged: (v) {
+                  setState(() => _sort = v.first);
+                  _load();
+                },
               ),
               SegmentedButton<String>(
                 key: const ValueKey('services-view'),
