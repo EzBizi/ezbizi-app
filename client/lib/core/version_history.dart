@@ -13,7 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0665', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0666', date: '28 Nov 2026', items: [
+      'Chat: technicians assigned to a branch now join their company automatic groups',
+    ]),
+    VersionRelease(version: '0.0.0665', date: '27 Nov 2026', deployed: '2026-11-27 23:38', items: [
       'Android: chat notifications now use the phone own call screen and Reply and Mark read buttons, Answer joins the call, and a chat read elsewhere clears its notification',
       'Windows: the taskbar button shows your unread chat count, like WhatsApp desktop',
       'Mac: the dock icon shows your unread chat count',
