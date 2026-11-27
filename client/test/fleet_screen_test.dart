@@ -734,6 +734,38 @@ void main() {
     expect(field.enabled, isFalse);
   });
 
+  testWidgets('a bad toll rate says so and leaves Save usable', (tester) async {
+    await _pumpIdentity(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+        'fleet_management.edit',
+        'fleet_management.financials',
+      ],
+    );
+
+    await tester.ensureVisible(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Toll flat rate'),
+      'twelve',
+    );
+
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    // It threw after the card went busy and locked it (audit 2026-11-27).
+    expect(find.textContaining('Enter the price in dollars'), findsOneWidget);
+    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+  });
+
   testWidgets('with financials the same control is live', (tester) async {
     await _pumpIdentity(
       tester,

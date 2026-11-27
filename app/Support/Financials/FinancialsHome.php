@@ -36,6 +36,12 @@ final class FinancialsHome
     /** @return array{areas: list<array>, bases: list<array>, may_create_base: bool} */
     public static function for(User $user): array
     {
+        // Each mapped table is read once for every area and chip (audit 11-27).
+        return FinancialSource::remembering(fn () => self::build($user));
+    }
+
+    private static function build(User $user): array
+    {
         $scope = ViewScope::forUser($user);
         $sources = FinancialSource::query()->get()->filter(fn (FinancialSource $s) => $s->franchise_id === null
             ? $scope->isOrganization()
@@ -165,11 +171,11 @@ final class FinancialsHome
         $out = [];
         foreach ($sources->groupBy(fn ($s) => $s->base_id.'/'.$s->table_id) as $key => $group) {
             [$baseId, $tableId] = explode('/', $key);
-            $rows = AirtableRecord::query()->whereNull('gone_at')->where('base_id', $baseId)->where('table_id', $tableId)->get(['table_name', 'fields']);
+            $rows = collect(FinancialSource::airtableRows($baseId, $tableId))->map(fn ($r) => (object) $r);
             if ($rows->isEmpty()) {
                 continue;
             }
-            $name = (string) $rows->first()->table_name;
+            $name = (string) AirtableRecord::query()->where('base_id', $baseId)->where('table_id', $tableId)->value('table_name');
             $mirror = $mirrors[$key] ?? null;
             // Cut over: EzBizi's rows are the count, not the frozen copy.
             $rows = $mirror?->isCutOver() ? collect(FinancialSource::ezbiziRows($mirror))->map(fn ($r) => (object) $r) : $rows;

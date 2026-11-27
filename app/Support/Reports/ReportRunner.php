@@ -137,6 +137,8 @@ final class ReportRunner
         $root = $definition['root'] ?? '';
         $rootResource = ReportMap::get($root)
             ?? throw new InvalidArgumentException("There is no reportable resource called '{$root}'.");
+        // Each resource read needs its own permission (and so its module), as its column does.
+        $this->mayRead($user, $rootResource);
 
         $view = $at ?? ViewScope::forUser($user);
         $organizationId = $this->tenant->idOrFail();
@@ -167,6 +169,7 @@ final class ReportRunner
                 ?? throw new InvalidArgumentException(
                     "A report starting at '{$rootResource['label']}' cannot reach '{$resourceKey}'."
                 );
+            $this->mayRead($user, ReportMap::get($resourceKey));
 
             foreach ($path as $hop) {
                 if (isset($joined[$hop['to']])) {

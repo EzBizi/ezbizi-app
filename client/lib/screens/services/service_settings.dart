@@ -170,6 +170,10 @@ class _TaxonomyCardState extends State<_TaxonomyCard> {
 
   Me get _me => widget.session.me!;
   bool get _canCreate => _me.can('services.create');
+
+  /// Row armed for deletion; a second tap deletes (audit 2026-11-27).
+  String? _confirming;
+
   bool get _canDelete => _me.can('services.delete');
   bool get _atOrganization => _me.scope.type == 'organization';
 
@@ -234,7 +238,10 @@ class _TaxonomyCardState extends State<_TaxonomyCard> {
       return;
     }
 
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _confirming = null;
+    });
     widget.onChanged();
   }
 
@@ -266,16 +273,40 @@ class _TaxonomyCardState extends State<_TaxonomyCard> {
                       inventoryPlaceLabel(row),
                     ].join(' · '),
                   ),
-                  trailing: _canDelete
-                      ? IconButton(
+                  trailing: !_canDelete
+                      ? null
+                      : _confirming == row['id']
+                      ? Wrap(
+                          spacing: 4,
+                          children: [
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _delete(row['id'] as String),
+                              child: const Text('Delete'),
+                            ),
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() => _confirming = null),
+                              child: const Text('Keep'),
+                            ),
+                          ],
+                        )
+                      : IconButton(
                           tooltip: 'Delete',
                           onPressed: _busy
                               ? null
-                              : () => _delete(row['id'] as String),
+                              : () => setState(
+                                  () => _confirming = row['id'] as String,
+                                ),
                           icon: const Icon(Icons.delete_outline),
-                        )
-                      : null,
+                        ),
                 ),
+            if (_error != null && !_canCreate) ...[
+              const SizedBox(height: 8),
+              ErrorNote(_error!),
+            ],
             if (_canCreate) ...[
               const SizedBox(height: 12),
               InventoryPlaceFields(

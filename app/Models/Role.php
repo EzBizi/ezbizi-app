@@ -80,6 +80,9 @@ class Role extends Model
         return (bool) $this->is_administrator;
     }
 
+    /** @var array<string, int>|null memo for hasPermission; null = not read yet */
+    private ?array $heldKeys = null;
+
     public function hasPermission(string $key): bool
     {
         // Administrator holds everything, including permissions added by future
@@ -89,7 +92,13 @@ class Role extends Model
             return true;
         }
 
-        return $this->permissions()->where('key', $key)->exists();
+        // One read per role instance, not one query per check: a screen asks
+        // dozens of keys. A private memo rather than the loaded relation, so
+        // nothing new appears in a serialised role. syncPermissionKeys clears
+        // it, so the next read in the same request sees the new keys.
+        $this->heldKeys ??= array_flip($this->permissions()->pluck('key')->all());
+
+        return isset($this->heldKeys[$key]);
     }
 
     /** The keys this role actually holds. Administrator holds none of its own — see hasPermission. */
@@ -137,6 +146,7 @@ class Role extends Model
         );
 
         $this->unsetRelation('permissions');
+        $this->heldKeys = null;
 
         return ['added' => $added, 'removed' => $removed];
     }

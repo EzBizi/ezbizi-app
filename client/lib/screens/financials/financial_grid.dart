@@ -92,6 +92,25 @@ class _FinancialGridState extends State<FinancialGrid> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant FinancialGrid old) {
+    super.didUpdateWidget(old);
+    // A shorter record list (or fewer fields) must not leave the selection
+    // pointing past the end.
+    final rows = widget.records.length, cols = widget.fields.length;
+    if (rows == 0 || cols == 0) {
+      _anchor = _cursor = null;
+      _editing = false;
+      return;
+    }
+    (int, int)? clamp((int, int)? p) =>
+        p == null ? null : (p.$1.clamp(0, rows - 1), p.$2.clamp(0, cols - 1));
+    final cursor = clamp(_cursor);
+    if (cursor != _cursor) _editing = false;
+    _anchor = clamp(_anchor);
+    _cursor = cursor;
+  }
+
   double _width(Map f) {
     final saved = _widths['${widget.tableId}:${f['id']}'];
     if (saved != null) return saved.toDouble();

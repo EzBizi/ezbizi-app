@@ -647,9 +647,11 @@ class _GeneralTabState extends State<GeneralTab> {
     final wall = walls[index];
     if (wall is! Map) return;
 
-    double at(String key) {
+    // Integers: the server refuses non-integer walls, and a native build
+    // sends 2.0 as "2.0" where the web sends 2 (audit 11-27).
+    int at(String key) {
       final value = wall[key];
-      return value is num ? value.toDouble() : 0.0;
+      return value is num ? value.round() : 0;
     }
 
     setState(() {
@@ -1042,9 +1044,10 @@ class _GeneralTabState extends State<GeneralTab> {
       _planActionError = null;
     });
 
+    // The name only: sending the layout held on screen overwrote a newer
+    // one saved meanwhile (audit 11-27); `update` takes either alone.
     final response = await widget.api.put('/monitoring/floor-plans/$id', {
       'name': result['name'],
-      'layout': layout,
     });
 
     if (!mounted) return;

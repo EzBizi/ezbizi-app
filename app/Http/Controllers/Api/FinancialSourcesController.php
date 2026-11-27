@@ -137,7 +137,7 @@ class FinancialSourcesController extends Controller
         $this->audit->log('financials.copy_requested', metadata: [], actor: $request->user());
         dispatch(function () use ($org) {
             Artisan::call('ezbizi:airtable-snapshot', ['--organization' => $org]);
-            Artisan::call('ezbizi:financials-airtable-refresh');
+            Artisan::call('ezbizi:financials-airtable-refresh', ['--organization' => $org]);
         })->afterResponse();
 
         return response()->json(['data' => ['message' => 'Copying from Airtable now. Refresh in a minute to see it.']], 202);

@@ -194,6 +194,25 @@ class FloorPlanWriteTest extends TestCase
 
     // ── update / destroy outside reach → 404 ─────────────────────────
 
+    public function test_a_rename_without_a_layout_keeps_the_saved_layout(): void
+    {
+        // Audit 11-27: the screen now renames with the name alone; the stored
+        // walls and tiles must survive it.
+        $alpha = $this->provisionTenant('Alpha');
+        $manager = $this->companyManager($alpha, $alpha['company'], 'Mgr');
+        $id = $this->signedInAs($manager)->postJson('/api/v1/monitoring/floor-plans', [
+            'name' => 'Before',
+            'scope' => ['type' => 'company', 'id' => $alpha['company']->id],
+            'layout' => $this->layout([['id' => 'n1', 'x' => 1, 'y' => 1, 'label' => 'PC1']]),
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($manager)->putJson('/api/v1/monitoring/floor-plans/'.$id, ['name' => 'After'])->assertOk();
+
+        $plan = $this->signedInAs($manager)->getJson('/api/v1/monitoring/floor-plans/'.$id)->assertOk()->json('data');
+        $this->assertSame('After', $plan['name']);
+        $this->assertSame('n1', $plan['layout']['nodes'][0]['id']);
+    }
+
     public function test_update_and_destroy_of_a_plan_outside_reach_404(): void
     {
         $alpha = $this->provisionTenant('Alpha');

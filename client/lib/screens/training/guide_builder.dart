@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -143,6 +146,8 @@ class _GuideBuilderState extends State<GuideBuilder> {
 
   @override
   void dispose() {
+    // Leave, or switching tab, keeps the edits: they are saved on the way out.
+    if (_dirty) unawaited(widget.api.patch('/training/guides/${widget.guideId}', _body()));
     _title.dispose();
     super.dispose();
   }
@@ -195,6 +200,7 @@ class _GuideBuilderState extends State<GuideBuilder> {
       _selected = _screens.isEmpty ? null : 0;
       _testEntry = test;
       _testSearchIncomplete = searchIncomplete;
+      _savedJson = jsonEncode(_body());
     });
   }
 
@@ -270,14 +276,9 @@ class _GuideBuilderState extends State<GuideBuilder> {
     });
   }
 
-  Future<void> _save() async {
-    setState(() {
-      _saving = true;
-      _saveError = null;
-    });
-
-    final response = await widget.api.patch('/training/guides/${widget.guideId}', {
-      'title': _title.text,
+  /// What Save sends, and what "unsaved" is measured against.
+  Map<String, dynamic> _body() => {
+    'title': _title.text,
       'screens': [
         for (final s in _screens)
           {
@@ -287,8 +288,22 @@ class _GuideBuilderState extends State<GuideBuilder> {
             'blocks': [for (final b in (s['blocks'] as List? ?? const [])) _blockForSave(b as Map<String, dynamic>)],
           },
       ],
+  };
+
+  /// The body as last loaded or saved; differs from [_body] when there are unsaved edits.
+  String? _savedJson;
+
+  bool get _dirty => _savedJson != null && jsonEncode(_body()) != _savedJson;
+
+  Future<bool> _save() async {
+    setState(() {
+      _saving = true;
+      _saveError = null;
     });
-    if (!mounted) return;
+
+    final body = _body();
+    final response = await widget.api.patch('/training/guides/${widget.guideId}', body);
+    if (!mounted) return false;
 
     if (!response.ok) {
       setState(() {
@@ -298,17 +313,33 @@ class _GuideBuilderState extends State<GuideBuilder> {
         // wording. See test_builder.dart's docblock for the same rule.
         _saveError = response.reason;
       });
-      return;
+      return false;
     }
 
-    setState(() => _saving = false);
+    setState(() {
+      _saving = false;
+      _savedJson = jsonEncode(body);
+    });
+    return true;
   }
 
+  bool _publishing = false;
+
+  /// Saves unsaved edits first, so publishing never publishes the old version.
   Future<void> _togglePublish() async {
+    if (_dirty && !await _save()) return;
     final next = _status == 'published' ? 'draft' : 'published';
+    setState(() => _publishing = true);
     final response = await widget.api.patch('/training/guides/${widget.guideId}', {'status': next});
-    if (!mounted || !response.ok) return;
-    setState(() => _status = next);
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      if (response.ok) {
+        _status = next;
+      } else {
+        _saveError = response.reason;
+      }
+    });
   }
 
   @override
@@ -350,7 +381,7 @@ class _GuideBuilderState extends State<GuideBuilder> {
                 if (_status != null) ...[
                   Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
                   OutlinedButton(
-                    onPressed: _togglePublish,
+                    onPressed: _publishing ? null : _togglePublish,
                     child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
                   ),
                 ],

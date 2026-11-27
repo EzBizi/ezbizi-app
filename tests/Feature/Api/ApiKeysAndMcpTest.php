@@ -495,4 +495,59 @@ class ApiKeysAndMcpTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('#^/(auth|staff|mcp|me/api-keys|me/sessions)(/|$)#', $path);
         }
     }
+
+    /** Audit 11-27: the monitoring agent group skipped `api-key`. */
+    public function test_a_viewer_key_cannot_post_monitoring_heartbeats(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin']);
+
+        $this->withToken($key)->postJson('/api/v1/monitoring/heartbeat', [
+            'device_key' => 'dk-1', 'platform' => 'windows', 'capabilities' => ['activity'],
+        ])->assertForbidden()->assertJsonPath('code', 'api_key_read_only');
+
+        // The control: a session still beats.
+        $this->app['auth']->forgetGuards();
+        $this->signedInAs($t['admin'])->postJson('/api/v1/monitoring/heartbeat', [
+            'device_key' => 'dk-1', 'platform' => 'windows', 'capabilities' => ['activity'],
+        ])->assertNoContent();
+    }
+
+    /** Audit 11-27: `before` alone skipped rows sharing the boundary second. */
+    public function test_activity_pages_through_rows_that_share_a_second(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin']);
+        $this->travelTo(now()->startOfSecond());
+        foreach (range(1, 5) as $_) {
+            $this->withToken($key)->getJson('/api/v1/me')->assertOk();
+        }
+        $this->app['auth']->forgetGuards();
+
+        $all = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity')->json('activity');
+        $requests = array_values(array_filter($all, fn ($r) => $r['action'] === 'api_key.request'));
+        $this->assertCount(5, $requests);
+
+        $cursor = $requests[1];
+        $rest = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?'.http_build_query([
+            'before' => $cursor['at'], 'before_id' => $cursor['id'],
+        ]))->json('activity');
+        $this->assertSame(array_column(array_slice($requests, 2), 'id'),
+            array_column(array_values(array_filter($rest, fn ($r) => $r['action'] === 'api_key.request')), 'id'));
+    }
+
+    /** Audit 11-27: "Changes only" must be decided over every row, not the latest 200. */
+    public function test_changes_only_is_filtered_by_the_server(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin'], 'write');
+        $this->withToken($key)->patchJson('/api/v1/me/preferences', ['preferences' => ['appearance.theme' => 'dark']])->assertOk();
+        foreach (range(1, 3) as $_) {
+            $this->withToken($key)->getJson('/api/v1/me')->assertOk();
+        }
+        $this->app['auth']->forgetGuards();
+
+        $rows = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?changes_only=1')->json('activity');
+        $this->assertSame(['PATCH'], array_values(array_unique(array_filter(array_column($rows, 'method')))));
+    }
 }

@@ -66,7 +66,12 @@ class _SiteContentListState extends State<SiteContentList> {
 
   String get _plural => widget.type == 'page' ? 'pages' : 'posts';
 
+  // Only the newest request's answer is shown: a slow older one must not
+  // pair its items with a newer page number (audit 2026-11-27).
+  int _request = 0;
+
   Future<void> _load() async {
+    final mine = ++_request;
     setState(() {
       _loading = true;
       _error = null;
@@ -78,7 +83,7 @@ class _SiteContentListState extends State<SiteContentList> {
       if (_search.trim().isNotEmpty) 'search': _search.trim(),
     });
 
-    if (!mounted) return;
+    if (!mounted || mine != _request) return;
 
     setState(() {
       _loading = false;

@@ -49,6 +49,8 @@ class FinancialResultsController extends Controller
         $like = '%'.addcslashes($term, '%_\\').'%';
 
         $rows = FinancialResult::query()->with('company:id,name', 'franchise:id,name')
+            // Narrowed to the view in SQL before the cap; inView() below stays the rule.
+            ->tap(fn ($q) => ViewScope::forUser($request->user())->constrainPlaces($q))
             // The search bar: source, area, or the place the row is for.
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
                 ->where('source', 'like', $like)->orWhere('area', 'like', $like)

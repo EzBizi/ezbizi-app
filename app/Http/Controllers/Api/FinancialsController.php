@@ -12,6 +12,7 @@ use App\Models\FinancialView;
 use App\Models\Franchise;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Data\Exporter;
 use App\Support\Financials\AirtableBaseName;
 use App\Support\Financials\AirtableMirror;
 use App\Support\Financials\AirtableParity;
@@ -302,6 +303,10 @@ class FinancialsController extends Controller
         }
 
         if ($this->writesToAirtable($table, $request)) {
+            // Ten rows per Airtable call: 500 rows is 50 calls, inside one request.
+            if ($records->count() > 500) {
+                throw ValidationException::withMessages(['changes' => 'Airtable takes at most 500 rows at a time. Paste the rest in a second go.']);
+            }
             $clean = [];
             foreach ($changes as $change) {
                 $clean[$change['id']] = array_replace($clean[$change['id']] ?? [], $this->cleanValues($table, $change['values'], keepNulls: true));
@@ -558,7 +563,8 @@ class FinancialsController extends Controller
             fputcsv($out, $fields->map(function (FinancialField $f) use ($record) {
                 $v = $record->values[$f->id] ?? '';
 
-                return is_array($v) ? implode(', ', $v) : (is_bool($v) ? ($v ? 'true' : 'false') : $v);
+                // Formulas defused, as in every EzBizi export.
+                return Exporter::cell(is_array($v) ? implode(', ', $v) : (is_bool($v) ? ($v ? 'true' : 'false') : $v));
             })->all());
         }
         rewind($out);
@@ -576,7 +582,18 @@ class FinancialsController extends Controller
         $this->refuseMirror($table);
         $csv = $request->validate(['csv' => ['required', 'string', 'max:5000000']])['csv'];
 
-        $rows = array_map('str_getcsv', preg_split('/\r\n|\n|\r/', trim($csv)));
+        // Parsed as a file, so a quoted cell may hold line breaks (our own export does).
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, trim($csv));
+        rewind($stream);
+        $rows = [];
+        while (($row = fgetcsv($stream, escape: '')) !== false) {
+            if ($row !== [null]) {
+                // The export's formula marker (Exporter::cell) comes back off.
+                $rows[] = array_map(fn ($c) => is_string($c) && strlen($c) > 1 && $c[0] === "'" && str_contains("=+-@\t\r", $c[1]) ? substr($c, 1) : $c, $row);
+            }
+        }
+        fclose($stream);
         $headers = array_map('trim', array_shift($rows) ?? []);
         if ($headers === [] || count($rows) + $table->records()->count() > self::MAX_RECORDS) {
             throw ValidationException::withMessages(['csv' => 'The file is empty or would take the table past '.self::MAX_RECORDS.' records.']);

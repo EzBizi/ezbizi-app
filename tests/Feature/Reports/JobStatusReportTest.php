@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SchedulingTechnician;
@@ -80,6 +81,11 @@ class JobStatusReportTest extends TestCase
         // The business says "On hold" is pending too.
         $as->postJson('/api/v1/settings/lists/reports.pending_statuses/items', ['value' => ['status' => 'On hold']])->assertSuccessful();
         $this->assertSame(['P-old', 'H-1', 'P-new'], collect($as->getJson('/api/v1/reports/pending')->assertOk()->json('data.rows'))->pluck('number')->all());
+
+        // Last: the header stays on later requests. A company with no branches yet reads none, not every one (audit 2026-11-27).
+        $empty = $this->inTenant($t['org'], fn () => Company::create(['organization_id' => $t['org']->id, 'name' => 'Alpha Empty']));
+        $this->assertSame([], $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', 'company:'.$empty->id)
+            ->getJson('/api/v1/reports/pending')->assertOk()->json('data.rows'));
     }
 
     public function test_each_needs_its_own_tab(): void

@@ -132,8 +132,8 @@ class _VehicleAssignmentCardState extends State<VehicleAssignmentCard> {
     final user = fleetMap(open?['user']);
     final name = user?['name'] as String?;
     final history = [..._history]
-      ..sort((a, b) => fleetDay(b['assigned_at'] as String?)
-          .compareTo(fleetDay(a['assigned_at'] as String?)));
+      ..sort((a, b) => fleetInstantDay(b['assigned_at'] as String?)
+          .compareTo(fleetInstantDay(a['assigned_at'] as String?)));
 
     return FleetSectionCard(
       title: 'Assignment',
@@ -148,8 +148,8 @@ class _VehicleAssignmentCardState extends State<VehicleAssignmentCard> {
             const SizedBox(height: 4),
             Text(
               [
-                if (fleetDay(open['assigned_at'] as String?).isNotEmpty)
-                  'Since ${fleetDay(open['assigned_at'] as String?)}',
+                if (fleetInstantDay(open['assigned_at'] as String?).isNotEmpty)
+                  'Since ${fleetInstantDay(open['assigned_at'] as String?)}',
                 if ((open['note'] as String?)?.isNotEmpty == true) open['note'],
               ].join(' · '),
               style: Theme.of(context).textTheme.bodyMedium,
@@ -197,9 +197,9 @@ class _VehicleAssignmentCardState extends State<VehicleAssignmentCard> {
                 child: Text(
                   [
                     fleetMap(row['user'])?['name'] ?? 'Someone',
-                    fleetDay(row['assigned_at'] as String?),
+                    fleetInstantDay(row['assigned_at'] as String?),
                     if (row['released_at'] != null)
-                      'to ${fleetDay(row['released_at'] as String?)}'
+                      'to ${fleetInstantDay(row['released_at'] as String?)}'
                     else
                       'current',
                   ].where((s) => '$s'.isNotEmpty).join(' · '),

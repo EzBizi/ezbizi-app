@@ -128,6 +128,21 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
     }
 
     setState(() => _starting = false);
+    // Emptied once saved, so the next entry does not start as a copy of
+    // this one and get saved twice (audit 2026-11-27).
+    for (final c in [
+      _carrier,
+      _policyNumber,
+      _coverage,
+      _startedOn,
+      _expiresOn,
+      _premium,
+      _agent,
+      _agentPhone,
+      _listedDrivers,
+    ]) {
+      c.clear();
+    }
     await widget.onReload();
   }
 

@@ -94,7 +94,9 @@ final class RingCentralCallLog
             ?? Organization::query()->where('slug', self::ENV_ORGANIZATION_SLUG)->first();
         $connection = $tenant === null ? null : SocialConnection::query()->withoutGlobalScopes()
             ->where('organization_id', $tenant->getKey())->where('provider', SocialProvider::RingCentral->value)
-            ->where('status', SocialConnection::STATUS_CONNECTED)->first();
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            // The account only() picked, when one was: each account is its own company's.
+            ->when($this->only, fn ($q, $id) => $q->whereKey($id))->first();
 
         if ($connection !== null) {
             return $connection->scope_type === SocialConnection::SCOPE_COMPANY ? (string) $connection->scope_id : null;
@@ -306,7 +308,10 @@ final class RingCentralCallLog
     public function forPeriod(CarbonImmutable $start, CarbonImmutable $end, bool $outbound = false): array
     {
         $calls = [];
-        $today = CarbonImmutable::now($start->getTimezone())->startOfDay();
+        // A day is kept once it ended three hours ago: RingCentral's log takes
+        // a while to fill in, and a day kept minutes after midnight lost its
+        // late calls for good (audit 2026-11-27). Until then it is read live.
+        $settled = CarbonImmutable::now($start->getTimezone())->subHours(3)->startOfDay();
 
         for ($day = $start->startOfDay(); $day <= $end; $day = $day->addDay()) {
             $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
@@ -314,7 +319,7 @@ final class RingCentralCallLog
             // Today is live, but shared for a minute: every open fetched it
             // afresh, and a burst of opens met RingCentral's 429s, whose waits
             // outran nginx's 120s (504s, 2026-11-03).
-            $calls = [...$calls, ...($day < $today
+            $calls = [...$calls, ...($day < $settled
                 ? $this->storedDay($this->dayKeyFor($day), $fetch)
                 : Cache::remember($this->dayKeyFor($day).':live', 60, $fetch))];
         }

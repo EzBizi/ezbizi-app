@@ -73,6 +73,9 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
   String? _error;
   String? _notice;
   bool _busy = false;
+  // Approve or Send in flight: a second press would send twice.
+  bool _acting = false;
+  int _loads = 0;
   int _page = 0;
 
   Me? get _me => widget.session.me;
@@ -81,11 +84,13 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
+  // Calendar days, not 24-hour Durations: across the spring DST change a
+  // Duration landed on the day before (audit 2026-11-27).
   DateSpan get _lastWeek {
-    final monday = _today.subtract(Duration(days: _today.weekday - 1));
+    final t = _today;
     return DateSpan(
-      monday.subtract(const Duration(days: 7)),
-      monday.subtract(const Duration(days: 1)),
+      DateTime(t.year, t.month, t.day - (t.weekday - 1) - 7),
+      DateTime(t.year, t.month, t.day - (t.weekday - 1) - 1),
     );
   }
 
@@ -133,6 +138,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
   Future<void> _load() async {
     final open = _open;
     if (open == null) return;
+    final ticket = ++_loads;
     setState(() => _busy = true);
     final ApiResponse response;
     if (open.text) {
@@ -154,7 +160,8 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     if (open.key == 'period' && _period != 'year') {
       batch = await widget.api.get('/reports/batches/$_period');
     }
-    if (!mounted || _open != open) return;
+    // Only the latest load lands: an older range answering late is dropped.
+    if (!mounted || _open != open || ticket != _loads) return;
     setState(() {
       _busy = false;
       _page = 0;
@@ -194,16 +201,23 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
 
   Future<void> _approve() async {
     final id = _batch?['id'];
+    if (_acting) return;
+    setState(() => _acting = true);
     final response = await widget.api.post('/reports/batches/$id/approve', {});
     if (!mounted) return;
-    setState(() => _notice = response.ok ? 'Approved. Sending now.' : null);
-    if (!response.ok) setState(() => _error = response.message);
-    _load();
+    setState(() {
+      _acting = false;
+      _notice = response.ok ? 'Approved. Sending now.' : null;
+      if (!response.ok) _error = response.message;
+    });
+    // Reloaded only when it went through: the reload clears the error.
+    if (response.ok) _load();
   }
 
   Future<void> _sendNow() async {
     final me = _me;
-    if (me == null) return;
+    if (me == null || _acting) return;
+    setState(() => _acting = true);
     final response = await widget.api.post(
       '/reports/texts/${_open!.key}/send',
       {
@@ -214,6 +228,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     );
     if (!mounted) return;
     setState(() {
+      _acting = false;
       if (response.ok) {
         final sent = (response.data as Map?)?['sent'];
         _notice = sent == 0
@@ -508,7 +523,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
             const SizedBox(height: 8),
             FilledButton(
               key: const ValueKey('workspace-approve'),
-              onPressed: _approve,
+              onPressed: _acting ? null : _approve,
               child: const Text('Approve'),
             ),
           ],
@@ -538,7 +553,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
           const SizedBox(height: 8),
           FilledButton.icon(
             key: const ValueKey('workspace-send'),
-            onPressed: _sendNow,
+            onPressed: _acting ? null : _sendNow,
             icon: const Icon(Icons.send_outlined),
             label: const Text('Send to WhatsApp now'),
           ),

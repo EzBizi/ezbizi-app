@@ -66,8 +66,8 @@ class _InspectionPhotoFieldState extends State<InspectionPhotoField> {
     }
   }
 
-  Future<void> _add() async {
-    final picked = await Files.pickImage();
+  Future<void> _add({bool camera = false}) async {
+    final picked = camera ? await Files.takePhoto() : await Files.pickImage();
     if (picked == null || !mounted) return;
 
     setState(() {
@@ -146,6 +146,14 @@ class _InspectionPhotoFieldState extends State<InspectionPhotoField> {
                 icon: const Icon(Icons.add_a_photo_outlined),
                 label: Text(widget.ids.isEmpty ? 'Add photo' : 'Add another'),
               ),
+            // The camera straight away on a phone (audit 11-27).
+            if (!full && Files.canTakePhoto)
+              OutlinedButton.icon(
+                key: Key('take-photo-${widget.label}'),
+                onPressed: _busy ? null : () => _add(camera: true),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Take photo'),
+              ),
           ],
         ),
         if (full)
@@ -158,10 +166,7 @@ class _InspectionPhotoFieldState extends State<InspectionPhotoField> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
       ],
     );
   }
@@ -185,7 +190,9 @@ class _Thumb extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: bytes == null
                 ? ColoredBox(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     child: const Center(
                       child: SizedBox(
                         width: 18,
@@ -194,7 +201,7 @@ class _Thumb extends StatelessWidget {
                       ),
                     ),
                   )
-                : Image.memory(bytes!, fit: BoxFit.cover),
+                : Image.memory(bytes!, fit: BoxFit.cover, cacheWidth: 256),
           ),
           Align(
             alignment: Alignment.topRight,

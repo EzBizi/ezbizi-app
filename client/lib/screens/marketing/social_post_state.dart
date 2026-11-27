@@ -33,16 +33,6 @@ enum SocialPostState {
       this == ready ||
       this == scheduled ||
       this == pastDue;
-
-  /// What clears it, in a few words, for the inspector's primary action.
-  String get nextStep => switch (this) {
-    needsApproval => 'Review and approve',
-    ready => 'Set a time',
-    scheduled => 'Reschedule',
-    pastDue => 'Pick a new time',
-    published => 'Open the post',
-    failed => 'Retry or reconnect',
-  };
 }
 
 /// The promised wall time ("2026-11-20 09:00:00"), never `created_at`. Null

@@ -97,6 +97,8 @@ class _Person {
       conversion = (row['conversion'] as num?)?.toInt(),
       jobs = (row['jobs'] as num?)?.toInt() ?? 0,
       newClient = (row['new_client'] as num?)?.toInt() ?? 0,
+      booked = (row['booked'] as num?)?.toInt() ?? 0,
+      decided = (row['decided'] as num?)?.toInt() ?? 0,
       rank = (row['rank'] as num?)?.toInt(),
       checks = {
         for (final key in _checks.keys)
@@ -117,6 +119,10 @@ class _Person {
   final int? conversion;
   final int jobs;
   final int newClient;
+
+  /// The conversion rate's own counts: booked of the decided new-client calls.
+  final int booked;
+  final int decided;
   final int? rank;
   final Map<String, double> checks;
   final List<String> strengths;
@@ -561,7 +567,12 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if ((api, person.userId) case (final api?, final id?)) {
-      return UserAvatar(api: api, userId: id, name: person.name, radius: radius);
+      return UserAvatar(
+        api: api,
+        userId: id,
+        name: person.name,
+        radius: radius,
+      );
     }
     final scheme = Theme.of(context).colorScheme;
     return CircleAvatar(
@@ -1119,8 +1130,8 @@ class _DetailState extends State<_Detail> {
               p.conversion == null
                   ? 'Conversion rate: no new-client calls in these dates'
                   : 'Conversion rate: ${p.conversion}% '
-                        '(${p.jobs} ${p.jobs == 1 ? 'job' : 'jobs'} from '
-                        '${p.newClient} new-client calls)',
+                        '(${p.booked} booked of ${p.decided} new-client '
+                        '${p.decided == 1 ? 'call' : 'calls'})',
               key: const Key('scoring-conversion'),
               style: theme.textTheme.bodyMedium,
             ),

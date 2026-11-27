@@ -459,6 +459,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   /// the config changed and the box kept the old text, so a customer could
   /// pick a colour and then type over their own pick without seeing it.
   int _external = 0;
+  // Save stays off until the config loaded: saving after a failed load
+  // would overwrite the real config with defaults (audit 2026-11-27).
+  bool _loaded = false;
   List<String> _fieldTypes = const ['text'];
 
   @override
@@ -482,6 +485,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         return;
       }
 
+      _loaded = true;
       _config = Map<String, dynamic>.from(
           response.body['config'] as Map? ?? const {});
       _inherited = Map<String, dynamic>.from(
@@ -642,7 +646,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
               ),
               FilledButton(
                 key: const ValueKey('tour-widgets-save'),
-                onPressed: _saving ? null : _save,
+                onPressed: _saving || !_loaded ? null : _save,
                 child: Text(_saving ? 'Saving…' : 'Save'),
               ),
             ],
@@ -1235,9 +1239,13 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
     setState(() {
       _working = false;
-      _config = Map<String, dynamic>.from(
-        response.body['config'] as Map? ?? const {},
-      );
+      // Only the switch changes: unsaved edits on screen stay (audit 2026-11-27).
+      final chat = Map<String, dynamic>.from(
+          (response.body['config'] as Map?)?['chat'] as Map? ?? const {});
+      _config = {
+        ..._config,
+        'chat': {..._section('chat'), 'enabled': chat['enabled'] ?? enabled},
+      };
       _saved = enabled
           ? 'The chat is on again on $changed websites.'
           : 'The chat is off on $changed websites. Their pages update within '

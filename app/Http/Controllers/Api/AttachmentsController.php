@@ -120,7 +120,13 @@ class AttachmentsController extends Controller
 
         $this->authorizeAttachment('update', $subject);
 
-        if ($request->input('attachable_type') === 'services'
+        // A service photo is REPLACED by sending replace=1: the new file is
+        // stored first and the old one removed only after that succeeded, so a
+        // failed upload never leaves the service with no photo.
+        $replacing = $request->input('attachable_type') === 'services' && $request->boolean('replace');
+        $previous = $replacing ? $subject->attachments()->get() : collect();
+
+        if ($request->input('attachable_type') === 'services' && ! $replacing
             && $subject->attachments()->exists()) {
             throw ValidationException::withMessages([
                 'file' => 'This service already has a photo. Remove it first.',
@@ -145,6 +151,10 @@ class AttachmentsController extends Controller
         $attachment = $this->uploader->upload(
             $request->user(), $subject, $file, (string) $request->input('attachable_type'),
         );
+
+        foreach ($previous as $old) {
+            $this->destroy($old);
+        }
 
         return response()->json(['data' => $attachment->present()], Response::HTTP_CREATED);
     }

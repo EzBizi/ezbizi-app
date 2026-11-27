@@ -826,6 +826,22 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertTrue(app(RingCentralCallLog::class)->hasDay($day));
     }
 
+    /** Audit 2026-11-27: a day kept minutes after midnight lost its late calls for good. */
+    public function test_a_day_is_kept_only_once_it_has_settled(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
+        $log = app(RingCentralCallLog::class);
+        $day = CarbonImmutable::now()->subDays(2)->startOfDay();
+
+        $this->travelTo($day->addDay()->addMinutes(30));
+        $log->forPeriod($day, $day->endOfDay());
+        $this->assertFalse($log->hasDay($day), 'half past midnight: the log is still filling in');
+
+        $this->travelTo($day->addDay()->addHours(4));
+        $log->forPeriod($day, $day->endOfDay());
+        $this->assertTrue($log->hasDay($day));
+    }
+
     /** One sign-in serves every request until it expires: RingCentral rate-limits the sign-in too. */
     public function test_the_token_is_reused_across_requests(): void
     {

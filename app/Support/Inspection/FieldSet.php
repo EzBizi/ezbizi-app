@@ -72,12 +72,22 @@ final class FieldSet
         $keysEverywhere = [];
         foreach ($screens as $si => $screen) {
             $rows = is_array($screen['fields'] ?? null) ? $screen['fields'] : [];
-            foreach ($rows as $row) {
-                $key = is_array($row) ? (string) ($row['key'] ?? '') : '';
-                if ($key !== '' && ! in_array($si, $keysEverywhere[$key] ?? [], true)) {
-                    $keysEverywhere[$key][] = $si;
+            // Follow-up questions too: answers are one flat map, so a condition
+            // may name one, and the Builder offers them (audit 11-27).
+            $walk = function (array $rows) use (&$walk, &$keysEverywhere, $si): void {
+                foreach ($rows as $row) {
+                    $key = is_array($row) ? (string) ($row['key'] ?? '') : '';
+                    if ($key !== '' && ! in_array($si, $keysEverywhere[$key] ?? [], true)) {
+                        $keysEverywhere[$key][] = $si;
+                    }
+                    foreach ((is_array($row) && is_array($row['options'] ?? null)) ? $row['options'] : [] as $option) {
+                        if (is_array($option) && is_array($option['fields'] ?? null)) {
+                            $walk($option['fields']);
+                        }
+                    }
                 }
-            }
+            };
+            $walk($rows);
         }
 
         foreach ($screens as $si => $screen) {

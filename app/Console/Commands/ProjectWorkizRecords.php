@@ -539,7 +539,14 @@ class ProjectWorkizRecords extends Command
              * link is not, the next run sees a mirror row naming no job and
              * projects a second one — silently.
              */
-            DB::transaction(function () use ($mirrored, $franchise, $client, $numbers) {
+            $made = DB::transaction(function () use ($mirrored, $franchise, $client, $numbers) {
+                // Claimed under a row lock (audit 11-27): a run that outlived the
+                // projection lock, or Job create linking this row meanwhile, already
+                // made its job; a second would be a duplicate.
+                if (WorkizJob::query()->whereKey($mirrored->getKey())->lockForUpdate()->value('job_id') !== null) {
+                    return false;
+                }
+
                 $job = new Job([
                     'franchise_id' => $franchise->getKey(),
                     'customer_id' => $client->customer_id,
@@ -607,7 +614,13 @@ class ProjectWorkizRecords extends Command
                 $mirrored->job_id = $job->getKey();
                 $mirrored->projected = $this->followedValues($job) + ['team' => $this->team($job, $mirrored)];
                 $mirrored->save();
+
+                return true;
             });
+
+            if (! $made) {
+                continue;
+            }
 
             $created++;
         }
