@@ -3025,6 +3025,11 @@ class _AccountsPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final connected = {for (final c in connections) c.provider: c};
     final phone = MediaQuery.sizeOf(context).width < 600;
+    // The server refuses connect/disconnect without marketing.edit.
+    final refused = canChange
+        ? null
+        : 'Your role cannot connect or disconnect accounts. '
+              'Ask an admin for Marketing edit.';
     String subtitleOf(_SocialConnection page) => page.handle != null
         ? '${page.providerLabel} · @${page.handle}'
         : page.providerLabel;
@@ -3052,10 +3057,13 @@ class _AccountsPane extends StatelessWidget {
     );
     List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
       if (page.broken)
-        TextButton(
-          key: ValueKey('social-reconnect-${page.id}'),
-          onPressed: onConnect,
-          child: const Text('Reconnect'),
+        Refused(
+          reason: refused,
+          child: TextButton(
+            key: ValueKey('social-reconnect-${page.id}'),
+            onPressed: canChange ? onConnect : null,
+            child: const Text('Reconnect'),
+          ),
         ),
       // Instagram comments are moderated through the Page
       // the Instagram account is linked to.
@@ -3066,12 +3074,15 @@ class _AccountsPane extends StatelessWidget {
         ),
       // Muted, not the accent: a destructive link styled as
       // the main action (deep dive 2026-11-02 #11).
-      TextButton(
-        style: TextButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      Refused(
+        reason: refused,
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          onPressed: canChange ? () => onDisconnect(page) : null,
+          child: const Text('Disconnect'),
         ),
-        onPressed: () => onDisconnect(page),
-        child: const Text('Disconnect'),
       ),
     ];
 
@@ -3132,10 +3143,13 @@ class _AccountsPane extends StatelessWidget {
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerLeft,
-                child: FilledButton(
-                  key: const ValueKey('tour-marketing-accounts-connect'),
-                  onPressed: onConnect,
-                  child: Text('Connect a page to $viewName'),
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton(
+                    key: const ValueKey('tour-marketing-accounts-connect'),
+                    onPressed: canChange ? onConnect : null,
+                    child: Text('Connect a page to $viewName'),
+                  ),
                 ),
               ),
             ],
