@@ -1489,6 +1489,33 @@ class SettingRegistry
                 help: 'For missed-call alerts: a RingCentral line whose name starts with the text is that '
                     .'company\'s. Text is the start of the line name, name is the company.',
             ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_dispatchers',
+                label: 'Chat: roles in the Dispatchers group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Dispatchers" chat group of their company, joined and left by the role itself. Empty: no Dispatchers group.',
+            ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_technicians',
+                label: 'Chat: roles in the Technicians group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Technicians" chat group of their company, joined and left by the role itself. Empty: no Technicians group.',
+            ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_leadership',
+                label: 'Chat: roles in the Leadership group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Leadership" chat group of their company, joined and left by the role itself. Empty: no Leadership group.',
+            ),
             new SettingDefinition(
                 key: 'phone.missed_call_fresh_minutes',
                 label: 'Missed-call alerts: newer than (minutes)',

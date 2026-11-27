@@ -309,6 +309,28 @@ class AppServiceProvider extends ServiceProvider
             });
         }
 
+        // Chat's automatic Dispatchers / Technicians groups follow the role, the
+        // active flag and the reach by themselves (Jose, 11-27). Never breaks the
+        // HR write that triggered it.
+        $autoGroups = fn (?User $user) => $user === null ? null
+            : rescue(fn () => app(\App\Support\Chat\ChatAutoGroups::class)->sync($user), report: true);
+        User::saved(function (User $user) use ($autoGroups) {
+            if ($user->wasRecentlyCreated || $user->wasChanged(['role_id', 'is_active'])) {
+                $autoGroups($user);
+            }
+        });
+        \App\Models\Assignment::saved(fn ($a) => $autoGroups(User::query()->withoutGlobalScopes()->find($a->user_id)));
+        \App\Models\Assignment::deleted(fn ($a) => $autoGroups(User::query()->withoutGlobalScopes()->find($a->user_id)));
+        // A changed role list moves everybody in that organization, after the response.
+        foreach (['saved', 'deleted'] as $event) {
+            \App\Models\Setting::$event(function ($setting) {
+                if (str_starts_with((string) $setting->key, 'phone.chat_groups_')) {
+                    $org = $setting->organization_id;
+                    dispatch(fn () => app(\App\Support\Chat\ChatAutoGroups::class)->syncOrganization($org))->afterResponse();
+                }
+            });
+        }
+
         /*
          * `attachments.attachable_type` holds `jobs`, not `App\Models\Job`.
          *
