@@ -3,6 +3,7 @@
 namespace App\Support\Financials;
 
 use App\Models\FinancialRepairWeek;
+use App\Models\FinancialSource;
 use App\Models\Franchise;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -59,6 +60,11 @@ final class RepairReport
      * @return list<array{month:string, franchise_id:?string, place:?string, team:string, jobs:int, cost_cents:int, avg_cents:?int}>
      */
     public static function production(string $from, string $to, ?string $franchiseId = null): array
+    {
+        return FinancialSource::remembering(fn () => self::productionWeeks($from, $to, $franchiseId));
+    }
+
+    private static function productionWeeks(string $from, string $to, ?string $franchiseId): array
     {
         $out = [];
         for ($w = CarbonImmutable::parse(self::weekStart($from)); $w->toDateString() <= $to; $w = $w->addWeek()) {

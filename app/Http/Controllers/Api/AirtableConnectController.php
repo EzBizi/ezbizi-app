@@ -219,7 +219,14 @@ class AirtableConnectController extends Controller
             $done[] = $this->connectBase($user, $scopeType, $scopeId, $data['api_token'], $baseId, $base);
         }
 
-        $dropped = $this->connections($scopeType, $scopeId)->whereNotIn('remote_id', $data['base_ids']);
+        // Only a base this token can see and that was unticked is let go; a
+        // base the token cannot reach stays on its own token (audit 11-27).
+        try {
+            $visible = array_column($this->airtable->bases($data['api_token']), 'id');
+        } catch (AirtableRefused) {
+            $visible = [];
+        }
+        $dropped = $this->connections($scopeType, $scopeId)->whereNotIn('remote_id', $data['base_ids'])->whereIn('remote_id', $visible);
         foreach ($dropped as $connection) {
             $this->audit->log('social.disconnected', $connection, ['provider' => SocialProvider::Airtable->value, 'display_name' => $connection->display_name], actor: $user);
             $connection->delete();
@@ -299,6 +306,10 @@ class AirtableConnectController extends Controller
     {
         $connection = SocialConnection::query()->where('provider', SocialProvider::Airtable->value)
             ->where('remote_id', $baseId)->first() ?? new SocialConnection;
+        // Another place's connection is not rewritten from here.
+        if ($connection->exists && ($connection->scope_type !== $scopeType || (string) $connection->scope_id !== $scopeId)) {
+            throw ValidationException::withMessages(['base_ids' => ($connection->display_name ?: $baseId).' is connected by another part of the business. Disconnect it there first.']);
+        }
         if (! $connection->exists) {
             $connection->forceFill([
                 'organization_id' => $user->organization_id, 'scope_type' => $scopeType, 'scope_id' => $scopeId,
