@@ -1,9 +1,13 @@
+import CallKit
 import Flutter
+import PushKit
 import UIKit
 import UserNotifications
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate,
+  PKPushRegistryDelegate, CXProviderDelegate
+{
   // ── APNs, for notifications that arrive when EzBizi is CLOSED ────
   //
   // Local notifications (flutter_local_notifications) need the app running to
@@ -49,6 +53,35 @@ import UserNotifications
   private var tapChannel: FlutterMethodChannel?
   private var pendingTapId: String?
   private var dartTakesTaps = false
+
+  // ── Chat calls through CallKit (contract with the Chat session, 11-27) ──
+  //
+  // The server sends a VoIP push {type:"chat_call", call_id, chat_id,
+  // caller_name, video} ONLY for a ringing call. iOS terminates an app that
+  // takes a VoIP push without reporting a call, so every chat_call is
+  // reported; anything else (twilio_voice's pushes reach this registry too)
+  // is left to the plugin that owns it.
+  // Answer opens "chat:{chatId}?call={callId}" through the tap path; Decline
+  // goes to Dart as callDeclined, because Dart holds the bearer token.
+  private var voipRegistry: PKPushRegistry?
+  private var cachedVoipToken: String?
+  private lazy var callProvider: CXProvider = {
+    let config = CXProviderConfiguration()
+    config.supportsVideo = true
+    config.maximumCallsPerCallGroup = 1
+    config.supportedHandleTypes = [.generic]
+    config.includesCallsInRecents = false
+    let provider = CXProvider(configuration: config)
+    provider.setDelegate(self, queue: nil)
+    return provider
+  }()
+  // CallKit UUID -> (call_id, chat_id)
+  private var chatCalls: [UUID: (call: String, chat: String)] = [:]
+
+  private static func str(_ v: Any?) -> String {
+    if let s = v as? String { return s }
+    return v.map { "\($0)" } ?? ""
+  }
 
   override func application(
     _ application: UIApplication,
@@ -137,7 +170,109 @@ import UserNotifications
         error?.localizedDescription ?? "none")
     }
 
+    // Reply and Mark as read on every chat message push (aps.category).
+    let reply = UNTextInputNotificationAction(
+      identifier: "REPLY", title: "Reply", options: [],
+      textInputButtonTitle: "Send", textInputPlaceholder: "Message")
+    let read = UNNotificationAction(identifier: "READ", title: "Mark as read", options: [])
+    UNUserNotificationCenter.current().setNotificationCategories([
+      UNNotificationCategory(
+        identifier: "CHAT_MESSAGE", actions: [reply, read], intentIdentifiers: [], options: [])
+    ])
+
+    let registry = PKPushRegistry(queue: .main)
+    registry.delegate = self
+    registry.desiredPushTypes = [.voIP]
+    voipRegistry = registry
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // ── PushKit ──
+  func pushRegistry(
+    _ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType
+  ) {
+    let hex = credentials.token.map { String(format: "%02x", $0) }.joined()
+    cachedVoipToken = hex
+    apnsChannel?.invokeMethod("onVoipToken", arguments: hex)
+  }
+
+  func pushRegistry(
+    _ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload,
+    for type: PKPushType, completion: @escaping () -> Void
+  ) {
+    let p = payload.dictionaryPayload
+    guard p["type"] as? String == "chat_call" else {
+      completion()  // not ours: twilio_voice reports its own calls
+      return
+    }
+    let uuid = UUID()
+    chatCalls[uuid] = (AppDelegate.str(p["call_id"]), AppDelegate.str(p["chat_id"]))
+    let name = (p["caller_name"] as? String) ?? "EzChat"
+    let update = CXCallUpdate()
+    update.remoteHandle = CXHandle(type: .generic, value: name)
+    update.localizedCallerName = name
+    update.hasVideo = (p["video"] as? Bool) ?? false
+    callProvider.reportNewIncomingCall(with: uuid, update: update) { _ in completion() }
+  }
+
+  // ── CallKit ──
+  func providerDidReset(_ provider: CXProvider) { chatCalls.removeAll() }
+
+  func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+    guard let c = chatCalls.removeValue(forKey: action.callUUID) else {
+      action.fail()
+      return
+    }
+    // Dart joins the call; CallKit's screen is closed so the app's own call
+    // screen is the one in charge.
+    deliverTap("chat:\(c.chat)?call=\(c.call)")
+    action.fulfill()
+    provider.reportCall(with: action.callUUID, endedAt: nil, reason: .answeredElsewhere)
+  }
+
+  func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+    if let c = chatCalls.removeValue(forKey: action.callUUID) {
+      tapChannel?.invokeMethod("callDeclined", arguments: ["call_id": c.call, "chat_id": c.chat])
+    }
+    action.fulfill()
+  }
+
+  // ── Background pushes: chat_call_end, chat_read ──
+  override func application(
+    _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    let chatId = AppDelegate.str(userInfo["chat_id"])
+    switch userInfo["type"] as? String {
+    case "chat_call_end":
+      let callId = AppDelegate.str(userInfo["call_id"])
+      for (uuid, c) in chatCalls where c.call == callId {
+        chatCalls[uuid] = nil
+        callProvider.reportCall(with: uuid, endedAt: nil, reason: .remoteEnded)
+      }
+      completionHandler(.newData)
+    case "chat_read":
+      let center = UNUserNotificationCenter.current()
+      center.getDeliveredNotifications { list in
+        center.removeDeliveredNotifications(
+          withIdentifiers: list.filter { $0.request.content.threadIdentifier == "chat-\(chatId)" }
+            .map { $0.request.identifier })
+        completionHandler(.newData)
+      }
+    default:
+      super.application(
+        application, didReceiveRemoteNotification: userInfo,
+        fetchCompletionHandler: completionHandler)
+    }
+  }
+
+  private func deliverTap(_ id: String) {
+    if dartTakesTaps, let channel = tapChannel {
+      channel.invokeMethod("tapped", arguments: id)
+    } else {
+      pendingTapId = id
+    }
   }
 
   override func application(
@@ -180,6 +315,24 @@ import UserNotifications
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
+    // Reply / Mark as read: Dart holds the bearer token, so it makes the
+    // call, and iOS is told we are done only once Dart answers.
+    let info = response.notification.request.content.userInfo
+    if response.actionIdentifier == "REPLY" || response.actionIdentifier == "READ",
+      let nid = info["notification_id"] as? String, nid.hasPrefix("chat:")
+    {
+      var args: [String: Any] = ["chat_id": String(nid.dropFirst(5).prefix { $0 != "?" })]
+      if let text = (response as? UNTextInputNotificationResponse)?.userText { args["text"] = text }
+      if let channel = tapChannel {
+        channel.invokeMethod(
+          response.actionIdentifier == "REPLY" ? "reply" : "markRead", arguments: args
+        ) { _ in completionHandler() }
+      } else {
+        completionHandler()
+      }
+      return
+    }
+
     // Only remote pushes carry notification_id. A local notification's tap
     // has none and is flutter_local_notifications' to handle, through super.
     if let id = response.notification.request.content.userInfo["notification_id"] as? String,
@@ -227,6 +380,8 @@ import UserNotifications
         } else {
           result(nil)
         }
+      case "getVoipToken":
+        result(self?.cachedVoipToken)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -255,6 +410,9 @@ import UserNotifications
     // an onToken that already happened.
     if let token = cachedApnsToken {
       channel.invokeMethod("onToken", arguments: token)
+    }
+    if let voip = cachedVoipToken {
+      channel.invokeMethod("onVoipToken", arguments: voip)
     }
   }
 }
