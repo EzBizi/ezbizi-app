@@ -155,6 +155,22 @@ class JobsGlanceTest extends TestCase
         $this->assertSame(1, array_sum(array_column($payload['data']['slices'], 'total')));
     }
 
+    /**
+     * A job whose status is not in the organization's list (imported, or a
+     * status since removed) still gets a slice, so the pie adds up to the
+     * jobs in reach (audit 2026-11-27). jobs.statuses is organization-level.
+     */
+    public function test_a_status_outside_the_list_still_gets_a_slice(): void
+    {
+        $this->job($this->alpha['franchise']);
+        $this->job($this->alpha['franchise'], ['status' => 'awaiting_parts']);
+
+        $slices = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray()['data']['slices'];
+
+        $this->assertSame(2, array_sum(array_column($slices, 'total')));
+        $this->assertContains('awaiting_parts', array_column($slices, 'label'));
+    }
+
     public function test_zero_jobs_is_a_sentence_not_slices(): void
     {
         $payload = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
