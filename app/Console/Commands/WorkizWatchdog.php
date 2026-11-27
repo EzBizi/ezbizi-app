@@ -70,8 +70,8 @@ final class WorkizWatchdog extends Command
         // ...and every job it read became an EzBizi job.
         $unlinked = WorkizJob::query()->where('franchise_id', $branch)->whereNull('job_id')->where('created_at', '<', $late)->where('created_at', '>=', $since);
         if (($n = $unlinked->count()) > 0) {
-            // Projection takes ~100s a pass; a row this old means its lock is stuck. Free it; the next minute's run projects.
-            Cache::lock(ProjectWorkizRecords::LOCK)->forceRelease();
+            // No forceRelease (audit 11-27): a row that never projects kept this true and freed a live run's lock.
+            // A killed run frees itself (SIGTERM trap) or after LOCK_SECONDS.
             $items[] = $n.' Workiz job(s) not in EzBizi, oldest '.$unlinked->min('serial_id').' since '.\Illuminate\Support\Carbon::parse($unlinked->min('created_at'))->diffForHumans().'.';
         }
 

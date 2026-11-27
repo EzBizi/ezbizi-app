@@ -151,6 +151,19 @@ final class WorkizWebSession
      */
     public static function accounts(SocialConnection $connection): array
     {
+        // Under the login's own lock (audit 11-27: switching to master unlocked let a
+        // concurrent sub-account read land master data under a branch), and cached.
+        try {
+            return Cache::remember('workiz-web:accounts:'.$connection->getKey(), 600,
+                fn () => Cache::lock('workiz-web:'.$connection->getKey(), 300)->block(120, fn () => self::listAccounts($connection)));
+        } catch (LockTimeoutException) {
+            return [];
+        }
+    }
+
+    /** @return array<string, string> */
+    private static function listAccounts(SocialConnection $connection): array
+    {
         // Back to the master first: a session left inside a sub-account (a read
         // cut short, or the person's own switching) lists no accounts at all
         // and calls the sub-account "main" (measured on A-1, 2026-10-29: NJ).
