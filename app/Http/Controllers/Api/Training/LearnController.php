@@ -13,13 +13,16 @@ use App\Support\Access\Refusal;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
+use App\Support\Training\GuideScreens;
 use App\Support\Training\LapsedPasses;
-use App\Support\Training\TrainingMediaLinks;
 use App\Support\Training\LearnerView;
 use App\Support\Training\TestGrader;
+use App\Support\Training\TrainingDay;
+use App\Support\Training\TrainingMediaLinks;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -145,8 +148,8 @@ class LearnController extends Controller
 
         $out = [];
         foreach ($this->readableGuides($user, ViewScope::forUser($user)) as $guide) {
-            foreach (\App\Support\Training\GuideScreens::topics($guide) as $t) {
-                $text = \App\Support\Training\GuideScreens::plainText($t['topic']);
+            foreach (GuideScreens::topics($guide) as $t) {
+                $text = GuideScreens::plainText($t['topic']);
                 foreach ($t['topic']['blocks'] ?? [] as $block) {
                     $url = (string) ($block['url'] ?? '');
                     if (($block['type'] ?? null) !== 'video' || $url === '') {
@@ -342,7 +345,7 @@ class LearnController extends Controller
                 'passed' => $result['passed'],
                 'taken_at' => now(),
                 'expires_on' => ($result['passed'] && $lockedTest->valid_for_days !== null)
-                    ? now()->addDays($lockedTest->valid_for_days)->toDateString()
+                    ? Carbon::parse(TrainingDay::today())->addDays($lockedTest->valid_for_days)->toDateString()
                     : null,
             ]);
 
@@ -773,16 +776,14 @@ class LearnController extends Controller
         Collection $attemptsTowardCap,
     ): ?array {
         $content = match (true) {
-            $assignment->test_id !== null && $tests->has($assignment->test_id)
-                => $this->presentTest(
-                    $tests->get($assignment->test_id),
-                    $lapsedTestIds,
-                    $lastAttempts->get($assignment->test_id),
-                    $attemptCounts->get($assignment->test_id, 0),
-                    $attemptsTowardCap->get($assignment->test_id, 0),
-                ),
-            $assignment->guide_id !== null && $guides->has($assignment->guide_id)
-                => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
+            $assignment->test_id !== null && $tests->has($assignment->test_id) => $this->presentTest(
+                $tests->get($assignment->test_id),
+                $lapsedTestIds,
+                $lastAttempts->get($assignment->test_id),
+                $attemptCounts->get($assignment->test_id, 0),
+                $attemptsTowardCap->get($assignment->test_id, 0),
+            ),
+            $assignment->guide_id !== null && $guides->has($assignment->guide_id) => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
             default => null,
         };
 
