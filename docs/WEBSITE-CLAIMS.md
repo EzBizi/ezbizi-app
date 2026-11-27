@@ -4046,3 +4046,25 @@ edit ok. Stores: Play `200`; Apple `resultCount` 1, **0.0631** (was 0.0.0559).
 Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
 elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,434 all with `remote_id`. No new publisher.
 chats 2, chat_messages 2 (test accounts).
+
+## 2026-11-26: 0.0.0651-0.0.0655 live, nothing on the site went false
+
+Production web is 0.0.0655 at `60a987b3b`; `/download/windows.json` reads 0.0.0655 at `60a987b3b`. No WP page modified
+since the 11-25 Chat edit (page 8, `post_modified_gmt` 2026-11-26 00:07); all 10 live pages contain their WP
+post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`46bdaea54..60a987b3b` is 44 files: Task Board archive (2 authenticated routes, `tasks.archived_at`),
+`users.hours_type`, review auto-replies skip Google-removed reviews, monitoring-route deadlock retry, Monday off
+(connection removed 06:34 UTC, 352 webhooks deleted, `MONDAY_ENABLED` unset). 0 new hosts, scopes, processors, public
+routes, Google/Meta writes or `app/Support/Social` lines. No sentence moves.
+- **Monday off moves nothing:** no live page names Monday.com; the only `monday` on any page is `/privacy/`'s
+  "Each Monday" weekly-summary weekday. Do not "fix" it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all 10). Stores: Play `200`; Apple
+`resultCount` 1, 0.0631. EzChat: Play 404, Apple `resultCount` 0 (builds in App Store Connect, not submitted).
+
+**Desk (11-26, ~14:30 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-26-desk-reply.md`):
+0651-0655 live, 0 folded or rolled back. Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of
+15, Scheduled Jobs Triplex Group 80 / 0 elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,465
+all with `remote_id`. No new publisher. chats 8, chat_messages 22.
