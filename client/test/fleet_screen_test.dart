@@ -734,6 +734,47 @@ void main() {
     expect(field.enabled, isFalse);
   });
 
+  testWidgets('Save sends only the fields that changed', (tester) async {
+    Map<String, dynamic>? sent;
+    await _pumpScreen(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+        'fleet_management.edit',
+      ],
+      vehicles: [_platedVan],
+      size: const Size(1280, 2400),
+      onRequest: (request) {
+        if (request.method != 'PATCH') return null;
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'data': {..._platedVan, 'plate': 'NEW-1'},
+          }),
+          200,
+        );
+      },
+    );
+    await tester.tap(find.text(_platedVan['label']! as String).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Plate number'),
+      'NEW-1',
+    );
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    // A whole-record PATCH put back fields somebody else had just changed
+    // (audit 2026-11-27).
+    expect(sent, {'plate': 'NEW-1'});
+  });
+
   testWidgets('a bad toll rate says so and leaves Save usable', (tester) async {
     await _pumpIdentity(
       tester,

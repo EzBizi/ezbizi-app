@@ -45,10 +45,11 @@ final class WhatsAppResults
     ) {}
 
     /** Reads the photo, saves pending rows, and returns the reply to send. */
-    public function read(User $user, string $mediaId, ?string $caption): string
+    public function read(User $user, string $mediaId, ?string $caption, ?string $phoneNumberId = null): string
     {
         try {
-            $file = $this->cloud->downloadMedia($mediaId);
+            // The number it arrived on: media is readable only with that number's token (audit 11-27).
+            $file = $this->cloud->downloadMedia($mediaId, $phoneNumberId);
         } catch (RuntimeException $e) {
             return "\u{274C} ".$e->getMessage();
         }

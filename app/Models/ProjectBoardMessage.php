@@ -16,7 +16,9 @@ class ProjectBoardMessage extends Model implements StatesRetention
 
     public const UPDATED_AT = null;
 
-    protected $fillable = ['organization_id', 'job_id', 'kind'];
+    protected $fillable = ['organization_id', 'job_id', 'kind', 'for_date', 'failed_at', 'failures'];
+
+    protected $casts = ['failed_at' => 'datetime'];
 
     public static function retention(): RetentionPolicy
     {

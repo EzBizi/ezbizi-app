@@ -346,7 +346,17 @@ void main() {
       {'html': 'Pat at {{company}}'},
     ]);
 
+    // Audit 11-27: one tap on the chip deleted their own signature. Now the
+    // chip only switches the view; removing it is the explicit button.
+    final saves = server
+        .asked('PUT', '/people/pat@brightside.example/signature')
+        .length;
     await _tap(tester, find.text('Use a template'));
+    expect(
+      server.asked('PUT', '/people/pat@brightside.example/signature').length,
+      saves,
+    );
+    await _tap(tester, find.byKey(const ValueKey('workspace-drop-own')));
     expect(
       server.asked('PUT', '/people/pat@brightside.example/signature').last,
       {'html': null},

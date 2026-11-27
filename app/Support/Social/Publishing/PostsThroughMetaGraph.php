@@ -51,9 +51,8 @@ trait PostsThroughMetaGraph
      */
     public function permalink(SocialConnection $connection, string $remoteId): ?string
     {
-        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
+        $url = Http::withToken($this->token($connection))->timeout(10)->get(self::API.'/'.$remoteId, [
             'fields' => 'permalink',
-            'access_token' => $this->token($connection),
         ])->json('permalink');
 
         return is_string($url) && str_starts_with($url, 'https://') ? $url : null;

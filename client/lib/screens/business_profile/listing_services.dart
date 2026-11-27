@@ -295,6 +295,12 @@ class _ServicePanelState extends State<_ServicePanel> {
     super.dispose();
   }
 
+  static String _key(Map s) =>
+      '${(s['structuredServiceItem'] as Map?)?['serviceTypeId'] ?? ''}|'
+      '${((s['freeFormServiceItem'] as Map?)?['label'] as Map?)?['displayName'] ?? ''}';
+
+  static bool _sameService(Map a, Map b) => _key(a) == _key(b);
+
   Future<void> _save() async {
     final edited = Map<String, dynamic>.from(_s);
     if (_freeForm) {
@@ -311,11 +317,30 @@ class _ServicePanelState extends State<_ServicePanel> {
         'description': _about.text.trim(),
       };
     }
-    final list = [...widget.services]..[widget.index] = edited;
     setState(() {
       _busy = true;
       _refused = null;
     });
+    // Google's list as it is now, not as the screen loaded it: the PUT
+    // replaces the whole list (audit 2026-11-27).
+    final fresh = await widget.api.get(widget.path);
+    if (!mounted) return;
+    final freshList = fresh.ok && fresh.data is Map
+        ? (fresh.data as Map)['services'] as List?
+        : null;
+    final now = freshList == null
+        ? widget.services
+        : [
+            for (final s in freshList.whereType<Map>())
+              Map<String, dynamic>.from(s),
+          ];
+    final at = now.indexWhere((s) => _sameService(s, _s));
+    final list = [...now];
+    if (at >= 0) {
+      list[at] = edited;
+    } else {
+      list.add(edited);
+    }
     final r = await widget.api.put(widget.path, {'services': list});
     if (!mounted) return;
     if (!r.ok) {

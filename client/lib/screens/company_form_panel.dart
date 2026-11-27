@@ -41,6 +41,7 @@ class CompanyFormPanel extends StatefulWidget {
     required this.api,
     required this.parents,
     this.fixedParent,
+    this.onSave,
   }) : existing = null;
 
   /// Edit what is already there. [existing] is a company from /companies.
@@ -48,6 +49,7 @@ class CompanyFormPanel extends StatefulWidget {
     super.key,
     required this.api,
     required Map<String, dynamic> company,
+    this.onSave,
   }) : existing = company,
        parents = const [],
        fixedParent = null;
@@ -67,6 +69,10 @@ class CompanyFormPanel extends StatefulWidget {
   /// Set when this was opened from a company's own menu — the answer to "under
   /// which?" is already known and asking again would be theatre.
   final ({String id, String name})? fixedParent;
+
+  /// Sends the draft while the panel is still open: null on success, else the
+  /// server's reason, shown here so nothing typed is lost (audit 2026-11-27).
+  final Future<String?> Function(CompanyDraft draft)? onSave;
 
   @override
   State<CompanyFormPanel> createState() => _CompanyFormPanelState();
@@ -205,13 +211,21 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _valid ? _submit : null,
+          onPressed: _valid && !_saving ? _submit : null,
           child: Text(_editing ? 'Save changes' : 'Add $_noun'),
         ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_refused != null) ...[
+            Text(
+              _refused!,
+              key: const ValueKey('company-form-refused'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            const SizedBox(height: 12),
+          ],
           // The kind first, because it changes what the rest of the form means.
           // Asking it last would make somebody re-read what they had already
           // filled in.
@@ -310,9 +324,11 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
     );
   }
 
-  void _submit() {
-    Navigator.of(context).pop(
-      CompanyDraft(
+  bool _saving = false;
+  String? _refused;
+
+  Future<void> _submit() async {
+    final draft = CompanyDraft(
         name: _name.text.trim(),
         franchise: _editing ? null : _franchise.text.trim(),
         parentId: _isSub && !_editing ? _parentId : null,
@@ -322,7 +338,25 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
         state: _state.text.trim().toUpperCase(),
         postalCode: _postal.text.trim(),
         phone: _phone.text.trim(),
-      ),
     );
+    final save = widget.onSave;
+    if (save == null) {
+      Navigator.of(context).pop(draft);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _refused = null;
+    });
+    final reason = await save(draft);
+    if (!mounted) return;
+    if (reason == null) {
+      Navigator.of(context).pop(draft);
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _refused = reason;
+    });
   }
 }

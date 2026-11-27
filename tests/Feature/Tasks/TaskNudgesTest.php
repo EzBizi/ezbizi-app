@@ -59,6 +59,21 @@ class TaskNudgesTest extends TestCase
         $this->assertSame([$t['admin']->id => 'Overdue: Order the liner'], $this->bells($t, 'task.due'));
     }
 
+    /** Audit 11-27: 8 PM in New York is tomorrow in UTC; a task due today there is not overdue yet. */
+    public function test_a_task_due_today_in_the_orgs_zone_is_not_overdue_in_the_evening(): void
+    {
+        Carbon::setTestNow('2026-11-21 01:00:00'); // 20:00 on 11-20 in New York
+        $t = $this->provisionTenant('Alpha');
+        $this->task($t, ['title' => 'Due today', 'due_on' => '2026-11-20']);
+
+        $this->artisan('ezbizi:tasks-overdue')->assertSuccessful();
+        $this->assertSame([], $this->bells($t, 'task.due'));
+
+        Carbon::setTestNow('2026-11-21 05:30:00'); // 00:30 on 11-21 there
+        $this->artisan('ezbizi:tasks-overdue')->assertSuccessful();
+        $this->assertSame([$t['admin']->id => 'Overdue: Due today'], $this->bells($t, 'task.due'));
+    }
+
     public function test_a_week_without_an_update_nudges_the_owners_once(): void
     {
         Carbon::setTestNow('2026-11-10 09:00:00');

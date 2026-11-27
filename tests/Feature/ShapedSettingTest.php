@@ -55,6 +55,19 @@ class ShapedSettingTest extends TestCase
         return $week;
     }
 
+    // Audit 2026-11-27: "5" decoded to an int and the array return type threw a 500.
+    public function test_scalar_json_is_refused_not_a_type_error(): void
+    {
+        foreach ([$this->hours(), $this->list()] as $definition) {
+            try {
+                $definition->cast('5');
+                $this->fail('A scalar was accepted.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('object or list', $e->getMessage());
+            }
+        }
+    }
+
     public function test_a_full_week_is_accepted_and_null_means_closed(): void
     {
         $cast = $this->hours()->cast($this->week(null, 'sunday'));

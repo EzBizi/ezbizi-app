@@ -56,6 +56,42 @@ class JobStatusSettingsTest extends TestCase
             ->assertJsonPath('data.status_label', 'Booked');
     }
 
+    // Audit 2026-11-27: scheduled→in_progress and in_progress→done in one save
+    // used to land both jobs on done.
+    public function test_chained_renames_in_one_save_keep_jobs_apart(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $customer = $this->signedInAs($alpha['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $alpha['franchise']->id,
+            'name' => 'Person',
+        ])->assertCreated()->json('data.id');
+        $job = fn (string $status) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $alpha['franchise']->id,
+            'customer_id'  => $customer,
+            'title'        => $status,
+            'status'       => $status,
+        ])->assertCreated()->json('data.id');
+        $wasScheduled = $job('scheduled');
+        $wasInProgress = $job('in_progress');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson(
+                '/api/v1/settings/jobs.statuses?scope_type=organization&scope_id='.$alpha['org']->id,
+                ['value' => [
+                    ['value' => 'in_progress', 'label' => 'In progress', 'was' => 'scheduled'],
+                    ['value' => 'done', 'label' => 'Done', 'was' => 'in_progress'],
+                    ['value' => 'completed', 'label' => 'Completed'],
+                    ['value' => 'cancelled', 'label' => 'Cancelled'],
+                ]],
+            )
+            ->assertOk();
+
+        $this->inTenant($alpha['org'], function () use ($wasScheduled, $wasInProgress) {
+            $this->assertSame('in_progress', Job::query()->findOrFail($wasScheduled)->status);
+            $this->assertSame('done', Job::query()->findOrFail($wasInProgress)->status);
+        });
+    }
+
     public function test_the_default_list_has_names_people_can_read(): void
     {
         $alpha = $this->provisionTenant('Alpha');

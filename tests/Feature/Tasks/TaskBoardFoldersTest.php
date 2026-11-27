@@ -67,8 +67,15 @@ class TaskBoardFoldersTest extends TestCase
         // Arranging needs the right to make boards.
         $this->signedInAs($reader)->postJson('/api/v1/task-board-folders', ['name' => 'Nope'])->assertForbidden();
 
-        // Deleting a folder leaves its boards loose.
+        // Deleting a folder keeps what is in it (audit 11-27): its subfolder moves up, the board stays in it.
         $this->signedInAs($maker)->deleteJson("/api/v1/task-board-folders/{$top}")->assertNoContent();
+        $row = collect($this->signedInAs($maker)->getJson('/api/v1/task-boards')->json('data'))->firstWhere('id', $board);
+        $this->assertSame($sub, $row['folder_id']);
+        $folders = collect($this->signedInAs($maker)->getJson('/api/v1/task-board-folders')->json('data'));
+        $this->assertSame([$sub], $folders->pluck('id')->all());
+        $this->assertNull($folders->first()['parent_id']);
+        // And the last one leaves the board loose.
+        $this->signedInAs($maker)->deleteJson("/api/v1/task-board-folders/{$sub}")->assertNoContent();
         $row = collect($this->signedInAs($maker)->getJson('/api/v1/task-boards')->json('data'))->firstWhere('id', $board);
         $this->assertNull($row['folder_id']);
     }
@@ -146,5 +153,20 @@ class TaskBoardFoldersTest extends TestCase
         $this->assertSame(['id' => $board, 'folder_id' => null, 'colour' => null, 'position' => 3], $answer);
         // A rename still answers with the board.
         $this->assertArrayHasKey('groups', $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['name' => 'Partners 2'])->assertOk()->json('data'));
+    }
+
+    /** Audit 11-27: arranging rights do not carry a board setting along in the same request. */
+    public function test_a_mixed_patch_needs_every_part_allowed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->signedInAs($tenant['admin'])->postJson('/api/v1/task-boards', [
+            'name' => 'Partners', 'visibility' => 'main', 'franchise_id' => $tenant['franchise']->id,
+        ])->assertCreated()->json('data.id');
+        $maker = $this->userWithRole($tenant, 'Maker', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
+
+        $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['position' => 3, 'edit_mode' => 'assignee'])->assertForbidden();
+        $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['position' => 3, 'name' => 'Mine now'])->assertForbidden();
+        $this->signedInAs($maker)->patchJson("/api/v1/task-boards/{$board}", ['position' => 3])->assertOk();
+        $this->assertDatabaseHas('task_boards', ['id' => $board, 'name' => 'Partners', 'edit_mode' => 'everyone']);
     }
 }

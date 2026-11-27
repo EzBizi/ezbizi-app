@@ -71,6 +71,9 @@ class TaskBoardScreen extends StatefulWidget {
   /// Under this the table's fixed columns leave the task's name no room.
   static const double tableAbove = 760;
 
+  /// Below this a phone: Monday's dense table with the name pinned (row 70).
+  static const double phoneTableBelow = 600;
+
   @override
   State<TaskBoardScreen> createState() => _TaskBoardScreenState();
 }
@@ -557,7 +560,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
     // A mention or reply's bell opens the thread at that update (Jennine 11-24).
-    if (mounted) _openTaskById(link.id, update: link.update);
+    if (!mounted || _openTaskById(link.id, update: link.update)) return;
+    // Beyond the loaded page (audit 11-27): open the panel from the fetched task.
+    final data = res.body['data'];
+    if (data is Map) {
+      await _openTask(
+        Map<String, dynamic>.from(data),
+        updatesOnly: link.update != null,
+        focusUpdate: link.update,
+      );
+    }
+  }
+
+  /// Opens a task wherever it is: this board's list, else fetched by its link.
+  Future<void> _openAnywhere(String id) async {
+    if (_openTaskById(id)) return;
+    DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+    await _takeLink();
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -881,9 +900,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// A picked row carries every picked row with it, in board order.
   Future<void> _moveTo(String id, Object? groupId, int? position) async {
     if (groupId == null) return;
-    final ids = _picked.contains(id) && _picked.length > 1
+    final all = _picked.contains(id) && _picked.length > 1
         ? _inBoardOrder(_picked)
         : [id];
+    // A rolled-up row lives on its branch's board; this board's group id would
+    // move it here (audit 11-27). It is reordered on its own board.
+    final ids = [
+      for (final one in all)
+        if (_tasks.where((t) => t['id'] == one).firstOrNull?['rolled_up_from'] == null) one,
+    ];
+    if (ids.length < all.length) {
+      _say('A row from a branch board moves on its own board');
+      if (ids.isEmpty) return;
+    }
     String? failed;
     for (final (n, one) in ids.indexed) {
       final res = await widget.api.patch('/tasks/$one/move', {
@@ -1246,7 +1275,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (mounted) _say('Name copied');
       case 'copy-link':
         await Clipboard.setData(
-          ClipboardData(text: '${Uri.base.origin}/tasks/$id'),
+          ClipboardData(text: '${_appOrigin()}/tasks/$id'),
         );
         if (mounted) _say('Link copied');
       case 'below':
@@ -3073,6 +3102,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
+        // Row 70 (Jose 11-27, "identical as Monday"): a phone gets Monday's
+        // dense table, the name pinned and the columns sliding under it.
+        _phoneTable = constraints.maxWidth < TaskBoardScreen.phoneTableBelow;
+        _phoneWidth = constraints.maxWidth;
 
         // One page colour behind the picker, toolbar and table: the canvas
         // on the table alone left a band above it (Jose 11-24).
@@ -3120,7 +3153,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   formats: _formats,
                                   onOpenTask: _openTaskById,
                                 ),
-                                _ => _tableView(context, cards: cards),
+                                _ => _tableView(context, cards: cards && !_phoneTable),
                               },
                             ),
                           ],
@@ -3969,7 +4002,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             people: _people,
             onOpenTask: (id) {
               Navigator.of(context).maybePop();
-              _openTaskById(id);
+              _openAnywhere(id);
             },
           ),
         ),
@@ -3986,9 +4019,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             formats: _formats,
             onOpenTask: (id) async {
               Navigator.of(context).maybePop();
-              if (_openTaskById(id)) return;
-              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
-              await _takeLink();
+              await _openAnywhere(id);
             },
           ),
         ),
@@ -4005,9 +4036,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             formats: _formats,
             onOpenTask: (id) async {
               Navigator.of(context).maybePop();
-              if (_openTaskById(id)) return;
-              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
-              await _takeLink();
+              await _openAnywhere(id);
             },
           ),
         ),
@@ -4448,11 +4477,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                 '${group['name']}',
                                 key: ValueKey('task-group-title-$fold'),
                                 // A phone wraps a long name to two lines (phone 6).
-                                maxLines: cards ? 2 : 1,
+                                maxLines: cards || _phoneTable ? 2 : 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   color: ink,
-                                  fontSize: cards ? 18 : 20,
+                                  fontSize: cards || _phoneTable ? 18 : 20,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -4781,7 +4810,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       : _builtinDefaults.keys.toList().indexOf(key);
 
   /// A column's width: being dragged, saved by this person, or the default.
-  double _w(String key) =>
+  double _w(String key) => key == 'task' && _phoneTable
+      ? (_phoneWidth * 0.56).clamp(170.0, 260.0)
+      : _wSaved(key);
+
+  double _wSaved(String key) =>
       _dragWidths[key] ??
       _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
@@ -5195,6 +5228,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
+  /// Set by [_screen] each layout: a phone shows Monday's dense table (row 70).
+  bool _phoneTable = false;
+  double _phoneWidth = 400;
+
+  void _rowLongPress(_Json t) {
+    final box = context.findRenderObject() as RenderBox?;
+    final at = box == null
+        ? Offset.zero
+        : box.localToGlobal(box.size.center(Offset.zero));
+    _rowRightClick(t, at);
+  }
+
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
     final owners = _ownerNames(t);
@@ -5214,6 +5259,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onSecondaryTapDown: sub
             ? null
             : (d) => _rowRightClick(t, d.globalPosition),
+        // A phone has no right button: a long press opens the same menu (row 70).
+        onLongPress: sub || !_phoneTable ? null : () => _rowLongPress(t),
         child: _RowShade(
           key: ValueKey('task-shade-${t['id']}'),
           selected: _openId == t['id'],
@@ -5239,7 +5286,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                       padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                       child: Row(
                         children: [
-                          if (!sub && _canEdit) ...[
+                          if (!sub && _canEdit && !_phoneTable) ...[
                             SizedBox(width: 18, child: _dragHandle(context, t)),
                             SizedBox(
                               width: 32,
@@ -5257,7 +5304,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                               ),
                             ),
                           ],
-                          if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
+                          if (!sub && !_phoneTable) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
                             // Jose 11-24: the name edits in the same card as
@@ -5691,7 +5738,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Future<void> _goToTask(String boardId, String taskId) async {
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
-    if (mounted) _openTaskById(taskId);
+    if (mounted) await _openAnywhere(taskId);
   }
 
   /// Due, edited where it is like any date column.
@@ -5819,7 +5866,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         // Plain text that only looks like JSON.
       }
     } else if (c.type == 'number' || c.type == 'currency') {
-      value = num.tryParse(text.trim());
+      value = num.tryParse(text.trim().replaceAll(RegExp(r'[,$\s]'), ''));
+      // Text that is not a number never clears the range (audit 11-27).
+      if (value == null && text.trim().isNotEmpty) {
+        return _say('Not a number: nothing pasted');
+      }
     } else if (c.type == 'checkbox') {
       value = text.trim() == 'true';
     }
@@ -8036,7 +8087,7 @@ class _TaskPanelState extends State<_TaskPanel> {
           key: const Key('task-copy-link'),
           onPressed: () async {
             await Clipboard.setData(
-              ClipboardData(text: '${Uri.base.origin}/tasks/${widget.taskId}'),
+              ClipboardData(text: '${_appOrigin()}/tasks/${widget.taskId}'),
             );
             if (context.mounted) {
               ScaffoldMessenger.of(
@@ -8885,3 +8936,8 @@ Widget _formatShortcuts(FormattedNotesController c, Widget child) =>
       },
       child: child,
     );
+
+/// The web app's origin for a shared link: this page's on web; app.ezbizi.com on a native
+/// build, where Uri.base is a file: URI whose origin throws (audit 11-27).
+String _appOrigin() =>
+    Uri.base.isScheme('http') || Uri.base.isScheme('https') ? Uri.base.origin : 'https://app.ezbizi.com';

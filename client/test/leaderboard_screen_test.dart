@@ -18,6 +18,7 @@ void main() {
     Map<String, dynamic>? me,
     bool nobody = false,
     bool searchDown = false,
+    Map<String, dynamic> board = const {},
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -84,6 +85,7 @@ void main() {
         if (path.endsWith('/leaderboard')) {
           return json({
             'data': {
+              ...board,
               'from': request.url.queryParameters['from'],
               'to': request.url.queryParameters['to'],
               'min_calls_to_rank': 3,
@@ -233,12 +235,14 @@ void main() {
         find.descendant(of: first, matching: find.text('9 of 12 booked')),
         findsOne,
       );
+      // Design 214's podium: answer rate and score under the rate on a desk;
+      // a phone keeps the rate and booked only.
       expect(
         find.descendant(
           of: first,
-          matching: find.text('Answer rate 88% · Score 9.0 / 10'),
+          matching: find.text('Answer 88% · Score 9.0'),
         ),
-        findsOne,
+        width < 600 ? findsNothing : findsOne,
       );
       // You: the rank, of how many, your rates and score.
       final you = find.byKey(const ValueKey('leaderboard-me'));
@@ -257,13 +261,13 @@ void main() {
         find.descendant(of: you, matching: find.text('of 6 ranked')),
         findsOneWidget,
       );
-      // A phone gives the name the room: no avatar beside the medal.
+      // Design 214: the podium shows each face, on a phone too.
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('leaderboard-top-1')),
           matching: find.byType(CircleAvatar),
         ),
-        width < 600 ? findsNothing : findsOneWidget,
+        findsOneWidget,
       );
       expect(tester.takeException(), isNull);
 
@@ -417,5 +421,100 @@ void main() {
     expect(find.byKey(const ValueKey('leaderboard-nobody')), findsOneWidget);
     expect(find.byKey(const ValueKey('leaderboard-top-1')), findsNothing);
     expect(find.byKey(const ValueKey('leaderboard-me')), findsOneWidget);
+  });
+
+  // Design 214 (Jose 11-27: "more elaborate"): the team's week, a podium,
+  // everyone ranked with six weeks and the change, and what moves you up.
+  testWidgets('design 214: team strip, podium 2·1·3, everyone ranked, You', (
+    tester,
+  ) async {
+    Map<String, dynamic> row(
+      int rank,
+      String? who,
+      num rate, {
+      bool me = false,
+    }) => {
+      'rank': rank,
+      'person': who,
+      'user_id': me ? 'u-1' : null,
+      'booking_rate': rate,
+      'booked': 10,
+      'decided': 20,
+      'answer_rate': 90,
+      'score': 7.0,
+      'trend': [50, 55, null, 60, 62, rate],
+      'change': {'rank': rank == 4 ? 2 : 0},
+    };
+    await pump(
+      tester,
+      1280,
+      board: {
+        'ranked': [
+          row(1, 'Ada', 80),
+          row(2, 'Bo', 75),
+          row(3, 'Cy', 70),
+          row(4, 'Di', 60, me: true),
+          row(5, null, 55),
+        ],
+        'team': {
+          'new_calls': 402,
+          'booked': 247,
+          'booking_rate': 61,
+          'answer_rate': 87,
+          'score': 7.1,
+          'change': {'booking_rate': 2},
+        },
+      },
+      me: {
+        'person': 'Di',
+        'rank': 4,
+        'of': 5,
+        'booking_rate': 60,
+        'answer_rate': 90,
+        'score': 6.2,
+        'decided': 20,
+        'why': null,
+        'to_next': {'rank': 3, 'person': 'Cy', 'bookings': 2},
+      },
+    );
+    // Five team tiles, one size.
+    final sizes = {
+      for (final t in [
+        'New client calls',
+        'Booked',
+        'Team booking rate',
+        'Answer rate',
+        'Avg score',
+      ])
+        tester.getSize(find.byKey(ValueKey('leaderboard-team-$t'))),
+    };
+    expect(sizes, hasLength(1));
+    expect(find.textContaining('▲ 2 pts'), findsOneWidget);
+    // The podium reads 2 · 1 · 3 from the left.
+    double x(int r) =>
+        tester.getTopLeft(find.byKey(ValueKey('leaderboard-top-$r'))).dx;
+    expect(x(2), lessThan(x(1)));
+    expect(x(1), lessThan(x(3)));
+    // Everyone ranked: your row says You, a nameless row its place only.
+    final mine = find.byKey(const ValueKey('leaderboard-row-4'));
+    expect(find.descendant(of: mine, matching: find.text('You')), findsOne);
+    expect(find.descendant(of: mine, matching: find.text('▲ 2')), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('leaderboard-row-5')),
+        matching: find.text('—'),
+      ),
+      findsOne,
+    );
+    expect(find.byType(CustomPaint), findsWidgets);
+    // What moves you up.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('leaderboard-to-next')),
+        matching: find.textContaining('past Cy (#3)'),
+      ),
+      findsOne,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

@@ -90,11 +90,17 @@ class _BrandColourCardState extends State<BrandColourCard> {
     });
   }
 
+  // One save at a time (audit 2026-11-27): quick swatch taps raced.
+  bool _saving = false;
+
   Future<void> _save(String? colour) async {
+    if (_saving) return;
+    _saving = true;
     setState(() => _error = null);
     final response = await widget.api.put('/branding/colour', {
       'colour': colour,
     });
+    _saving = false;
     if (!mounted) return;
     setState(() {
       if (!response.ok) {

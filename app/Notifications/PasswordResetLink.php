@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\PlatformStaff;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,7 +19,7 @@ use Illuminate\Support\Carbon;
  * endpoint answers identically whether or not an account matched, which it could
  * not do if it waited for a send to succeed.
  */
-class PasswordResetLink extends Notification implements ShouldQueue
+class PasswordResetLink extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
 

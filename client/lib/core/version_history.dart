@@ -13,6 +13,20 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
+      'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Jobs and Project Management: the rest of the audit fixes, and project reminders are sent once per day and retried when they fail',
+      'Task Board on phones: boards are now a dense table like Monday, with the name column pinned, the other columns sliding underneath, and the group colour down the left edge; long-press a row for its menu',
+      'Scoring: jobs tagged Training, and the calls to or from their numbers, no longer count in Performance, Scoring, the Leaderboard or My performance',
+      'Meta and WhatsApp: access tokens never travel in URLs, customer erasure covers WhatsApp messages, and the staff bot Daily conversion uses your own day',
+      'Leaderboard: a new full-width design with a podium for the top three, everyone else ranked by place and rate, and a You panel showing the bookings that move you up',
+      'Monitoring: camera health only says OK when a stream is connected, and the recorder password is no longer left in a file on the recorder PC',
+      'Task Board: deleting a folder moves its boards and subfolders up instead of removing them, sensitive task text stays hidden in the updates feed, plus 12 more fixes',
+      'Customers: a failed load offers Retry, delete needs two presses, and edits only send what changed',
+      'Sign-in emails show link expiry times in UTC, and reset and verification links are encrypted while queued',
+      'Email: changing a mail server forgets the old password, and Outlook catch-up follows every page',
+      'Settings: new list rows save with an Add button, a refused save keeps the form open with the reason, and record numbers use the business local year',
+    ]),
     VersionRelease(version: '0.0.0659', date: '27 Nov 2026', items: [
       'Estimates: editing the title or note of an imported estimate never wipes its lines or total',
       'Reports: saved, sent and job reports keep to your view and permissions, CSV exports are safe to open, Thumbtack and Local Services use local days, and several report screens are fixed',
@@ -23,6 +37,9 @@ class VersionHistory {
       'Inspections: a double Submit files one report, failed saves stop Next, and multi-select answers keep every pick',
       'Chat: Mark all read really clears unread counts, a failed send keeps your text, and signing out of EzChat stops its notifications',
       'Memberships, Training, Monitoring, Marketing, Plaid and Grok AI: more fixes from the code audit',
+      'Leads: phone line moves need reach on both sides, Thumbtack updates no longer blank names, and editing a lead only sends what changed',
+      'Email: the verified-sender check only trusts a DMARC pass, and choosing a template no longer deletes your signature',
+      'Web Management and Inspections: the rest of the audit fixes, including smaller photo uploads',
     ]),
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', deployed: '2026-11-27 17:59', items: [
       'Training: tests can now be published from their editor, so learners can take them',

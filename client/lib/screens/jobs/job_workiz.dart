@@ -236,7 +236,9 @@ class WorkizMoneyDetail extends StatelessWidget {
         if (events.isNotEmpty) ...[
           const _Heading('Invoice and payments'),
           const SizedBox(height: 6),
-          for (final e in events) _event(context, e.$3),
+          // Each in its own keyed slot: two payments can share a day and amount (audit 2026-11-27).
+          for (final (i, e) in events.indexed)
+            KeyedSubtree(key: ValueKey('workiz-event-$i'), child: _event(context, e.$3)),
           const SizedBox(height: 14),
         ],
         if (extras.estimates.isNotEmpty) ...[
@@ -265,7 +267,8 @@ class WorkizMoneyDetail extends StatelessWidget {
             tag: events.isEmpty && extras.estimates.isEmpty,
           ),
           const SizedBox(height: 6),
-          for (final t in extras.timesheets) _timesheet(context, t),
+          for (final (i, t) in extras.timesheets.indexed)
+            KeyedSubtree(key: ValueKey('workiz-timesheet-slot-$i'), child: _timesheet(context, t)),
         ],
         if (events.isEmpty &&
             extras.estimates.isEmpty &&

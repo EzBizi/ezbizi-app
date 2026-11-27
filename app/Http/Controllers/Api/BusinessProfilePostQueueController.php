@@ -22,7 +22,7 @@ class BusinessProfilePostQueueController extends Controller
     {
         $this->authorize('viewAny', BusinessLocation::class);
         $user = $request->user();
-        $places = BusinessLocation::query()->get()->keyBy(fn ($l) => $l->connection
+        $places = BusinessLocation::query()->with('connection')->get()->keyBy(fn ($l) => $l->connection
             ? \App\Support\Social\Publishing\GoogleBusinessProfilePublisher::v4Name($l, $l->connection) : $l->id);
 
         $rows = SocialPostTarget::query()->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)

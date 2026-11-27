@@ -9,6 +9,7 @@ use App\Models\Franchise;
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Leads\LeadOfficeHours;
 use App\Support\Phone\NumberNames;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -105,6 +106,17 @@ final class CallReconciliation
         array $converted = [],
         array $tags = [],
     ): array {
+        /*
+         * TRAINING IS NOT WORK (Jose, 2026-11-27: staff run training calls and
+         * jobs, and "those fake calls and jobs must not affect dispatcher
+         * scoring"). A job tagged Training, and every call to or from its
+         * number, is left out here, before anything is counted. Performance,
+         * Scoring, the Leaderboard and My performance all read this, so the
+         * rule is in one place; `training_calls` names the calls for the
+         * scored-call readers (PerformancePeople::trainingCalls).
+         */
+        [$jobs, $calls, $trainingCalls] = self::withoutTraining($jobs, $calls);
+
         /*
          * SPAM IS NOT A CALL (Jose, 2026-10-05: "remove Spam Calls completely,
          * do not count them"). A caller who sat in the phone menu and pressed
@@ -444,6 +456,7 @@ final class CallReconciliation
                     : null,
             ],
             'people' => $people,
+            'training_calls' => $trainingCalls,
             // The business's two queue names, so the screen splits calls by
             // the same setting the counts above used.
             'queues' => ['new' => RingCentralCallLog::newClientQueue(), 'existing' => RingCentralCallLog::existingClientQueue()],
@@ -570,6 +583,47 @@ final class CallReconciliation
      *
      * @return list<string>
      */
+    /**
+     * The jobs less those tagged Training, and the calls less those with a
+     * Training job's number: the caller's, or on a call we placed, the number
+     * called. A number that is also on a job not tagged Training is a real
+     * customer's (3 of the 35 on 2026-11-27), so its calls stay.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>, 2: list<string>}
+     */
+    public static function withoutTraining(array $jobs, array $calls): array
+    {
+        $real = [];
+        $training = [];
+        $customers = [];
+        foreach ($jobs as $job) {
+            $phones = array_filter([NumberNames::lastTen($job['phone'] ?? null), NumberNames::lastTen($job['second_phone'] ?? null)]);
+            if (ReportJobs::training($job)) {
+                $training += array_fill_keys($phones, true);
+            } else {
+                $real[] = $job;
+                $customers += array_fill_keys($phones, true);
+            }
+        }
+        $drop = array_diff_key($training, $customers);
+        if ($drop === []) {
+            return [$real, $calls, []];
+        }
+
+        $kept = [];
+        $dropped = [];
+        foreach ($calls as $call) {
+            $number = ($call['direction'] ?? 'Inbound') === 'Outbound' ? ($call['to_number'] ?? null) : ($call['from'] ?? null);
+            if (isset($drop[NumberNames::lastTen($number) ?? ''])) {
+                $dropped[] = (string) ($call['id'] ?? '');
+            } else {
+                $kept[] = $call;
+            }
+        }
+
+        return [$real, $kept, array_values(array_filter($dropped))];
+    }
+
     private function phones(array $job): array
     {
         return array_values(array_filter([

@@ -54,14 +54,25 @@ class PerformancePeople
         }
     }
 
-    /** @var array<string, array{people: list<array<string, mixed>>, calls: list<array<string, mixed>>}> */
+    /**
+     * The calls left out as training (CallReconciliation::withoutTraining), for
+     * Scoring's scored calls, which are read from the transcripts, not from here.
+     *
+     * @return list<string> call ids
+     */
+    public function trainingCalls(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        return $this->report($start, $end)['training_calls'] ?? [];
+    }
+
+    /** @var array<string, array{people: list<array<string, mixed>>, calls: list<array<string, mixed>>, training_calls?: list<string>}> */
     private array $read = [];
 
     /** @param  list<string>|null  $branches */
     private function reconciled(CarbonImmutable $start, CarbonImmutable $end, ?array $branches): array
     {
         if (! $this->calls->configured()) {
-            return ['people' => [], 'calls' => []];
+            return ['people' => [], 'calls' => [], 'training_calls' => []];
         }
 
         // Jobs created as every report counts them, less the tags left out (2026-11-10).
@@ -78,6 +89,6 @@ class PerformancePeople
             CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
         );
 
-        return ['people' => $report['people'], 'calls' => $report['calls']];
+        return ['people' => $report['people'], 'calls' => $report['calls'], 'training_calls' => $report['training_calls']];
     }
 }

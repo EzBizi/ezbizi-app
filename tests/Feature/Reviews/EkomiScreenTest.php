@@ -149,4 +149,23 @@ class EkomiScreenTest extends TestCase
         $this->assertSame(2, $this->asks(), 'the refused try, then once');
         $this->assertNotNull($job->fresh()->ekomi_requested_at);
     }
+
+    /** Audit 2026-11-27: another company's eKomi account is neither listed nor readable nor changeable. */
+    public function test_another_companys_account_is_out_of_reach(): void
+    {
+        $other = $this->inTenant($this->t['org'], function () {
+            $co = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co', 'is_active' => true]);
+
+            return \App\Models\Franchise::create(['company_id' => $co->id, 'name' => 'Other Branch']);
+        });
+        $outsider = $this->userWithRole($this->t, 'Outsider', ['reviews.view', 'reviews.publish'], onlyAt: $other);
+
+        $this->signedInAs($outsider);
+        $this->getJson('/api/v1/ekomi')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson("/api/v1/ekomi/{$this->c->id}/requests")->assertNotFound();
+        $this->putJson("/api/v1/ekomi/{$this->c->id}/settings", ['auto_request' => true])->assertNotFound();
+
+        $this->signedInAs($this->t['admin']);
+        $this->getJson("/api/v1/ekomi/{$this->c->id}/requests")->assertOk();
+    }
 }
