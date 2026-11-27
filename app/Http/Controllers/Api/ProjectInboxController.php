@@ -97,7 +97,7 @@ class ProjectInboxController extends Controller
         $user = $this->viewer($request);
         $this->inReach($request, $job);
         // The newest 300, shown oldest first.
-        $messages = $this->messages($job)->latest('created_at')->limit(300)->get()->reverse();
+        $messages = $this->messages($job, $user)->latest('created_at')->limit(300)->get()->reverse();
         $senders = $this->senders($job, $messages->where('direction', PhoneMessage::DIRECTION_OUTBOUND)->pluck('id')->all());
 
         return response()->json([
@@ -200,11 +200,13 @@ class ProjectInboxController extends Controller
     }
 
     /** The client's texts both ways: linked to the customer, or to their number. */
-    private function messages(Job $job): Builder
+    private function messages(Job $job, User $user): Builder
     {
         $phone = (string) ($job->customer?->phone ?? '');
 
+        // Only lines this person may read, never another company's (audit 2026-11-27).
         return PhoneMessage::query()->where('created_at', '>=', now()->subDays(self::DAYS))
+            ->whereIn('number_id', app(\App\Support\Phone\PhoneNumberAccess::class)->readable($user)->pluck('id'))
             ->where(fn (Builder $w) => $w->where('customer_id', $job->customer_id)
                 ->when($phone !== '', fn (Builder $p) => $p->orWhere('from_e164', $phone)->orWhere('to_e164', $phone)));
     }

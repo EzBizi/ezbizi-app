@@ -101,6 +101,7 @@ class _Column {
   List<Map<String, dynamic>> rows = const [];
   int page = 0;
   int lastPage = 1;
+  int seq = 0;
   bool fetching = false;
   String? error;
 }
@@ -137,6 +138,8 @@ class _EstimateBoardState extends State<EstimateBoard> {
     final c = _columns[status]!;
     if (more && c.fetching) return;
     final page = more ? c.page + 1 : 1;
+    // A newer load of this column wins; a late answer is dropped.
+    final seq = ++c.seq;
     setState(() {
       c.fetching = true;
       c.error = null;
@@ -148,7 +151,7 @@ class _EstimateBoardState extends State<EstimateBoard> {
       'per_page': '${EstimateBoard.perColumn}',
       'search': ?widget.search,
     });
-    if (!mounted) return;
+    if (!mounted || seq != c.seq) return;
 
     setState(() {
       c.fetching = false;

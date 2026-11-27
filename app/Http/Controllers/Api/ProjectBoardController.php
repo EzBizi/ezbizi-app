@@ -355,7 +355,7 @@ class ProjectBoardController extends Controller
             'tab' => ['nullable', 'in:'.implode(',', self::TABS)],
             'franchise_id' => ['nullable', 'uuid'],
             'company_id' => ['nullable', 'uuid'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'q' => ['nullable', 'string', 'max:200'],
             'sort' => ['nullable', 'in:'.implode(',', array_keys(self::SORTS))],
             'dir' => ['nullable', 'in:asc,desc'],
@@ -553,6 +553,12 @@ class ProjectBoardController extends Controller
         $list = $this->repairList($user, $place);
         $key = self::tagKey($in['name']);
         $to = trim((string) ($in['to'] ?? '')) ?: trim($in['name']);
+        // Only a repair team is touched, never another Workiz tag (audit 2026-11-27):
+        // a change or delete names one on the list; any new name reads as a repair team.
+        abort_if($in['op'] !== 'create' && ! $list->contains(fn (array $e) => self::tagKey($e['name']) === $key),
+            Response::HTTP_UNPROCESSABLE_ENTITY, 'That is not one of the repair teams.');
+        abort_if($in['op'] !== 'delete' && ! self::isRepairTeam($to), Response::HTTP_UNPROCESSABLE_ENTITY,
+            'A repair team is named like "REPAIR TEAM: NAME" or as a contractor.');
         $outcomes = match ($in['op']) {
             'create' => WorkizTags::create($in['name'], $in['color'] ?? WorkizTags::COLORS[0]),
             'update' => self::tagKey($to) !== $key ? WorkizTags::rename($in['name'], $to) : [],
@@ -958,9 +964,8 @@ class ProjectBoardController extends Controller
             Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
         $input = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'],
             'user_id' => ['nullable', 'uuid'], 'all' => ['nullable', 'boolean']]);
-        $jobs = Job::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->pluck('id')->flip();
-        $data = JobPart::techExpenses($input['user_id'] ?? null, Carbon::parse($input['from']), Carbon::parse($input['to']), (bool) ($input['all'] ?? false))
-            ->filter(fn (array $e) => $jobs->has($e['job_id']))->values();
+        $data = JobPart::techExpenses($input['user_id'] ?? null, Carbon::parse($input['from']), Carbon::parse($input['to']),
+            (bool) ($input['all'] ?? false), ViewScope::forUser($request->user())->franchiseIds());
 
         return response()->json(['data' => $data, 'meta' => ['total_minor' => $data->sum('amount_minor')]]);
     }
