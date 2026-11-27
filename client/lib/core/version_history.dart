@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
+      'Training: tests can now be published from their editor, so learners can take them',
+    ]),
     VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
       'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',
