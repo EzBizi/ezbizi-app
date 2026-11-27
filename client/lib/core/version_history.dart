@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
+      'Security: resetting someone else 2FA or password now requires being allowed to assign their role',
       'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
     ]),
     VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
