@@ -15,6 +15,7 @@ import 'package:record/record.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/call_alerts.dart';
+import '../../../core/os_notifications.dart';
 import '../../../core/session.dart';
 import '../../../widgets/user_avatar.dart';
 import 'chat_alerts.dart';
@@ -279,8 +280,37 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
     _signedInChanged();
   }
 
+  /// Reply, Mark read and Decline pressed on a phone notification.
+  Future<void> _notificationAction(
+    String action,
+    Map<String, dynamic> args,
+  ) async {
+    final chat = args['chat_id']?.toString();
+    switch (action) {
+      case 'reply':
+        final text = args['text']?.toString().trim() ?? '';
+        if (chat != null && text.isNotEmpty) {
+          await widget.api.post('/chat/chats/$chat/messages', {'body': text});
+        }
+      case 'markRead':
+        if (chat != null) {
+          await widget.api.patch('/chat/chats/$chat/settings', {
+            'marked_unread': false,
+          });
+        }
+      case 'callDeclined':
+        final call = args['call_id']?.toString();
+        if (call != null) {
+          await widget.api.post('/chat/calls/$call/decline', {});
+        }
+    }
+  }
+
   @override
   void dispose() {
+    if (OsNotifications.onAction == _notificationAction) {
+      OsNotifications.onAction = null;
+    }
     // The layer lives as long as the app; a test tearing the tree down must
     // not leave the ring poll running.
     _calls.stop();
@@ -305,6 +335,7 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
     final alerts = widget.alerts ?? ChatAlerts.instance;
     if (may && !alerts.started) alerts.start(widget.api);
     if (!may && alerts.started) alerts.stop();
+    OsNotifications.onAction = may ? _notificationAction : null;
   }
 
   @override

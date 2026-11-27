@@ -131,6 +131,11 @@ class OsNotifications {
   /// sign-out cannot reach a widget that no longer exists.
   static void Function(String? payload)? onClick;
 
+  /// A notification's own button: `reply` {chat_id, text}, `markRead`
+  /// {chat_id}, `callDeclined` {call_id, chat_id}. Chat's call layer sets it.
+  static Future<void> Function(String action, Map<String, dynamic> args)?
+  onAction;
+
   /// Every title [show] was ASKED to raise, while a test is listening.
   ///
   /// Recorded before the permission check on purpose: a test host never grants
@@ -288,7 +293,14 @@ class OsNotifications {
     _pushTaps.setMethodCallHandler((call) async {
       if (call.method == 'tapped' && call.arguments is String) {
         onClick?.call(call.arguments as String);
+        return;
       }
+      // Reply / Mark read / Decline straight from a notification (Apple,
+      // 11-27). Answered when the request is done: iOS holds the action until.
+      final args = call.arguments is Map
+          ? Map<String, dynamic>.from(call.arguments as Map)
+          : const <String, dynamic>{};
+      await onAction?.call(call.method, args);
     });
     try {
       final initial = await _pushTaps.invokeMethod<String>('initialTap');

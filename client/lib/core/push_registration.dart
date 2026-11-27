@@ -148,6 +148,10 @@ class PushRegistration {
             if (token != null && token.isNotEmpty) {
               await _register(api, token, 'ios');
             }
+          case 'onVoipToken':
+            // PushKit's token, for CallKit rings (Apple, 11-27).
+            final token = call.arguments as String?;
+            if (token != null && token.isNotEmpty) await _registerVoip(api, token);
           case 'onTokenError':
             // Logged rather than swallowed: silence here is indistinguishable
             // from a token that simply has not arrived, and those want
@@ -167,6 +171,23 @@ class PushRegistration {
     } on MissingPluginException {
       debugPrint('push: the apns channel is not registered on this build');
     }
+    try {
+      final voip = await _appleChannel.invokeMethod<String>('getVoipToken');
+      if (voip != null && voip.isNotEmpty) await _registerVoip(api, voip);
+    } on PlatformException catch (_) {
+    } on MissingPluginException catch (_) {}
+  }
+
+  static String? _voipToken;
+
+  /// The PushKit token: only ever rung for a chat call, never an ordinary push.
+  static Future<void> _registerVoip(ApiClient api, String token) async {
+    final r = await api.post('/notifications/devices', {
+      'token': token,
+      'platform': 'ios_voip',
+      'app': app,
+    });
+    if (r.ok) _voipToken = token;
   }
 
   static Future<String?> _token() async {
@@ -198,6 +219,14 @@ class PushRegistration {
   /// Sign-out: this handset stops receiving the person's pushes. Best effort;
   /// a failure must never block signing out.
   static Future<void> unregister(ApiClient api) async {
+    // Signed out: this iPhone stops ringing for them too.
+    final voip = _voipToken;
+    _voipToken = null;
+    if (voip != null) {
+      try {
+        await api.deleteWithBody('/notifications/devices', {'token': voip});
+      } catch (_) {}
+    }
     final token = _lastToken;
     if (token == null) return;
     try {

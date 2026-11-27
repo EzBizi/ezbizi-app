@@ -117,12 +117,14 @@ void main() {
 
   group('iOS', () {
     /// Answers the apns channel's getToken, and counts the asks.
-    List<int> mockApns(String? token, {PlatformException? fails}) {
+    List<int> mockApns(String? token, {PlatformException? fails, String? voip}) {
       final asked = [0];
 
       binding.defaultBinaryMessenger.setMockMethodCallHandler(
         const MethodChannel('com.ezbizi.app/apns'),
         (call) async {
+          // PushKit's token for CallKit (Apple 11-27), asked after the APNs one.
+          if (call.method == 'getVoipToken') return voip;
           expect(call.method, 'getToken');
           asked[0]++;
           if (fails != null) throw fails;
@@ -156,6 +158,17 @@ void main() {
       // The whole point of two channels. An android label on an APNs token
       // would be accepted by the server and could never be delivered to.
       expect(_sent.single['body'], isNot(contains('android')));
+    });
+
+    test('a VoIP token registers as ios_voip, beside the ios one', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns('a1b2c3deadbeef', voip: 'f00dvoip');
+
+      await PushRegistration.start(_api());
+
+      expect(_sent.length, 2);
+      expect(_sent.last['body'], contains('"platform":"ios_voip"'));
+      expect(_sent.last['body'], contains('f00dvoip'));
     });
 
     test('a null token posts nothing, and the later onToken registers it', () async {
