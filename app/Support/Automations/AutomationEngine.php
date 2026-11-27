@@ -523,8 +523,14 @@ class AutomationEngine
                 }
                 $event->forceFill(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)])->syncOriginal();
                 try {
-                    $this->runOne($automation, $version, $event, $this->subjectOf($event));
-                    $n++;
+                    // The failed run did nothing (filtered above); it holds the
+                    // (event, version) slot, so runOne skipped it and nothing
+                    // replayed (audit 2026-11-27). The new run replaces it.
+                    AutomationRun::query()->where('event_id', $event->id)->where('automation_version_id', $version->id)
+                        ->where('status', AutomationRun::FAILED)->delete();
+                    if ($this->runOne($automation, $version, $event, $this->subjectOf($event))) {
+                        $n++;
+                    }
                 } finally {
                     AutomationEvent::query()->whereKey($event->id)->where('processing_token', $event->processing_token)
                         ->update(['processing_token' => null, 'processing_until' => null]);

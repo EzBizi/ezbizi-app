@@ -365,6 +365,7 @@ class _ActionRow {
     'report_text_kind',
     'roles',
     'status',
+    'task_board',
     'training',
     'trigger_field',
   };
@@ -533,8 +534,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// The most events `would-have-run` reads.
   static const _rehearsalCeiling = 500;
 
-  bool get _isEdit => widget.editing != null;
-  String? get _id => widget.editing?['id'] as String?;
+  // Set once a new rule is created, so a retry after a failed "Turn on" edits it instead of creating a twin (audit 2026-11-27).
+  String? _createdId;
+  bool get _isEdit => widget.editing != null || _createdId != null;
+  String? get _id => widget.editing?['id'] as String? ?? _createdId;
 
   /// The phone lines this company holds, for the "Send from" picker.
   ///
@@ -1781,6 +1784,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       if (!mounted) return;
       if (on == null || !on.ok) {
         setState(() {
+          if (id is String) _createdId = id;
           _busy = false;
           _error =
               'It was saved switched off, and could not be turned on: '
@@ -3171,6 +3175,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         row.dispose();
       }
       _actions.clear();
+      // The previous template's tree, lock and steps go too (audit 2026-11-27).
+      _opaqueConditions = null;
+      _hasOpaque = false;
+      _lockedBecause = null;
+      _loadedActions = [];
     });
 
     // AFTER the clear, and through the same readers a saved rule goes through:

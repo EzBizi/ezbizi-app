@@ -39,6 +39,22 @@ class AuditScopeTest extends TestCase
         $this->postJson("/api/v1/automations/{$rule->id}/test", [])->assertOk();
     }
 
+    public function test_the_failure_counter_counts_every_stale_copy_and_disables_once(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $copies = collect(range(1, Automation::FAILURE_LIMIT + 1))->map(fn () => Automation::query()->find($rule->id));
+
+            $disabled = $copies->map(fn (Automation $a) => $a->noteFailure())->filter()->count();
+
+            $this->assertSame(Automation::FAILURE_LIMIT + 1, (int) $rule->fresh()->consecutive_failures);
+            $this->assertSame(1, $disabled);
+            $this->assertNotNull($rule->fresh()->disabled_at);
+        });
+    }
+
     public function test_a_template_never_prints_hidden_or_encrypted_attributes(): void
     {
         $user = new User(['name' => 'Ann']);

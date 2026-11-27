@@ -170,12 +170,13 @@ class Automation extends Model implements CarriesAutomationScope
      */
     public function noteFailure(): bool
     {
-        $wasOff = $this->disabled_at !== null;
-
-        $this->consecutive_failures++;
+        // Atomic on the row, not this possibly stale model: two workers failing
+        // at once must count two and disable once (audit 2026-11-27).
+        static::query()->whereKey($this->getKey())->increment('consecutive_failures');
+        $this->consecutive_failures = (int) static::query()->whereKey($this->getKey())->value('consecutive_failures');
+        $this->syncOriginalAttribute('consecutive_failures');
 
         if ($this->consecutive_failures >= self::FAILURE_LIMIT) {
-            $this->disabled_at = now();
 
             // NO EXCEPTION TEXT HERE. This string is rendered to the customer by
             // automations_screen.dart:370. Both callers used to pass raw
@@ -193,17 +194,24 @@ class Automation extends Model implements CarriesAutomationScope
             // If that menu item is renamed, rename it here in the same commit.
             $this->disabled_reason = "Disabled after {$this->consecutive_failures} "
                 .'consecutive failures. Open Run history to see what failed.';
+            $at = now();
+            $disabledNow = static::query()->whereKey($this->getKey())->whereNull('disabled_at')
+                ->update(['disabled_at' => $at, 'disabled_reason' => $this->disabled_reason]) === 1;
+            $disabledNow ? $this->disabled_at = $at : $this->refresh();
+            $this->syncOriginalAttributes(['disabled_at', 'disabled_reason']);
+
+            return $disabledNow;
         }
 
-        $this->save();
-
-        return ! $wasOff && $this->disabled_at !== null;
+        return false;
     }
 
     public function noteSuccess(): void
     {
         if ($this->consecutive_failures !== 0) {
-            $this->forceFill(['consecutive_failures' => 0])->save();
+            static::query()->whereKey($this->getKey())->update(['consecutive_failures' => 0]);
+            $this->consecutive_failures = 0;
+            $this->syncOriginalAttribute('consecutive_failures');
         }
     }
 

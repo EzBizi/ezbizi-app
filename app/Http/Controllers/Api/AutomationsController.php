@@ -745,7 +745,7 @@ class AutomationsController extends Controller
         }
 
         // ponytail: the newest 500 events are read in full; a trigger busier than that is sampled, not counted.
-        $events = $this->recentInView($request, $key)->take(500);
+        $events = $this->recentInView($request, $key)->take(500)->collect();
         $engine = app(\App\Support\Automations\AutomationEngine::class);
         $verdicts = $events->map(fn (AutomationEvent $e) => ['occurred_at' => $e->occurred_at?->toIso8601String(), 'matched' => $engine->wouldMatch($conditions, $e)]);
 
@@ -764,7 +764,8 @@ class AutomationsController extends Controller
             'scope_id' => $view->type === ViewScope::ORGANIZATION ? null : $view->id]);
 
         return AutomationEvent::query()->where('event_key', $key)->where('occurred_at', '>=', now()->subDays(30))
-            ->latest('occurred_at')->get($columns === ['*'] ? ['*'] : [...$columns, 'id'])
+            // Lazily, so first()/take() stop early instead of loading 30 days (audit 2026-11-27).
+            ->latest('occurred_at')->select($columns === ['*'] ? ['*'] : [...$columns, 'id'])->lazy(500)
             ->filter(fn (AutomationEvent $e) => $probe->coversScope($e->scope_snapshot['type'] ?? null, $e->scope_snapshot['id'] ?? null,
                 companyChain: $e->scope_snapshot['company_chain'] ?? []))
             ->values();
@@ -1394,6 +1395,9 @@ class AutomationsController extends Controller
         // The automation itself, because an action's legality depends on the
         // trigger and a PATCH is forbidden from carrying one.
         $input = $this->validated($request, existing: $automation);
+        if (isset($input['actions'])) {
+            $input['actions'] = $this->unmaskSecrets($input['actions'], $automation->activeVersion?->actions ?? []);
+        }
 
         // ...and what it becomes must still be a rule for a board they manage.
         if ($boardOwnerOnly && $this->managedBoardOf($request->user(), $automation->trigger_key,
@@ -1520,7 +1524,7 @@ class AutomationsController extends Controller
             $this->assertConditionsUsable($input['conditions']);
         }
         $event = ($input['event_id'] ?? null)
-            ? AutomationEvent::query()->where('event_key', $input['trigger_key'])->findOrFail($input['event_id'])
+            ? $this->recentInView($request, $input['trigger_key'])->firstWhere('id', $input['event_id']) ?? abort(Response::HTTP_NOT_FOUND)
             : $this->recentInView($request, $input['trigger_key'])->first();
         if ($event === null) {
             return response()->json(['message' => 'This has not happened yet here, so there is nothing to try the rule on.',
@@ -2761,6 +2765,27 @@ class AutomationsController extends Controller
      * recognise one — and to refuse to save it back over a real value, which
      * this screen had to learn the hard way — learns it once.
      */
+    /**
+     * A rule saved back as `show` returned it carries the mask, not the secret:
+     * keep the stored secret (same webhook URL), or refuse (audit 2026-11-27).
+     */
+    private function unmaskSecrets(array $actions, array $before): array
+    {
+        $kept = collect($before)->filter(fn ($a) => filled($a['secret'] ?? null))->keyBy(fn ($a) => $a['url'] ?? '');
+
+        return array_map(function (array $action) use ($kept) {
+            if (($action['secret'] ?? null) !== SensitiveValues::MASK) {
+                return $action;
+            }
+            $secret = $kept->get($action['url'] ?? '')['secret'] ?? null;
+            if ($secret === null) {
+                throw ValidationException::withMessages(['actions' => 'Type the webhook secret again: the masked value cannot be saved.']);
+            }
+
+            return ['secret' => $secret] + $action;
+        }, $actions);
+    }
+
     private function maskSecrets(array $actions): array
     {
         return array_map(function (array $action) {
