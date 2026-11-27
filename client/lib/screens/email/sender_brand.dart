@@ -85,10 +85,10 @@ class SenderBrand {
   ///
   /// [authenticated] is what the provider said about this message: true
   /// when DMARC passed, false when it failed, null when nobody said.
-  /// A known brand still gets the check when the provider was silent;
-  /// a failed check is not decorated, even for Apple.
+  /// Only a pass gets the check: a brand name in the From line is the one
+  /// thing a spoof always has (audit 11-27).
   static bool verified(String email, {bool? authenticated}) {
-    if (authenticated == false) return false;
+    if (authenticated != true) return false;
     final domain = registrableDomain(email);
     return domain != null && verifiedDomains.contains(domain);
   }
