@@ -169,9 +169,18 @@ class _LogoBadgeState extends State<LogoBadge> {
   Future<void> _remove() async {
     setState(() => _busy = true);
 
-    await widget.api.delete(widget.path);
+    final response = await widget.api.delete(widget.path);
 
     if (!mounted) return;
+
+    // Audit 2026-11-27: a refused removal said nothing.
+    if (!response.ok) {
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_reason(response))),
+      );
+      return;
+    }
 
     await _fetch();
     widget.onChanged?.call();

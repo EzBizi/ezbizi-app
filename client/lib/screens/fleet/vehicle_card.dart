@@ -93,6 +93,13 @@ String fleetDay(String? stamp) {
   return stamp.split('T').first;
 }
 
+/// The device's calendar day of an instant (`assigned_at`, `released_at`):
+/// 9 PM in New York is still that day, not tomorrow in UTC (audit 2026-11-27).
+String fleetInstantDay(String? stamp) {
+  final at = stamp == null ? null : DateTime.tryParse(stamp);
+  return at == null ? fleetDay(stamp) : formatCalendarDay(at.toLocal());
+}
+
 String fleetStatusLabel(String status) => switch (status) {
   'in_shop' => 'In shop',
   'out_of_service' => 'Out of service',

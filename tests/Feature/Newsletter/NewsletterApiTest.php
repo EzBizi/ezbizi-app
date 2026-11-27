@@ -495,6 +495,28 @@ class NewsletterApiTest extends TestCase
             ->assertJsonPath('data.0.html_override', '<p>Exact copy</p>');
     }
 
+    /** GET /newsletters/{id}: the index's shape for one row; out of view is 404. */
+    public function test_show_returns_the_index_shape_and_hides_a_siblings_row(): void
+    {
+        $t = $this->provisionTenant('Show');
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name' => 'Premier Garage Repair',
+        ]));
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $id = $this->signedInAs($t['admin']->fresh())
+            ->postJson(self::ENDPOINT, ['subject' => 'Private'])
+            ->assertCreated()->json('data.id');
+
+        $listed = $this->signedInAs($t['admin']->fresh())->getJson(self::ENDPOINT)->json('data.0');
+        $shown = $this->signedInAs($t['admin']->fresh())->getJson(self::ENDPOINT."/{$id}")
+            ->assertOk()->json('data');
+        $this->assertSame($listed, $shown);
+
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+        $this->signedInAs($t['admin']->fresh())->getJson(self::ENDPOINT."/{$id}")->assertNotFound();
+    }
+
     public function test_scope_is_applied_before_the_fifty_row_limit(): void
     {
         $t = $this->provisionTenant('Pagination');

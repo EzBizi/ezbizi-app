@@ -86,6 +86,31 @@ void main() {
     },
   );
 
+  // Audit 2026-11-27: a wide row posted on the first blur and lost the rest.
+  testWidgets('a wide new row waits for Add and posts once, whole', (
+    tester,
+  ) async {
+    final calls = await _pump(tester, lists: [_list(wide: true)]);
+
+    await tester.tap(find.byKey(const ValueKey('lists-add')));
+    await tester.pumpAndSettle();
+    Finder field(String key) => find.descendant(
+      of: find.byKey(ValueKey('add:$key')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(field('name'), 'Jose');
+    await tester.tap(field('role'));
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'POST'), isEmpty);
+
+    await tester.enterText(field('role'), 'Owner');
+    await tester.tap(find.byKey(const ValueKey('lists-add-confirm')));
+    await tester.pumpAndSettle();
+
+    final post = calls.singleWhere((c) => c.method == 'POST');
+    expect(jsonDecode(post.body)['value'], {'name': 'Jose', 'role': 'Owner'});
+  });
+
   testWidgets('a list this person may not edit has no add or remove', (
     tester,
   ) async {
@@ -101,7 +126,7 @@ void main() {
     (tester) async {
       await _pump(tester, width: 400);
 
-      expect(find.byKey(const ValueKey('row:bar')), findsNothing);
+    expect(find.byKey(const ValueKey('row:bar')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('list-entry:test.aliases')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('row:bar')), findsOneWidget);
@@ -131,6 +156,32 @@ void main() {
       calls.single.url.path,
       endsWith('/settings/lists/test.aliases/reset'),
     );
+  });
+
+  // Audit 2026-11-27: the old rows stayed on screen after a reset.
+  testWidgets('after Restore defaults the default rows are shown', (
+    tester,
+  ) async {
+    final lists = [_list(edited: true)];
+    await _pump(tester, lists: lists);
+    lists[0] = {
+      ..._list(),
+      'items': [
+        {
+          'key': 'dflt',
+          'value': {'name': 'Default'},
+          'sort': 0,
+        },
+      ],
+    };
+
+    await tester.tap(find.byKey(const ValueKey('lists-reset')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('lists-reset-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('row:dflt')), findsOneWidget);
+    expect(find.byKey(const ValueKey('row:bar')), findsNothing);
   });
 
   testWidgets('the question lapses after 5 seconds', (tester) async {

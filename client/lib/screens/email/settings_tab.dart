@@ -113,9 +113,13 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       _error = null;
     });
 
-    final response = await widget.api.get('/email/mailboxes');
-    final workspace = await widget.api.get('/email/workspace');
-    final alerts = await widget.api.get('/email/mailboxes/new-mail-alerts');
+    // Together, not one after another (audit 11-27).
+    final mailboxesCall = widget.api.get('/email/mailboxes');
+    final workspaceCall = widget.api.get('/email/workspace');
+    final alertsCall = widget.api.get('/email/mailboxes/new-mail-alerts');
+    final response = await mailboxesCall;
+    final workspace = await workspaceCall;
+    final alerts = await alertsCall;
 
     if (!mounted) return;
 

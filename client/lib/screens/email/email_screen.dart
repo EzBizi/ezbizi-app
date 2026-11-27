@@ -139,6 +139,9 @@ class _EmailScreenState extends State<EmailScreen> {
     // hold rather than indexing into a list that no longer contains it.
     final current = tabs.indexWhere((tab) => tab.$1 == _tab);
     final selected = current == -1 ? 0 : current;
+    // The panes follow the tab drawn as selected: following _tab left a role
+    // without the Inbox on a blank pane (audit 11-27).
+    final active = tabs[selected].$1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,11 +170,11 @@ class _EmailScreenState extends State<EmailScreen> {
             fit: StackFit.expand,
             children: [
               if (_mayOpen(_inboxTab))
-                Offstage(offstage: _tab != _inboxTab, child: _inbox()),
+                Offstage(offstage: active != _inboxTab, child: _inbox()),
               if (_mayOpen('settings'))
                 Offstage(
-                  offstage: _tab != 'settings',
-                  child: _shown.contains('settings')
+                  offstage: active != 'settings',
+                  child: _shown.contains('settings') || active == 'settings'
                     ? MailboxSettingsTab(
                         api: widget.api,
                         session: widget.session,
@@ -180,8 +183,8 @@ class _EmailScreenState extends State<EmailScreen> {
               ),
               if (_mayOpen('workspace'))
                 Offstage(
-                  offstage: _tab != 'workspace',
-                  child: _shown.contains('workspace')
+                  offstage: active != 'workspace',
+                  child: _shown.contains('workspace') || active == 'workspace'
                     ? WorkspaceTab(api: widget.api, session: widget.session)
                     : const SizedBox.shrink(),
                 ),

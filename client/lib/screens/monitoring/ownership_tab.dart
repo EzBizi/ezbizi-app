@@ -138,7 +138,9 @@ class _OwnershipTabState extends State<OwnershipTab> {
       _loading = false;
 
       if (!response.ok) {
-        _error = response.message;
+        // A failed background refresh keeps the table (and any desk being
+        // renamed in it); only an empty screen shows the error (audit 11-27).
+        if (_rows.isEmpty) _error = response.message;
         return;
       }
 
@@ -643,6 +645,17 @@ class _DeskCellState extends State<_DeskCell> {
                 size: 18,
                 color: theme.colorScheme.outlineVariant,
               ),
+              // A refused seating said nothing (audit 11-27).
+              if (_error != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  _error!,
+                  key: const Key('desk-seat-error'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

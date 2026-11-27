@@ -437,7 +437,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   /// The chosen local day as the server's [from, to).
   Map<String, String> _dayRange() => {
     'from': _day.toUtc().toIso8601String(),
-    'to': _day.add(const Duration(days: 1)).toUtc().toIso8601String(),
+    'to': DateTime(_day.year, _day.month, _day.day + 1).toUtc().toIso8601String(),
   };
 
   /// The next page back through the day, from the oldest capture held.
@@ -453,7 +453,14 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       ..._dayRange(),
       'before': _shots.last['captured_at'] as String,
     });
-    if (!mounted || generation != _loadGeneration) return;
+    if (!mounted) return;
+    if (generation != _loadGeneration) {
+      // A newer load took over (a quiet refresh bumps the generation too):
+      // drop this page but release the flag, or paging stopped for good
+      // after any refresh (audit 11-27).
+      setState(() => _loadingMore = false);
+      return;
+    }
 
     final page = response.ok
         ? (response.data as List<dynamic>).cast<Map<String, dynamic>>()
@@ -938,13 +945,32 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
-    final batch = List<Map<String, Object?>>.from(_pendingInput);
-    _pendingInput.clear();
+    // One batch in flight: two concurrent posts could land out of order, so
+    // a mouse-up could arrive before its mouse-down (audit 11-27). Events
+    // queued meanwhile go in the next post, straight after this one.
+    if (_flushing) {
+      _flushAgain = true;
+      return;
+    }
+    _flushing = true;
+    try {
+      final batch = List<Map<String, Object?>>.from(_pendingInput);
+      _pendingInput.clear();
 
-    await widget.api.post('/monitoring/devices/$deviceId/input', {
-      'events': batch,
-    });
+      await widget.api.post('/monitoring/devices/$deviceId/input', {
+        'events': batch,
+      });
+    } finally {
+      _flushing = false;
+    }
+    if (_flushAgain) {
+      _flushAgain = false;
+      await _flushInput(deviceId);
+    }
   }
+
+  bool _flushing = false;
+  bool _flushAgain = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1948,7 +1974,7 @@ class _DayBar extends StatelessWidget {
           key: const Key('desktop-monitoring-day-back'),
           tooltip: 'Previous day',
           icon: const Icon(Icons.chevron_left),
-          onPressed: () => onDay(day.subtract(const Duration(days: 1))),
+          onPressed: () => onDay(DateTime(day.year, day.month, day.day - 1)),
         ),
         Text(label, style: Theme.of(context).textTheme.titleSmall),
         IconButton(
@@ -1957,7 +1983,7 @@ class _DayBar extends StatelessWidget {
           icon: const Icon(Icons.chevron_right),
           onPressed: isToday
               ? null
-              : () => onDay(day.add(const Duration(days: 1))),
+              : () => onDay(DateTime(day.year, day.month, day.day + 1)),
         ),
         if (count.isNotEmpty)
           Padding(

@@ -35,14 +35,32 @@ class JobsByStatus
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        return [
-            // Every configured status appears, including the ones with nothing
-            // in them. A board that hides empty columns reorders itself as work
-            // moves, which is exactly when somebody is looking at it.
-            'rows' => array_map(fn (string $status) => [
+        // Every configured status appears, including the ones with nothing in
+        // them. A board that hides empty columns reorders itself as work moves,
+        // which is exactly when somebody is looking at it. A status counted in
+        // reach but missing from that vocabulary (another branch's own word, or
+        // one since removed) is appended, so the slices add up to the total.
+        $rows = [];
+        foreach ($statuses as $status) {
+            $rows[$status] = [
                 'status' => $status,
+                'label' => Job::labelFor($status, $franchise),
                 'total' => (int) ($counts[$status] ?? 0),
-            ], $statuses),
+            ];
+        }
+        foreach ($counts as $status => $total) {
+            $status = (string) $status;
+            if (! isset($rows[$status])) {
+                $rows[$status] = [
+                    'status' => $status,
+                    'label' => Job::humanizeStatus($status),
+                    'total' => (int) $total,
+                ];
+            }
+        }
+
+        return [
+            'rows' => array_values($rows),
 
             'total' => (int) $counts->sum(),
         ];

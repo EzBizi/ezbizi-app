@@ -83,15 +83,19 @@ class AdministratorFloor
      */
     public function otherActiveAdministrators(User $user): int
     {
+        // Every active administrator row, the subject's own included, under
+        // lockForUpdate: inside the caller's transaction two concurrent
+        // demotions then lock the same rows in the same order, so the second
+        // waits and counts again instead of both seeing "one other" and both
+        // writing. Outside a transaction the lock is released at once.
         return User::query()
-            ->whereKeyNot($user->getKey())
             ->where('is_active', true)
-            // The COLUMN, not the name. §4's built-in role is identified by
-            // `is_administrator`; matching on the word "Administrator" is the
-            // bug the 2026_08_10_010000 migration was written to undo, and a
-            // renamed role must still count here or a Spanish-speaking tenant
-            // would be told they have no administrators at all.
+            // The COLUMN, not the role name: a renamed role must still count.
             ->whereHas('role', fn ($query) => $query->where('is_administrator', true))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->pluck('id')
+            ->reject(fn ($id) => (string) $id === (string) $user->getKey())
             ->count();
     }
 }

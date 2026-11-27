@@ -109,11 +109,8 @@ class FlowEdge {
 
 /// A graph, with its nodes indexed and its counts ready.
 class CallFlowGraph {
-  CallFlowGraph({
-    required this.nodes,
-    required this.edges,
-    required this.entry,
-  }) : _byId = {for (final n in nodes) n.id: n};
+  CallFlowGraph({required this.nodes, required this.edges, required this.entry})
+    : _byId = {for (final n in nodes) n.id: n};
 
   final List<FlowNode> nodes;
   final List<FlowEdge> edges;
@@ -148,7 +145,10 @@ class CallFlowGraph {
 
   int get skippedCount => nodes.where((n) => n.isSkipped).length;
 
-  List<FlowEdge> out(String id) => [for (final e in edges) if (e.from == id) e];
+  List<FlowEdge> out(String id) => [
+    for (final e in edges)
+      if (e.from == id) e,
+  ];
 
   /// [entry] is the id of the node the walk begins at, which the caller knows
   /// and this cannot see: the payload does not name it.
@@ -181,7 +181,11 @@ class CallFlowGraph {
 
 /// A node placed in the picture: which column, which row within it.
 class PlacedNode {
-  const PlacedNode({required this.node, required this.column, required this.row});
+  const PlacedNode({
+    required this.node,
+    required this.column,
+    required this.row,
+  });
 
   final FlowNode node;
   final int column;
@@ -341,10 +345,7 @@ List<MergedEdge> mergeParallel(List<FlowEdge> edges) {
     for (final group in byPair.values)
       MergedEdge(
         edge: group.first,
-        label: group
-            .map((e) => e.label)
-            .where((l) => l.isNotEmpty)
-            .join(' · '),
+        label: group.map((e) => e.label).where((l) => l.isNotEmpty).join(' · '),
       ),
   ];
 }
@@ -376,7 +377,6 @@ class NodeEdit {
     return NodeEdit(pane: '$pane', id: '${json['id'] ?? ''}');
   }
 }
-
 
 /// What one box is called and what is happening in it -- the only thing a
 /// module has to answer for the chart to draw its graph.
@@ -443,8 +443,6 @@ const double _rowGap = 18;
 // declared with the rest of the colours, because ten literals accumulating in
 // one screen is exactly what `theme_conventions_test` exists to stop, and it
 // caught this.
-
-
 
 /// Where every node sits, computed once and shared by the boxes and the wires.
 ///
@@ -604,34 +602,51 @@ class _FlowChartCanvasState extends State<FlowChartCanvas>
                   width: geometry.size.width,
                   height: geometry.size.height,
                   child: Stack(
-              children: [
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, _) => CustomPaint(
-                      painter: FlowWirePainter(
-                        layout: layout,
-                        colour: paper.wire,
-                        labelColour: paper.muted,
-                        paper: paper,
-                        phase: _pulse.value,
-                      ),
-                    ),
-                  ),
-                ),
-                for (final p in layout.placed)
-                      Positioned(
-                        left: geometry.topLeft[p.node.id]!.dx,
-                        top: geometry.topLeft[p.node.id]!.dy,
-                        width: _nodeWidth,
-                        child: _NodeTile(
-                          node: p.node,
-                          look: widget.look(p.node),
-                          isEntry: p.node.id == widget.graph.entry,
-                          onTap: () => widget.onOpen(p.node),
+                    children: [
+                      // Still: dots, wires, arrows, labels, painted once.
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: FlowWirePainter(
+                              layout: layout,
+                              colour: paper.wire,
+                              labelColour: paper.muted,
+                              paper: paper,
+                            ),
+                          ),
                         ),
                       ),
-                  ],
+                      // Moving: only the dashes, every frame, on their own layer.
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                          child: AnimatedBuilder(
+                            animation: _pulse,
+                            builder: (context, _) => CustomPaint(
+                              painter: FlowWirePainter(
+                                layout: layout,
+                                colour: paper.wire,
+                                labelColour: paper.muted,
+                                paper: paper,
+                                phase: _pulse.value,
+                                flowOnly: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      for (final p in layout.placed)
+                        Positioned(
+                          left: geometry.topLeft[p.node.id]!.dx,
+                          top: geometry.topLeft[p.node.id]!.dy,
+                          width: _nodeWidth,
+                          child: _NodeTile(
+                            node: p.node,
+                            look: widget.look(p.node),
+                            isEntry: p.node.id == widget.graph.entry,
+                            onTap: () => widget.onOpen(p.node),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -846,7 +861,13 @@ class FlowWirePainter extends CustomPainter {
     required this.labelColour,
     this.paper = FlowCanvas.light,
     this.phase = 0,
+    this.flowOnly = false,
   }) : _geometry = _Geometry(layout);
+
+  /// Only the travelling dashes: the layer that repaints every frame, over
+  /// a still one with everything else (audit 2026-11-27: the whole chart,
+  /// dots, wires and labels, repainted at 60 fps while on screen).
+  final bool flowOnly;
 
   final FlowLayout layout;
   final Color colour;
@@ -887,7 +908,7 @@ class FlowWirePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _dots(canvas, size);
+    if (!flowOnly) _dots(canvas, size);
 
     final pen = Paint()
       ..color = colour
@@ -913,8 +934,9 @@ class FlowWirePainter extends CustomPainter {
           to.dx,
           to.dy,
         );
-      canvas.drawPath(path, pen);
       _flow(canvas, path, paper.accent, reverse: false);
+      if (flowOnly) continue;
+      canvas.drawPath(path, pen);
       _arrow(canvas, path, colour);
       _label(canvas, wire.label, path, _labelAt(edge));
     }
@@ -932,8 +954,9 @@ class FlowWirePainter extends CustomPainter {
       final path = Path()
         ..moveTo(from.dx, from.dy)
         ..cubicTo(from.dx, dip, to.dx, dip, to.dx, to.dy);
-      canvas.drawPath(_dashes(path, dash: 5, gap: 4), pen);
       _flow(canvas, path, paper.amber, reverse: true);
+      if (flowOnly) continue;
+      canvas.drawPath(_dashes(path, dash: 5, gap: 4), pen);
       _arrow(canvas, path, colour);
       _label(canvas, edge.label, path, 0.5);
     }
@@ -1046,7 +1069,8 @@ class FlowWirePainter extends CustomPainter {
       old.colour != colour ||
       old.labelColour != labelColour ||
       old.paper != paper ||
-      old.phase != phase;
+      old.phase != phase ||
+      old.flowOnly != flowOnly;
 }
 
 // ── Phone: the whole flow, top to bottom (Jose: mobile 4) ──────────
@@ -1310,4 +1334,3 @@ class _BranchRow extends StatelessWidget {
 }
 
 // ── the payload ────────────────────────────────────────────────────
-

@@ -5,6 +5,7 @@ namespace App\Support\TimeClock;
 use App\Models\JobPart;
 use App\Models\PayRate;
 use App\Models\PayrollWeekLine;
+use App\Models\TimeClockDay;
 use App\Models\TimeClockDayApproval;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -74,6 +75,10 @@ class TimeClockPayroll
         $lines = PayrollWeekLine::query()->with('approver:id,name')->whereIn('user_id', $people->modelKeys())
             ->whereDate('week_start', $start->toDateString())->get()->keyBy('user_id');
 
+        // HR's extra hours on a day count like Work Hours counts them (audit 2026-11-27).
+        $extra = TimeClockDay::query()->whereIn('user_id', $people->modelKeys())
+            ->whereDate('date', '>=', $start->toDateString())->whereDate('date', '<', $end->toDateString())
+            ->selectRaw('user_id, sum(extra_minutes) as minutes')->groupBy('user_id')->pluck('minutes', 'user_id');
         $expenses = JobPart::techExpenses(null, $start->copy()->utc(), $end->copy()->utc())->groupBy('user_id');
 
         $rows = [];
@@ -82,11 +87,12 @@ class TimeClockPayroll
             $rate = PayRate::rateOn($person->id, $start->copy()->addDays(6)->toDateString());
             $paidFor = $expenses->get($person->id, collect());
             $techExpenses = round($paidFor->sum('amount_minor') / 100, 2);
-            if ($theirs->isEmpty() && $rate === null && $paidFor->isEmpty()) {
+            $extraSeconds = (int) ($extra[$person->id] ?? 0) * 60;
+            if ($theirs->isEmpty() && $rate === null && $paidFor->isEmpty() && $extraSeconds === 0) {
                 continue;
             }
             $line = $lines->get($person->id);
-            $seconds = $theirs->sum(fn (TimeClockShift $s) => (int) Carbon::parse($s->clocked_in_at)->diffInSeconds($s->clocked_out_at ?? now(), true));
+            $seconds = $theirs->sum(fn (TimeClockShift $s) => (int) Carbon::parse($s->clocked_in_at)->diffInSeconds($s->clocked_out_at ?? now(), true)) + $extraSeconds;
             $hours = round($seconds / 3600, 2);
             $bonus = (float) ($line?->bonus ?? 0);
             $deductions = (float) ($line?->deductions ?? 0);
@@ -134,6 +140,7 @@ class TimeClockPayroll
     public function adjust(User $actor, User $person, ?string $weekStart, array $values): PayrollWeekLine
     {
         $this->clock->assertReaches($actor, $person);
+        $this->assertNotOwn($actor, $person);
         $line = $this->lineFor($person, $this->resolveWeek($actor, $weekStart, $this->clock->viewTimezone($actor)));
         $before = ['bonus' => $line->bonus, 'deductions' => $line->deductions, 'note' => $line->note];
         $line->fill(array_intersect_key($values, $before))->forceFill(['approved_by' => null, 'approved_at' => null])->save();
@@ -145,6 +152,7 @@ class TimeClockPayroll
     public function approve(User $actor, User $person, ?string $weekStart): PayrollWeekLine
     {
         $this->clock->assertReaches($actor, $person);
+        $this->assertNotOwn($actor, $person);
         $line = $this->lineFor($person, $this->resolveWeek($actor, $weekStart, $this->clock->viewTimezone($actor)));
         if ($line->approved_at === null) {
             $line->forceFill(['approved_by' => $actor->id, 'approved_at' => now()])->save();
@@ -160,7 +168,7 @@ class TimeClockPayroll
         $week = $this->week($actor, $weekStart);
         $count = 0;
         foreach ($week['rows'] as $row) {
-            if ($row['status'] === 'waiting') {
+            if ($row['status'] === 'waiting' && ($row['person']['id'] !== $actor->id || $actor->isAdministrator())) {
                 $this->approve($actor, User::query()->findOrFail($row['person']['id']), $week['week_start']);
                 $count++;
             }
@@ -222,6 +230,14 @@ class TimeClockPayroll
             'no_show' => $noShow,
             'unapproved_days' => $approval && $approved < $worked->count(),
         ])));
+    }
+
+    /** Your own pay is somebody else's to set and approve, unless you are an Administrator (audit 2026-11-27). */
+    private function assertNotOwn(User $actor, User $person): void
+    {
+        if ($actor->is($person) && ! $actor->isAdministrator()) {
+            abort(403, 'Your own payroll is approved by somebody else.');
+        }
     }
 
     private function lineFor(User $person, Carbon $start): PayrollWeekLine

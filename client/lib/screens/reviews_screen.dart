@@ -454,13 +454,15 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     }
   }
 
-  Future<void> _write(Future<ApiResponse> call) async {
+  /// True when it saved, so a caller clears what was typed only then (audit 2026-11-27).
+  Future<bool> _write(Future<ApiResponse> call) async {
     setState(() => _busy = true);
     final response = await call;
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _busy = false);
     _take(response);
     if (response.ok) await _load();
+    return response.ok;
   }
 
   /// Grok's words into the box, for a person to edit (AI item 11).
@@ -493,7 +495,15 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// 20 ids a call. The server saves each body as a draft; nothing posts, and
   /// each one still waits for a person's Post.
   Future<void> _draftAll() async {
-    final ids = [for (final r in _toDraft) '${r['id']}'];
+    // The phone panel holds a snapshot of `drafting`, so a second tap lands here (audit 2026-11-27).
+    if (_drafting) return;
+    // The open review keeps what is being typed in its box (audit 2026-11-27).
+    final saved = ((_open?['reply'] as Map?)?['body'] as String?) ?? '';
+    final typing = _draft.text.trim().isNotEmpty && _draft.text != saved;
+    final ids = [
+      for (final r in _toDraft)
+        if (!(typing && '${r['id']}' == '${_open?['id']}')) '${r['id']}',
+    ];
     if (ids.isEmpty) return;
     setState(() {
       _drafting = true;
@@ -1422,8 +1432,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       ? 'A Google user'
       : 'An ${_sourceName(review['source'] as String)} customer';
 
-  String _sourceName(String source) =>
-      source == 'ekomi' ? 'eKomi' : source[0].toUpperCase() + source.substring(1);
+  String _sourceName(String source) => source == 'ekomi'
+      ? 'eKomi'
+      : source[0].toUpperCase() + source.substring(1);
 
   /// "Company · Branch" where the review is a branch's, so twenty "Main"s do
   /// not read the same; the company alone, or the Google location's name.
@@ -1466,7 +1477,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   /// An unanswered 1- or 2-star review: the one a stranger reads first.
   bool _needsReply(Map<String, dynamic> review) =>
-      !_published(review) && (_rating0(review) ?? 9) <= 2;
+      !_published(review) && (_rating0(review) ?? 9) <= 3;
 
   Widget _statusPill(Map<String, dynamic> review) {
     final s = _statuses[review['status']];
@@ -2185,14 +2196,15 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 key: const ValueKey('review-note-add'),
                 onPressed: _busy || _note.text.trim().isEmpty
                     ? null
-                    : () {
+                    : () async {
                         final text = _note.markup.trim();
-                        _note.clear();
-                        _write(
+                        if (await _write(
                           widget.api.post('/reviews/${review['id']}/notes', {
                             'text': text,
                           }),
-                        );
+                        )) {
+                          _note.clear();
+                        }
                       },
                 child: const Text('Add note'),
               ),
@@ -2250,16 +2262,17 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                     key: const ValueKey('review-report-save'),
                     onPressed: _busy || _reason.text.trim().isEmpty
                         ? null
-                        : () {
+                        : () async {
                             final reason = _reason.text.trim();
-                            _reason.clear();
-                            setState(() => _reporting = false);
-                            _write(
+                            if (await _write(
                               widget.api.post(
                                 '/reviews/${review['id']}/report',
                                 {'reason': reason},
                               ),
-                            );
+                            )) {
+                              _reason.clear();
+                              setState(() => _reporting = false);
+                            }
                           },
                     child: const Text('Record the report'),
                   ),

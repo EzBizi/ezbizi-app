@@ -42,6 +42,11 @@ Stream<List<int>> _defaultOpen(String url) async* {
     // The secret lives in the URL; send nothing else that could leak it.
     req.headers.removeAll(HttpHeaders.refererHeader);
     final res = await req.close();
+    // A 401/404/5xx body is not a stream: say so, or the tile spins forever
+    // re-asking every 4 s (audit 11-27).
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw HttpException('camera stream answered ${res.statusCode}');
+    }
     yield* res;
   } finally {
     client.close(force: true);
@@ -166,8 +171,15 @@ class _MjpegViewState extends State<_MjpegView> {
 
   void _onBytes(List<int> chunk) {
     _buf.add(chunk);
-    // Only scan when the buffer is large enough to plausibly hold a frame end.
-    _extractFrames();
+    // Scan only when this chunk can END a frame (FF D9, also across the
+    // boundary with the previous chunk): rescanning and copying the whole
+    // buffer on every chunk was most of the decode cost (audit 11-27).
+    var endsFrame = _lastByte == 0xFF && chunk.isNotEmpty && chunk.first == 0xD9;
+    for (var i = 0; !endsFrame && i + 1 < chunk.length; i++) {
+      endsFrame = chunk[i] == 0xFF && chunk[i + 1] == 0xD9;
+    }
+    if (chunk.isNotEmpty) _lastByte = chunk.last;
+    if (endsFrame) _extractFrames();
     // Guard against a runaway buffer if a frame never completes.
     if (_buf.length > 12 * 1024 * 1024) _buf.clear();
   }
@@ -187,6 +199,7 @@ class _MjpegViewState extends State<_MjpegView> {
         _frame = newest;
         if (aspect != null) _aspect = aspect;
         _error = false;
+        _failures = 0;
       });
       if (aspect != null) widget.onAspect?.call(aspect);
     }
@@ -196,8 +209,13 @@ class _MjpegViewState extends State<_MjpegView> {
     if (kDebugMode) debugPrint('camera stream error: $e');
     if (_disposed) return;
     if (_frame == null && mounted) setState(() => _error = true);
-    _scheduleReconnect();
+    // Back off on repeated failures: 3 s, 6, 12 … capped at a minute.
+    _failures++;
+    _scheduleReconnect(Duration(seconds: (3 << (_failures - 1).clamp(0, 4)).clamp(3, 60)));
   }
+
+  int _failures = 0;
+  int _lastByte = -1;
 
   void _onDone() {
     // Reached for a single-frame snapshot (connection closes after one image)

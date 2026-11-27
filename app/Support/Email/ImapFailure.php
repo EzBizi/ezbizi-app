@@ -56,6 +56,12 @@ final class ImapFailure extends RuntimeException
         return new self('The mail server stopped answering while '.$doing.'.', self::TIMEOUT);
     }
 
+    /** The connection did not open: a blip until it keeps happening. */
+    public static function notAnswering(string $why): self
+    {
+        return new self($why, self::TIMEOUT);
+    }
+
     public static function unreachable(string $why): self
     {
         return new self($why, self::UNREACHABLE);

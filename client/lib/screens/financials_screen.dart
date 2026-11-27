@@ -52,6 +52,9 @@ class FinancialsScreen extends StatefulWidget {
 class _FinancialsHostState extends State<FinancialsScreen> {
   int _tab = 0;
 
+  /// Labels of the tabs opened so far; only these are built.
+  final _opened = <String>{};
+
   bool _may(String tab) =>
       widget.session.me?.permissions.contains('financials.$tab.view') ?? false;
 
@@ -118,6 +121,7 @@ class _FinancialsHostState extends State<FinancialsScreen> {
       );
     }
     final selected = _tab < tabs.length ? _tab : 0;
+    _opened.add(tabs[selected].$1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -134,7 +138,14 @@ class _FinancialsHostState extends State<FinancialsScreen> {
         Expanded(
           child: IndexedStack(
             index: selected,
-            children: [for (final t in tabs) t.$3],
+            // A tab is built the first time it is opened, then kept, so its
+            // loads do not all fire when Financials opens.
+            children: [
+              for (final t in tabs)
+                _opened.contains(t.$1) || identical(t, tabs[selected])
+                    ? t.$3
+                    : const SizedBox.shrink(),
+            ],
           ),
         ),
       ],
@@ -294,18 +305,26 @@ class _FinancialsScreenState extends State<FinancialBases> {
     _loadHome();
   }
 
+  /// Bumped per table opened; an answer for an older pick is dropped.
+  int _tableTicket = 0;
+
   Future<void> _openTable(String? id) async {
+    final ticket = ++_tableTicket;
     if (id == null) {
       setState(() {
+        _confirmCut = false;
         _tableId = null;
         _table = null;
       });
       return;
     }
     final r = await widget.api.get('/financials/tables/$id');
-    if (!mounted) return;
+    if (!mounted || ticket != _tableTicket) return;
     setState(() {
-      if (id != _tableId) _viewId = null;
+      if (id != _tableId) {
+        _viewId = null;
+        _confirmCut = false;
+      }
       _tableId = id;
       _table = r.ok ? r.body['data'] as Map : null;
       _error = r.ok ? null : r.message;
@@ -490,7 +509,15 @@ class _FinancialsScreenState extends State<FinancialBases> {
     await _reload();
   }
 
+  /// The view the delete button was pressed once for; the second press deletes.
+  String? _confirmDeleteView;
+
   Future<void> _deleteView() async {
+    final id = '${_view!['id']}';
+    if (_confirmDeleteView != id) {
+      return setState(() => _confirmDeleteView = id);
+    }
+    setState(() => _confirmDeleteView = null);
     final r = await widget.api.delete('/financials/views/${_view!['id']}');
     if (!mounted) return;
     if (!r.ok) return _say(r.message);
@@ -873,12 +900,23 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 label: Text(_settingsLabel(config)),
                 onPressed: canEdit ? _viewSettings : null,
               ),
-              if (canEdit && _views.length > 1)
-                IconButton(
-                  tooltip: 'Delete this view',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: _deleteView,
-                ),
+              if (_can('delete') && _views.length > 1)
+                _confirmDeleteView == '${view?['id']}'
+                    ? TextButton.icon(
+                        key: const Key('financials-view-delete-confirm'),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Delete view?'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                        onPressed: _deleteView,
+                      )
+                    : IconButton(
+                        key: const Key('financials-view-delete'),
+                        tooltip: 'Delete this view',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: _deleteView,
+                      ),
               if (canShape)
                 IconButton(
                   tooltip: 'Import CSV',

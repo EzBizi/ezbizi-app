@@ -2716,6 +2716,7 @@ Route::prefix('v1')
         // The list answers to Dashboard OR Composer, so its tab check lives in
         // NewslettersController::index rather than on the route.
         Route::get('newsletters', [NewslettersController::class, 'index']);
+        Route::get('newsletters/{newsletter}', [NewslettersController::class, 'show']);
 
         // Composer's own routes: everything that writes, previews or sends.
         Route::middleware('permission:newsletter.composer.view')->group(function () {
@@ -2887,6 +2888,7 @@ Route::prefix('v1')
         // for any chat the caller is not a member of.
         Route::middleware('permission:phone.chat.view')->group(function () {
             Route::get('chat/pulse', [ChatController::class, 'pulse']);
+            Route::post('chat/read-all', [ChatController::class, 'readAll']);
             Route::get('chat/contacts', [ChatController::class, 'contacts']);
             Route::get('chat/starred', [ChatController::class, 'starred']);
             Route::get('chat/search', [ChatController::class, 'search']);
@@ -3897,7 +3899,9 @@ Route::prefix('v1')
  * background beat should not be interrupted by either gate.
  */
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant'])
+    // `api-key`: a key reaching these is bound by its level and logged like
+    // everywhere else (audit 11-27: a read-only key could post heartbeats).
+    ->middleware(['auth:sanctum', 'tenant', 'api-key'])
     ->group(function () {
         // Each agent route counts in its OWN bucket (the third throttle
         // argument). Unnamed, Laravel keys every throttle by user id alone,

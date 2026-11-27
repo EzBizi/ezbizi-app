@@ -223,13 +223,15 @@ Future<void> showNewsletterCompare(
   required List<Map<String, dynamic>> localBlocks,
   required String? localHtml,
   required String company,
+  String localActiveDesign = 'html',
 }) => showSidePanel<void>(
   context,
   builder: (panel) => _Compare(
     api: api,
     id: newsletterId,
     blocks: localBlocks,
-    html: localHtml,
+    // The local copy is the design that would go out, not whichever is filled.
+    html: localActiveDesign == 'blocks' ? null : localHtml,
     company: company,
   ),
 );

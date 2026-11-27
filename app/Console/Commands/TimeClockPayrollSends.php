@@ -80,25 +80,36 @@ class TimeClockPayrollSends extends Command
             if (! $now->isSunday() || $now->format('H:i') < self::REVIEW_AT) {
                 continue;
             }
-            if (! Cache::add("time_clock.payroll_review:{$manager->id}:{$now->toDateString()}", true, now()->addDays(2))) {
+            $claim = "time_clock.payroll_review:{$manager->id}:{$now->toDateString()}";
+            if (! Cache::add($claim, true, now()->addDays(2))) {
                 continue;
             }
-            $week = $payroll->week($manager, $now->toDateString());
-            $t = $week['totals'];
-            if ($t['people'] === 0) {
-                continue;
+            try {
+                $this->tellManager($manager, $now, $payroll, $notify, $events);
+            } catch (Throwable $e) {
+                Cache::forget($claim);   // not told: the next run tries again (audit 2026-11-27)
+                throw $e;
             }
-            $notify->dispatch(
-                title: "Payroll {$week['label']} is ready to approve",
-                body: "{$t['people']} people, {$t['hours']} hours".($t['with_warnings'] > 0 ? ", {$t['with_warnings']} need a look" : '')
-                    .'. Work Hours › Payroll: add bonuses or deductions, then approve.',
-                subject: $manager,
-                onlyTo: $manager,
-                source: 'work_hours',
-            );
-            $events->emit('time_clock.payroll_ready', $manager, ['week_start' => $week['week_start'], 'people' => $t['people'],
-                'waiting' => $t['waiting'], 'with_warnings' => $t['with_warnings']]);
         }
+    }
+
+    private function tellManager(User $manager, Carbon $now, TimeClockPayroll $payroll, NotificationDispatcher $notify, EventEmitter $events): void
+    {
+        $week = $payroll->week($manager, $now->toDateString());
+        $t = $week['totals'];
+        if ($t['people'] === 0) {
+            return;
+        }
+        $notify->dispatch(
+            title: "Payroll {$week['label']} is ready to approve",
+            body: "{$t['people']} people, {$t['hours']} hours".($t['with_warnings'] > 0 ? ", {$t['with_warnings']} need a look" : '')
+                .'. Work Hours › Payroll: add bonuses or deductions, then approve.',
+            subject: $manager,
+            onlyTo: $manager,
+            source: 'work_hours',
+        );
+        $events->emit('time_clock.payroll_ready', $manager, ['week_start' => $week['week_start'], 'people' => $t['people'],
+            'waiting' => $t['waiting'], 'with_warnings' => $t['with_warnings']]);
     }
 
     private function office(Organization $org, SettingsResolver $settings, TimeClock $clock, TimeClockPayroll $payroll,
@@ -107,10 +118,21 @@ class TimeClockPayrollSends extends Command
         $to = array_values(array_filter(preg_split('/[\s,;]+/', (string) $settings->get('time_clock.payroll_recipients', $org)), fn ($a) => filter_var($a, FILTER_VALIDATE_EMAIL)));
         $tz = (string) $settings->get('timezone', $org);
         $now = Carbon::now($tz);
-        if ($to === [] || ! $now->isMonday() || $now->format('H:i') < self::OFFICE_AT
-            || ! Cache::add("time_clock.payroll_office:{$org->id}:{$now->toDateString()}", true, now()->addDays(2))) {
+        $claim = "time_clock.payroll_office:{$org->id}:{$now->toDateString()}";
+        if ($to === [] || ! $now->isMonday() || $now->format('H:i') < self::OFFICE_AT || ! Cache::add($claim, true, now()->addDays(2))) {
             return;
         }
+        try {
+            $this->sendSheet($org, $now, $tz, $to, $settings, $clock, $payroll, $mail, $audit);
+        } catch (Throwable $e) {
+            Cache::forget($claim);   // not sent: the next run tries again (audit 2026-11-27)
+            throw $e;
+        }
+    }
+
+    private function sendSheet(Organization $org, Carbon $now, string $tz, array $to, SettingsResolver $settings, TimeClock $clock,
+        TimeClockPayroll $payroll, MailDispatcher $mail, AuditLogger $audit): void
+    {
         $start = $clock->weekStartFor($now->copy()->subDay()->toDateString(), $tz, (string) $settings->get('time_clock.week_starts_on', $org));
         $week = $payroll->sheet(User::query()->where('is_active', true)->with('role:id,name')->orderBy('name')->get(), $start, $tz);
         if ($week['rows'] === []) {

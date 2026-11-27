@@ -108,6 +108,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
       setState(() => _actionError = response.message);
       return;
     }
+    setState(() => _actionError = null);
     _load();
   }
 

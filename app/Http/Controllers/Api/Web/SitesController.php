@@ -118,6 +118,14 @@ class SitesController extends Controller
             ]);
         }
 
+        // Same rule as update(): a branch of THIS company only (audit 2026-11-27).
+        if (($input['franchise_id'] ?? null) !== null
+            && Franchise::query()->whereKey($input['franchise_id'])->value('company_id') !== $company->getKey()) {
+            throw ValidationException::withMessages([
+                'franchise_id' => 'That branch belongs to a different company.',
+            ]);
+        }
+
         $token = $this->newToken();
 
         $site = new WebSite([

@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\User;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * Chimney" tells a bystander where somebody works. The body names it, because
  * by then the reader is the person who typed it in ten seconds ago.
  */
-class EmailVerificationLink extends Notification implements ShouldQueue
+class EmailVerificationLink extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
 
@@ -78,8 +79,8 @@ class EmailVerificationLink extends Notification implements ShouldQueue
             ))
             ->action('Confirm my address', $url)
             ->line(sprintf(
-                'The link works once, and stops working on %s.',
-                $this->expiresAt->toDayDateTimeString(),
+                'The link works once, and stops working on %s UTC.',
+                $this->expiresAt->copy()->utc()->toDayDateTimeString(),
             ))
             // Not "ignore this if it was not you". Somebody whose address has
             // been typed into a signup they did not make should be able to tell

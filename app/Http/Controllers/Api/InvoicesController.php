@@ -200,7 +200,13 @@ class InvoicesController extends Controller
         ]);
         $term = trim((string) ($input['q'] ?? ''));
         $like = '%'.addcslashes($term, '%_\\').'%';
+        $view = ViewScope::forUser($user);
         $invoices = Invoice::query()->with('lines', 'payments')
+            // Narrowed in SQL before the cap, the same rule as sees() (audit 11-27).
+            ->when(! $view->isOrganization(), fn ($q) => $q->where(fn ($w) => $w
+                ->where(fn ($b) => $b->where('bill_to_type', 'franchise')->whereIn('bill_to_id', $view->franchiseIds()))
+                ->orWhereIn('franchise_id', $view->franchiseIds())
+                ->orWhere(fn ($c) => $c->whereNull('franchise_id')->whereIn('company_id', $view->companyIdsInView() ?? []))))
             // Before the 500 cap, so an old invoice is still findable by its number.
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('number', 'like', $like)
                 ->orWhere('bill_to_name', 'like', $like)
@@ -216,7 +222,7 @@ class InvoicesController extends Controller
             ->when(($input['status'] ?? null) === 'overdue', fn ($c) => $c->filter(fn (Invoice $i) => $i->isOverdue()));
 
         return response()->json([
-            'data' => $invoices->map(fn ($i) => $this->invoiceShape($i, $user))->values(),
+            'data' => $this->batched(fn () => $invoices->map(fn ($i) => $this->invoiceShape($i, $user))->values()),
             'totals' => [
                 'sent_cents' => (int) $invoices->whereIn('status', ['sent', 'paid'])->sum('total_cents'),
                 'unpaid_cents' => (int) $invoices->sum(fn (Invoice $i) => in_array($i->status, ['sent', 'approved'], true) ? $i->dueCents() : 0),
@@ -349,6 +355,7 @@ class InvoicesController extends Controller
         $this->may($user, 'view');
         $scope = Organization::find($this->tenant->idOrFail());
         $issuer = $request->filled('company_id') ? Company::query()->findOrFail($request->string('company_id')) : $scope;
+        abort_unless($this->reaches(ViewScope::forUser($user), $issuer instanceof Company ? $issuer->id : null), Response::HTTP_NOT_FOUND);
         $channels = app(InvoiceChannels::class);
 
         return response()->json(['data' => [
@@ -452,12 +459,41 @@ class InvoicesController extends Controller
         ];
     }
 
+    /** @var array<string, ?string> user id => name, kept across one list's invoices */
+    private array $userNames = [];
+
+    /** @var array<string, Company|Organization|null> */
+    private array $issuers = [];
+
+    private bool $batching = false;
+
+    /** Runs a list's shaping with names and issuers looked up once (the instance outlives a request in tests). */
+    private function batched(callable $fn): mixed
+    {
+        $this->batching = true;
+        try {
+            return $fn();
+        } finally {
+            [$this->userNames, $this->issuers, $this->batching] = [[], [], false];
+        }
+    }
+
     private function invoiceShape(Invoice $i, User $user): array
     {
-        $names = User::query()->whereIn('id', array_filter([$i->approved_by_user_id, ...$i->payments->pluck('recorded_by_user_id')]))->pluck('name', 'id');
+        if (! $this->batching) {
+            [$this->userNames, $this->issuers] = [[], []];
+        }
+        $ids = array_values(array_filter([$i->approved_by_user_id, ...$i->payments->pluck('recorded_by_user_id')]));
+        if ($missing = array_diff($ids, array_keys($this->userNames))) {
+            $this->userNames += array_fill_keys($missing, null);
+            $this->userNames = array_replace($this->userNames, User::query()->whereIn('id', $missing)->pluck('name', 'id')->all());
+        }
+        $names = $this->userNames;
 
         // Who issued it, as the PDF shows it: the company, else the organization.
-        $issuer = $i->company_id ? Company::find($i->company_id) : Organization::find($i->organization_id);
+        $key = $i->company_id ?? 'org:'.$i->organization_id;
+        $issuer = array_key_exists($key, $this->issuers) ? $this->issuers[$key]
+            : ($this->issuers[$key] = $i->company_id ? Company::find($i->company_id) : Organization::find($i->organization_id));
 
         return [
             'issuer' => [

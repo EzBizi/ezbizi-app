@@ -51,6 +51,8 @@ class WebSite extends Model implements StatesRetention
             'service_password' => 'encrypted',
             // The areas whose jobs this site's review page thanks (Jose, 2026-10-08).
             'service_area_ids' => 'array',
+            // Highest number ever used per numbered field family (audit 2026-11-27).
+            'numbered_high' => 'array',
             // Whether its pages carry the booking widget, as the plugin reports; null until it has.
             'has_booking' => 'boolean',
             // General fields marked "Not needed for this site": never counted missing.

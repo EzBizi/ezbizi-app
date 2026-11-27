@@ -112,16 +112,17 @@ class ThumbtackLeadIngestionTest extends TestCase
         $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
 
         $this->inTenant($t['org'], function () {
-            Lead::query()->firstOrFail()->forceFill(['status' => Lead::STATUS_ARCHIVED])->save();
+            // Audit 11-27: and a dispatcher's corrected name.
+            Lead::query()->firstOrFail()->forceFill(['status' => Lead::STATUS_ARCHIVED, 'contact_name' => 'Ada Sweep-Jones'])->save();
         });
 
         $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
 
         // Somebody's decision outlives the source's repetition.
-        $this->assertSame(
-            Lead::STATUS_ARCHIVED,
-            $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail())->status,
-        );
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame(Lead::STATUS_ARCHIVED, $lead->status);
+        $this->assertSame('Ada Sweep-Jones', $lead->contact_name);
+        $this->assertSame('+15552345678', $lead->phone);
     }
 
     /**

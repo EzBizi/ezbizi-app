@@ -73,7 +73,7 @@ class InventoryIssuesController extends Controller
             ->with(['location', 'job', 'lines.item'])
             ->orderByDesc('issued_on')
             ->orderByDesc('created_at')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         return response()->json([
             'data' => collect($issues->items())->map(

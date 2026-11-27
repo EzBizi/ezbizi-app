@@ -156,7 +156,12 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
         '/email/mailboxes/suggest-scope?address=${Uri.encodeComponent(address.trim())}',
       );
       final data = response.ok ? response.data : null;
-      if (!mounted || _placeTouched) return;
+      // A reply for an address that has since changed is not this one's
+      // (audit 11-27: a slow answer filed the inbox under the wrong company).
+      final current = _fromDirectory
+          ? (_pickedAddress ?? '')
+          : _address.text.trim();
+      if (!mounted || _placeTouched || current != address.trim()) return;
       setState(
         () => _place = data is Map
             ? '${data['scope_type']}:${data['scope_id']}'

@@ -228,4 +228,28 @@ class VehicleListApiTest extends TestCase
             ['id' => 'general', 'name' => 'General', 'count' => 1],
         ], $places);
     }
+    /** The register's query count does not grow with its rows (audit 2026-11-27). */
+    public function test_the_list_does_not_query_per_vehicle(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $count = function (int $rows) use ($tenant): int {
+            $this->inTenant($tenant['org'], fn () => Vehicle::factory()->count($rows)->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => 'active',
+            ]));
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            $this->signedInAs($tenant['admin'])->getJson('/api/v1/vehicles?per_page=200')->assertOk();
+            $n = count(\Illuminate\Support\Facades\DB::getQueryLog());
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            return $n;
+        };
+
+        $few = $count(2);
+        $many = $count(10);
+
+        $this->assertSame($few, $many, "2 vehicles took {$few} queries, 12 took {$many}");
+    }
 }

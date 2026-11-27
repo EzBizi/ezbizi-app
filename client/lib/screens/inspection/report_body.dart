@@ -627,7 +627,17 @@ class InspectionReportBody extends StatelessWidget {
             height: signature ? 90 : 96,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: photos[id] == null
+              // Empty bytes: the download failed (audit 11-27), not loading.
+              child: photos[id]?.isEmpty ?? false
+                  ? ColoredBox(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 20),
+                      ),
+                    )
+                  : photos[id] == null
                   ? ColoredBox(
                       color: Theme.of(
                         context,

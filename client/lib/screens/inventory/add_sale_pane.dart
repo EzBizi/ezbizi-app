@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-
 import '../../core/api_client.dart';
+import '../../widgets/suggest_search.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
@@ -42,6 +42,37 @@ class _AddSalePaneState extends State<AddSalePane> {
   String? _customerChoice;
   final _note = TextEditingController();
   List<Map<String, dynamic>> _customers = [];
+
+  /// The house customer search (Book a job's control): the first page above
+  /// only seeds the picker, and A-1 has thousands of customers (audit 11-27).
+  final _customerSearch = TextEditingController();
+  List<Map<String, dynamic>> _hits = const [];
+
+  Future<void> _searchCustomers(String term) async {
+    final q = term.trim();
+    if (q.length < 2) {
+      setState(() => _hits = const []);
+      return;
+    }
+    final response = await widget.api.get('/customers', {
+      'search': q,
+      'per_page': '10',
+      'active_only': '1',
+    });
+    if (!mounted || _customerSearch.text.trim() != q) return;
+    setState(
+      () => _hits = response.ok ? inventoryRows(response.data) : const [],
+    );
+  }
+
+  void _pickCustomer(Map<String, dynamic> row) => setState(() {
+    if (!_customers.any((c) => c['id'] == row['id'])) {
+      _customers = [row, ..._customers];
+    }
+    _customerChoice = row['id'] as String?;
+    _hits = const [];
+    _customerSearch.clear();
+  });
   List<Map<String, dynamic>> _items = [];
   final List<OrderLine> _lines = [OrderLine()];
   bool _loading = true;
@@ -52,8 +83,7 @@ class _AddSalePaneState extends State<AddSalePane> {
   Me get _me => widget.session.me!;
   bool get _atOrganization => _me.scope.type == 'organization';
   bool get _financials => _me.can('inventory.financials');
-  bool get _isCounter =>
-      _customerChoice == null || _customerChoice == _counter;
+  bool get _isCounter => _customerChoice == null || _customerChoice == _counter;
   String? get _customerId => _isCounter ? null : _customerChoice;
 
   @override
@@ -68,6 +98,7 @@ class _AddSalePaneState extends State<AddSalePane> {
   @override
   void dispose() {
     _note.dispose();
+    _customerSearch.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -79,7 +110,7 @@ class _AddSalePaneState extends State<AddSalePane> {
       'per_page': '200',
       'active_only': '1',
     });
-    final items = await widget.api.get('/inventory/items', {'per_page': '200'});
+    final items = await inventoryAllPages(widget.api, '/inventory/items');
     if (!mounted) return;
 
     if (!items.ok) {
@@ -93,9 +124,9 @@ class _AddSalePaneState extends State<AddSalePane> {
     final customerRows = customers.ok
         ? inventoryRows(customers.data)
         : const <Map<String, dynamic>>[];
-    final itemRows = inventoryRows(items.data)
-        .where((row) => row['status'] != 'discontinued')
-        .toList();
+    final itemRows = inventoryRows(
+      items.data,
+    ).where((row) => row['status'] != 'discontinued').toList();
 
     setState(() {
       _loading = false;
@@ -190,10 +221,26 @@ class _AddSalePaneState extends State<AddSalePane> {
             _companyId = v;
             _franchiseId = null;
           }),
-          onFranchiseChanged: (v) =>
-              setState(() => _franchiseId = v),
+          onFranchiseChanged: (v) => setState(() => _franchiseId = v),
         ),
         const SizedBox(height: 12),
+        if (!_customersHidden) ...[
+          SuggestSearchField(
+            key: const ValueKey('sale-customer-search'),
+            controller: _customerSearch,
+            hintText: 'Find a customer: name, phone or email',
+            prefixIcon: const Icon(Icons.search),
+            debounce: const Duration(milliseconds: 250),
+            suggestions: [
+              for (final h in _hits)
+                SuggestItem(title: '${h['name'] ?? 'Customer'}'),
+            ],
+            onChanged: _searchCustomers,
+            onPick: (i) => _pickCustomer(_hits[i]),
+            onDismiss: () => setState(() => _hits = const []),
+          ),
+          const SizedBox(height: 8),
+        ],
         SearchPickerField<String>(
           value: _customerChoice,
           label: 'Customer',
@@ -202,7 +249,10 @@ class _AddSalePaneState extends State<AddSalePane> {
           options: [
             const SearchOption(value: _counter, label: 'Counter sale'),
             for (final customer in _customers)
-              SearchOption(value: customer['id'] as String?, label: customer['name'] as String? ?? ''),
+              SearchOption(
+                value: customer['id'] as String?,
+                label: customer['name'] as String? ?? '',
+              ),
           ],
           onChanged: _busy || _customersHidden
               ? null
@@ -229,10 +279,7 @@ class _AddSalePaneState extends State<AddSalePane> {
           amountLabel: 'Unit price',
           changed: () => setState(() {}),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
       ],
     );
   }

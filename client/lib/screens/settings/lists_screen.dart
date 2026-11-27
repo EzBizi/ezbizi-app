@@ -193,7 +193,24 @@ class _ListPaneState extends State<_ListPane> {
   @override
   void initState() {
     super.initState();
-    _rows = ((widget.list['items'] as List?) ?? const [])
+    _rows = _fromList();
+  }
+
+  // A reload (Restore defaults, mostly) brings new rows; show them (audit
+  // 2026-11-27: the old ones stayed on screen).
+  bool _takeReload = false;
+
+  @override
+  void didUpdateWidget(_ListPane old) {
+    super.didUpdateWidget(old);
+    if (_takeReload && !identical(old.list, widget.list)) {
+      _takeReload = false;
+      _rows = _fromList();
+    }
+  }
+
+  List<Map<String, dynamic>> _fromList() {
+    return ((widget.list['items'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(
           (r) => {
@@ -206,11 +223,16 @@ class _ListPaneState extends State<_ListPane> {
 
   String _item(String key) => '$_path/items/${Uri.encodeComponent(key)}';
 
-  Future<void> _patch(String key, Map<String, dynamic> body) async {
+  Future<bool> _patch(
+    String key,
+    Map<String, dynamic> body, {
+    bool reload = true,
+  }) async {
     final r = await widget.api.patch(_item(key), body);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => r.ok ? _errors.remove(key) : _errors[key] = r.reason);
-    if (r.ok) widget.onChanged();
+    if (r.ok && reload) widget.onChanged();
+    return r.ok;
   }
 
   Future<void> _remove(Map<String, dynamic> row) async {
@@ -246,9 +268,15 @@ class _ListPaneState extends State<_ListPane> {
     );
   }
 
+  // One POST at a time (audit 2026-11-27): blur and Enter both saved.
+  bool _posting = false;
+
   Future<void> _addRow() async {
-    final value = _adding!;
+    if (_posting || _adding == null) return;
+    final value = Map<String, dynamic>.from(_adding!);
+    _posting = true;
     final r = await widget.api.post('$_path/items', {'value': value});
+    _posting = false;
     if (!mounted) return;
     if (!r.ok) {
       setState(() => _errors[''] = r.reason);
@@ -265,17 +293,30 @@ class _ListPaneState extends State<_ListPane> {
   Future<void> _reorder(int from, int to) async {
     if (to > from) to--;
     setState(() => _rows.insert(to, _rows.removeAt(from)));
+    // ponytail: one PATCH per moved row, reloaded once; a bulk reorder
+    // endpoint if lists grow long.
+    var any = false;
     for (var i = 0; i < _rows.length; i++) {
       if (_rows[i]['sort'] != i) {
         _rows[i]['sort'] = i;
-        await _patch(_rows[i]['key'] as String, {'sort': i});
+        any = await _patch(
+              _rows[i]['key'] as String,
+              {'sort': i},
+              reload: false,
+            ) ||
+            any;
       }
     }
+    if (any) await widget.onChanged();
   }
 
   Future<void> _reset() async {
     final r = await widget.api.post('$_path/reset', {});
-    if (r.ok) widget.onChanged();
+    if (!mounted) return;
+    setState(() => r.ok ? _errors.remove('') : _errors[''] = r.reason);
+    if (!r.ok) return;
+    _takeReload = true;
+    await widget.onChanged();
   }
 
   String _rowTitle(Map<String, dynamic> row) {
@@ -354,6 +395,8 @@ class _ListPaneState extends State<_ListPane> {
         ),
         if (_mayEdit) ...[
           if (_adding != null) _addingRow(context),
+          if (_adding == null && _errors[''] != null)
+            _errorLine(context, _errors['']!),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -453,10 +496,27 @@ class _ListPaneState extends State<_ListPane> {
                     final filled = '${_adding![firstText['key']] ?? ''}'
                         .trim()
                         .isNotEmpty;
-                    if (filled) _addRow();
+                    // A one-column row is complete when typed; a wider
+                    // one waits for Add, so the other columns are not lost.
+                    if (filled && _columns.length == 1) _addRow();
                   },
                 ),
             ]),
+            if (_columns.length > 1)
+              TextButton(
+                key: const ValueKey('lists-add-confirm'),
+                onPressed: () async {
+                  // The focused cell saves on blur; let it land first.
+                  FocusScope.of(context).unfocus();
+                  await Future<void>.delayed(Duration.zero);
+                  if (!mounted || _adding == null) return;
+                  final filled = '${_adding![firstText['key']] ?? ''}'
+                      .trim()
+                      .isNotEmpty;
+                  if (filled) _addRow();
+                },
+                child: const Text('Add'),
+              ),
           ],
         ),
         if (error != null) _errorLine(context, error),

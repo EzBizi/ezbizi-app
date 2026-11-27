@@ -58,7 +58,7 @@ class MailboxSendCheckTest extends TestCase
                 return Http::response(['access_token' => 'tok-'.$tokens, 'expires_in' => 3600]);
             },
             'oauth2.googleapis.com/tokeninfo*' => fn ($request) => Http::response([
-                'scope' => str_contains($request->url(), 'tok-1')
+                'scope' => str_contains($request->body(), 'tok-1') && ! str_contains($request->url(), 'access_token')
                     ? 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send'
                     : 'https://www.googleapis.com/auth/gmail.readonly',
             ]),

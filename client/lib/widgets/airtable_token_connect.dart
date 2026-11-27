@@ -30,6 +30,17 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
   String? _note;
   bool _busy = false;
 
+  /// Save was pressed once while it would disconnect bases.
+  bool _confirmDrop = false;
+
+  /// Connected bases left unticked, by name: saving disconnects them.
+  /// (Bases the token cannot reach stay connected, server side.)
+  List<String> get _dropping => [
+    for (final b in _bases ?? const <Map>[])
+      if (b['connected'] == true && !_ticked.contains('${b['id']}'))
+        '${b['name']}',
+  ];
+
   Future<void> _find() async {
     setState(() {
       _busy = true;
@@ -60,7 +71,13 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
   }
 
   Future<void> _save() async {
-    setState(() => _busy = true);
+    if (_dropping.isNotEmpty && !_confirmDrop) {
+      return setState(() => _confirmDrop = true);
+    }
+    setState(() {
+      _busy = true;
+      _confirmDrop = false;
+    });
     final r = await widget.api.post('/social/airtable/connect', {
       'api_token': _token.text.trim(),
       'base_ids': _ticked.toList(),
@@ -156,7 +173,10 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
             labelText: 'Access token',
             isDense: true,
           ),
-          onChanged: (_) => setState(() => _bases = null),
+          onChanged: (_) => setState(() {
+            _bases = null;
+            _confirmDrop = false;
+          }),
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -209,13 +229,17 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
             Row(
               children: [
                 TextButton(
-                  onPressed: () => setState(
-                    () => _ticked.addAll([for (final b in bases) '${b['id']}']),
-                  ),
+                  onPressed: () => setState(() {
+                    _ticked.addAll([for (final b in bases) '${b['id']}']);
+                    _confirmDrop = false;
+                  }),
                   child: const Text('Tick all'),
                 ),
                 TextButton(
-                  onPressed: () => setState(_ticked.clear),
+                  onPressed: () => setState(() {
+                    _ticked.clear();
+                    _confirmDrop = false;
+                  }),
                   child: const Text('Untick all'),
                 ),
               ],
@@ -241,25 +265,40 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
                           if (b['connected'] == true) 'Connected now',
                         ].join(' · '),
                       ),
-                      onChanged: (on) => setState(
-                        () => on == true
+                      onChanged: (on) => setState(() {
+                        on == true
                             ? _ticked.add('${b['id']}')
-                            : _ticked.remove('${b['id']}'),
-                      ),
+                            : _ticked.remove('${b['id']}');
+                        _confirmDrop = false;
+                      }),
                     ),
                   ],
                 ],
               ),
             ),
             const SizedBox(height: 12),
+            if (_dropping.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Saving disconnects: ${_dropping.join(', ')}.',
+                  key: const ValueKey('airtable-dropping'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
             Align(
               alignment: Alignment.centerLeft,
               child: FilledButton(
                 key: const ValueKey('airtable-save'),
                 onPressed: _busy ? null : _save,
                 child: Text(
-                  'Use ${_ticked.length} '
-                  '${_ticked.length == 1 ? 'base' : 'bases'}',
+                  _confirmDrop
+                      ? 'Disconnect ${_dropping.length} and use '
+                            '${_ticked.length}'
+                      : 'Use ${_ticked.length} '
+                            '${_ticked.length == 1 ? 'base' : 'bases'}',
                 ),
               ),
             ),

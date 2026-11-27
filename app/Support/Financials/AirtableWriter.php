@@ -98,16 +98,31 @@ final class AirtableWriter
             }
         }
 
-        foreach (array_chunk($payload, 10) as $chunk) {
-            $response = self::send($table, 'patch', ['records' => $chunk, 'typecast' => true]);
-            self::keep($table, (array) $response['records']);
+        // Ten records per call (Airtable's limit); the mirror is rebuilt once at the end.
+        $chunks = array_chunk($payload, 10);
+        foreach ($chunks as $i => $chunk) {
+            try {
+                $response = self::send($table, 'patch', ['records' => $chunk, 'typecast' => true]);
+            } catch (ValidationException $e) {
+                if ($i === 0) {
+                    throw $e;
+                }
+                AirtableMirror::refresh($table);
+                $saved = $i * 10;
+                throw ValidationException::withMessages(['values' => "Saved {$saved} of ".count($payload).' records; '
+                    .lcfirst(str_replace(' Nothing was changed.', '', collect($e->errors())->flatten()->first())).' The rest were not saved.']);
+            }
+            self::keep($table, (array) $response['records'], refresh: false);
         }
         // Conflicting cells: our copy takes Airtable's live record.
         if ($conflicts !== []) {
             $written = array_column($payload, 'id');
             $losers = $records->whereIn('id', array_column($conflicts, 'record'))->pluck('source_record_id')
                 ->reject(fn ($id) => in_array($id, $written, true));
-            self::keep($table, $losers->map(fn ($id) => ['id' => $id, 'fields' => $live[$id] ?? []])->values()->all());
+            self::keep($table, $losers->map(fn ($id) => ['id' => $id, 'fields' => $live[$id] ?? []])->values()->all(), refresh: false);
+        }
+        if ($payload !== [] || $conflicts !== []) {
+            AirtableMirror::refresh($table);
         }
 
         return $conflicts;
@@ -174,7 +189,7 @@ final class AirtableWriter
     }
 
     /** Puts Airtable's answer into the copy and the mirror. */
-    private static function keep(FinancialTable $table, array $records): void
+    private static function keep(FinancialTable $table, array $records, bool $refresh = true): void
     {
         foreach ($records as $r) {
             if (! isset($r['id'])) {
@@ -204,7 +219,9 @@ final class AirtableWriter
                     'fetched_at' => now(), 'gone_at' => null],
             );
         }
-        AirtableMirror::refresh($table);
+        if ($refresh) {
+            AirtableMirror::refresh($table);
+        }
     }
 
     private static function send(FinancialTable $table, string $method, array $body, string $query = ''): array

@@ -312,10 +312,28 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       _allError = null;
     });
 
-    final response = await widget.api.delete(
-      '/social/providers/$provider/connections',
+    // Audit 11-27: the server asks for the authenticator code; the shared
+    // disconnect panel asks the person for it.
+    final response = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect every $provider account?',
+      explanation:
+          'Their leads are hidden from Leads until you connect again; '
+          'nothing is deleted.',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/providers/$provider/connections',
+        {'code': code},
+      ),
     );
     if (!mounted) return;
+    if (response == null) {
+      setState(() {
+        _lettingGo = false;
+        _confirmAll = false;
+      });
+      return;
+    }
 
     setState(() {
       _lettingGo = false;

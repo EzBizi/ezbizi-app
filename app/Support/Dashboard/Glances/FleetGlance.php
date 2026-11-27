@@ -12,6 +12,7 @@ use App\Support\Fleet\VehicleStatus;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Time\ViewTimezone;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -101,8 +102,8 @@ final class FleetGlance extends DescribedGlance
             // only — never what anything costs. The "soon" figures above
             // include the overdue ones, so each caution row is the difference,
             // and a vehicle is never counted as both.
-            $serviceOverdue = $this->serviceOverdueCount(clone $base);
-            $insuranceExpired = $this->insuranceExpiredCount(clone $base);
+            $serviceOverdue = $this->serviceOverdueCount(clone $base, $user);
+            $insuranceExpired = $this->insuranceExpiredCount(clone $base, $user);
             $serviceSoon = $serviceDue - $serviceOverdue;
             $insuranceSoon = $insuranceDue - $insuranceExpired;
 
@@ -141,7 +142,7 @@ final class FleetGlance extends DescribedGlance
 
     private function serviceDueCount(Builder $query, User $user): int
     {
-        $within = now()->addDays(FleetSummary::soonDays($user))->toDateString();
+        $within = $this->localNow($user)->addDays(FleetSummary::soonDays($user))->toDateString();
         $margin = FleetSummary::soonMiles($user);
 
         return (int) $query
@@ -164,9 +165,9 @@ final class FleetGlance extends DescribedGlance
      * Every vehicle here is also in serviceDueCount, whose window starts
      * before today and whose mileage margin starts 500 earlier.
      */
-    private function serviceOverdueCount(Builder $query): int
+    private function serviceOverdueCount(Builder $query, User $user): int
     {
-        $today = now()->toDateString();
+        $today = $this->today($user);
 
         return (int) $query
             ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
@@ -187,9 +188,9 @@ final class FleetGlance extends DescribedGlance
      * The open policy's expiry has passed and nothing has replaced it, so the
      * vehicle is uninsured on paper. A subset of insuranceDueCount.
      */
-    private function insuranceExpiredCount(Builder $query): int
+    private function insuranceExpiredCount(Builder $query, User $user): int
     {
-        $today = now()->toDateString();
+        $today = $this->today($user);
 
         return (int) $query
             ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
@@ -203,7 +204,7 @@ final class FleetGlance extends DescribedGlance
 
     private function insuranceDueCount(Builder $query, User $user): int
     {
-        $within = now()->addDays(FleetSummary::soonDays($user))->toDateString();
+        $within = $this->localNow($user)->addDays(FleetSummary::soonDays($user))->toDateString();
 
         return (int) $query
             ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
@@ -213,6 +214,20 @@ final class FleetGlance extends DescribedGlance
                     ->whereDate('expires_on', '<=', $within);
             })
             ->count();
+    }
+
+    /**
+     * The reader's calendar, not UTC's: in the evening west of Greenwich the
+     * UTC date is already tomorrow, and a vehicle due today would read overdue.
+     */
+    private function localNow(User $user): \Illuminate\Support\Carbon
+    {
+        return now()->setTimezone(ViewTimezone::forUser($user));
+    }
+
+    private function today(User $user): string
+    {
+        return $this->localNow($user)->toDateString();
     }
 
     private function statusLabel(string $status): string
