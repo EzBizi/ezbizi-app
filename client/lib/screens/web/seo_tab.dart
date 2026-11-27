@@ -169,6 +169,9 @@ class _SeoTabState extends State<SeoTab> {
   /// A phone's pushed site page, closed before the editor opens in the tab so
   /// the editor does not open behind it.
   Route<void>? _pushedSite;
+  // A pushed page is not rebuilt by this state's setState; it listens to
+  // this instead, so a new token shows on phones too (audit 2026-11-27).
+  final ValueNotifier<int> _pushedTick = ValueNotifier(0);
 
   bool get _canEdit => widget.session.me!.can('web_management.edit');
 
@@ -189,6 +192,7 @@ class _SeoTabState extends State<SeoTab> {
   void dispose() {
     _live?.cancel();
     _search.dispose();
+    _pushedTick.dispose();
     super.dispose();
   }
 
@@ -418,7 +422,10 @@ class _SeoTabState extends State<SeoTab> {
           builder: (_) => Scaffold(
             appBar: AppBar(title: Text(site['host'] as String)),
             body: SafeArea(
-              child: _paneFor(site),
+              child: ValueListenableBuilder<int>(
+                valueListenable: _pushedTick,
+                builder: (_, _, _) => _paneFor(site),
+              ),
             ),
           ),
         );
@@ -592,8 +599,10 @@ class _SeoTabState extends State<SeoTab> {
         freshToken: _freshTokens[site['id'] as String],
         onForgetToken: () =>
             setState(() => _freshTokens.remove(site['id'] as String)),
-        onToken: (token) =>
-            setState(() => _freshTokens[site['id'] as String] = token),
+        onToken: (token) {
+          setState(() => _freshTokens[site['id'] as String] = token);
+          _pushedTick.value++;
+        },
         onChanged: _load,
         // The branches of THIS website's company, for "where its enquiries land".
         branches: [
@@ -1071,7 +1080,12 @@ class _SiteDetailState extends State<_SiteDetail> {
 
     final response = await widget.api.put('/web/sites/$_id/values', {
       'values': {
-        for (final entry in _controllers.entries) entry.key: entry.value.text,
+        // Only what changed here, so a colleague's edit to another field in
+        // the meantime is not overwritten (audit 2026-11-27).
+        for (final entry in _controllers.entries)
+          if (entry.value.text != (_savedValues[entry.key] ?? '') ||
+              (entry.key == 'hours' && _hoursZone != null))
+            entry.key: entry.value.text,
       },
       'hours_timezone': ?_hoursZone,
       'not_needed': _notNeeded.toList(),
