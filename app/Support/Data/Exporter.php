@@ -248,6 +248,7 @@ class Exporter
 
         $visible = $user->hasPermission($jobs['permission'])
             ? $customer->jobs()
+                ->with($jobs['with'] ?? [])
                 ->whereIn($jobs['reach_column'], ViewScope::forUser($user)->franchiseIds())
                 ->orderBy('created_at')->get()
             : collect();

@@ -2,9 +2,12 @@
 
 namespace App\Support\Data;
 
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use RuntimeException;
@@ -54,10 +57,16 @@ class Importer
         }
 
         $spec = $definition['import'];
-        $rows = $this->parse($csv, array_keys($spec['columns']));
+
+        // The export's own columns are known too, so the app's export imports
+        // back as it is. The export-only ones (`created_at`, `owning_company`)
+        // are read and then dropped: validated() keeps only the import columns.
+        $rows = $this->parse($csv, array_values(array_unique([
+            ...array_keys($spec['columns']), ...$definition['columns'],
+        ])));
 
         $imported = 0;
-        $errors   = [];
+        $errors = [];
 
         foreach ($rows as $number => $row) {
             $failure = $row === self::TOO_WIDE
@@ -68,6 +77,7 @@ class Importer
 
             if ($failure === null) {
                 $imported++;
+
                 continue;
             }
 
@@ -98,10 +108,10 @@ class Importer
         }
 
         return [
-            'imported'  => $imported,
-            'failed'    => $failed,
-            'errors'    => $errors,
-            'dry_run'   => $dryRun,
+            'imported' => $imported,
+            'failed' => $failed,
+            'errors' => $errors,
+            'dry_run' => $dryRun,
             'truncated' => $failed > count($errors),
         ];
     }
@@ -111,7 +121,11 @@ class Importer
     {
         foreach ($spec['booleans'] ?? [] as $column) {
             if (($row[$column] ?? '') !== '') {
-                $row[$column] = filter_var($row[$column], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                // An unparseable value ("maybe") stays as typed so the `boolean`
+                // rule refuses it. Turning it into null read it as "not given"
+                // and the row landed with the column silently ignored.
+                $row[$column] = filter_var($row[$column], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                    ?? $row[$column];
             }
         }
 
@@ -152,7 +166,7 @@ class Importer
 
         try {
             DB::transaction(function () use ($model, $input, $franchise, $definition) {
-                // `??=`, not a `+` union with a fallback.
+                // `isset`, not a `+` union with a fallback.
                 //
                 // A blank `number` cell becomes a present-but-null key, and PHP's
                 // `+` gives the LEFT operand precedence on duplicate keys — so
@@ -160,9 +174,17 @@ class Importer
                 // went in with no record number at all. Every export includes a
                 // `number` column, so re-importing an edited export with one
                 // blank cell hit this immediately.
-                $input['number'] ??= $this->numbers->next(
-                    $this->sequenceFor($definition), $franchise,
-                );
+                $sequence = $this->sequenceFor($definition);
+
+                if (! isset($input['number'])) {
+                    $input['number'] = $this->numbers->next($sequence, $franchise);
+                } else {
+                    // An imported C-00042 is a number the generator would hand
+                    // out itself one day, and then every create in the
+                    // organization would collide with it and roll back. Move
+                    // the sequence past it in the same transaction.
+                    $this->numbers->advancePast($sequence, $franchise, (string) $input['number']);
+                }
 
                 $model::create($input + [
                     $definition['import']['franchise_column'] => $franchise->id,
@@ -172,12 +194,31 @@ class Importer
             // A row failing for a reason validation could not see — a race on the
             // unique index, a constraint — must not take the rest of the file
             // with it. The message is the point of the whole feature.
-            return [$e instanceof \Illuminate\Database\QueryException
-                ? 'Could not be saved — it conflicts with an existing record.'
+            return [$e instanceof QueryException
+                ? $this->databaseRefusal($e)
                 : $e->getMessage()];
         }
 
         return null;
+    }
+
+    /**
+     * Say what the database actually refused, by its error number.
+     *
+     * Every failure used to read "conflicts with an existing record", which
+     * sent people hunting for a duplicate that was never there when the real
+     * problem was a value too long for its column.
+     */
+    private function databaseRefusal(QueryException $e): string
+    {
+        return match ((int) ($e->errorInfo[1] ?? 0)) {
+            1062 => 'Could not be saved — it conflicts with an existing record.',
+            1406 => 'Could not be saved — a value is too long for its column.',
+            1366, 1292, 1264 => 'Could not be saved — a value is not in a form that column accepts.',
+            1451, 1452 => 'Could not be saved — it refers to a record that does not exist.',
+            1048 => 'Could not be saved — a required value is missing.',
+            default => 'Could not be saved because of a database error.',
+        };
     }
 
     /**
@@ -194,7 +235,7 @@ class Importer
     {
         $string = trim((string) $value);
 
-        return (strlen($string) > 1 && $string[0] === "'" && str_contains("=+-@", $string[1]))
+        return (strlen($string) > 1 && $string[0] === "'" && str_contains('=+-@', $string[1]))
             ? substr($string, 1)
             : $string;
     }
@@ -202,14 +243,14 @@ class Importer
     private function sequenceFor(array $definition): string
     {
         return match ($definition['model']) {
-            \App\Models\Customer::class => RecordNumberGenerator::CUSTOMERS,
-            \App\Models\Job::class      => RecordNumberGenerator::JOBS,
+            Customer::class => RecordNumberGenerator::CUSTOMERS,
+            Job::class => RecordNumberGenerator::JOBS,
         };
     }
 
     /**
      * @param  string[]  $known
-     * @return array<int, array<string, string>>  row number (as the user sees it) => cells
+     * @return array<int, array<string, string>> row number (as the user sees it) => cells
      */
     private function parse(string $csv, array $known): array
     {
@@ -228,7 +269,7 @@ class Importer
         // of the first column name and makes it "unknown" — on the file the user
         // just exported from us.
         $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
-        $header    = array_map(fn ($h) => strtolower(trim((string) $h)), $header);
+        $header = array_map(fn ($h) => strtolower(trim((string) $h)), $header);
 
         $unknown = array_diff($header, $known);
 
@@ -242,7 +283,7 @@ class Importer
             ));
         }
 
-        $rows   = [];
+        $rows = [];
         $number = 1;   // the header is row 1, so data starts at 2
 
         while (($cells = fgetcsv($handle)) !== false && $cells !== null) {
@@ -270,6 +311,7 @@ class Importer
             // result validated clean. Reported as a row failure instead.
             if (count($cells) > count($header)) {
                 $rows[$number] = self::TOO_WIDE;
+
                 continue;
             }
 

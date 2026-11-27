@@ -58,11 +58,11 @@ final class ResourceMap
     {
         return [
             'customers' => [
-                'model'      => Customer::class,
-                'label'      => 'Customers',
+                'model' => Customer::class,
+                'label' => 'Customers',
                 'permission' => 'customers.view',
-                'export'     => ['permission' => 'customers.export'],
-                'columns'    => [
+                'export' => ['permission' => 'customers.export'],
+                'columns' => [
                     'number', 'name', 'email', 'phone',
                     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
                     'notes', 'is_active', 'created_at',
@@ -76,32 +76,32 @@ final class ResourceMap
                     // the same records instead of duplicating them, and refused
                     // when it collides — see Importer.
                     'columns' => [
-                        'number'        => ['nullable', 'string', 'max:40'],
-                        'name'          => ['required', 'string', 'max:200'],
-                        'email'         => ['nullable', 'email', 'max:200'],
-                        'phone'         => ['nullable', 'string', 'max:40'],
+                        'number' => ['nullable', 'string', 'max:40'],
+                        'name' => ['required', 'string', 'max:200'],
+                        'email' => ['nullable', 'email', 'max:200'],
+                        'phone' => ['nullable', 'string', 'max:40'],
                         'address_line1' => ['nullable', 'string', 'max:200'],
                         'address_line2' => ['nullable', 'string', 'max:200'],
-                        'city'          => ['nullable', 'string', 'max:100'],
-                        'state'         => ['nullable', 'string', 'size:2'],
-                        'postal_code'   => ['nullable', 'string', 'max:12'],
-                        'notes'         => ['nullable', 'string', 'max:5000'],
-                        'is_active'     => ['nullable', 'boolean'],
+                        'city' => ['nullable', 'string', 'max:100'],
+                        'state' => ['nullable', 'string', 'size:2'],
+                        'postal_code' => ['nullable', 'string', 'max:12'],
+                        'notes' => ['nullable', 'string', 'max:5000'],
+                        'is_active' => ['nullable', 'boolean'],
                     ],
-                    'unique'           => 'number',
-                    'booleans'         => ['is_active'],
+                    'unique' => 'number',
+                    'booleans' => ['is_active'],
                     'franchise_column' => 'owning_franchise_id',
                 ],
             ],
 
             'jobs' => [
-                'model'      => Job::class,
-                'label'      => 'Jobs',
+                'model' => Job::class,
+                'label' => 'Jobs',
                 'permission' => 'jobs.view',
-                'export'     => ['permission' => 'jobs.export'],
+                'export' => ['permission' => 'jobs.export'],
                 // Jose, 2026-09-29: money in Jobs is a financials toggle, and
                 // an export is a way out like any other.
-                'money'      => ['permission' => 'jobs.financials', 'columns' => ['amount_minor', 'currency']],
+                'money' => ['permission' => 'jobs.financials', 'columns' => ['amount_minor', 'currency']],
 
                 // The WHERE gate (§4), as data rather than a special case in the
                 // exporter. Permission says a person may look at jobs; reach says
@@ -115,7 +115,7 @@ final class ResourceMap
                 // rather than enforce anything. Its absence is a statement.
                 'reach_column' => 'franchise_id',
 
-                'columns'    => [
+                'columns' => [
                     'number', 'title', 'description', 'status',
                     'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
                     'created_at',
@@ -123,7 +123,9 @@ final class ResourceMap
                     'company',
                 ],
                 // Loaded once per chunk, so `company` costs no query per row.
-                'with'       => ['franchise:id,company_id', 'franchise.company:id,name'],
+                // `timezone` too: `scheduled_for` is read in the franchise's
+                // zone, and without it the cast asked the database once a row.
+                'with' => ['franchise:id,company_id,timezone', 'franchise.company:id,name'],
                 // Export-only, on purpose. A job has to land on a real customer
                 // and a real franchise, and a CSV of names cannot say WHICH
                 // "J. Smith" — importing them means guessing, and a wrong guess
@@ -135,7 +137,7 @@ final class ResourceMap
 
     public static function get(string $key): ?array
     {
-        return static::all()[$key] ?? null;
+        return self::all()[$key] ?? null;
     }
 
     /**

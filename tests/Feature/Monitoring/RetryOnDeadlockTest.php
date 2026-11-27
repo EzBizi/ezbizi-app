@@ -36,6 +36,27 @@ class RetryOnDeadlockTest extends TestCase
         $this->assertSame(2, $calls);
     }
 
+    /**
+     * Through the router, where it actually runs (audit 2026-11-27): the
+     * routing pipeline renders an exception into a 500 before it reaches the
+     * middleware as a throw, so a catch alone never saw a deadlock.
+     */
+    public function test_a_deadlock_inside_a_route_is_retried(): void
+    {
+        $calls = 0;
+
+        Route::post('/_test/retry-on-deadlock', function () use (&$calls) {
+            if (++$calls === 1) {
+                throw self::deadlock();
+            }
+
+            return response('ok');
+        })->middleware('retry-deadlock');
+
+        $this->post('/_test/retry-on-deadlock')->assertOk()->assertSeeText('ok');
+        $this->assertSame(2, $calls);
+    }
+
     public function test_any_other_query_error_is_not_retried(): void
     {
         $calls = 0;
