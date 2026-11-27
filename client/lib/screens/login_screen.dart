@@ -25,6 +25,10 @@ class LoginScreen extends StatefulWidget {
   /// /invite and /join still work. Not const so a test can open the door.
   static bool showCreateAccount = false;
 
+  /// EzChat signs in with email and password only and gets a chat-only token
+  /// back (Jose, 2026-11-27). main_ezchat.dart sets it.
+  static bool chatOnly = false;
+
   const LoginScreen({
     super.key,
     required this.api,
@@ -123,6 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
       'remember': _stayed,
+      if (LoginScreen.chatOnly) 'app': 'ezchat',
     });
 
     if (!mounted) return;
@@ -216,6 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       'device_name': 'web',
       'remember': _stayed,
+      if (LoginScreen.chatOnly) 'app': 'ezchat',
     });
 
     if (!mounted) return;

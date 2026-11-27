@@ -31,6 +31,7 @@ Future<void> main() async {
   EzBiziTheme.isEzChat = true;
   // Accounts are made in EzBizi (an invitation); EzChat only signs in.
   LoginScreen.showCreateAccount = false;
+  LoginScreen.chatOnly = true;
   runApp(const EzChatApp());
 }
 

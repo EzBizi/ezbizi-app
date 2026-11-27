@@ -20,6 +20,7 @@ import '../../../core/files.dart';
 import '../../../core/session.dart';
 import '../../../core/soft_keyboard.dart';
 import '../../../widgets/side_panel.dart';
+import '../../../core/theme.dart';
 import '../../../core/timestamps.dart';
 import '../../../widgets/user_avatar.dart';
 import '../recording_player.dart';
@@ -1082,7 +1083,9 @@ class _ChatThreadState extends State<ChatThread> {
                       ),
                     ),
                     // Only someone who may see jobs links one (Chat).
-                    if (widget.session.me?.can('jobs.view') ?? false)
+                    // EzChat's token reaches chat only, never Jobs.
+                    if (!EzBiziTheme.isEzChat &&
+                        (widget.session.me?.can('jobs.view') ?? false))
                       PopupMenuItem(
                         key: const ValueKey('chat-menu-job'),
                         value: 'job',
@@ -3145,7 +3148,8 @@ class _ChatInfoPaneState extends State<ChatInfoPane> {
                       widget.onClose();
                     },
                   ),
-                  if (group)
+                  // An automatic group follows the role: nobody exits it.
+                  if (group && info['auto'] != true)
                     ListTile(
                       key: const ValueKey('chat-exit-group'),
                       leading: Icon(

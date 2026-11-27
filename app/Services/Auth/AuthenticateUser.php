@@ -43,7 +43,7 @@ class AuthenticateUser
      * @param  string|null  $code  the second factor, required only for accounts
      *                             linked to a staff record (§4.2)
      */
-    public function __invoke(string $email, string $password, ?string $code = null): AuthenticationResult
+    public function __invoke(string $email, string $password, ?string $code = null, bool $chatOnly = false): AuthenticationResult
     {
         // Users are tenant-scoped, and at login there is no tenant yet — so the
         // lookup deliberately runs outside tenancy. This is one of the few
@@ -104,7 +104,9 @@ class AuthenticateUser
             // staff link. Either way, once there is one it is required — an
             // account that has switched 2FA on and can still be entered with a
             // password alone has not switched anything on.
-            $needsCode = $staff !== null || $account->hasTotp();
+            // EzChat asks no authenticator (Jose, 11-27); what it gets is a
+            // chat-only token (ChatToken), never the CRM.
+            $needsCode = ! $chatOnly && ($staff !== null || $account->hasTotp());
 
             if ($needsCode) {
                 if ($code === null || $code === '') {
@@ -206,7 +208,7 @@ class AuthenticateUser
      * arrives from the client, so treating it as proof of anything would let
      * someone swap in another user's id and skip authentication entirely.
      */
-    public function completeChoice(string $userId, string $email, string $password, ?string $code = null): AuthenticationResult
+    public function completeChoice(string $userId, string $email, string $password, ?string $code = null, bool $chatOnly = false): AuthenticationResult
     {
         $user = $this->tenant->runWithoutTenant(
             fn () => User::query()->with('organization')->find($userId)
@@ -233,7 +235,9 @@ class AuthenticateUser
             return AuthenticationResult::failed();
         }
 
-        if ($staff !== null) {
+        if ($chatOnly) {
+            // EzChat: password only, chat-only token (see __invoke).
+        } elseif ($staff !== null) {
             if (! app(FactorAttempts::class)->verify($staff, (string) $code,
                 fn () => $this->staffAuth->verifySecondFactor($staff, (string) $code))) {
                 return AuthenticationResult::failed();
