@@ -67,26 +67,6 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
     });
   }
 
-  /// FinancialBillsController@index does not read `q` yet (it returns the
-  /// newest 500), so the loaded bills are also narrowed here, by place,
-  /// period and line names. Once the server honours `q` this is a no-op.
-  List<Map> _matching(List<Map> bills) {
-    final q = _q.toLowerCase();
-    if (q.isEmpty) return bills;
-    return [
-      for (final b in bills)
-        if ([
-          b['place'] ?? 'Whole organization',
-          b['period_from'],
-          b['period_to'],
-          b['source'],
-          for (final l in (b['lines'] as List? ?? const []))
-            if (l is Map) l['name'],
-        ].whereType<Object>().join(' ').toLowerCase().contains(q))
-          b,
-    ];
-  }
-
   /// [quiet]: a live re-read; a failure keeps the bills on screen.
   Future<void> _load({bool quiet = false}) async {
     final r = await widget.api.get(
@@ -142,7 +122,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final bills = _matching(_bills ?? const <Map>[]);
+    final bills = _bills ?? const <Map>[];
     return ListView(
       key: const ValueKey('tour-financials-bills'),
       padding: const EdgeInsets.all(16),
@@ -161,7 +141,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
                 key: const Key('financials-bills-search'),
                 controller: _search,
                 onChanged: _searched,
-                hint: 'Place, period or line',
+                hint: 'Company or branch',
               ),
               if (_canEdit) ...[
                 OutlinedButton(
@@ -195,7 +175,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
                   key: const Key('financials-bills-search'),
                   controller: _search,
                   onChanged: _searched,
-                  hint: 'Place, period or line',
+                  hint: 'Company or branch',
                 ),
               ),
               if (_canEdit) ...[
@@ -497,13 +477,26 @@ class _BillViewState extends State<_BillView> {
     }
   }
 
+  bool _busy = false;
+  String? _error;
+
   Future<void> _delete() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final r = await widget.api.delete('/financials/bills/${widget.bill['id']}');
     if (!mounted) return;
     if (r.ok) {
       widget.onDeleted();
       Navigator.of(context).pop();
+      return;
     }
+    setState(() {
+      _busy = false;
+      _confirm = false;
+      _error = r.message;
+    });
   }
 
   @override
@@ -515,14 +508,24 @@ class _BillViewState extends State<_BillView> {
       actions: [
         if (widget.canDelete)
           TextButton(
-            onPressed: () =>
-                _confirm ? _delete() : setState(() => _confirm = true),
+            onPressed: _busy
+                ? null
+                : () => _confirm ? _delete() : setState(() => _confirm = true),
             child: Text(_confirm ? 'Press again to delete' : 'Delete'),
           ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _error!,
+                key: const ValueKey('bill-delete-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           for (final l in (b['lines'] as List))
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
