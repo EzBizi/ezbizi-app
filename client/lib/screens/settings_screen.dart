@@ -314,7 +314,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _search.dispose();
-    _addressPause?.cancel();
+    // Typed in the last 1.2 s before leaving: send it anyway (audit 2026-11-27).
+    if (_addressPause?.isActive ?? false) {
+      _addressPause!.cancel();
+      if (!_savingAddress && _addressNow != _savedAddress) {
+        widget.api.patch('/organization', _addressBody);
+      }
+    }
     _addressLine1.dispose();
     _addressLine2.dispose();
     _addressCity.dispose();
@@ -879,17 +885,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _savedAddress = _addressNow;
   }
 
-  Future<void> _saveBusinessAddress() async {
-    if (!mounted || _savingAddress) return;
-    final sending = _addressNow;
-    setState(() => _savingAddress = true);
-    final response = await widget.api.patch('/organization', {
+  Map<String, dynamic> get _addressBody => {
       'address_line1': _emptyToNull(_addressLine1.text),
       'address_line2': _emptyToNull(_addressLine2.text),
       'city': _emptyToNull(_addressCity.text),
       'state': _emptyToNull(_addressState.text.toUpperCase()),
       'postal_code': _emptyToNull(_addressPostal.text),
-    });
+      };
+
+  Future<void> _saveBusinessAddress() async {
+    if (!mounted || _savingAddress) return;
+    final sending = _addressNow;
+    setState(() => _savingAddress = true);
+    final response = await widget.api.patch('/organization', _addressBody);
     if (!mounted) return;
     setState(() => _savingAddress = false);
     if (response.ok) {
@@ -1725,6 +1733,7 @@ class _InlineFieldState extends State<_InlineField> {
     text: widget.initial,
   );
   late final FocusNode _focus = FocusNode();
+  String? _sending;
 
   @override
   void initState() {
@@ -1750,7 +1759,14 @@ class _InlineFieldState extends State<_InlineField> {
     // changes nobody made.
     if (typed == widget.initial.trim()) return;
 
-    await widget.onCommitted(typed);
+    // Enter commits, then the blur it causes commits again (audit 2026-11-27).
+    if (typed == _sending) return;
+    _sending = typed;
+    try {
+      await widget.onCommitted(typed);
+    } finally {
+      _sending = null;
+    }
 
     // Then show what the SCREEN holds, which is not necessarily what was typed.
     //
@@ -2252,6 +2268,17 @@ class _DurationControlState extends State<_DurationControl> {
     _unit = split.$2;
   }
 
+  // A reset or another save changed it underneath (audit 2026-11-27).
+  @override
+  void didUpdateWidget(_DurationControl old) {
+    super.didUpdateWidget(old);
+    if (old.minutes != widget.minutes && _toMinutes() != widget.minutes) {
+      final split = _split(widget.minutes);
+      _amount.text = '${split.$1}';
+      _unit = split.$2;
+    }
+  }
+
   @override
   void dispose() {
     _amount.dispose();
@@ -2278,9 +2305,11 @@ class _DurationControlState extends State<_DurationControl> {
     return minutes.clamp(5, 30 * 24 * 60);
   }
 
+  // Only a changed value saves: every outside tap used to PATCH again.
   void _commit() {
     if (!widget.editable) return;
-    widget.onChanged(_toMinutes());
+    final minutes = _toMinutes();
+    if (minutes != widget.minutes) widget.onChanged(minutes);
   }
 
   @override
@@ -2304,7 +2333,10 @@ class _DurationControlState extends State<_DurationControl> {
               ),
             ),
             onEditingComplete: _commit,
-            onTapOutside: (_) => _commit(),
+            onTapOutside: (_) {
+              FocusScope.of(context).unfocus();
+              _commit();
+            },
           ),
         ),
         const SizedBox(width: 8),

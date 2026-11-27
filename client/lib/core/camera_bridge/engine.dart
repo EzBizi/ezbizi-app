@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:io';
 
 import 'bridge_api.dart';
@@ -23,10 +24,23 @@ String recorderRtsp(Recorder r, String channel, String quality) {
 
 /// go2rtc's config for exactly [wanted]: pull each from the recorder, publish
 /// it to the relay. Loopback API only; no inbound listeners on the site PC.
-String go2rtcConfig(Recorder r, List<WantedCamera> wanted) {
+String go2rtcConfig(
+  Recorder r,
+  List<WantedCamera> wanted, {
+  String? apiUser,
+  String? apiPassword,
+}) {
   final b = StringBuffer()
     ..writeln('api:')
-    ..writeln('  listen: "127.0.0.1:1984"')
+    ..writeln('  listen: "127.0.0.1:1984"');
+  // Loopback is reachable by every program on the PC; the API (which can
+  // read the recorder streams) takes a per-launch login (audit 11-27).
+  if (apiUser != null && apiPassword != null) {
+    b
+      ..writeln('  username: ${jsonEncode(apiUser)}')
+      ..writeln('  password: ${jsonEncode(apiPassword)}');
+  }
+  b
     ..writeln('rtsp:')
     ..writeln('  listen: ""')
     ..writeln('webrtc:')
@@ -103,11 +117,24 @@ class Engine {
 
   Future<void> _launch() async {
     if (_disposed || _recorder == null || _wanted.isEmpty) return;
+    final rnd = Random.secure();
+    String token() => [for (var i = 0; i < 24; i++) rnd.nextInt(16).toRadixString(16)].join();
+    _apiUser = 'ezbizi';
+    _apiPassword = token();
     await configFile.writeAsString(
-      go2rtcConfig(_recorder!, _wanted),
+      go2rtcConfig(_recorder!, _wanted, apiUser: _apiUser, apiPassword: _apiPassword),
       flush: true,
     );
     final p = await _start(exe, ['-config', configFile.path]);
+    // The recorder password is in that file: gone once go2rtc has read it
+    // (it reads it at start; a crash relaunch writes it again).
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 5), () async {
+        try {
+          if (configFile.existsSync()) await configFile.delete();
+        } catch (_) {}
+      }),
+    );
     // Stopped while it was starting: nobody would ever kill it (audit 11-27).
     if (_disposed) {
       p.kill();
@@ -156,9 +183,14 @@ class Engine {
     Map<String, dynamic> streams = const {};
     try {
       final c = HttpClient()..connectionTimeout = const Duration(seconds: 2);
-      final res = await (await c.getUrl(
-        Uri.parse('http://127.0.0.1:1984/api/streams'),
-      )).close();
+      final req = await c.getUrl(Uri.parse('http://127.0.0.1:1984/api/streams'));
+      if (_apiUser != null) {
+        req.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Basic ${base64Encode(utf8.encode('$_apiUser:$_apiPassword'))}',
+        );
+      }
+      final res = await req.close();
       streams =
           jsonDecode(await res.transform(utf8.decoder).join())
               as Map<String, dynamic>;
@@ -170,14 +202,13 @@ class Engine {
           'camera_id': w.cameraId,
           'status': _authFailed.contains(w.cameraId)
               ? 'auth_failed'
-              : ((streams[w.path] as Map?)?['producers'] as List?)
-                        ?.isNotEmpty ==
-                    true
-              ? 'ok'
-              : 'unreachable',
+              : streamFlowing(streams[w.path]) ? 'ok' : 'unreachable',
         },
     ];
   }
+
+  String? _apiUser;
+  String? _apiPassword;
 
   /// For good: a late [apply] (a long-poll still in flight) starts nothing.
   void stop() {
@@ -185,4 +216,19 @@ class Engine {
     _key = '';
     unawaited(_kill());
   }
+}
+
+/// Whether a go2rtc `/api/streams` entry is actually receiving from its
+/// camera. A configured stream lists its producer even when nothing is
+/// connected, so "has a producer" said `ok` for any camera (audit 11-27):
+/// a live producer has a remote address or has received bytes.
+bool streamFlowing(Object? stream) {
+  final producers = stream is Map ? stream['producers'] : null;
+  if (producers is! List) return false;
+  return producers.any(
+    (p) =>
+        p is Map &&
+        ((p['remote_addr'] is String && (p['remote_addr'] as String).isNotEmpty) ||
+            ((p['bytes_recv'] as num?) ?? 0) > 0),
+  );
 }

@@ -352,6 +352,7 @@ class SettingsController extends Controller
             return;
         }
 
+        $map = [];
         foreach ($incoming as $item) {
             if (! is_array($item) || array_is_list($item)) {
                 continue;
@@ -364,8 +365,23 @@ class SettingsController extends Controller
                 continue;
             }
 
-            Job::query()->where('status', $from)->update(['status' => $to]);
+            $map[$from] = $to;
         }
+
+        if ($map === []) {
+            return;
+        }
+
+        // One statement, so A→B and B→C in one save do not merge A into C
+        // (audit 2026-11-27): each row moves by its value BEFORE the save.
+        $pdo = DB::connection()->getPdo();
+        $case = 'CASE status';
+        foreach ($map as $from => $to) {
+            $case .= ' WHEN '.$pdo->quote($from).' THEN '.$pdo->quote($to);
+        }
+
+        Job::query()->whereIn('status', array_keys($map))
+            ->update(['status' => DB::raw($case.' END')]);
     }
 
     /**

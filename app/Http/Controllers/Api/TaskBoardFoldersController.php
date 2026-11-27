@@ -80,7 +80,12 @@ class TaskBoardFoldersController extends Controller
     public function destroy(Request $request, TaskBoardFolder $folder): JsonResponse
     {
         $this->gate($request);
-        $folder->delete();
+        // "Boards stay" (audit 11-27): its subfolders and boards move up a level, not cascade away.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($folder) {
+            TaskBoardFolder::query()->where('parent_id', $folder->id)->update(['parent_id' => $folder->parent_id]);
+            \App\Models\TaskBoard::query()->withTrashed()->where('folder_id', $folder->id)->update(['folder_id' => $folder->parent_id]);
+            $folder->delete();
+        });
 
         return response()->json(null, 204);
     }

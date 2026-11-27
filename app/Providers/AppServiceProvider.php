@@ -171,9 +171,11 @@ class AppServiceProvider extends ServiceProvider
          *
          * Cache keys are scopeType:uuid, so this cannot serve one organization's
          * overrides to another even in a long-lived worker — staleness was the
-         * risk here, not leakage.
+         * risk here, not leakage. Scoped, not singleton (audit 2026-11-27): a
+         * queue worker forgets scoped instances between jobs, so a setting
+         * switched off on the web is not served stale for the worker's life.
          */
-        $this->app->singleton(SettingsResolver::class);
+        $this->app->scoped(SettingsResolver::class);
 
         /*
          * Scoped, NOT singleton — the distinction is the whole point.

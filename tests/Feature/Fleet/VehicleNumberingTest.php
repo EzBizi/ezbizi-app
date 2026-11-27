@@ -39,4 +39,23 @@ class VehicleNumberingTest extends TestCase
             $this->assertSame(['V-00001', 'V-00002', 'V-00003'], [$first, $second, $fromOtherCompany]);
         });
     }
+
+    // Audit 2026-11-27: the year is the business's, not UTC's.
+    public function test_the_year_is_the_scopes_local_year(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $settings = app(\App\Support\Settings\SettingsResolver::class);
+            $settings->set('numbering.include_year', $tenant['org'], true);
+            $settings->set('timezone', $tenant['org'], 'America/New_York');
+
+            // 03:00 UTC on Jan 1 is still Dec 31 in New York.
+            $this->travelTo(\Illuminate\Support\Carbon::parse('2027-01-01 03:00:00', 'UTC'));
+
+            $number = app(RecordNumberGenerator::class)->next(RecordNumberGenerator::VEHICLES, $tenant['company']);
+
+            $this->assertStringStartsWith('V-2026-', $number);
+        });
+    }
 }

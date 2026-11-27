@@ -247,18 +247,18 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
     final DateTime start;
     final int count;
     if (_week) {
-      start = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+      start = _plusDays(_anchor, -(_anchor.weekday - 1));
       count = 7;
     } else {
       final first = DateTime(_anchor.year, _anchor.month);
-      start = first.subtract(Duration(days: first.weekday - 1));
+      start = _plusDays(first, -(first.weekday - 1));
       final last = DateTime(_anchor.year, _anchor.month + 1, 0);
-      final end = last.add(Duration(days: 7 - last.weekday));
-      count = end.difference(start).inDays + 1;
+      final end = _plusDays(last, 7 - last.weekday);
+      count = _daysBetween(start, end) + 1;
     }
     void step(int dir) => setState(() {
       _anchor = _week
-          ? _anchor.add(Duration(days: 7 * dir))
+          ? _plusDays(_anchor, 7 * dir)
           : DateTime(_anchor.year, _anchor.month + dir);
     });
 
@@ -524,8 +524,8 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
 
     final dayW = _scales[_scale]!;
     final today = _today();
-    var first = today.subtract(const Duration(days: 7));
-    var last = today.add(const Duration(days: 60));
+    var first = _plusDays(today, -(7));
+    var last = _plusDays(today, 60);
     for (final g in widget.groups) {
       for (final t in widget.tasksIn(g['id'])) {
         final r = _range(t);
@@ -534,17 +534,17 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
         if (r.$2.isAfter(last)) last = r.$2;
       }
     }
-    final days = last.difference(first).inDays + 1;
+    final days = _daysBetween(first, last) + 1;
     final width = days * dayW;
     const nameW = 200.0, rowH = 34.0;
-    double x(DateTime d) => d.difference(first).inDays * dayW;
+    double x(DateTime d) => _daysBetween(first, d) * dayW;
 
     Widget bar(PlanTask t) {
       final r = _range(t);
       if (r == null) return const SizedBox(height: rowH);
       final d = _drag?.id == t['id'] ? _drag! : null;
-      final from = r.$1.add(Duration(days: d?.move ?? 0));
-      var to = r.$2.add(Duration(days: (d?.move ?? 0) + (d?.grow ?? 0)));
+      final from = _plusDays(r.$1, d?.move ?? 0);
+      var to = _plusDays(r.$2, (d?.move ?? 0) + (d?.grow ?? 0));
       if (to.isBefore(from)) to = from;
       final late = r.$2.isBefore(today) && !(widget.isDone?.call(t) ?? false);
       final colour = late ? theme.colorScheme.error : widget.colourOf(t);
@@ -562,7 +562,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
         }
       }
 
-      final barW = (to.difference(from).inDays + 1) * dayW;
+      final barW = (_daysBetween(from, to) + 1) * dayW;
       final range = from == to ? _short(from) : '${_short(from)}–${_short(to)}';
       // A short bar wore a clipped "Nov" (hands-on QA 11-16): its dates go
       // beside it instead, as Monday does.
@@ -802,3 +802,9 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
 
   double _px = 0;
 }
+
+/// Calendar days, not 24-hour spans: a local DST change makes a day 23 or 25 hours (audit 11-27).
+DateTime _plusDays(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
+
+int _daysBetween(DateTime a, DateTime b) =>
+    DateTime.utc(b.year, b.month, b.day).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
