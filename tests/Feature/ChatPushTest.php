@@ -131,6 +131,38 @@ class ChatPushTest extends TestCase
         $this->assertSame('New message', $sent[0]['notification']['body']);
     }
 
+    /** Android 11-27: a handset that draws Chat itself gets data-only pushes, every value a string. */
+    public function test_a_native_handset_gets_data_only_chat_pushes_and_the_notes(): void
+    {
+        $this->signedInAs($this->ana)->postJson('/api/v1/notifications/devices', [
+            'token' => 'ana-native', 'platform' => 'android', 'app' => 'ezchat', 'capabilities' => ['chat_native'],
+        ])->assertSuccessful();
+        $chat = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', ['user_id' => $this->ana->id])->json('data.id');
+        $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/messages", ['body' => 'Van is back'])->assertCreated();
+
+        $data = collect(Http::recorded())->map(fn ($p) => $p[0])
+            ->filter(fn ($r) => str_contains($r->url(), 'messages:send') && ($r['message']['token'] ?? null) === 'ana-native')
+            ->map(fn ($r) => $r['message'])->values();
+        $message = $data->first(fn ($m) => ($m['data']['type'] ?? null) === 'chat_message');
+        $this->assertNotNull($message);
+        $this->assertArrayNotHasKey('notification', $message, 'data-only: the handset draws it');
+        $this->assertSame('HIGH', $message['android']['priority']);
+        $this->assertSame($chat, $message['data']['chat_id']);
+        $this->assertSame('Van is back', $message['data']['body']);
+        $this->assertSame('0', $message['data']['is_group']);
+        $this->assertSame('1', $message['data']['badge']);
+        $this->assertContainsOnly('string', $message['data']);
+
+        // Read here: the handset clears that chat's notification.
+        $this->signedInAs($this->ana)->getJson("/api/v1/chat/chats/{$chat}/messages")->assertOk();
+        $this->assertTrue(collect(Http::recorded())->contains(fn ($p) => str_contains($p[0]->url(), 'messages:send')
+            && ($p[0]['message']['token'] ?? null) === 'ana-native' && ($p[0]['message']['data']['type'] ?? null) === 'chat_read'));
+
+        // Mark read from the notification: POST with the method override reaches the PATCH route.
+        $this->signedInAs($this->ana)->postJson("/api/v1/chat/chats/{$chat}/settings", ['marked_unread' => false],
+            ['X-HTTP-Method-Override' => 'PATCH'])->assertOk();
+    }
+
     public function test_a_call_rings_on_the_urgent_channel_and_a_missed_one_says_so(): void
     {
         $chat = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', ['user_id' => $this->ana->id])->json('data.id');
@@ -141,9 +173,19 @@ class ChatPushTest extends TestCase
             'api_key_sid' => 'SK'.str_repeat('a', 32),
             'credentials' => 'secret-for-signing',
         ]));
+        $this->signedInAs($this->ana)->postJson('/api/v1/notifications/devices', [
+            'token' => 'ana-native', 'platform' => 'android', 'capabilities' => ['chat_native'],
+        ])->assertSuccessful();
         $call = $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/calls", ['video' => false])->assertCreated();
         $ring = $this->sentTo('ana-phone');
         $this->assertCount(1, $ring);
+        $native = fn () => collect(Http::recorded())->map(fn ($p) => $p[0])
+            ->filter(fn ($r) => str_contains($r->url(), 'messages:send') && ($r['message']['token'] ?? null) === 'ana-native')
+            ->map(fn ($r) => $r['message'])->values();
+        $invite = $native()->first(fn ($m) => ($m['data']['type'] ?? null) === 'chat_call');
+        $this->assertSame('30s', $invite['android']['ttl'], 'a stale invite never rings');
+        $this->assertSame($call->json('data.call_id'), $invite['data']['call_id']);
+
         $this->assertSame('ezbizi_urgent', $ring[0]['android']['notification']['channel_id']);
 
         $this->signedInAs($this->bar)->postJson('/api/v1/chat/calls/'.$call->json('data.call_id').'/leave', ['alone' => false])->assertOk();
@@ -151,5 +193,7 @@ class ChatPushTest extends TestCase
         $this->assertCount(2, $after);
         $this->assertStringContainsString('Missed', $after[1]['notification']['body']);
         $this->assertSame("chat:{$chat}", $after[1]['data']['notification_id']);
+        $end = $native()->first(fn ($m) => ($m['data']['type'] ?? null) === 'chat_call_end');
+        $this->assertSame('missed', $end['data']['reason'], 'the ring stops on every handset');
     }
 }

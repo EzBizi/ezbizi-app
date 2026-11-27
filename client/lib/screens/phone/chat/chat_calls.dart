@@ -52,6 +52,27 @@ class ChatCalls extends ChangeNotifier with WidgetsBindingObserver {
     _api = api;
     WidgetsBinding.instance.addObserver(this);
     _schedule(true);
+    // Answer was tapped on the phone's call screen before Chat was signed in.
+    final pending = _pendingAnswer;
+    _pendingAnswer = null;
+    if (pending != null) unawaited(answerById(pending));
+  }
+
+  String? _pendingAnswer;
+
+  /// Answer on the phone's own call screen (Android's full-screen ring,
+  /// `chat:{chat}?call={call}`): join that call as Answer on the in-app ring would.
+  Future<void> answerById(String callId) async {
+    if (_api == null) {
+      _pendingAnswer = callId;
+      return;
+    }
+    await poll();
+    final ring = ringing.where((r) => r['call_id'] == callId).firstOrNull;
+    if (ring != null) return answer(ring);
+    // Not ringing any more for me (answered on the ring screen a moment late,
+    // or a group call in progress): join it if it is still on.
+    await join(callId, video: false, title: 'Call');
   }
 
   void stop() {

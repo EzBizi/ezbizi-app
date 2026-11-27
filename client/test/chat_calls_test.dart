@@ -139,6 +139,28 @@ void main() {
     expect(find.byKey(const ValueKey('chat-call-active')), findsNothing);
   });
 
+  // Android 11-27: Answer on the phone's own call screen comes in as
+  // chat:{chat}?call={call}; the app joins that call.
+  testWidgets('Answer from the phone call screen joins that call', (
+    tester,
+  ) async {
+    ringing = [
+      {
+        'call_id': 'call-1',
+        'chat_id': 'c-1',
+        'from_name': 'Ana Ruiz',
+        'video': true,
+        'group': false,
+      },
+    ];
+    final calls = await pump(tester);
+    await tester.runAsync(() => calls.answerById('call-1'));
+    await tester.pump();
+
+    expect(log, contains('POST /chat/calls/call-1/join'));
+    expect(find.byKey(const ValueKey('chat-call-active')), findsOneWidget);
+  });
+
   testWidgets('Decline stops the ring and tells the server', (tester) async {
     ringing = [
       {

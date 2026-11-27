@@ -278,6 +278,9 @@ class NotificationsController extends Controller
             'platform' => ['required', 'string', Rule::in(app(PushSender::class)->platforms())],
             // EzChat, the chat companion, says so; an older EzBizi build says nothing.
             'app' => ['nullable', 'string', Rule::in(DeviceToken::APPS)],
+            // What the handset draws itself; `chat_native`: Chat's own (Android 11-27).
+            'capabilities' => ['nullable', 'array', 'max:10'],
+            'capabilities.*' => ['string', Rule::in(['chat_native'])],
         ]);
 
         $user = $request->user();
@@ -291,6 +294,7 @@ class NotificationsController extends Controller
                 'user_id' => $user->getKey(),
                 'platform' => $data['platform'],
                 'app' => $data['app'] ?? 'ezbizi',
+                'capabilities' => $data['capabilities'] ?? null,
                 'last_registered_at' => now(),
             ])->save();
         };
