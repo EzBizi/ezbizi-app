@@ -119,7 +119,7 @@ final class LapsedPasses
     {
         return self::currentStandingQuery($testIds)
             ->whereNotNull('training_attempts.expires_on')
-            ->where('training_attempts.expires_on', '<=', now()->toDateString());
+            ->where('training_attempts.expires_on', '<=', TrainingDay::today());
     }
 
     // ── Fifth-option brief (2026-09-09): which attempts count toward the cap ──
