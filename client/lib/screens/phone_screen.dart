@@ -57,6 +57,12 @@ class _PhoneScreenState extends State<PhoneScreen> {
         when l.module == 'phone' && l.type == 'tab') {
       _tab = DeepLinks.take('phone')!.id;
     }
+    // A tapped chat notification: Chat, and that chat open.
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'phone' && l.type == 'chat') {
+      _tab = 'chat';
+      ChatTab.openRequest.value = DeepLinks.take('phone')!.id;
+    }
   }
 
   void _tabArrived() => setState(_takeTab);

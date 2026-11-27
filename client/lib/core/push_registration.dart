@@ -190,6 +190,10 @@ class PushRegistration {
   /// The token this handset last registered, so sign-out can withdraw it.
   static String? _lastToken;
 
+  /// This handset's push token, or null before it registered. Chat's pulse
+  /// sends it with the chat on screen, so that chat's pushes skip this phone.
+  static String? get token => _lastToken;
+
   /// Sign-out: this handset stops receiving the person's pushes. Best effort;
   /// a failure must never block signing out.
   static Future<void> unregister(ApiClient api) async {

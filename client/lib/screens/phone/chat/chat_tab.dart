@@ -14,6 +14,8 @@ import '../../../core/session.dart';
 import '../../../core/soft_keyboard.dart';
 import '../../../widgets/side_panel.dart';
 import '../../../widgets/user_avatar.dart';
+import '../../../core/client_platform.dart';
+import '../../../core/os_notifications.dart';
 import 'chat_store.dart';
 import 'chat_thread.dart';
 
@@ -31,6 +33,18 @@ class ChatTab extends StatefulWidget {
 
   final ApiClient api;
   final Session session;
+
+  /// A chat to open, from a tapped push or desktop notification (`chat:{id}`).
+  /// The open Chat tab takes it and clears it; one mounted later takes it then.
+  static final ValueNotifier<String?> openRequest = ValueNotifier<String?>(
+    null,
+  );
+
+  /// `chat:{id}` → the chat id; anything else → null.
+  static String? chatOf(String? payload) =>
+      payload != null && payload.startsWith('chat:') && payload.length > 5
+      ? payload.substring(5)
+      : null;
 
   @override
   State<ChatTab> createState() => _ChatTabState();
@@ -62,7 +76,25 @@ class _ChatTabState extends State<ChatTab> {
   List<Json> _starred = const [];
 
   @override
+  void initState() {
+    super.initState();
+    ChatTab.openRequest.addListener(_requested);
+    _requested();
+    // The browser asks for notifications once somebody opens Chat: the moment
+    // they would want them, not at sign-in (Jose 11-27).
+    if (ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+  }
+
+  void _requested() {
+    final id = ChatTab.openRequest.value;
+    if (id == null || !mounted) return;
+    ChatTab.openRequest.value = null;
+    _openChat(id);
+  }
+
+  @override
   void dispose() {
+    ChatTab.openRequest.removeListener(_requested);
     _store.dispose();
     _search.dispose();
     _groupName.dispose();

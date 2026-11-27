@@ -44,6 +44,17 @@ final class ChatPulse
         return (string) Cache::get("chat:rev:{$userId}", '0');
     }
 
+    /** This handset (its push token) has this chat on screen, for a few seconds. */
+    public function viewing(string $deviceToken, string $chatId): void
+    {
+        Cache::put('chat:viewing:'.sha1($deviceToken), $chatId, now()->addSeconds(12));
+    }
+
+    public function isViewing(string $deviceToken, string $chatId): bool
+    {
+        return Cache::get('chat:viewing:'.sha1($deviceToken)) === $chatId;
+    }
+
     public function seen(string $userId): void
     {
         Cache::put("chat:seen:{$userId}", now()->timestamp, now()->addDays(30));

@@ -8,6 +8,7 @@ import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
+import '../screens/phone/chat/chat_tab.dart';
 import 'alert_popup.dart';
 import 'list_search.dart';
 import 'side_panel.dart';
@@ -396,6 +397,17 @@ class _NotificationBellState extends State<NotificationBell>
 
     if (payload == null || payload.isEmpty) {
       await _open();
+      return;
+    }
+
+    // A chat message or call: Communication › Chat, that chat (Jose 11-27).
+    if (ChatTab.chatOf(payload) case final chat? when widget.onOpenModule != null) {
+      _go((
+        module: 'phone',
+        filter: null,
+        record: null,
+        link: DeepLink(module: 'phone', type: 'chat', id: chat),
+      ));
       return;
     }
 
