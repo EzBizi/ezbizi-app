@@ -43,6 +43,18 @@ class SendRequestedReport implements ShouldQueue
 
     public function handle(TenantContext $tenant, WhatsAppCloud $cloud): void
     {
+        try {
+            $this->send($tenant, $cloud);
+        } finally {
+            // The report runs as the asker (Auth::setUser below). A worker runs
+            // job after job, any tenant's: forget them, as InternalRequest does,
+            // or the next job's actor and "created by" are this person.
+            app('auth')->forgetGuards();
+        }
+    }
+
+    private function send(TenantContext $tenant, WhatsAppCloud $cloud): void
+    {
         $number = WhatsAppNumber::query()->withoutGlobalScopes()->findOrFail($this->numberId);
 
         $tenant->run(Organization::withoutGlobalScopes()->findOrFail($number->organization_id), function () use ($number, $cloud) {
