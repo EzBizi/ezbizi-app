@@ -67,7 +67,9 @@ class TranscriptionWebhookController extends Controller
         $transcriptionSid = (string) $request->input('TranscriptionSid', '');
 
         DB::transaction(function () use ($callSid, $text, $transcriptionSid) {
-            $call = PhoneCall::query()->where('twilio_sid', $callSid)->first();
+            // Locked: overlapping utterance callbacks each read-modify-wrote
+            // the transcript and lost sentences (audit 11-27).
+            $call = PhoneCall::query()->where('twilio_sid', $callSid)->lockForUpdate()->first();
             if ($call === null) {
                 return;
             }

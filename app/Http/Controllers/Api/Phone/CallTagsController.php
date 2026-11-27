@@ -141,6 +141,8 @@ class CallTagsController extends Controller
     public function tagCall(Request $request, PhoneCall $call): JsonResponse
     {
         $this->authorize('tag', PhoneCallTag::class);
+        // And this call specifically (audit 11-27).
+        $this->authorize('view', $call);
 
         $input = $request->validate([
             'tag_id' => ['present', 'nullable', 'uuid'],

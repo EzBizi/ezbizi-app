@@ -108,6 +108,14 @@ class ReportsController extends Controller
     {
         $this->authorize('viewAny', PhoneCall::class);
 
+        // The creator, or someone who edits Phone (audit 11-27: any viewer
+        // could delete a shared report).
+        abort_unless(
+            $report->created_by === $request->user()->id || $request->user()->hasPermission('phone.edit'),
+            Response::HTTP_FORBIDDEN,
+            'Only whoever saved this report, or someone who edits Phone, can delete it.',
+        );
+
         $report->delete();
 
         return response()->json(['message' => 'That report is gone.']);

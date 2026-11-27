@@ -236,9 +236,14 @@ class PhoneNumber extends Model implements StatesRetention
      */
     public function resolvedFlag(string $key): bool
     {
-        return (bool) ($this->getAttribute($key)
-            ?: $this->getRelationValue('connection')
-                ?->getAttribute('default_'.$key));
+        // NULL inherits; false is a real "off" (audit 11-27: `?:` let a
+        // company "record on" override a line switched off).
+        $own = $this->getAttribute($key);
+        if ($own !== null) {
+            return (bool) $own;
+        }
+
+        return (bool) $this->getRelationValue('connection')?->getAttribute('default_'.$key);
     }
 
     public function grants(): HasMany

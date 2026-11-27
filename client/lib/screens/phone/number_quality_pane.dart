@@ -49,7 +49,8 @@ class _NumberQualityPaneState extends State<NumberQualityPane> {
 
   Future<void> _lookUp() async {
     final e164 = _number.text.trim();
-    if (e164.isEmpty) return;
+    // Enter while one is running would pay twice (audit 11-27).
+    if (e164.isEmpty || _looking) return;
 
     setState(() {
       _looking = true;

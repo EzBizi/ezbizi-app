@@ -154,7 +154,7 @@ class NumbersController extends Controller
             'twilio_sid' => $purchased['sid'],
             'e164' => $purchased['phone_number'],
             'label' => filled($input['label'] ?? null) ? (string) $input['label'] : $purchased['phone_number'],
-            'after_hours' => 'voicemail',
+            'after_hours' => null, // follows the company (audit 11-27)
         ]);
 
         // A new line comes out working: everybody on its account has an extension,
@@ -830,7 +830,7 @@ class NumbersController extends Controller
                 'label' => $line['friendly_name'] !== ''
                     ? $line['friendly_name']
                     : $line['phone_number'],
-                'after_hours' => 'voicemail',
+                'after_hours' => null, // follows the company (audit 11-27)
             ]);
         }
 
@@ -876,12 +876,13 @@ class NumbersController extends Controller
 
             // Which greeting a caller hears when nobody answers.
             'voicemail_box_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_voicemail_boxes')],
-            'record' => ['sometimes', 'boolean'],
-            'transcribe' => ['sometimes', 'boolean'],
+            // null = follow the company; false is a real "off" (audit 11-27).
+            'record' => ['sometimes', 'nullable', 'boolean'],
+            'transcribe' => ['sometimes', 'nullable', 'boolean'],
 
             // Inbound calls and texts become leads (EZ Calls / EZ Texts).
             'lead_line' => ['sometimes', 'boolean'],
-            'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
+            'after_hours' => ['sometimes', 'nullable', Rule::in(PhoneNumber::AFTER_HOURS)],
             'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
 
             // Spoken before a recorded call connects. Blank means the built-in
@@ -897,7 +898,7 @@ class NumbersController extends Controller
             // save that Twilio refuses must not leave our row disagreeing.
             'emergency_address_sid' => ['sometimes', 'nullable', 'string', 'max:34'],
             'voice_caller_id_lookup' => ['sometimes', 'boolean'],
-            'voicemail_transcribe' => ['sometimes', 'boolean'],
+            'voicemail_transcribe' => ['sometimes', 'nullable', 'boolean'],
 
             // WHAT THIS LINE ANSWERS WITH, which used to be decided by the
             // ORDER the renderer read two columns in: a menu if `flow_id` was
@@ -1221,6 +1222,19 @@ class NumbersController extends Controller
             'record' => $number->record,
             'transcribe' => $number->transcribe,
             'after_hours' => $number->after_hours,
+            // What actually applies, and whether the line or the company
+            // decided it (audit 11-27): the own values above are null when
+            // the line follows the company.
+            'resolved' => [
+                'record' => $number->resolvedFlag('record'),
+                'transcribe' => $number->resolvedFlag('transcribe'),
+                'after_hours' => $number->resolved('after_hours') ?? 'voicemail',
+            ],
+            'resolved_from' => [
+                'record' => $number->record === null ? 'company' : 'line',
+                'transcribe' => $number->transcribe === null ? 'company' : 'line',
+                'after_hours' => $number->resolvedFrom('after_hours') ?? 'company',
+            ],
             'after_hours_number' => $number->after_hours_number,
             'ring_group_id' => $number->ring_group_id,
 
@@ -1241,7 +1255,7 @@ class NumbersController extends Controller
             'emergency_address_sid' => $number->emergency_address_sid,
             'emergency_address_set' => (bool) $number->emergency_address_set,
             'voice_caller_id_lookup' => (bool) $number->voice_caller_id_lookup,
-            'voicemail_transcribe' => (bool) $number->voicemail_transcribe,
+            'voicemail_transcribe' => $number->voicemail_transcribe,
             'capabilities' => $number->capabilities ?? [],
 
             'fallback_number' => $number->fallback_number,

@@ -21,7 +21,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
-use Throwable;
 use Twilio\TwiML\VoiceResponse;
 
 /**
@@ -93,7 +92,6 @@ class VoiceWebhookController extends Controller
                 return $this->twiml((string) $reject);
             }
 
-            $this->lookupQuietly($from);
         }
 
         $xml = $number === null
@@ -407,7 +405,7 @@ class VoiceWebhookController extends Controller
             // browser's claim about anything else is checked — the pad's
             // selection can be stale, and a line can move between accounts.
             $callerId = $this->callerId($request);
-            if ($callerId !== '' && ! $this->ownsNumber($connection, $callerId)) {
+            if ($callerId !== '' && ! $this->ownsNumber($connection, $callerId, $request)) {
                 $callerId = '';
             }
 
@@ -531,12 +529,26 @@ class VoiceWebhookController extends Controller
     }
 
     /** Whether this connection actually holds the number, in E.164. */
-    private function ownsNumber(PhoneConnection $connection, string $e164): bool
+    private function ownsNumber(PhoneConnection $connection, string $e164, Request $request): bool
     {
-        return PhoneNumber::query()
+        $line = PhoneNumber::query()
             ->where('connection_id', $connection->id)
             ->where('e164', $e164)
-            ->exists();
+            ->first();
+        if ($line === null) {
+            return false;
+        }
+
+        // And the person calling may use that line (audit 11-27: any number
+        // on the account was accepted). Not a desk identity: as before.
+        $from = (string) $request->input('From', '');
+        $uuid = str_starts_with($from, 'client:')
+            ? ClientIdentity::uuidOf(substr($from, strlen('client:')))
+            : null;
+        $user = $uuid === null ? null : \App\Models\User::query()->find($uuid);
+
+        return $user === null
+            || app(\App\Support\Phone\PhoneNumberAccess::class)->mayView($user, $line);
     }
 
     private function callerId(Request $request): string
@@ -561,20 +573,6 @@ class VoiceWebhookController extends Controller
         }
 
         return $this->clip((string) $request->input('From', ''));
-    }
-
-    /** Lookup is optional. Miss / not enabled must not 500 the inbound answer. */
-    private function lookupQuietly(string $e164): void
-    {
-        if ($e164 === '') {
-            return;
-        }
-
-        try {
-            $this->twilio->lookup($e164);
-        } catch (Throwable) {
-            // Show the number unmatched; never fail the webhook.
-        }
     }
 
     private function toE164(Request $request): string

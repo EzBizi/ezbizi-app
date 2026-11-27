@@ -170,6 +170,13 @@ class _CallTabState extends State<CallTab> {
     if (!mounted) return;
     setState(() {});
 
+    // ANY end of a call asks what it was about (audit 11-27): the caller
+    // hanging up, a transfer, a dropped line — not only this person's
+    // Hang up button.
+    final onCall = _service.onCall;
+    if (_sawOnCall && !onCall) unawaited(_askWhatItWasAbout());
+    _sawOnCall = onCall;
+
     // PARKING IS THE ONE THING SOMEBODY ELSE'S SCREEN CHANGES.
     //
     // A colleague parks a caller on another floor and the person who should
@@ -190,6 +197,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   int _wasDeskToken = 0;
+  bool _sawOnCall = false;
 
   @override
   void dispose() {
@@ -387,6 +395,8 @@ class _CallTabState extends State<CallTab> {
       'peer': peer,
     });
     if (!mounted) return;
+    // A slower answer for the previous customer or line (audit 11-27).
+    if (_selected?.id != number.id || _peer != peer) return;
 
     if (!response.ok) return;
 
@@ -462,6 +472,7 @@ class _CallTabState extends State<CallTab> {
     // Twilio's side now — so the desk is off the call even though nobody hung
     // up. Without this the pad keeps offering Hang up for a call that is no
     // longer here.
+    _sawOnCall = false; // parked, not finished: no tag prompt
     _service.hangUp();
 
     setState(() => _historyToken++);
@@ -767,7 +778,7 @@ class _CallTabState extends State<CallTab> {
       'state': _dnd ? 'dnd' : 'registered',
     });
 
-    await _askWhatItWasAbout();
+    // The prompt comes from _onServiceChanged, which sees every call end.
   }
 
   /// Find the call that just ended and ask what it was about.
@@ -1781,8 +1792,13 @@ class _CallTabState extends State<CallTab> {
                                 lines: _numbers,
                                 selected: number,
                                 enabled: !_onCall,
-                                onPicked: (id) =>
-                                    setState(() => _numberId = id),
+                                onPicked: (id) {
+                                  setState(() => _numberId = id);
+                                  // That company's rules, desk and thread
+                                  // (audit 11-27: they stayed the old line's).
+                                  unawaited(_loadCompanyRules());
+                                  unawaited(_loadDesk());
+                                },
                                 onOpened: _load,
                               ),
                       ),

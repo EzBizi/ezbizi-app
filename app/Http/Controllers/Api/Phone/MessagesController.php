@@ -6,13 +6,10 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
-use App\Support\Automations\EventEmitter;
 use App\Support\Phone\NumberNames;
-use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\PhoneTexts;
 use App\Support\Phone\TextRefused;
-use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,10 +26,7 @@ class MessagesController extends Controller
 {
     public function __construct(
         private readonly PhoneNumberAccess $access,
-        private readonly TwilioGateway $twilio,
-        private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
-        private readonly PhoneLineHealth $health,
     ) {}
 
     /** GET /api/v1/phone/messages */
