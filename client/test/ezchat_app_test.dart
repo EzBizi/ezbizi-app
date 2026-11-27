@@ -155,6 +155,43 @@ void main() {
     expect(posts.where((p) => p.endsWith('/auth/logout')), hasLength(1));
   });
 
+  /// Jose 11-27: EzChat signs in with email and password only; it says so,
+  /// and the server hands back a chat-only token.
+  testWidgets('the EzChat sign-in asks for a chat-only token', (tester) async {
+    LoginScreen.chatOnly = true;
+    addTearDown(() => LoginScreen.chatOnly = false);
+    Object? body;
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(
+      client: MockClient((r) async {
+        if (r.url.path.endsWith('/auth/login')) {
+          body = jsonDecode(r.body);
+          return _json({'message': 'no'}, 401);
+        }
+        return _json({'message': 'no'}, 404);
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(
+          api: api,
+          session: Session(api),
+          onCreateAccount: () {},
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextFormField).first, 'bar@example.com');
+    await tester.enterText(find.byType(TextFormField).at(1), 'pw-123456');
+    await tester.tap(find.byType(FilledButton).first);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    expect((body as Map?)?['app'], 'ezchat');
+  });
+
   /// The Android pass of EzChat (2026-11-25): "a reset link is on its way"
   /// showed in the red error box. It is good news and reads as a note.
   testWidgets('a sent reset link is a note, not an error', (tester) async {

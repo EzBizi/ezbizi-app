@@ -235,7 +235,10 @@ class AuthController extends Controller
             // so it is optional here and demanded by the service if it applies.
             'code'     => ['nullable', 'string'],
             'remember' => ['sometimes', 'boolean'],
+            // EzChat: password only, and a chat-only token back (ChatToken).
+            'app'      => ['nullable', 'in:ezbizi,ezchat'],
         ]);
+        $chatOnly = ($credentials['app'] ?? null) === 'ezchat';
 
         // Throttled per email+IP. Without this, the same-email design gives an
         // attacker a way to test one password against several organizations at
@@ -250,6 +253,7 @@ class AuthController extends Controller
             $credentials['email'],
             $credentials['password'],
             $credentials['code'] ?? null,
+            $chatOnly,
         );
 
         if ($result->status === AuthenticationResult::FAILED) {
@@ -298,7 +302,7 @@ class AuthController extends Controller
             ]);
         }
 
-        return ($this->session)($request, $result->user);
+        return ($this->session)($request, $result->user, chatOnly: $chatOnly);
     }
 
     /** POST /api/v1/auth/choose — complete an ambiguous login. */
@@ -310,7 +314,9 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
             'code'     => ['nullable', 'string'],
             'remember' => ['sometimes', 'boolean'],
+            'app'      => ['nullable', 'in:ezbizi,ezchat'],
         ]);
+        $chatOnly = ($input['app'] ?? null) === 'ezchat';
 
         // Same key as login. A stolen password that could not grind TOTP on
         // /login must not grind it here instead.
@@ -324,7 +330,7 @@ class AuthController extends Controller
         // trusting it as proof of the earlier step would let anyone post a user
         // id and skip authentication.
         $result = $this->authenticate->completeChoice(
-            $input['user_id'], $input['email'], $input['password'], $input['code'] ?? null,
+            $input['user_id'], $input['email'], $input['password'], $input['code'] ?? null, $chatOnly,
         );
 
         if (! $result->succeeded()) {
@@ -338,7 +344,7 @@ class AuthController extends Controller
 
         RateLimiter::clear($throttleKey);
 
-        return ($this->session)($request, $result->user);
+        return ($this->session)($request, $result->user, chatOnly: $chatOnly);
     }
 
     /** POST /api/v1/auth/logout — revoke the token that made this request. */

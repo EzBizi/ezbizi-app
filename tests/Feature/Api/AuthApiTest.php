@@ -306,6 +306,46 @@ class AuthApiTest extends TestCase
         return [$r['administrator']->fresh(), $secret];
     }
 
+    /**
+     * EzChat (Jose, 11-27): "no need to use authenthicator to log in there".
+     * Email and password only, and the token reaches chat and nothing else;
+     * the same account signing in to EzBizi is still asked for its code.
+     */
+    public function test_ezchat_signs_in_without_the_authenticator_to_a_chat_only_token(): void
+    {
+        [$user] = $this->protectedTwin('chat@example.test');
+
+        $this->postJson('/api/v1/auth/login', ['email' => 'chat@example.test', 'password' => 'a-real-password'])
+            ->assertOk()->assertJsonPath('status', 'second_factor_required');
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'chat@example.test', 'password' => 'a-real-password', 'app' => 'ezchat',
+        ])->assertOk()->assertJsonPath('status', 'authenticated')
+            ->assertJsonPath('two_factor_enrolment_required', false)->json('token');
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/me')->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/chat/chats')->assertOk();
+        foreach (['/api/v1/customers', '/api/v1/jobs', '/api/v1/me/sessions', '/api/v1/settings'] as $crm) {
+            $this->app['auth']->forgetGuards();
+            $this->withToken($token)->getJson($crm)->assertForbidden()->assertJsonPath('code', 'chat_only_token');
+        }
+
+        // A wrong password is still a wrong password, and still counts.
+        $this->postJson('/api/v1/auth/login', ['email' => 'chat@example.test', 'password' => 'nope', 'app' => 'ezchat'])
+            ->assertUnauthorized();
+    }
+
+    public function test_a_deactivated_account_never_signs_in_to_ezchat(): void
+    {
+        $r = $this->org('Alpha', 'gone@alpha.test');
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update(['is_active' => false]);
+
+        $this->postJson('/api/v1/auth/login', ['email' => 'gone@alpha.test', 'password' => 'a-real-password', 'app' => 'ezchat'])
+            ->assertUnauthorized();
+    }
+
     public function test_an_account_behind_an_authenticator_is_not_silently_skipped(): void
     {
         $this->org('Alpha', 'both@example.test');

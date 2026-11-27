@@ -53,6 +53,7 @@ class IssueSession
         Request $request,
         User $user,
         int $status = Response::HTTP_OK,
+        bool $chatOnly = false,
     ): JsonResponse {
         // Named after the device so a user can revoke one client without
         // signing out everywhere.
@@ -83,7 +84,9 @@ class IssueSession
          * decides how long a session may sit untouched inside it.
          */
         $token = $user->createToken(
-            $deviceName,
+            $chatOnly ? 'ezchat' : $deviceName,
+            // EzChat signed in without an authenticator: chat only (ChatToken).
+            $chatOnly ? \App\Support\Auth\ChatToken::ABILITIES : ['*'],
             expiresAt: $this->lifetime->expiryFor($user->organization, now(), $remembered),
         );
 
@@ -96,6 +99,7 @@ class IssueSession
         $this->audit->log('auth.signed_in', actor: $user, metadata: [
             'ip'         => $request->ip(),
             'user_agent' => $request->userAgent(),
+            'app'        => $chatOnly ? 'ezchat' : 'ezbizi',
         ]);
 
         /*
@@ -126,7 +130,7 @@ class IssueSession
             // straight to enrolment rather than letting them find out by way of
             // a dashboard that answers 403. See RequireTwoFactorEnrolment for
             // why this is a detour and not a refusal.
-            'two_factor_enrolment_required' => $this->twoFactor->mustEnrol($user),
+            'two_factor_enrolment_required' => ! $chatOnly && $this->twoFactor->mustEnrol($user),
             'organization' => [
                 'id'           => $user->organization->id,
                 'name'         => $user->organization->name,

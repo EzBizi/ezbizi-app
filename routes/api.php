@@ -1035,7 +1035,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', \App\Http\Middleware\ApplyViewAs::class, 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
+    ->middleware(['auth:sanctum', 'chat-token', \App\Http\Middleware\ApplyViewAs::class, 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -3901,7 +3901,7 @@ Route::prefix('v1')
 Route::prefix('v1')
     // `api-key`: a key reaching these is bound by its level and logged like
     // everywhere else (audit 11-27: a read-only key could post heartbeats).
-    ->middleware(['auth:sanctum', 'tenant', 'api-key'])
+    ->middleware(['auth:sanctum', 'chat-token', 'tenant', 'api-key'])
     ->group(function () {
         // Each agent route counts in its OWN bucket (the third throttle
         // argument). Unnamed, Laravel keys every throttle by user id alone,
