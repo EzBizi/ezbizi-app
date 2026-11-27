@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
+import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -1934,8 +1935,8 @@ class _DayBar extends StatelessWidget {
     final label = isToday ? 'Today' : ml.formatMediumDate(day);
     final count = [
       if (dayCount != null)
-        '${_n(dayCount!)} ${isToday ? 'today' : 'that day'}',
-      if (totalCount != null) '${_n(totalCount!)} in 30 days',
+        '${formatCount(dayCount!)} ${isToday ? 'today' : 'that day'}',
+      if (totalCount != null) '${formatCount(totalCount!)} in 30 days',
     ].join(' · ');
 
     return Wrap(
@@ -1970,9 +1971,4 @@ class _DayBar extends StatelessWidget {
       ],
     );
   }
-
-  static String _n(int v) => v.toString().replaceAllMapped(
-    RegExp(r'(\d)(?=(\d{3})+$)'),
-    (m) => '${m[1]},',
-  );
 }

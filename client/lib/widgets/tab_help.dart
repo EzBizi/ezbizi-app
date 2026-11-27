@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/tab_tours.dart';
+import '../core/timestamps.dart';
 import 'help_video_io.dart'
     if (dart.library.js_interop) 'help_video_web.dart'
     as native;
@@ -49,9 +50,6 @@ class HelpVideo {
   final List<({int at, String label})> chapters;
   final String? captionsUrl;
 }
-
-String _clock(int seconds) =>
-    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
 /// Every tab's video, fetched once per sign-in and shared by every header.
 final _videos = Expando<Future<Map<String, HelpVideo>>>();
@@ -189,7 +187,7 @@ class TabHelpButtons extends StatelessWidget {
             if (video == null) return const SizedBox.shrink();
             final length = video.seconds == null
                 ? ''
-                : ' · ${_clock(video.seconds!)}';
+                : ' · ${formatClock(Duration(seconds: video.seconds!))}';
             return IconButton(
               key: const Key('tab-help-video'),
               tooltip: 'Watch how $label works$length',
@@ -763,7 +761,9 @@ class _VideoPanelState extends State<_VideoPanel> {
 
     return SidePanel(
       title: video.title ?? 'How ${widget.label} works',
-      subtitle: video.seconds == null ? null : _clock(video.seconds!),
+      subtitle: video.seconds == null
+          ? null
+          : formatClock(Duration(seconds: video.seconds!)),
       width: 480,
       actions: [
         if (!_cannotPlay)
@@ -829,7 +829,7 @@ class _VideoPanelState extends State<_VideoPanel> {
                       ),
                       selectedTileColor: theme.colorScheme.primaryContainer,
                       leading: Text(
-                        _clock(c.at),
+                        formatClock(Duration(seconds: c.at)),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w700,

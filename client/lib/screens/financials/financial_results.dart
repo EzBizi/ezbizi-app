@@ -13,10 +13,7 @@ import '../../core/theme.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
-import 'financial_cells.dart';
-
-String _money(int? cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, (cents ?? 0) / 100);
+import 'invoice_common.dart';
 
 int? _cents(String t) {
   final v = double.tryParse(t.replaceAll(r'$', '').replaceAll(',', '').trim());
@@ -429,9 +426,21 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
                     cell(3, t(r['area'])),
                     cell(4, t(r['calls'], end: true)),
                     cell(5, t(r['jobs'], end: true)),
-                    cell(6, t(_money(r['cost_cents'] as int?), end: true)),
-                    cell(7, t(_money(r['sales_cents'] as int?), end: true)),
-                    cell(8, t(_money(r['profit_cents'] as int?), end: true)),
+                    cell(
+                      6,
+                      t(invoiceMoney(r['cost_cents'] as int? ?? 0), end: true),
+                    ),
+                    cell(
+                      7,
+                      t(invoiceMoney(r['sales_cents'] as int? ?? 0), end: true),
+                    ),
+                    cell(
+                      8,
+                      t(
+                        invoiceMoney(r['profit_cents'] as int? ?? 0),
+                        end: true,
+                      ),
+                    ),
                     cell(
                       9,
                       Wrap(spacing: 4, runSpacing: 4, children: _chips(r)),
@@ -496,7 +505,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
                 style: theme.textTheme.bodySmall,
               ),
               Text(
-                'Cost ${_money(r['cost_cents'] as int?)} · Sales ${_money(r['sales_cents'] as int?)} · Profit ${_money(r['profit_cents'] as int?)}',
+                'Cost ${invoiceMoney(r['cost_cents'] as int? ?? 0)} · Sales ${invoiceMoney(r['sales_cents'] as int? ?? 0)} · Profit ${invoiceMoney(r['profit_cents'] as int? ?? 0)}',
                 style: theme.textTheme.bodySmall,
               ),
               Wrap(

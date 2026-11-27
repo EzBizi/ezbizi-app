@@ -3,7 +3,7 @@ import '../../core/timestamps.dart';
 import 'financial_cells.dart';
 
 /// `$3,880.00` for 388000 cents, the way Financials writes money.
-String invoiceMoney(int cents) {
+String invoiceMoney(num cents) {
   final shown = formatCell(const {
     'type': 'currency',
     'options': {},

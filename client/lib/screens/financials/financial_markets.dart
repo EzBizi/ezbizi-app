@@ -5,13 +5,11 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
-import 'financial_cells.dart';
-
-String _money(num cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+import 'invoice_common.dart';
 
 /// The periods the Markets tab offers, as from/to dates from [today].
 Map<String, (DateTime, DateTime)> marketPeriods(DateTime today) {
@@ -30,9 +28,6 @@ Map<String, (DateTime, DateTime)> marketPeriods(DateTime today) {
     'Last 3 months': (DateTime(day.year, day.month - 3, day.day), day),
   };
 }
-
-String _ymd(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// Financials → Markets (Shoval, 2026-11-20): QuickBooks expenses per market
 /// (branch) by week and category, each market's closing rate and cost per
@@ -80,8 +75,8 @@ class _FinancialMarketsTabState extends State<FinancialMarketsTab> {
   Future<void> _load() async {
     final (from, to) = marketPeriods(widget.today ?? DateTime.now())[_period]!;
     final r = await widget.api.get('/financials/markets', {
-      'from': _ymd(from),
-      'to': _ymd(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
     });
     if (!mounted) return;
     setState(() {
@@ -189,7 +184,7 @@ class _FinancialMarketsTabState extends State<FinancialMarketsTab> {
             children: [
               _Tile(
                 label: 'Expenses',
-                value: _money(data['total_expenses_cents'] as num? ?? 0),
+                value: invoiceMoney(data['total_expenses_cents'] as num? ?? 0),
               ),
               _Tile(
                 label: 'Average closing rate',
@@ -249,12 +244,12 @@ class _MarketCard extends StatelessWidget {
     final rate = m['closing_rate'];
     final perJob = m['cost_per_closed_job_cents'];
     final facts = [
-      'Expenses ${_money(m['expenses_cents'] as num? ?? 0)}',
+      'Expenses ${invoiceMoney(m['expenses_cents'] as num? ?? 0)}',
       if (m['franchise_id'] != null)
         'Closing rate ${rate == null ? '—' : '$rate%'} (${m['leads_won'] ?? 0} of ${m['leads'] ?? 0} leads)',
       if (m['franchise_id'] != null) 'Closed jobs ${m['closed_jobs'] ?? 0}',
       if (m['franchise_id'] != null)
-        'Per closed job ${perJob == null ? '—' : _money(perJob as num)}',
+        'Per closed job ${perJob == null ? '—' : invoiceMoney(perJob as num)}',
     ];
     final weeks = (m['weeks'] as List? ?? const []).cast<Map>();
     final categories = (m['by_category'] as List? ?? const []).cast<Map>();
@@ -302,7 +297,7 @@ class _MarketCard extends StatelessWidget {
             style: bold ? const TextStyle(fontWeight: FontWeight.w600) : null,
           ),
         ),
-        Text(_money(cents)),
+        Text(invoiceMoney(cents)),
       ],
     ),
   );

@@ -2,6 +2,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
 
 /// One card on Financials' home (UI queue 121, Jose picked layout 1 and
@@ -138,11 +139,7 @@ Tone _sourceTone(String? source) => switch (source) {
 String? refreshedLabel(String? iso, {DateTime? now}) {
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
   if (at == null) return null;
-  final minutes = (now ?? DateTime.now()).difference(at).inMinutes;
-  if (minutes < 1) return 'refreshed just now';
-  if (minutes < 60) return 'refreshed $minutes min ago';
-  if (minutes < 60 * 24) return 'refreshed ${minutes ~/ 60} h ago';
-  return 'refreshed ${minutes ~/ (60 * 24)} d ago';
+  return 'refreshed ${formatAgo(at, now: now)}';
 }
 
 const _hues = {
