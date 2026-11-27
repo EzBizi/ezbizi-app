@@ -143,7 +143,8 @@ final class HtmlEmailSanitiser
             // and phone apps draw this in a WebView, not a sandboxed iframe
             // (Jose 11-12: mail "lacking the proper formatting" on Windows).
             .'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
-            .'img-src data: https: http:; style-src \'unsafe-inline\' https:; font-src data: https:; media-src data: https:">'
+            .'img-src data: https: http:; style-src \'unsafe-inline\' https:; font-src data: https:; media-src data: https:; '
+            .'form-action \'none\'; base-uri \'none\'">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
             .($css !== '' ? '<style>'.$css.'</style>' : '')
             .'<style>'
@@ -193,6 +194,10 @@ final class HtmlEmailSanitiser
         // url() in CSS is a fetch the iframe would make to a host the
         // sender chose — tracking, and the same SSRF shape as <img>.
         $css = (string) preg_replace('/url\s*\(\s*[\'"]?[^)]*[\'"]?\s*\)/i', 'none', $css);
+        // No "<" survives: "</style >" in a sender's CSS would close our
+        // <style> and turn the rest into live HTML (audit 11-27). CSS has
+        // no use for it outside a string, where the escape reads the same.
+        $css = str_replace('<', '\\3C ', $css);
 
         return trim($css);
     }
