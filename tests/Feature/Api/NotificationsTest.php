@@ -445,11 +445,16 @@ class NotificationsTest extends TestCase
             $outsider = User::query()->forceCreate([
                 'organization_id' => $this->org['organization']->id, 'name' => 'Outsider',
                 'email' => 'outsider@alpha.test', 'password' => bcrypt('a-real-password'),
-                'role_id' => $this->org['admin']->role_id, 'is_active' => true,
+                // A plain role: an Administrator reaches every company.
+                'role_id' => \App\Models\Role::query()->forceCreate([
+                    'id' => (string) \Illuminate\Support\Str::uuid7(),
+                    'organization_id' => $this->org['organization']->id, 'name' => 'Tech',
+                ])->id,
+                'is_active' => true,
             ]);
             Assignment::query()->forceCreate([
                 'organization_id' => $this->org['organization']->id, 'user_id' => $outsider->id,
-                'scope_type' => Assignment::SCOPE_COMPANY, 'scope_id' => $other->id,
+                'assigned_company_id' => $other->id,
             ]);
 
             return [$other, $outsider];
@@ -473,6 +478,7 @@ class NotificationsTest extends TestCase
                 \App\Models\DeviceToken::query()->forceCreate([
                     'id' => (string) \Illuminate\Support\Str::uuid7(), 'organization_id' => $this->org['organization']->id,
                     'user_id' => $this->org['admin']->id, 'token' => $t, 'platform' => 'android',
+                    'last_registered_at' => now(),
                 ]);
             }
         });
