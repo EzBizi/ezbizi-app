@@ -113,6 +113,8 @@ class NotificationDispatcher
          * same record into one row (Jose, 2026-11-17: task board coverage).
          */
         ?string $kind = null,
+        // Who caused it: the bell shows their avatar (Monday parity, 2026-11-27).
+        ?User $actor = null,
     ): int {
         // Automations name no kind; Monday files them under Automations
         // (Jose, 2026-11-25), so each person can switch them off.
@@ -150,6 +152,7 @@ class NotificationDispatcher
             'id' => (string) Str::uuid7(),
             'organization_id' => $this->tenant->idOrFail(),
             'user_id' => $user->getKey(),
+            'actor_user_id' => $actor?->getKey(),
             'source' => $source,
             'kind' => $kind === null ? null : mb_substr($kind, 0, 40),
             'title' => $title,

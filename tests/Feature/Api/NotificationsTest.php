@@ -489,6 +489,19 @@ class NotificationsTest extends TestCase
         $this->assertSame(['phone-b'], $this->inTenant(fn () => \App\Models\DeviceToken::query()->pluck('token')->all()));
     }
 
+    public function test_a_row_names_who_did_it_and_what_they_did(): void
+    {
+        // Monday's phone cards (Jose, 2026-11-27): actor avatar + action badge.
+        $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Admin posted on Call back', onlyTo: $this->org['admin'], source: 'system',
+            kind: 'task.reply.mine', actor: $this->org['admin'],
+        ));
+
+        $row = $this->as($this->org['admin'])->getJson('/api/v1/notifications')->assertOk()->json('data.0');
+        $this->assertSame(['id' => $this->org['admin']->id, 'name' => 'Admin'], $row['actor']);
+        $this->assertSame('task.reply.mine', $row['action']);
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

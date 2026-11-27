@@ -146,6 +146,8 @@ void main() {
     expect(find.text('Last 7 days'), findsOneWidget);
     expect(find.text('Older'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Assigned to me'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Assigned to me'));
     await tester.pumpAndSettle();
     expect(find.text('Row a'), findsOneWidget);
@@ -157,7 +159,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('All'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('notifications-unread-only')));
+    // Unread is a tab, as on Monday's phone screen (2026-11-27).
+    await tester.ensureVisible(find.text('Unread'));
+    await tester.tap(find.text('Unread'));
     await tester.pumpAndSettle();
     expect(find.text('Row b'), findsNothing);
     expect(find.text('Row c'), findsOneWidget);
@@ -166,7 +170,8 @@ void main() {
     ListTile tile(String id) =>
         tester.widget(find.byKey(ValueKey('notification-row-$id')));
     expect(tile('c').tileColor, isNotNull);
-    await tester.tap(find.byKey(const Key('notifications-unread-only')));
+    await tester.ensureVisible(find.text('All'));
+    await tester.tap(find.text('All'));
     await tester.pumpAndSettle();
     expect(tile('b').tileColor, isNull);
 
@@ -599,6 +604,29 @@ void main() {
     await tester.tap(find.byKey(const Key('notifications-delete-all')));
     await tester.pumpAndSettle();
     expect(posted, ['DELETE /api/v1/notifications']);
+  });
+
+  // Monday's phone cards (2026-11-27): who did it, with an action badge, and
+  // "board · item" under the title.
+  testWidgets('a card shows who did it and where', (tester) async {
+    await _pumpWithItem(
+      tester,
+      item: {
+        ..._email,
+        'id': 'n-card',
+        'action': 'task.reply.mine',
+        'actor': {'id': 'u-2', 'name': 'Ana Ramos'},
+        'context': 'Outgoing Calls · Call back Mr Smith',
+      },
+      onOpenModule: (_, _, _) {},
+    );
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('notification-actor-n-card')), findsOneWidget);
+    expect(find.text('AR'), findsOneWidget);
+    expect(find.byIcon(Icons.reply), findsOneWidget);
+    expect(find.text('Outgoing Calls · Call back Mr Smith'), findsOneWidget);
   });
 
   testWidgets('a link for another module waits for that module', (
