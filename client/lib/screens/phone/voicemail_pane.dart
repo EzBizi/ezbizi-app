@@ -256,7 +256,6 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   }
 
   Future<void> _delete(_Box box) async {
-    if (!await confirmPhoneRemove(context, 'the mailbox "${box.name}"')) return;
     setState(() => _saving = true);
 
     final response = await widget.api.delete(
@@ -479,10 +478,10 @@ class _VoicemailPaneState extends State<VoicemailPane> {
                     onPressed: () => _open(box),
                     child: const Text('Edit'),
                   ),
-                  IconButton(
-                    tooltip: 'Delete this mailbox',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: _saving ? null : () => _delete(box),
+                  TwoTapRemove(
+                    icon: true,
+                    enabled: !_saving,
+                    onRemove: () => _delete(box),
                   ),
                 ],
               )

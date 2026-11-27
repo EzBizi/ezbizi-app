@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 /// A phone connection as a picker shows it: its id and a label to read.
 /// Read from `/phone/connections` by the Porting, Trust, Voicemail and IVR
 /// menus panes.
@@ -72,42 +74,71 @@ class PhoneAccountPicker extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButton<String>(
+      child: SearchPickerField<String>(
         key: const ValueKey('phone-account-picker'),
         value: selected,
-        items: [
-          for (final a in accounts)
-            DropdownMenuItem(value: a.id, child: Text(a.label)),
+        label: 'Phone account',
+        border: const OutlineInputBorder(),
+        options: [
+          for (final a in accounts) SearchOption(value: a.id, label: a.label),
         ],
-        onChanged: (id) => id == null ? null : onChanged(id),
+        onChanged: (id) {
+          if (id != null) onChanged(id);
+        },
       ),
     );
   }
 }
 
-/// Ask before removing something lines may be using (audit 11-27: one click
-/// silently detached every line that used it).
-Future<bool> confirmPhoneRemove(BuildContext context, String what) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Remove $what?'),
-      content: const Text(
-        'Any line using it stops using it and falls back to its default.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey('confirm-remove'),
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Remove'),
-        ),
-      ],
-    ),
-  );
+/// A Remove that asks on the button itself: the first tap turns it into
+/// "Tap again to remove" (audit 11-27: one click silently detached every
+/// line using it). No dialog — the house rule.
+class TwoTapRemove extends StatefulWidget {
+  const TwoTapRemove({
+    super.key,
+    required this.onRemove,
+    this.enabled = true,
+    this.icon = false,
+  });
 
-  return ok == true;
+  final VoidCallback onRemove;
+  final bool enabled;
+
+  /// A delete icon at rest, for rows with no room for words.
+  final bool icon;
+
+  @override
+  State<TwoTapRemove> createState() => _TwoTapRemoveState();
+}
+
+class _TwoTapRemoveState extends State<TwoTapRemove> {
+  bool _armed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final onPressed = !widget.enabled
+        ? null
+        : () {
+            if (_armed) {
+              setState(() => _armed = false);
+              widget.onRemove();
+            } else {
+              setState(() => _armed = true);
+            }
+          };
+
+    if (widget.icon) {
+      return IconButton(
+        tooltip: _armed ? 'Tap again to delete' : 'Delete',
+        icon: Icon(_armed ? Icons.delete_forever : Icons.delete_outline),
+        color: _armed ? Theme.of(context).colorScheme.error : null,
+        onPressed: onPressed,
+      );
+    }
+
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(_armed ? 'Tap again to remove' : 'Remove'),
+    );
+  }
 }
