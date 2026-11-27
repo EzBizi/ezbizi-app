@@ -358,8 +358,12 @@ class FieldController extends Controller
             return response()->json(['data' => $base + $this->presentDrive($person, $at, $to)]);
         }
 
-        $candidates = $this->tracking->trackedPeople($actor)
-            ->map(fn (User $u) => ['user' => $u, 'at' => $fresh($u)])
+        // One read for everyone, not one per person (audit 11-27).
+        $people = $this->tracking->trackedPeople($actor);
+        $presences = FieldPresence::query()->whereIn('user_id', $people->modelKeys())
+            ->where('last_seen_at', '>', now()->subMinutes(self::FRESH_MINUTES))->get()->keyBy('user_id');
+        $candidates = $people
+            ->map(fn (User $u) => ['user' => $u, 'at' => $presences->get($u->getKey())])
             ->filter(fn ($c) => $c['at'] !== null)
             ->sortBy(fn ($c) => FieldMaps::metres($c['at']->latitude, $c['at']->longitude, $to['lat'], $to['lng']))
             ->take(5)
