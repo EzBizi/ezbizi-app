@@ -55,7 +55,8 @@ final class LeaderboardController extends Controller
             'min_calls_to_rank' => $min,
             'top' => self::top($ranked),
             'ranked' => $ranked->values()->map(function (array $p, int $i) use ($ids, $byWeek, $lastRank, $trend, $me) {
-                // ponytail: names past third wait for Jose (Trey asked for "only the top 3"); UI/UX shows "#5 · 64%".
+                // Names for the top three only (Jose, 2026-11-27, "as they recommend"; Trey asked for "only the top 3"):
+                // the rest are a place and a rate, "#5 · 64%", and the reader's own row is marked me.
                 $named = $i < 3;
                 $before = $byWeek[4][$p['person']] ?? null;
 

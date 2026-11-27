@@ -104,7 +104,7 @@ class LeaderboardTest extends TestCase
         $this->assertSame(['person' => 'Di', 'rank' => 2, 'of' => 4, 'booking_rate' => 67, 'booked' => 2, 'decided' => 3, 'answer_rate' => 80, 'calls_scored' => 3, 'why' => null],
             array_diff_key($board['me'], ['score' => true, 'trend' => true, 'to_next' => true]));
 
-        // Everyone ranked (Jose: "more elaborate", UI/UX 214), names past third left out until Jose says.
+        // Everyone ranked (Jose: "more elaborate", UI/UX 214), names for the top three only (Jose, 2026-11-27).
         $this->assertSame([[1, 'Cy', 0, false], [2, 'Di', 2, true], [3, 'Ada', -1, false], [4, null, -1, false]],
             array_map(fn ($p) => [$p['rank'], $p['person'], $p['change']['rank'], $p['me']], $board['ranked']));
         $this->assertSame([null, 50], [$board['ranked'][3]['user_id'], $board['ranked'][3]['booking_rate']]);
