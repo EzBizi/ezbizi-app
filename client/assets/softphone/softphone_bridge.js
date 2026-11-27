@@ -268,6 +268,12 @@
     switch (message.type) {
       case 'setup':
         return setup(message.token);
+      case 'token':
+        // A renewal: swap the token on the live device; a call in progress
+        // keeps going (setup() would destroy it).
+        if (device) device.updateToken(message.token);
+        else setup(message.token);
+        return;
       case 'connect':
         return connect(message.to, message.callerId);
       case 'digits':
