@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'A deactivated account can no longer sign in to EzBizi in any way, including through a linked login, and deactivating staff signs out their open sessions',
       'Sign-in: text-message codes have send and guess limits and go to US and Canadian numbers only, signing out ends the session on the server, and choosing a code-protected organization asks for the code',
       'If the server cannot be reached when the app opens, it keeps you signed in and retries instead of showing the sign-in screen',
       'The app own customer export can be imported back, and attachments are only removed after their record is really deleted',
