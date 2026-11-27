@@ -76,7 +76,15 @@ final class ChatAutoGroups
             $want = []; // auto_key => [top-level company, kind]
             if ($kinds !== []) {
                 $all = Company::query()->get()->keyBy('id');
-                foreach ($user->reachableCompanies() as $company) {
+                // Reach in a company, or in one of its branches: most technicians
+                // are assigned to a branch only (prod 11-27: 51 of 55).
+                $companies = $user->reachableCompanies()->keyBy('id');
+                foreach ($user->reachableFranchises() as $franchise) {
+                    if (isset($all[$franchise->company_id])) {
+                        $companies[$franchise->company_id] ??= $all[$franchise->company_id];
+                    }
+                }
+                foreach ($companies as $company) {
                     // A Sub Company's people are in its top company's group.
                     $root = $company;
                     for ($i = 0; $i < 10 && isset($all[$root->parent_company_id]); $i++) {
