@@ -37,6 +37,8 @@ Future<List<http.Request>> _pump(
   WidgetTester tester, {
   List<Map> banks = const [],
   bool canConnect = true,
+  int lastPage = 1,
+  int failPage2 = 0,
 }) async {
   tester.view.physicalSize = const Size(1200, 1000);
   tester.view.devicePixelRatio = 1.0;
@@ -74,6 +76,9 @@ Future<List<http.Request>> _pump(
         return json({'data': {'match': null}});
       }
       if (path.endsWith('/financials/bank/transactions')) {
+        if (request.url.queryParameters['page'] == '2' && failPage2-- > 0) {
+          return http.Response('{"message":"Server error"}', 500, headers: const {'content-type': 'application/json'});
+        }
         final q = request.url.queryParameters['search'] ?? '';
         final rows = [
           {
@@ -99,7 +104,7 @@ Future<List<http.Request>> _pump(
         ].where((t) => q.isEmpty || '${t['name']}'.toLowerCase().contains(q.toLowerCase())).toList();
         return json({
           'data': rows,
-          'meta': {'page': 1, 'last_page': 1, 'total': rows.length},
+          'meta': {'page': 1, 'last_page': lastPage, 'total': rows.length},
         });
       }
       return json({'data': null});
@@ -206,5 +211,21 @@ void main() {
     await tester.tap(find.text('Home Depot'));
     await tester.pumpAndSettle();
     expect(find.text('What was this for?'), findsNothing);
+  });
+
+  testWidgets('a next page that fails is asked for again, not skipped', (tester) async {
+    final seen = await _pump(tester, banks: [_bank], lastPage: 3, failPage2: 1);
+    Future<void> more() async {
+      await tester.ensureVisible(find.byKey(const Key('financials-bank-more'), skipOffstage: false));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('financials-bank-more')));
+      await tester.pumpAndSettle();
+    }
+
+    List<String?> pages() => seen.where((r) => r.url.path.endsWith('/transactions')).map((r) => r.url.queryParameters['page']).toList();
+    await more();
+    expect(find.text('Home Depot'), findsOneWidget, reason: 'the rows already shown stay');
+    await more();
+    expect(pages(), ['1', '2', '2']);
   });
 }
