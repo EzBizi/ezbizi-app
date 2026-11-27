@@ -1152,13 +1152,27 @@ class ChatController extends Controller
                     // A handset that draws Chat itself (Android, 11-27) gets the data;
                     // the rest get a ready notification.
                     [$draws, $plain] = $devices->partition(fn (DeviceToken $d) => $native !== [] && $d->drawsChat());
+                    // A ringing call on an iPhone with a VoIP token: CallKit, and no
+                    // alert as well for that app (Apple, 11-27).
+                    if (($native['type'] ?? null) === 'chat_call') {
+                        $voip = $plain->filter(fn (DeviceToken $d) => $d->platform === 'ios_voip');
+                        if ($voip->isNotEmpty()) {
+                            app(\App\Support\Notifications\ApnsSender::class)->sendRaw($voip, [
+                                'type' => 'chat_call', 'call_id' => $native['call_id'], 'chat_id' => $chatId,
+                                'caller_name' => $native['sender'] ?? $title, 'video' => ($native['video'] ?? '0') === '1',
+                            ], 'voip');
+                            $apps = $voip->pluck('app')->all();
+                            $plain = $plain->reject(fn (DeviceToken $d) => $d->platform === 'ios' && in_array($d->app, $apps, true));
+                        }
+                    }
                     if ($draws->isNotEmpty()) {
                         $push->sendData($draws, [...$native, 'chat_id' => $chatId, 'title' => $title,
                             'body' => $private ? $hidden : ($native['body'] ?? $line), 'badge' => $badge], $ttl);
                     }
                     if ($plain->isNotEmpty()) {
                         $push->send($plain, $title, $private ? $hidden : $line, urgent: $urgent, notificationId: 'chat:'.$chatId,
-                            thread: 'chat-'.$chatId, badge: $badge);
+                            thread: 'chat-'.$chatId, badge: $badge,
+                            category: ($native['type'] ?? null) === 'chat_message' ? 'CHAT_MESSAGE' : null);
                     }
                 });
         })->afterResponse();
@@ -1177,10 +1191,15 @@ class ChatController extends Controller
         }
         dispatch(function () use ($userIds, $data) {
             $push = app(PushSender::class);
-            $devices = DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get()
-                ->filter(fn (DeviceToken $d) => $d->drawsChat());
+            $all = DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get();
+            $devices = $all->filter(fn (DeviceToken $d) => $d->drawsChat());
             if ($push->configured() && $devices->isNotEmpty()) {
                 $push->sendData($devices, $data);
+            }
+            // iPhones: a background push the app reads the same way.
+            $phones = $all->filter(fn (DeviceToken $d) => $d->platform === 'ios');
+            if ($phones->isNotEmpty()) {
+                app(\App\Support\Notifications\ApnsSender::class)->sendRaw($phones, $data, 'background');
             }
         })->afterResponse();
     }

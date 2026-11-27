@@ -118,7 +118,9 @@ class PushSender
      */
     public function platforms(): array
     {
-        return ['android', 'ios'];
+        // ios_voip: a PushKit token for CallKit rings (Apple, 11-27). It only
+        // ever gets VoIP pushes for a ringing call, never an ordinary one.
+        return ['android', 'ios', 'ios_voip'];
     }
 
     /**
@@ -144,7 +146,7 @@ class PushSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null): int
+    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null, ?string $category = null): int
     {
         if ($devices->isEmpty()) {
             return 0;
@@ -157,9 +159,11 @@ class PushSender
          * exists; it asks for a notification to reach a set of handsets and
          * this decides how each one is reached.
          */
+        // iOS kills an app whose VoIP push reports no call: those never get these.
+        $devices = $devices->reject(fn (DeviceToken $device) => $device->platform === 'ios_voip');
         [$apple, $google] = $devices->partition(fn (DeviceToken $device) => $device->platform === 'ios');
 
-        $sent = $this->apns->send($apple, $title, $body, $notificationId, $subtitle, $thread, $badge);
+        $sent = $this->apns->send($apple, $title, $body, $notificationId, $subtitle, $thread, $badge, $category);
 
         // Android has no subtitle line a data-less FCM notification can set, so
         // what happened leads the body (Jose, 2026-10-21: Title / Subtitle /

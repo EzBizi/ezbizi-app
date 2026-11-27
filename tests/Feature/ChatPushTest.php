@@ -38,6 +38,7 @@ class ChatPushTest extends TestCase
         file_put_contents($path, json_encode(['client_email' => 'push@example.iam.gserviceaccount.com', 'private_key' => $pem]));
         config(['services.fcm.project_id' => 'ezbizi-506117', 'services.fcm.credentials' => $path]);
         Http::fake([
+            'https://api.push.apple.com/*' => Http::response('', 200),
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
             self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
         ]);
@@ -161,6 +162,48 @@ class ChatPushTest extends TestCase
         // Mark read from the notification: POST with the method override reaches the PATCH route.
         $this->signedInAs($this->ana)->postJson("/api/v1/chat/chats/{$chat}/settings", ['marked_unread' => false],
             ['X-HTTP-Method-Override' => 'PATCH'])->assertOk();
+    }
+
+    /** Apple 11-27: CallKit by VoIP push, no second alert, a background note to stop it, Reply/Read on messages. */
+    public function test_an_iphone_rings_through_callkit_and_messages_carry_the_actions(): void
+    {
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        openssl_pkey_export($key, $pem);
+        $path = storage_path('framework/testing/apns-'.Str::uuid7().'.p8');
+        file_put_contents($path, $pem);
+        config(['services.apns.key_id' => '8C7774ZGVH', 'services.apns.team_id' => '2CMZQR34RL',
+            'services.apns.topic' => 'com.ezbizi.app', 'services.apns.key' => $path, 'services.apns.production' => true]);
+        foreach (['ios' => 'ana-iphone', 'ios_voip' => 'ana-voip'] as $platform => $token) {
+            $this->signedInAs($this->ana)->postJson('/api/v1/notifications/devices', ['token' => $token, 'platform' => $platform, 'app' => 'ezchat'])
+                ->assertSuccessful();
+        }
+        $this->inTenant($this->t['org'], fn () => \App\Models\PhoneConnection::factory()->create([
+            'organization_id' => $this->t['org']->id, 'scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $this->t['org']->id, 'api_key_sid' => 'SK'.str_repeat('a', 32), 'credentials' => 'secret-for-signing',
+        ]));
+        $apple = fn (string $token) => collect(Http::recorded())->map(fn ($p) => $p[0])
+            ->filter(fn ($r) => str_contains($r->url(), 'api.push.apple.com/3/device/'.$token))->values();
+
+        $chat = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', ['user_id' => $this->ana->id])->json('data.id');
+        $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/messages", ['body' => 'Van is back'])->assertCreated();
+        $msg = $apple('ana-iphone')->first();
+        $this->assertSame('CHAT_MESSAGE', $msg['aps']['category']);
+        $this->assertSame("chat:{$chat}", $msg['notification_id']);
+        $this->assertCount(0, $apple('ana-voip'), 'a VoIP token never gets an ordinary push');
+
+        $call = $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/calls", ['video' => true])->assertCreated();
+        $ring = $apple('ana-voip')->first();
+        $this->assertSame('voip', $ring->header('apns-push-type')[0]);
+        $this->assertSame('com.ezbizi.ezchat.voip', $ring->header('apns-topic')[0]);
+        $this->assertSame(['type' => 'chat_call', 'call_id' => $call->json('data.call_id'), 'chat_id' => $chat,
+            'caller_name' => $this->bar->name, 'video' => true], $ring->data());
+        $this->assertFalse($apple('ana-iphone')->contains(fn ($r) => $r->header('apns-push-type')[0] === 'alert'
+            && str_contains((string) ($r['aps']['alert']['body'] ?? ''), 'call')), 'CallKit rings; no alert as well');
+
+        $this->signedInAs($this->bar)->postJson('/api/v1/chat/calls/'.$call->json('data.call_id').'/leave', ['alone' => false])->assertOk();
+        $end = $apple('ana-iphone')->first(fn ($r) => $r->header('apns-push-type')[0] === 'background' && ($r['type'] ?? null) === 'chat_call_end');
+        $this->assertNotNull($end, 'the ring stops');
+        $this->assertSame(1, $end['aps']['content-available']);
     }
 
     public function test_a_call_rings_on_the_urgent_channel_and_a_missed_one_says_so(): void
