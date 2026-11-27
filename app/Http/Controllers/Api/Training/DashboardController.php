@@ -14,9 +14,11 @@ use App\Support\Access\ScopeReach;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Training\LapsedPasses;
+use App\Support\Training\TrainingDay;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -369,7 +371,7 @@ class DashboardController extends Controller
             ->get(['test_id', 'score', 'passed', 'taken_at', 'expires_on'])
             ->groupBy('test_id');
 
-        $today = now()->toDateString();
+        $today = TrainingDay::today();
 
         $data = [];
 
@@ -565,7 +567,7 @@ class DashboardController extends Controller
     /**
      * @return array{0: 'guide'|'test', 1: TrainingGuide|TrainingTest}
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     private function findVisibleItem(string $id, User $user, ViewScope $scope): array
     {
@@ -581,7 +583,7 @@ class DashboardController extends Controller
             return ['test', $test];
         }
 
-        throw new \Illuminate\Database\Eloquent\ModelNotFoundException("No training item [{$id}].");
+        throw new ModelNotFoundException("No training item [{$id}].");
     }
 
     // ── Assignment audience: one query, plus one for role members ─────
@@ -623,7 +625,7 @@ class DashboardController extends Controller
 
         $membersByRole = $roleMembers->groupBy('role_id')->map(fn ($users) => $users->pluck('id')->all());
 
-        $today = now()->toDateString();
+        $today = TrainingDay::today();
 
         foreach ($assignments as $a) {
             $kind = $a->guide_id !== null ? 'guide' : 'test';
@@ -757,7 +759,7 @@ class DashboardController extends Controller
             return $result;
         }
 
-        $today = now()->toDateString();
+        $today = TrainingDay::today();
 
         LapsedPasses::currentStandingQuery($testIds)
             ->get(['training_attempts.test_id', 'training_attempts.user_id', 'training_attempts.expires_on'])
