@@ -84,6 +84,7 @@ class MailWorkerReconnectTest extends TestCase
 
         $this->assertSame(3, $job->tries);
         $this->assertSame([10, 60], $job->backoff());
+        $this->assertTrue($job->shouldBeEncrypted, 'Its token would sit readable in jobs/failed_jobs.');
     }
 
     public function test_a_signup_verification_is_retried_rather_than_lost_on_the_first_refusal(): void
@@ -97,6 +98,7 @@ class MailWorkerReconnectTest extends TestCase
 
         $this->assertSame(3, $job->tries);
         $this->assertSame([10, 60], $job->backoff());
+        $this->assertTrue($job->shouldBeEncrypted, 'Its token would sit readable in jobs/failed_jobs.');
     }
 
     public function test_a_send_whose_failure_is_caught_still_drops_the_connection(): void
