@@ -99,6 +99,38 @@ class ChatPushTest extends TestCase
         $this->assertCount(1, $this->sentTo('ana-tablet'), 'open elsewhere is not reading it here');
     }
 
+    /** Desk 11-27: an @mention reaches someone who muted the group; a plain message does not. */
+    public function test_a_mention_breaks_through_a_muted_group(): void
+    {
+        $eve = $this->userWithRole($this->t, 'Dispatch', ['phone.chat.view'], 'eve@alpha.test');
+        $group = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', [
+            'name' => 'Crew', 'user_ids' => [$this->ana->id, $eve->id],
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($this->ana)->patchJson("/api/v1/chat/chats/{$group}/settings", ['mute_hours' => -1])->assertOk();
+
+        $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$group}/messages", ['body' => 'Lunch?'])->assertCreated();
+        $this->assertCount(0, $this->sentTo('ana-phone'), 'muted');
+
+        $sent = $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$group}/messages", [
+            'body' => "@{$this->ana->name} the gate code?", 'mentions' => [$this->ana->id, $this->bar->id],
+        ])->assertCreated()->json('data');
+        $this->assertSame([['id' => $this->ana->id, 'name' => $this->ana->name]], $sent['meta']['mentions'], 'members only, never myself');
+        $this->assertCount(1, $this->sentTo('ana-phone'), 'mentioned');
+    }
+
+    /** WhatsApp's "Show preview" off: who wrote, never what. */
+    public function test_show_preview_off_hides_the_text_but_not_the_sender(): void
+    {
+        $this->signedInAs($this->ana)->patchJson('/api/v1/me/preferences', ['preferences' => ['chat.show_preview' => false]])->assertOk();
+        $chat = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', ['user_id' => $this->ana->id])->json('data.id');
+        $this->signedInAs($this->bar)->postJson("/api/v1/chat/chats/{$chat}/messages", ['body' => 'The safe code is 4471'])->assertCreated();
+
+        $sent = $this->sentTo('ana-phone');
+        $this->assertCount(1, $sent);
+        $this->assertSame($this->bar->name, $sent[0]['notification']['title']);
+        $this->assertSame('New message', $sent[0]['notification']['body']);
+    }
+
     public function test_a_call_rings_on_the_urgent_channel_and_a_missed_one_says_so(): void
     {
         $chat = $this->signedInAs($this->bar)->postJson('/api/v1/chat/chats', ['user_id' => $this->ana->id])->json('data.id');

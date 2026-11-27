@@ -375,9 +375,15 @@ class _ChatThreadState extends State<ChatThread> {
       _messages = [..._messages, temp];
     });
     _toBottom();
+    final mentions = [
+      for (final e in _mentions.entries)
+        if (body.contains('@${e.key}')) e.value,
+    ];
+    _mentions.clear();
     final r = await store.api.post('/chat/chats/${widget.chatId}/messages', {
       'body': body,
       'reply_to_id': ?reply?['id'],
+      if (mentions.isNotEmpty) 'mentions': mentions,
     });
     if (!mounted) return;
     setState(() {
@@ -910,6 +916,79 @@ class _ChatThreadState extends State<ChatThread> {
   // ── build ──────────────────────────────────────────────────────
 
   bool get _iAmAdmin => _infoData?['i_am_admin'] == true;
+
+  /// @mentions picked while typing: the name as written => the person's id.
+  final Map<String, String> _mentions = {};
+
+  /// The `@part` just before the cursor in a group, or null.
+  String? get _mentionQuery {
+    if (_chat?['type'] != 'group') return null;
+    final sel = _text.selection;
+    final upTo = sel.isValid && sel.isCollapsed
+        ? _text.text.substring(0, sel.baseOffset)
+        : _text.text;
+    final m = RegExp(r'(?:^|\s)@([^\s@]*)$').firstMatch(upTo);
+    return m?.group(1);
+  }
+
+  /// WhatsApp's list above the composer: the group's people matching what
+  /// follows the @; picking one writes their name.
+  Widget _mentionPicker(ThemeData theme) {
+    final q = _mentionQuery;
+    if (q == null) return const SizedBox.shrink();
+    final me = widget.session.me?.id;
+    final people = [
+      for (final m in (_infoData?['members'] as List? ?? const []))
+        if (m is Map &&
+            m['id'] != me &&
+            '${m['name']}'.toLowerCase().contains(q.toLowerCase()))
+          m,
+    ];
+    if (people.isEmpty) return const SizedBox.shrink();
+    return Material(
+      key: const ValueKey('chat-mention-picker'),
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 220),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final p in people)
+              ListTile(
+                key: ValueKey('chat-mention-${p['id']}'),
+                dense: true,
+                leading: UserAvatar(
+                  api: store.api,
+                  userId: p['id'] as String,
+                  name: '${p['name']}',
+                  radius: 14,
+                ),
+                title: Text('${p['name']}'),
+                onTap: () => _pickMention(p),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickMention(Map p) {
+    final name = '${p['name']}';
+    final sel = _text.selection;
+    final at = sel.isValid ? sel.baseOffset : _text.text.length;
+    final before = _text.text.substring(0, at);
+    final start = before.lastIndexOf('@');
+    if (start < 0) return;
+    final text =
+        '${_text.text.substring(0, start)}@$name ${_text.text.substring(at)}';
+    _mentions[name] = p['id'] as String;
+    _text.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: start + name.length + 2),
+    );
+    setState(() {});
+  }
+
   Json? _infoData;
 
   int? _infoAskedAt;
@@ -1116,6 +1195,7 @@ class _ChatThreadState extends State<ChatThread> {
         const Divider(height: 1),
         Expanded(child: _messagesArea(theme)),
         if (_replyTo != null || _editing != null) _replyPreview(theme),
+        _mentionPicker(theme),
         _composer(theme),
         if (_emoji)
           SizedBox(
@@ -2168,7 +2248,17 @@ class _BubbleState extends State<_Bubble> {
       if (parts.isNotEmpty) parts.add(const SizedBox(height: 4));
       parts.add(
         Text.rich(
-          TextSpan(children: richText(caption, theme)),
+          TextSpan(
+            children: richText(
+              caption,
+              theme,
+              mentions: [
+                for (final x
+                    in ((m['meta'] as Map?)?['mentions'] as List? ?? const []))
+                  if (x is Map) '${x['name']}',
+              ],
+            ),
+          ),
           style: theme.textTheme.bodyLarge,
         ),
       );
@@ -2178,11 +2268,22 @@ class _BubbleState extends State<_Bubble> {
 }
 
 /// WhatsApp formatting: *bold*, _italic_, ~strike~, ```mono```, and links.
-List<InlineSpan> richText(String text, ThemeData theme) {
+List<InlineSpan> richText(
+  String text,
+  ThemeData theme, {
+  List<String> mentions = const [],
+}) {
+  // Longest first, so "@Ana Maria" wins over "@Ana".
+  final names = [...mentions.where((n) => n.isNotEmpty)]
+    ..sort((a, b) => b.length.compareTo(a.length));
+  final mention = names.isEmpty
+      ? ''
+      : '|(@(?:${names.map(RegExp.escape).join('|')}))';
   final pattern = RegExp(
     // Markers only at word edges, as WhatsApp: Estimate_Elm_St stays plain.
     r'(```[\s\S]+?```)|(?<!\w)(\*[^*\n]+\*)(?!\w)|(?<!\w)(_[^_\n]+_)(?!\w)'
-    r'|(?<!\w)(~[^~\n]+~)(?!\w)|(https?://[^\s]+)',
+    r'|(?<!\w)(~[^~\n]+~)(?!\w)|(https?://[^\s]+)'
+    '$mention',
   );
   final spans = <InlineSpan>[];
   var at = 0;
@@ -2210,6 +2311,17 @@ List<InlineSpan> richText(String text, ThemeData theme) {
         TextSpan(
           text: s.substring(1, s.length - 1),
           style: const TextStyle(fontStyle: FontStyle.italic),
+        ),
+      );
+    } else if (names.isNotEmpty && match.group(6) != null) {
+      // @mention: bold, in the theme's colour, as WhatsApp.
+      spans.add(
+        TextSpan(
+          text: s,
+          style: TextStyle(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       );
     } else if (match.group(4) != null) {

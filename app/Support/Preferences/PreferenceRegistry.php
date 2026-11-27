@@ -411,6 +411,15 @@ class PreferenceRegistry
              * is his "default should be 30 - 70". The client still keeps both
              * panes above their pixel floors whatever share is stored.
              */
+            // WhatsApp's "Show preview" (desk 11-27): off, a chat push says
+            // who wrote but not what.
+            'chat.show_preview' => [
+                'label' => 'Show message text in chat notifications',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Off: a notification says who wrote, or which group, but not the message.',
+            ],
+
             // Chat's list pane (Communication > Chat), in pixels.
             'chat.list_width' => [
                 'label' => 'Chat list width',

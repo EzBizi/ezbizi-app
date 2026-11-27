@@ -267,6 +267,17 @@ class _You extends StatelessWidget {
         const SizedBox(height: 12),
         Card(
           margin: EdgeInsets.zero,
+          child: SwitchListTile(
+            key: const ValueKey('ezchat-show-preview'),
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Show message text in notifications'),
+            value: session.me?.preferences['chat.show_preview'] != false,
+            onChanged: (on) => session.setPreference('chat.show_preview', on),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          margin: EdgeInsets.zero,
           child: ListTile(
             key: const ValueKey('ezchat-sign-out'),
             leading: const Icon(Icons.logout),
