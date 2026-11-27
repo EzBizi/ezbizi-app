@@ -15,6 +15,14 @@ import 'package:http/testing.dart';
 /// Task Board column types (Jose, 2026-11-09): tags added from the cell, a
 /// type change that says what it would clear, and the contact types.
 void main() {
+  test('audit 11-27: a number typed with \$ or commas reads as a number; text does not', () {
+    expect(columnNumber('\$1,200.50'), 1200.5);
+    expect(columnNumber(' 1 200 '), 1200);
+    expect(columnNumber('twelve'), isNull);
+    expect(validColumnText('currency', '\$3,000'), isTrue);
+    expect(validColumnText('number', 'abc'), isFalse);
+  });
+
   BoardColumn column(String type, [List<ColumnOption> options = const []]) => (
     id: 'c1',
     name: 'Description',

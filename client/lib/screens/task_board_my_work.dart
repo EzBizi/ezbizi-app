@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/side_panel.dart';
 
@@ -57,6 +58,18 @@ class _MyWorkPanelState extends State<MyWorkPanel> {
   bool _calendar = false;
   bool _done = false;
 
+  /// A count tile tapped (row 70, Monday's My work): only that bucket shows.
+  String? _only;
+
+  Color _bucketColour(ThemeData theme, String b) => switch (b) {
+    'Past dates' => theme.colorScheme.error,
+    'Today' => EzBiziTheme.boardPalette[2],
+    'This week' => EzBiziTheme.boardPalette[4],
+    'Next week' => EzBiziTheme.boardPalette[6],
+    'Later' => EzBiziTheme.boardPalette[7],
+    _ => theme.colorScheme.outline,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -78,7 +91,24 @@ class _MyWorkPanelState extends State<MyWorkPanel> {
     });
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> t, TextStyle? muted) =>
+  Widget _row(BuildContext context, Map<String, dynamic> t, TextStyle? muted) {
+    final theme = Theme.of(context);
+    final colour = _bucketColour(
+      theme,
+      myWorkBucket(t['due_on'] as String?, widget.today ?? DateTime.now()),
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: colour, width: 5)),
+        color: theme.colorScheme.surfaceContainerLow,
+      ),
+      padding: const EdgeInsets.only(left: 10),
+      child: _tile(context, t, muted),
+    );
+  }
+
+  Widget _tile(BuildContext context, Map<String, dynamic> t, TextStyle? muted) =>
       ListTile(
         key: ValueKey('my-work-${t['id']}'),
         dense: true,
@@ -135,7 +165,7 @@ class _MyWorkPanelState extends State<MyWorkPanel> {
     } else {
       body = [
         for (final b in myWorkBuckets)
-          if (tasks.any(
+          if ((_only == null || _only == b || (_only == 'This week' && b == 'Today')) && tasks.any(
             (t) => myWorkBucket(t['due_on'] as String?, today) == b,
           )) ...[
             Padding(
@@ -187,6 +217,50 @@ class _MyWorkPanelState extends State<MyWorkPanel> {
               ),
             ],
           ),
+          if (_tasks != null && !_calendar)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: GridView.count(
+                key: const Key('my-work-tiles'),
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 2.4,
+                children: [
+                  for (final b in const ['Past dates', 'This week', 'Next week', 'Later'])
+                    Material(
+                      color: _only == b
+                          ? _bucketColour(theme, b).withValues(alpha: 0.18)
+                          : theme.colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        key: ValueKey('my-work-tile-$b'),
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => setState(() => _only = _only == b ? null : b),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(b, style: muted),
+                              Text(
+                                '${tasks.where((t) => myWorkBucket(t['due_on'] as String?, today) == b || (b == 'This week' && myWorkBucket(t['due_on'] as String?, today) == 'Today')).length}',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: _bucketColour(theme, b),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (_error != null)
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
           if (_tasks == null)

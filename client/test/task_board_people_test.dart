@@ -555,6 +555,6 @@ void main() {
       for (final (m, p, b) in log)
         if (m == 'POST' && p == '/tasks') (b as Map)['title'],
     ];
-    expect(posts, ['Sweep the flue', 'Order a cap']);
+    expect(posts, ['Sweep the flue', 'Order a cap,12'], reason: 'commas stay in a title; only a tab ends it (audit 11-27)');
   });
 }

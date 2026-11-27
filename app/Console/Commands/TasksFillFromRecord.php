@@ -25,7 +25,13 @@ class TasksFillFromRecord extends Command
     {
         // No --org: every organization (the scheduled pass, 11-20: items from Monday too).
         foreach ($this->option('org') ? [Organization::withoutGlobalScopes()->findOrFail($this->option('org'))] : Organization::withoutGlobalScopes()->get() as $org) {
-            $tenant->run($org, fn () => $this->fillOrg($fill));
+            // One organization's stop never skips the rest (audit 11-27).
+            try {
+                $tenant->run($org, fn () => $this->fillOrg($fill));
+            } catch (\RuntimeException $e) {
+                report($e);
+                $this->error($org->name.': '.$e->getMessage());
+            }
         }
 
         return self::SUCCESS;
@@ -50,7 +56,9 @@ class TasksFillFromRecord extends Command
                     // The first batch's events are read before the rest runs (RetardMoments 11-18): any, and it stops.
                     if (! $checked && $counts['tasks'] > 0) {
                         $checked = true;
-                        $raised = \App\Models\AutomationEvent::query()->whereIn('subject_id', $touched)->where('occurred_at', '>=', $before)->count();
+                        // Only events this fill caused (its actor), not a person's edit in the same minute (audit 11-27).
+                        $raised = \App\Models\AutomationEvent::query()->whereIn('subject_id', $touched)->where('occurred_at', '>=', $before)
+                            ->where('actor_id', $actor->id)->count();
                         if ($raised > 0) {
                             throw new \RuntimeException("The first batch raised {$raised} automation event(s); stopped.");
                         }

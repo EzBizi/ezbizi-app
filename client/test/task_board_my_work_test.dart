@@ -71,7 +71,16 @@ void main() {
     expect(find.text('Past dates · 1'), findsOneWidget);
     expect(find.text('Today · 1'), findsOneWidget);
     expect(find.text('No date · 1'), findsOneWidget);
-    expect(find.textContaining('This week'), findsNothing);
+    // Row 70: Monday's count tiles; "This week" counts today too.
+    expect(find.byKey(const Key('my-work-tiles')), findsOneWidget);
+    expect(find.byKey(const ValueKey('my-work-bucket-This week')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('my-work-tile-Past dates')));
+    await tester.pumpAndSettle();
+    expect(find.text('Past dates · 1'), findsOneWidget);
+    expect(find.text('Today · 1'), findsNothing, reason: 'the tile narrows to its bucket');
+    await tester.tap(find.byKey(const ValueKey('my-work-tile-Past dates')));
+    await tester.pumpAndSettle();
+    expect(find.text('Today · 1'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('my-work-calendar')));
     await tester.pumpAndSettle();

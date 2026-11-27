@@ -327,8 +327,9 @@ Object? _ownerId(_Json task) {
 String _dayLabel(DateTime? day, DisplayFormats formats) {
   if (day == null) return '';
   final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  return switch (day.difference(today).inDays) {
+  // Calendar days in UTC: a DST day is 23 or 25 hours (audit 11-27).
+  final today = DateTime.utc(now.year, now.month, now.day);
+  return switch (DateTime.utc(day.year, day.month, day.day).difference(today).inDays) {
     0 => 'Today',
     1 => 'Tomorrow',
     -1 => 'Yesterday',
@@ -898,8 +899,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// Drag and drop: [id] lands in [groupId] at [position] (null = the end).
   /// A picked row carries every picked row with it, in board order.
-  Future<void> _moveTo(String id, Object? groupId, int? position) async {
-    if (groupId == null) return;
+  /// True when every row moved.
+  Future<bool> _moveTo(String id, Object? groupId, int? position) async {
+    if (groupId == null) return false;
     final all = _picked.contains(id) && _picked.length > 1
         ? _inBoardOrder(_picked)
         : [id];
@@ -911,7 +913,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ];
     if (ids.length < all.length) {
       _say('A row from a branch board moves on its own board');
-      if (ids.isEmpty) return;
+      if (ids.isEmpty) return false;
     }
     String? failed;
     for (final (n, one) in ids.indexed) {
@@ -921,10 +923,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       });
       if (!res.ok) failed ??= res.reason;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     if (ids.length > 1) setState(_picked.clear);
     if (failed != null) _say(failed);
     await _load();
+    return failed == null && ids.length == all.length;
   }
 
   /// A task dropped on another board in the tree: the end of its first
@@ -938,8 +941,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     if (!res.ok) return _say(res.reason);
     final groups = ((res.body['data'] as Map?)?['groups'] as List?) ?? const [];
     if (groups.isEmpty) return _say('That board has no group to put it in.');
-    await _moveTo(id, (groups.first as Map)['id'], null);
-    if (mounted) _say('Moved to ${_boards[index]['name'] ?? 'that board'}');
+    // "Moved" only when it did (audit 11-27); a failure already said why.
+    if (await _moveTo(id, (groups.first as Map)['id'], null) && mounted) _say('Moved to ${_boards[index]['name'] ?? 'that board'}');
   }
 
   /// [ids] in the order the board lists them, group by group.
@@ -1010,10 +1013,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         key: const Key('task-undo'),
         label: 'Undo',
         onPressed: () async {
+          // Failures are said, not swallowed (audit 11-27).
+          var failed = 0;
           for (final id in gone) {
-            await widget.api.post('/tasks/$id/restore', const {});
+            if (!(await widget.api.post('/tasks/$id/restore', const {})).ok) failed++;
           }
-          if (mounted) await _load();
+          if (!mounted) return;
+          if (failed > 0) _say('$failed could not be restored');
+          await _load();
         },
       ),
     );
@@ -1054,11 +1061,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         _say('Archived; restore it from the board menu › Archived items');
         await _load();
       case 'top':
-        await widget.api.patch('/tasks/$id/move', {
+        final moved = await widget.api.patch('/tasks/$id/move', {
           'group_id': t['group_id'],
           'position': 0,
         });
-        if (mounted) await _load();
+        if (!mounted) return;
+        if (!moved.ok) _say(moved.reason);
+        await _load();
       case 'sensitive':
         await _toggleSensitive(t);
     }
@@ -1381,11 +1390,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (values == null) return;
         extra = {'values': values};
       case 'duplicate':
+        var failed = 0;
         for (final id in ids) {
-          await widget.api.post('/tasks/$id/copy', const {});
+          if (!(await widget.api.post('/tasks/$id/copy', const {})).ok) failed++;
         }
         if (!mounted) return;
         setState(_picked.clear);
+        if (failed > 0) _say('$failed of ${ids.length} could not be duplicated');
         return _load();
       case 'move':
       case 'copy':
@@ -2561,7 +2572,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       final on = picked.contains(id);
       if (on == shown.contains(id)) continue;
       if (id.startsWith('b:')) {
-        why ??= await _setBuiltin(id.substring(2), {'visible': on});
+        // Every change is tried; `??=` skipped the rest after one failure (audit 11-27).
+        final failed = await _setBuiltin(id.substring(2), {'visible': on});
+        why ??= failed;
       } else {
         own = true;
         final r = await widget.api.patch(
@@ -3723,7 +3736,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             onPressed: () => Navigator.of(panel).pop(
               box.text
                   .split('\n')
-                  .map((l) => l.split('\t').first.split(',').first.trim())
+                  // Tabs only: a title keeps its commas (audit 11-27).
+                  .map((l) => l.split('\t').first.trim())
                   .where((t) => t.isNotEmpty)
                   .toList(),
             ),
