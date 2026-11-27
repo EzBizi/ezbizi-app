@@ -36,27 +36,18 @@ class Session extends ChangeNotifier {
   /// what happened instead of showing a generic failure.
   String? readOnlyNotice;
 
-  /// The staff token issued alongside the tenant one for a linked account.
-  ///
-  /// Kept on its OWN client (see main.dart) rather than being set on this one.
-  /// Both factors were proven at sign-in, so a second challenge would be
-  /// ceremony — but the two tokens stay separate, because a tenant session that
-  /// could reach the control plane is exactly what the split prevents.
-  String? staffToken;
-
   /// Enter the app on the strength of a successful authentication response.
   ///
   /// Takes the whole body rather than the token, because two endpoints return
   /// this body: /auth/login and /auth/signup, which answer identically by
-  /// design. Pulling the two fields apart at each call site is how the second
-  /// one ends up forgetting the staff token — a linked account that signs in
-  /// and finds the Development section missing, with nothing failing loudly.
+  /// design, and both enter through here. A linked account's staff token is
+  /// not issued at sign-in any more — the Development tab asks for the
+  /// authenticator when it opens (DevelopmentUnlockController) and keeps that
+  /// token on its own client.
   Future<bool> adoptAuthResponse(
     Map<String, dynamic> body, {
     bool persist = false,
   }) {
-    staffToken = null;
-
     return adopt(body['token'] as String, persist: persist);
   }
 
@@ -67,6 +58,7 @@ class Session extends ChangeNotifier {
     final generation = ++_identityGeneration;
     _scopeGeneration++;
     _switchingScope = false;
+    _waitingForServer = false;
     _me = null;
     _keptToken = null;
     _api.setToken(token);
@@ -97,12 +89,12 @@ class Session extends ChangeNotifier {
     final token = TokenStore.tenantToken;
 
     if (token == null) {
+      _waitingForServer = false;
       _restored = true;
       notifyListeners();
       return;
     }
 
-    staffToken = TokenStore.staffToken;
     _api.setToken(token);
 
     await refresh();
@@ -117,6 +109,12 @@ class Session extends ChangeNotifier {
     if (!signedIn && !_unreachable) {
       TokenStore.clear();
     }
+
+    // A kept session the server could not be asked about. The app shows a
+    // retrying screen for this rather than the sign-in form, which is what
+    // somebody launching before Wi-Fi or during a deploy used to get — with
+    // no retry, and a sign-in that replaced the kept token.
+    _waitingForServer = !signedIn && _unreachable;
 
     // Kept only if it is the copy that survives a restart: on the web a
     // sessionStorage token ("do not keep me signed in") is restored too, and
@@ -134,6 +132,11 @@ class Session extends ChangeNotifier {
     _restored = true;
     notifyListeners();
   }
+
+  /// A kept session exists but the server could not be reached to check it.
+  /// Cleared by the next restore() that gets an answer, and by signing out.
+  bool get waitingForServer => _waitingForServer && !signedIn;
+  bool _waitingForServer = false;
 
   /// False until restore() has finished, so the app can hold the first frame
   /// rather than flashing the sign-in screen at somebody who is signed in.
@@ -265,6 +268,7 @@ class Session extends ChangeNotifier {
     if (me == null) return;
 
     _me = me.withPreference(key, value);
+    _supersedeRefresh();
     notifyListeners();
 
     final response = await _api.patch('/me/preferences', {
@@ -310,6 +314,7 @@ class Session extends ChangeNotifier {
     if (me == null) return;
 
     _me = me.withPreference(key, value);
+    _supersedeRefresh();
     notifyListeners();
   }
 
@@ -360,13 +365,21 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// Sign out, and ask the server to revoke the token.
+  ///
+  /// The revoke used to be each caller's job, and EzChat and the update
+  /// screen never did it: the token stayed valid for its 30 days on a device
+  /// somebody had signed out of. Fire-and-forget, and sent before the token
+  /// is dropped (the request's headers are taken as it is made): a server that
+  /// cannot be reached must not keep anybody signed in on this side.
   void signOut() {
+    if (_api.hasToken) unawaited(_api.post('/auth/logout', const {}));
     _identityGeneration++;
+    _waitingForServer = false;
     _scopeGeneration++;
     _switchingScope = false;
     _me = null;
     readOnlyNotice = null;
-    staffToken = null;
     expired = false;
     _keptToken = null;
     _api.setToken(null);
@@ -414,8 +427,8 @@ class Session extends ChangeNotifier {
 
     _me = null;
     readOnlyNotice = null;
-    staffToken = null;
     _unreachable = false;
+    _waitingForServer = false;
     expired = true;
     _keptToken = null;
     _api.setToken(null);
@@ -439,7 +452,17 @@ class Session extends ChangeNotifier {
     if (me == null) return;
 
     _me = me.withTimeClock(TimeClockStatus.fromJson(json));
+    _supersedeRefresh();
     notifyListeners();
+  }
+
+  /// A /me already in flight was asked before this local write, so its answer
+  /// would put the old value back: a column width snapping back, or Clock in
+  /// offered again after a punch. Its answer is discarded instead; the next
+  /// refresh brings anything else it carried. Not while a scope switch waits
+  /// on its own refresh, which must land.
+  void _supersedeRefresh() {
+    if (!_switchingScope) _refreshGeneration++;
   }
 }
 
@@ -1016,7 +1039,9 @@ class Me {
   /// covers its sub companies and branches (Bar, 2026-10-22).
   /// Modules whose notifications collect in the bell without alerting.
   List<String> get notificationMutedModules =>
-      (preferences['notifications.muted_modules'] as List? ?? const []).whereType<String>().toList();
+      (preferences['notifications.muted_modules'] as List? ?? const [])
+          .whereType<String>()
+          .toList();
 
   List<String> get notificationCompanies =>
       (preferences['notifications.companies'] as List? ?? const [])

@@ -137,7 +137,7 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
 
   Future<void> _signOut() async {
     unawaited(ClockWindow.release());
-    await widget.api.post('/auth/logout', {});
+    // Session.signOut revokes the token on the server itself.
     widget.session.signOut();
   }
 

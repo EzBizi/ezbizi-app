@@ -82,8 +82,10 @@ class _SmsCodesCardState extends State<SmsCodesCard> {
     setState(() {
       _loading = false;
       if (response.ok) {
+        // The error is left alone: this reload follows every send and
+        // confirm, and clearing it here wiped their refusal off the screen
+        // the moment it was drawn.
         _state = (response.data as Map<String, dynamic>?) ?? const {};
-        _error = null;
       } else {
         _error = response.message;
       }
@@ -149,17 +151,27 @@ class _SmsCodesCardState extends State<SmsCodesCard> {
   }
 
   Future<void> _turnOff() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
 
-    await widget.api.delete('/me/sms-codes');
+    final response = await widget.api.delete('/me/sms-codes');
 
     if (!mounted) return;
 
+    // Only said when it is true: a confirmed opt-out that did not happen is
+    // somebody who will go on being texted after being told they would not.
     setState(() {
       _busy = false;
-      _notice = 'Turned off. EzBizi will not text this account.';
-      _phone.clear();
-      _consent = false;
+      if (response.ok) {
+        _notice = 'Turned off. EzBizi will not text this account.';
+        _phone.clear();
+        _consent = false;
+      } else {
+        _error = response.message;
+      }
     });
 
     await _load();
@@ -210,7 +222,12 @@ class _SmsCodesCardState extends State<SmsCodesCard> {
                 Text(_notice!, style: theme.textTheme.bodyMedium),
                 const SizedBox(height: 12),
               ],
-              if (_confirmed) _on(theme) else if (_pending) _codeEntry(theme) else _form(theme),
+              if (_confirmed)
+                _on(theme)
+              else if (_pending)
+                _codeEntry(theme)
+              else
+                _form(theme),
             ],
           ],
         ),
@@ -312,7 +329,9 @@ class _SmsCodesCardState extends State<SmsCodesCard> {
         CheckboxListTile(
           key: const Key('sms-codes-consent'),
           value: _consent,
-          onChanged: _busy ? null : (v) => setState(() => _consent = v ?? false),
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _consent = v ?? false),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
           title: Text(
@@ -325,14 +344,22 @@ class _SmsCodesCardState extends State<SmsCodesCard> {
 
         // 4, 5, 6 — frequency, rates, HELP and STOP. Small print, and none of
         // it optional.
-        Text('Message frequency: only when you ask for a code — typically '
-            'fewer than 5 messages per month.', style: small),
+        Text(
+          'Message frequency: only when you ask for a code — typically '
+          'fewer than 5 messages per month.',
+          style: small,
+        ),
         const SizedBox(height: 4),
-        Text('Message and data rates may apply, depending on your mobile plan.',
-            style: small),
+        Text(
+          'Message and data rates may apply, depending on your mobile plan.',
+          style: small,
+        ),
         const SizedBox(height: 4),
-        Text('Reply HELP for help. Reply STOP to stop receiving messages at '
-            'any time.', style: small),
+        Text(
+          'Reply HELP for help. Reply STOP to stop receiving messages at '
+          'any time.',
+          style: small,
+        ),
         const SizedBox(height: 8),
 
         // 7 — the two links.

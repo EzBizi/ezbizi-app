@@ -74,8 +74,8 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
       proof = await _prove(
         'Move to a new authenticator',
         'Your password and a code from the CURRENT authenticator. The one you '
-        'are using now keeps working until the new one is confirmed, so there '
-        'is no moment where the account is unprotected.',
+            'are using now keeps working until the new one is confirmed, so there '
+            'is no moment where the account is unprotected.',
         true,
       );
 
@@ -85,7 +85,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     await _beginEnrolment(proof ?? const {}, replacing);
   }
 
-  Future<void> _beginEnrolment(Map<String, String> proof, bool replacing) async {
+  Future<void> _beginEnrolment(
+    Map<String, String> proof,
+    bool replacing,
+  ) async {
     final begin = await widget.api.post('/me/totp', proof);
 
     if (!mounted) return;
@@ -109,9 +112,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
         uri: enrolment['uri'] as String,
         intro: replacing
             ? 'Scan this with the new app. Your old one keeps working until you '
-                'confirm a code from the new one.'
+                  'confirm a code from the new one.'
             : 'You will be asked for a code from this app every time you sign in.',
-        onConfirm: (code) => widget.api.post('/me/totp/confirm', {'code': code}),
+        onConfirm: (code) =>
+            widget.api.post('/me/totp/confirm', {'code': code}),
       ),
     );
 
@@ -125,7 +129,11 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
   /// for. To change or remove it you have to hold the thing being changed.
   ///
   /// Returns null if they cancelled.
-  Future<Map<String, String>?> _prove(String title, String why, bool enrolled) async {
+  Future<Map<String, String>?> _prove(
+    String title,
+    String why,
+    bool enrolled,
+  ) async {
     final password = TextEditingController();
     final code = TextEditingController();
 
@@ -135,11 +143,22 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
         title: title,
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Continue')),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          // Disabled until filled: an empty password used to close the panel
+          // and do nothing, with nothing said.
+          ListenableBuilder(
+            listenable: Listenable.merge([password, code]),
+            builder: (context, _) => FilledButton(
+              onPressed:
+                  password.text.isEmpty ||
+                      (enrolled && code.text.trim().isEmpty)
+                  ? null
+                  : () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ),
         ],
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -171,10 +190,7 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     );
 
     final result = ok == true && password.text.isNotEmpty
-        ? {
-            'password': password.text,
-            if (enrolled) 'code': code.text.trim(),
-          }
+        ? {'password': password.text, if (enrolled) 'code': code.text.trim()}
         : null;
 
     password.dispose();
@@ -187,7 +203,7 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
     final proof = await _prove(
       'Turn off two-factor',
       'Your password and a current code confirm this. A borrowed unlocked '
-      'laptop should not be able to remove the thing protecting you from it.',
+          'laptop should not be able to remove the thing protecting you from it.',
       enrolled,
     );
 
@@ -209,7 +225,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Card(
-        child: Padding(padding: EdgeInsets.all(24), child: LinearProgressIndicator()),
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: LinearProgressIndicator(),
+        ),
       );
     }
 
@@ -231,8 +250,10 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Two-factor authentication',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    'Two-factor authentication',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
                 if (enabled) ...[
                   TextButton(
@@ -249,7 +270,9 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
                   ),
                 ] else
                   FilledButton(
-                      onPressed: () => _enable(), child: const Text('Turn on')),
+                    onPressed: () => _enable(),
+                    child: const Text('Turn on'),
+                  ),
               ],
             ),
             const SizedBox(height: 6),

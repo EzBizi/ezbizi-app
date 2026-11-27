@@ -8,10 +8,38 @@ import 'package:web/web.dart' as web;
 
 import 'files.dart';
 
+/// The type a download is labelled with, from its name. Every file used to
+/// go out as text/csv, which iOS Safari believes and so mangles a PDF.
+String mimeFor(String filename) {
+  final dot = filename.lastIndexOf('.');
+  final ext = dot < 0 ? '' : filename.substring(dot + 1).toLowerCase();
+  return switch (ext) {
+    'csv' => 'text/csv;charset=utf-8',
+    'txt' => 'text/plain;charset=utf-8',
+    'json' => 'application/json',
+    'pdf' => 'application/pdf',
+    'png' => 'image/png',
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    'svg' => 'image/svg+xml',
+    'mp4' => 'video/mp4',
+    'mp3' => 'audio/mpeg',
+    'wav' => 'audio/wav',
+    'zip' => 'application/zip',
+    'html' || 'htm' => 'text/html;charset=utf-8',
+    'xlsx' =>
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'docx' =>
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    _ => 'application/octet-stream',
+  };
+}
+
 void download(String filename, List<int> content) {
   final blob = web.Blob(
     [Uint8List.fromList(content).toJS].toJS,
-    web.BlobPropertyBag(type: 'text/csv;charset=utf-8'),
+    web.BlobPropertyBag(type: mimeFor(filename)),
   );
 
   final url = web.URL.createObjectURL(blob);
@@ -22,8 +50,10 @@ void download(String filename, List<int> content) {
   anchor.click();
 
   // Without this the blob is held for the life of the page, and a few exports
-  // of a large customer list add up to real memory.
-  web.URL.revokeObjectURL(url);
+  // of a large customer list add up to real memory. Not at once, though: iOS
+  // Safari starts the download after click() returns, and a URL revoked in
+  // the same turn gave it nothing to fetch.
+  Timer(const Duration(minutes: 1), () => web.URL.revokeObjectURL(url));
 }
 
 Future<PickedFile?> pickText() {
@@ -44,7 +74,9 @@ Future<PickedFile?> pickText() {
     final reader = web.FileReader();
 
     reader.onload = (web.Event _) {
-      completer.complete(PickedFile(file.name, (reader.result as JSString?)?.toDart ?? ''));
+      completer.complete(
+        PickedFile(file.name, (reader.result as JSString?)?.toDart ?? ''),
+      );
     }.toJS;
 
     reader.onerror = (web.Event _) {
@@ -137,9 +169,11 @@ Future<PickedBytes?> pickBytes({String accept = '', String capture = ''}) {
     reader.onload = (web.Event _) {
       final buffer = reader.result as JSArrayBuffer?;
 
-      completer.complete(buffer == null
-          ? null
-          : PickedBytes(file.name, buffer.toDart.asUint8List()));
+      completer.complete(
+        buffer == null
+            ? null
+            : PickedBytes(file.name, buffer.toDart.asUint8List()),
+      );
     }.toJS;
 
     reader.onerror = (web.Event _) {

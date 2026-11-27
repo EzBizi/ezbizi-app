@@ -39,6 +39,7 @@ import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
 import 'widgets/open_destination.dart';
+import 'widgets/server_unreachable_screen.dart';
 import 'widgets/side_panel.dart';
 import 'widgets/view_as_panel.dart';
 import 'widgets/shift_reminder.dart';
@@ -424,6 +425,12 @@ class _EzBiziAppState extends State<EzBiziApp> {
       }
 
       return HomeShell(api: _api, session: _session, address: _address);
+    }
+
+    // A kept session the server could not be asked about: wait for it,
+    // rather than offer a sign-in that would replace the kept token.
+    if (_session.waitingForServer) {
+      return ServerUnreachableScreen(session: _session);
     }
 
     if (_signingUp) {
@@ -1079,7 +1086,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   });
 
   Future<void> _signOut() async {
-    await widget.api.post('/auth/logout', {});
+    // Session.signOut revokes the token on the server itself.
     widget.session.signOut();
   }
 
