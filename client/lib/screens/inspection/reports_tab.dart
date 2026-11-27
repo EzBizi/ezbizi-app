@@ -94,19 +94,36 @@ class _ReportsTabState extends State<ReportsTab> {
     final answers = report['answers'];
     if (answers is! Map) return;
 
-    for (final screen in reportItems(report['screens'])) {
-      if (screen is! Map) continue;
-      for (final field in reportItems(screen['fields'])) {
+    // Follow-up questions too: a failing finding's photo lives under its
+    // option (audit 11-27: those spun forever).
+    final ids = <String>[];
+    void walk(dynamic fields) {
+      for (final field in reportItems(fields)) {
         if (field is! Map) continue;
-        if (field['type'] != 'photo' && field['type'] != 'signature') continue;
-        for (final id in reportItems(answers['${field['key']}'])) {
-          final key = '$id';
-          if (_photos.containsKey(key)) continue;
-          final bytes = await widget.api.getBytes('/attachments/$key');
-          if (!mounted || bytes == null) continue;
-          setState(() => _photos[key] = Uint8List.fromList(bytes));
+        if (field['type'] == 'photo' || field['type'] == 'signature') {
+          for (final id in reportItems(answers['${field['key']}'])) {
+            ids.add('$id');
+          }
+        }
+        for (final option in reportItems(field['options'])) {
+          if (option is Map) walk(option['fields']);
         }
       }
+    }
+
+    for (final screen in reportItems(report['screens'])) {
+      if (screen is Map) walk(screen['fields']);
+    }
+
+    for (final key in ids) {
+      if (_photos.containsKey(key)) continue;
+      final bytes = await widget.api.getBytes('/attachments/$key');
+      if (!mounted) return;
+      setState(
+        () => _photos[key] = bytes == null
+            ? Uint8List(0)
+            : Uint8List.fromList(bytes),
+      );
     }
   }
 
