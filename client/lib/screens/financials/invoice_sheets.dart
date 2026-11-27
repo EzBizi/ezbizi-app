@@ -80,6 +80,13 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
   @override
   void dispose() {
     _debounce?.cancel();
+    // Edits still waiting for the autosave are sent, not dropped.
+    if (_pending.isNotEmpty && _sheetId != null) {
+      widget.api.patch('/invoices/sheets/$_sheetId/rows', {
+        'rows': _pending.values.toList(),
+      });
+      _pending.clear();
+    }
     _searchDebounce?.cancel();
     _search.dispose();
     for (final c in _controllers.values) {
@@ -151,6 +158,11 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
 
   Future<void> _loadSheet(String id) async {
     _debounce?.cancel();
+    // Edits on the sheet being left are saved before it is replaced.
+    if (_pending.isNotEmpty && _sheetId != null && _sheetId != id) {
+      await _flush();
+      if (!mounted) return;
+    }
     _pending.clear();
     final r = await widget.api.get('/invoices/sheets/$id');
     if (!mounted) return;
@@ -238,25 +250,27 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
     _debounce = Timer(ChargeSheetsTab.saveDelay, _flush);
   }
 
-  Future<void> _flush() async {
-    if (_pending.isEmpty || _sheetId == null) return;
+  /// False when the server refused the edits (the sheet is reloaded).
+  Future<bool> _flush() async {
+    if (_pending.isEmpty || _sheetId == null) return true;
     final rows = _pending.values.toList();
     _pending.clear();
     setState(() => _saving = true);
     final r = await widget.api.patch('/invoices/sheets/$_sheetId/rows', {
       'rows': rows,
     });
-    if (!mounted) return;
+    if (!mounted) return r.ok;
     setState(() => _saving = false);
     if (!r.ok) {
       // All or nothing: nothing was kept, so the sheet goes back to what it is.
       final why = r.reason;
       await _loadSheet(_sheetId!);
       if (mounted) setState(() => _note = why);
-      return;
+      return false;
     }
     final saved = r.body['data'] as Map;
     setState(() => _sheet = {...?_sheet, 'saved_at': saved['saved_at']});
+    return true;
   }
 
   Future<String?> _saveRow(Map<String, dynamic> change) async {
@@ -281,7 +295,8 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
 
   Future<void> _make() async {
     _debounce?.cancel();
-    await _flush();
+    // Invoices are not made from figures that failed to save.
+    if (!await _flush()) return;
     if (!mounted || _sheetId == null) return;
     setState(() => _making = true);
     final r = await widget.api.post('/invoices/sheets/$_sheetId/invoice', {});

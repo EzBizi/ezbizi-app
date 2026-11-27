@@ -164,10 +164,17 @@ void main() {
 
   testWidgets('Invoices › Invoices: q is sent and rows narrow', (tester) async {
     final server = _Server({
-      '/invoices': (_) => {
+      // The server does the matching; the client shows what it returns.
+      '/invoices': (r) => {
         'data': [
-          _invoice('i1', 'INV-0101', 'Springfield · Brightside'),
-          _invoice('i2', 'INV-0102', 'Riverton · Brightside'),
+          for (final (id, n, to) in const [
+            ('i1', 'INV-0101', 'Springfield · Brightside'),
+            ('i2', 'INV-0102', 'Riverton · Brightside'),
+          ])
+            if (to.toLowerCase().contains(
+              r.url.queryParameters['q']?.toLowerCase() ?? '',
+            ))
+              _invoice(id, n, to),
         ],
         'totals': const {},
       },
@@ -252,8 +259,18 @@ void main() {
 
   testWidgets('Financials › Bills: q is sent and rows narrow', (tester) async {
     final server = _Server({
-      '/financials/bills': (_) => {
-        'data': [_bill('b1', 'Springfield'), _bill('b2', 'Riverton')],
+      // The server matches q on company and branch names.
+      '/financials/bills': (r) => {
+        'data': [
+          for (final (id, place) in const [
+            ('b1', 'Springfield'),
+            ('b2', 'Riverton'),
+          ])
+            if (place.toLowerCase().contains(
+              r.url.queryParameters['q']?.toLowerCase() ?? '',
+            ))
+              _bill(id, place),
+        ],
       },
     });
     final session = await server.session(tester, const ['financials.view']);

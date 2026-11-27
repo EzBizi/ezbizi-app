@@ -323,7 +323,50 @@ void main() {
       'jobs': 3,
       'cost_cents': 12050,
       'sales_cents': 100000,
+      // Filled in from sales − cost while profit was left blank.
+      'profit_cents': 87950,
     });
+  });
+
+  testWidgets('editing cost recomputes a derived profit', (tester) async {
+    final seen = await _pump(tester);
+    await tester.tap(find.text('Bergen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('result-cost')), '500');
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('result-profit')))
+          .controller!
+          .text,
+      '1600.50',
+    );
+    await tester.tap(find.byKey(const Key('result-panel-save')));
+    await tester.pumpAndSettle();
+    final body = jsonDecode(_calls(seen, 'PATCH').single.body) as Map;
+    expect(body['cost_cents'], 50000);
+    expect(body['profit_cents'], 160050);
+  });
+
+  testWidgets('a figure that is not a number is refused, not saved as 0', (
+    tester,
+  ) async {
+    final seen = await _pump(tester);
+    await tester.tap(find.byKey(const Key('results-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('result-source')), 'ACE');
+    await tester.enterText(find.byKey(const Key('result-cost')), r'$ 1,200');
+    await tester.enterText(find.byKey(const Key('result-sales')), 'abc');
+    await tester.tap(find.byKey(const Key('result-panel-save')));
+    await tester.pumpAndSettle();
+    expect(_calls(seen, 'POST'), isEmpty);
+    expect(find.text('"abc" is not an amount for sales.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('result-sales')), '2000');
+    await tester.tap(find.byKey(const Key('result-panel-save')));
+    await tester.pumpAndSettle();
+    final body = jsonDecode(_calls(seen, 'POST').single.body) as Map;
+    expect(body['cost_cents'], 120000);
   });
 
   testWidgets('read from photo shows the rows to check, and saves each with '
