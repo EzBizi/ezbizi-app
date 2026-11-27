@@ -1125,6 +1125,14 @@ class HrOnboardingsController extends Controller
         }
 
         $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign, $drawing) {
+            // One signer at a time per onboarding, and the "already signed"
+            // check again under the lock: a double tap must not sign twice
+            // (full-code audit, 2026-11-27).
+            Onboarding::query()->whereKey($onboarding->getKey())->lockForUpdate()->first();
+            if ($this->existingSignature($onboarding, $field->key) !== null) {
+                throw ValidationException::withMessages(['field_key' => 'That line has already been signed.']);
+            }
+
             $document = match (true) {
                 $onboarding->isFrozen() => $onboarding->currentDocument(),
                 $presign => $this->renderForEmployer($onboarding, $actor),

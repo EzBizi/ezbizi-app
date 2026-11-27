@@ -455,14 +455,16 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public function scopeInStatus(Builder $query, string $status): Builder
     {
+        // Held ones have not been sent, so they have not started expiring:
+        // the same rule as hasExpired() (full-code audit, 2026-11-27).
         $pending = fn (Builder $q) => $q->whereNull('accepted_at')->whereNull('revoked_at')
-            ->where('expires_at', '>', now());
+            ->where(fn (Builder $live) => $live->where('expires_at', '>', now())->orWhereNotNull('held_at'));
 
         return match ($status) {
             self::COMPLETED => $query->whereNotNull('accepted_at')->whereNull('revoked_at'),
             self::REVOKED => $query->whereNotNull('revoked_at'),
             self::ABANDONED => $query->whereNull('accepted_at')->whereNull('revoked_at')
-                ->where('expires_at', '<=', now()),
+                ->whereNull('held_at')->where('expires_at', '<=', now()),
             'opened' => $pending($query)->where(fn (Builder $q) => $q->whereNotNull('opened_at')
                 ->orWhereHas('onboarding')),
             self::SENT => $pending($query)->whereNull('opened_at')->whereDoesntHave('onboarding'),
