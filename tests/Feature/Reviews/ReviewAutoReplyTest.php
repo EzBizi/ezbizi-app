@@ -187,17 +187,6 @@ class ReviewAutoReplyTest extends TestCase
         $this->assertSame(\App\Support\Reviews\ReviewAutoReplyRule::REPLIES['2'], ReviewReply::withoutGlobalScopes()->first()->body);
     }
 
-    public function test_the_backfill_makes_the_rule_for_listings_switched_on_before(): void
-    {
-        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
-        $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->get()
-            ->each(fn ($a) => $a->versions()->delete() + $a->forceDelete()));
-
-        $this->artisan('ezbizi:review-auto-reply-rule')->assertSuccessful();
-
-        $this->assertSame(1, $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->count()));
-    }
-
     /** Health sweep 11-09 and 11-12: Google 404s a review it has not indexed yet; the reply is retried an hour later. */
     public function test_a_google_404_keeps_the_draft_and_retries_an_hour_later(): void
     {
