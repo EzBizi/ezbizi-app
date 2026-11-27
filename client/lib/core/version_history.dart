@@ -16,8 +16,11 @@ class VersionHistory {
     VersionRelease(version: '0.0.0659', date: '27 Nov 2026', items: [
       'Estimates: editing the title or note of an imported estimate never wipes its lines or total',
       'Reports: saved, sent and job reports keep to your view and permissions, CSV exports are safe to open, Thumbtack and Local Services use local days, and several report screens are fixed',
+      'Security: connection changes need reach over that connection, website chat and API keys are tighter, and errors no longer show bot tokens',
+      'Payroll includes HR extra hours, a failed payroll email is retried, and nobody but an Administrator can approve their own hours',
+      'Fixes from the full code audit across Services, Inventory, Dashboard, Workiz, Web Management, Monitoring, Marketing, Fleet, Roles, Notifications, MCP and UI',
     ]),
-    VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0658', date: '27 Nov 2026', deployed: '2026-11-27 17:59', items: [
       'Training: tests can now be published from their editor, so learners can take them',
       'HR: signing an onboarding cannot happen twice, time-off changes cannot race, impossible dates are refused, and several Recruiting, Payroll and Contracts screens keep your edits',
       'Automations: re-enabling a rule really replays its failed runs, saving a rule keeps its webhook secret, the Add a task step can be added again, and switching templates starts clean',
