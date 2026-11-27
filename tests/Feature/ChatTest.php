@@ -223,6 +223,53 @@ class ChatTest extends TestCase
             ->assertJsonPath('data.0.forwarded', true)->assertJsonPath('data.0.attachment.name', 'van.jpg');
     }
 
+    /** Audit 11-27: "Mark as read" and "Mark all read" clear the real count. */
+    public function test_mark_read_and_mark_all_read_clear_the_unread_count(): void
+    {
+        $one = $this->direct($this->bar, $this->ana);
+        $two = $this->direct($this->eve, $this->ana);
+        $this->say($this->bar, $one, 'one');
+        $this->say($this->eve, $two, 'two');
+
+        $this->signedInAs($this->ana)->patchJson("/api/v1/chat/chats/{$one}/settings", ['marked_unread' => false])->assertOk();
+        $unread = collect($this->signedInAs($this->ana)->getJson('/api/v1/chat/chats')->json('data'))->pluck('unread', 'id');
+        $this->assertSame(0, $unread[$one]);
+        $this->assertSame(1, $unread[$two]);
+
+        $this->signedInAs($this->ana)->postJson('/api/v1/chat/read-all')->assertOk();
+        $unread = collect($this->signedInAs($this->ana)->getJson('/api/v1/chat/chats')->json('data'))->pluck('unread', 'id');
+        $this->assertSame(0, $unread[$two]);
+    }
+
+    /** Audit 11-27: someone removed from a group no longer opens its files. */
+    public function test_a_removed_member_cannot_open_the_chats_files(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $chat = $this->direct($this->bar, $this->ana);
+        $sent = $this->signedInAs($this->bar)->post("/api/v1/chat/chats/{$chat}/messages", [
+            'file' => UploadedFile::fake()->image('van.jpg', 40, 40),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data');
+        $this->signedInAs($this->ana)->get("/api/v1/attachments/{$sent['attachment']['id']}")->assertOk();
+
+        \App\Models\ChatMember::query()->withoutGlobalScopes()->where('chat_id', $chat)->where('user_id', $this->ana->id)
+            ->update(['left_at' => now()]);
+        $this->signedInAs($this->ana)->get("/api/v1/attachments/{$sent['attachment']['id']}")->assertForbidden();
+    }
+
+    /** Audit 11-27: signing out forgets this device's push token, and only it. */
+    public function test_sign_out_forgets_this_devices_push_token(): void
+    {
+        foreach (['tok-mine', 'tok-other'] as $t) {
+            \App\Models\DeviceToken::query()->withoutGlobalScopes()->create([
+                'organization_id' => $this->bar->organization_id, 'user_id' => $this->bar->id,
+                'platform' => 'android', 'app' => 'ezchat', 'token' => $t, 'last_registered_at' => now(),
+            ]);
+        }
+        $this->signedInAs($this->bar)->postJson('/api/v1/auth/logout', ['device_token' => 'tok-mine'])->assertOk();
+        $left = \App\Models\DeviceToken::query()->withoutGlobalScopes()->where('user_id', $this->bar->id)->pluck('token')->all();
+        $this->assertSame(['tok-other'], $left);
+    }
+
     public function test_a_call_is_recorded_as_a_line(): void
     {
         $chat = $this->direct($this->bar, $this->ana);

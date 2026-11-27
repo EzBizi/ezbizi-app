@@ -1078,10 +1078,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     widget.address?.push('/account');
   });
 
-  Future<void> _signOut() async {
-    await widget.api.post('/auth/logout', {});
-    widget.session.signOut();
-  }
+  Future<void> _signOut() => widget.session.logOut();
 
   /// Ask for another confirmation link.
   ///

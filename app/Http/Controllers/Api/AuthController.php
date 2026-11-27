@@ -346,6 +346,14 @@ class AuthController extends Controller
     {
         $request->user()?->currentAccessToken()?->delete();
 
+        // The phone signing out says which push token was its own, so it stops
+        // receiving this person's pushes (audit 11-27). Only their own row.
+        $device = $request->input('device_token');
+        if (is_string($device) && $device !== '' && $request->user() !== null) {
+            \App\Models\DeviceToken::query()->withoutGlobalScopes()
+                ->where('user_id', $request->user()->id)->where('token', $device)->delete();
+        }
+
         $this->audit->log('auth.signed_out', actor: $request->user());
 
         return response()->json(['message' => 'Signed out.']);

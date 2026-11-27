@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/push_registration.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/token_store.dart';
@@ -137,6 +138,27 @@ void main() {
     expect(find.byKey(const ValueKey('ezchat-you')), findsOneWidget);
     expect(find.byKey(const ValueKey('ezchat-sign-out')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  /// Audit 11-27: sign-out revokes the server token and this device's push
+  /// registration, not only the local copy.
+  test('sign-out tells the server, with this device push token', () async {
+    final posts = <String, Object?>{};
+    final api = ApiClient(
+      client: MockClient((r) async {
+        if (r.method == 'POST') posts[r.url.path] = jsonDecode(r.body);
+        return _json({'message': 'ok'});
+      }),
+    );
+    PushRegistration.lastToken = 'tok-1';
+    addTearDown(() => PushRegistration.lastToken = null);
+    addTearDown(TokenStore.clear);
+    await Session(api).logOut();
+    final sent = posts.entries.firstWhere(
+      (e) => e.key.endsWith('/auth/logout'),
+    );
+    expect((sent.value as Map)['device_token'], 'tok-1');
+    expect(PushRegistration.lastToken, isNull);
   });
 
   /// The Android pass of EzChat (2026-11-25): "a reset link is on its way"

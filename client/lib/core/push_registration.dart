@@ -72,6 +72,14 @@ class PushRegistration {
     _androidListening = false;
     _appleListening = false;
     _registered = false;
+    lastToken = null;
+  }
+
+  /// Signed out: the server forgot this device, so the next sign-in registers
+  /// it again.
+  static void forget() {
+    _registered = false;
+    lastToken = null;
   }
 
   /// Registers the current token, and keeps registering it when it rotates.
@@ -186,6 +194,10 @@ class PushRegistration {
   /// by it and sends EzChat only chat messages and call rings.
   static String app = 'ezbizi';
 
+  /// The token this device registered, sent with sign-out so the server
+  /// forgets it and the phone stops receiving this person's pushes.
+  static String? lastToken;
+
   static Future<void> _register(ApiClient api, String token, String platform) async {
     final response = await api.post('/notifications/devices', {
       'token': token,
@@ -200,5 +212,6 @@ class PushRegistration {
     }
 
     _registered = true;
+    lastToken = token;
   }
 }
