@@ -469,6 +469,8 @@ class _LeadThreadState extends State<LeadThread> {
       return;
     }
 
+    // A read started before this send would land without it (audit 11-27).
+    _loadGen++;
     setState(() {
       _sending = false;
       _conversations = [
@@ -491,7 +493,11 @@ class _LeadThreadState extends State<LeadThread> {
   /// experience than the staleness it is fixing. A quiet pass changes the
   /// messages and nothing else - the compose box, the note editor and the
   /// recording player are all untouched, so a half-typed reply survives it.
+  /// Bumped per read and per send; an older read's answer is dropped.
+  int _loadGen = 0;
+
   Future<void> _load({bool quiet = false}) async {
+    final gen = ++_loadGen;
     if (!quiet) {
       setState(() {
         _loading = true;
@@ -501,6 +507,10 @@ class _LeadThreadState extends State<LeadThread> {
 
     final response = await widget.api.get('/leads/${widget.lead['id']}');
     if (!mounted) return;
+    if (gen != _loadGen) {
+      if (!quiet) setState(() => _loading = false);
+      return;
+    }
 
     // A quiet pass that fails says nothing. It will try again in ten seconds,
     // and replacing a readable conversation with an error because one poll
@@ -3222,9 +3232,15 @@ class _LeadThreadState extends State<LeadThread> {
               label: const Text('Followed up'),
               onPressed: () async {
                 setState(() => _followedUp = true);
-                await widget.api.post(
+                final response = await widget.api.post(
                   '/leads/${widget.lead['id']}/follow-up-handled',
                   const {},
+                );
+                // A refusal puts it back and says why (audit 11-27).
+                if (!mounted || response.ok) return;
+                setState(() => _followedUp = false);
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  SnackBar(content: Text(response.message)),
                 );
               },
             ),
