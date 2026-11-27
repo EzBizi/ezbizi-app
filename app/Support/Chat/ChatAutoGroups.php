@@ -6,8 +6,7 @@ use App\Models\Chat;
 use App\Models\ChatMember;
 use App\Models\Company;
 use App\Models\User;
-use App\Models\Setting;
-use App\Support\Settings\SettingDefinition;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -35,22 +34,20 @@ final class ChatAutoGroups
         if ($roleId === null) {
             return [];
         }
-        // Read from the rows, not through SettingsResolver: the resolver keeps
-        // the organization's values in memory for the request, and this runs
-        // from a User save in the middle of other people's requests; filling
-        // that memo here left a later settings write in the same request
-        // reading a stale copy (0662 box gate, OrganizationCanvasTest).
-        $lists = Setting::query()->withoutGlobalScopes()
-            ->where('organization_id', $organizationId)
-            ->where('scope_type', SettingDefinition::SCOPE_ORGANIZATION)
-            ->where('scope_id', $organizationId)
-            ->whereIn('key', array_column(self::KINDS, 'setting'))
-            ->pluck('value', 'key');
+        // Through the resolver (the settings guard's reader), then its memo is
+        // emptied again: this runs from a User save in the middle of other
+        // requests, and a memo filled here left a later settings write in the
+        // same request reading a stale copy (0662 box gate, OrganizationCanvasTest).
+        $resolver = app(SettingsResolver::class);
         $kinds = [];
-        foreach (self::KINDS as $kind => $def) {
-            if (in_array($roleId, (array) ($lists[$def['setting']] ?? []), true)) {
-                $kinds[] = $kind;
+        try {
+            foreach (self::KINDS as $kind => $def) {
+                if (in_array($roleId, (array) SettingsResolver::forOrganization($def['setting'], $organizationId), true)) {
+                    $kinds[] = $kind;
+                }
             }
+        } finally {
+            $resolver->flush();
         }
 
         return $kinds;
