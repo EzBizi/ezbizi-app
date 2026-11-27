@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Models\SocialConnection;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -52,10 +53,13 @@ final class WhatsAppHealth
             $hooked = $hookedNow = $subscribed();
         }
 
-        $debug = Http::timeout(20)->get($graph.'debug_token', [
-            'input_token' => $token,
-            'access_token' => $appId.'|'.config('services.meta.client_secret'),
-        ])->json('data') ?? [];
+        // App secret in the header, and a timeout caught here: an uncaught one logs this URL (audit 11-27).
+        try {
+            $debug = Http::withToken($appId.'|'.config('services.meta.client_secret'))->timeout(20)
+                ->get($graph.'debug_token', ['input_token' => $token])->json('data') ?? [];
+        } catch (ConnectionException) {
+            $debug = [];
+        }
         $scopes = (array) ($debug['scopes'] ?? []);
         $tokenOk = ($debug['is_valid'] ?? false) === true && ($debug['expires_at'] ?? null) === 0
             && array_diff(self::SCOPES, $scopes) === [];

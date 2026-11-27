@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use App\Support\Reports\Texts\NewClientConversion;
+use App\Support\Settings\OrgTimezone;
 use App\Support\Training\GuideScreens;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -113,7 +114,7 @@ class StaffBotItem extends Model implements StatesRetention
         if ($organization === null) {
             return null;
         }
-        $zone = (string) config('app.timezone');
+        $zone = OrgTimezone::of($organization);
         try {
             $text = trim(NewClientConversion::line($organization, CarbonImmutable::now($zone)->startOfDay()));
         } catch (\Throwable $e) {

@@ -74,11 +74,21 @@ final class MetaMessages
             return null;
         }
 
-        return SocialConnection::query()
+        $rows = SocialConnection::query()
             ->withoutGlobalScopes()
             ->where('provider', $provider->value)
             ->where('remote_id', $businessId)
-            ->first();
+            ->get();
+
+        // One Page in two organizations: refuse rather than hand a lead to whichever sorts first (audit 11-27).
+        // ponytail: refused here, not at connect; block the second org's connect if this ever reports.
+        if ($rows->pluck('organization_id')->unique()->count() > 1) {
+            report(new RuntimeException("Meta {$object} {$businessId} is connected in more than one organization; its message was not routed."));
+
+            return null;
+        }
+
+        return $rows->first();
     }
 
     /** The lead source a delivery's `object` means. */
