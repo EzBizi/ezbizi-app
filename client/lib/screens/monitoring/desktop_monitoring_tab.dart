@@ -453,7 +453,14 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       ..._dayRange(),
       'before': _shots.last['captured_at'] as String,
     });
-    if (!mounted || generation != _loadGeneration) return;
+    if (!mounted) return;
+    if (generation != _loadGeneration) {
+      // A newer load took over (a quiet refresh bumps the generation too):
+      // drop this page but release the flag, or paging stopped for good
+      // after any refresh (audit 11-27).
+      setState(() => _loadingMore = false);
+      return;
+    }
 
     final page = response.ok
         ? (response.data as List<dynamic>).cast<Map<String, dynamic>>()
@@ -938,13 +945,32 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
-    final batch = List<Map<String, Object?>>.from(_pendingInput);
-    _pendingInput.clear();
+    // One batch in flight: two concurrent posts could land out of order, so
+    // a mouse-up could arrive before its mouse-down (audit 11-27). Events
+    // queued meanwhile go in the next post, straight after this one.
+    if (_flushing) {
+      _flushAgain = true;
+      return;
+    }
+    _flushing = true;
+    try {
+      final batch = List<Map<String, Object?>>.from(_pendingInput);
+      _pendingInput.clear();
 
-    await widget.api.post('/monitoring/devices/$deviceId/input', {
-      'events': batch,
-    });
+      await widget.api.post('/monitoring/devices/$deviceId/input', {
+        'events': batch,
+      });
+    } finally {
+      _flushing = false;
+    }
+    if (_flushAgain) {
+      _flushAgain = false;
+      await _flushInput(deviceId);
+    }
   }
+
+  bool _flushing = false;
+  bool _flushAgain = false;
 
   @override
   Widget build(BuildContext context) {
