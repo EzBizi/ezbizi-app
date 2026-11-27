@@ -158,4 +158,29 @@ class ServiceTest extends TestCase
             ->assertJsonPath('data.group.name', 'Chimney')
             ->assertJsonPath('data.label.name', 'Popular');
     }
+
+    public function test_moving_a_service_rechecks_the_group_it_keeps(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $place = ['company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id];
+
+        $group = $this->signedInAs($admin)
+            ->postJson('/api/v1/services/groups', $place + ['name' => 'Branch only'])
+            ->assertCreated()->json('data');
+
+        $service = $this->signedInAs($admin)
+            ->postJson('/api/v1/services', $place + ['name' => 'Sweep', 'group_id' => $group['id']])
+            ->assertCreated()->json('data');
+
+        // Control: an edit that does not move it keeps the group.
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/services/'.$service['id'], ['price_minor' => 100])
+            ->assertOk()->assertJsonPath('data.group.name', 'Branch only');
+
+        // Moving it up to the company: the branch's group no longer fits.
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/services/'.$service['id'], ['franchise_id' => null])
+            ->assertStatus(422)->assertJsonValidationErrors('group_id');
+    }
 }

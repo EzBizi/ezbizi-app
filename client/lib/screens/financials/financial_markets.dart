@@ -15,6 +15,14 @@ import 'invoice_common.dart';
 Map<String, (DateTime, DateTime)> marketPeriods(DateTime today) {
   final day = DateTime(today.year, today.month, today.day);
   final monday = day.subtract(Duration(days: day.weekday - 1));
+  // May 31 minus three months is Feb 28/29, not March 3: the day is clamped
+  // to the length of the month it lands in.
+  final lastOfTarget = DateTime(day.year, day.month - 2, 0).day;
+  final threeBack = DateTime(
+    day.year,
+    day.month - 3,
+    day.day > lastOfTarget ? lastOfTarget : day.day,
+  );
   return {
     'Last week': (
       monday.subtract(const Duration(days: 7)),
@@ -25,7 +33,7 @@ Map<String, (DateTime, DateTime)> marketPeriods(DateTime today) {
       monday.subtract(const Duration(days: 1)),
     ),
     'This month': (DateTime(day.year, day.month), day),
-    'Last 3 months': (DateTime(day.year, day.month - 3, day.day), day),
+    'Last 3 months': (threeBack, day),
   };
 }
 

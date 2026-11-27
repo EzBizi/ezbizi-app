@@ -104,10 +104,12 @@ class ShiftReminderController {
     _showing = false;
   }
 
-  Future<void> _post(String path, {bool needsLocation = false}) async {
+  /// Null when it worked; otherwise why, for the dialog to show.
+  Future<String?> _post(String path, {bool needsLocation = false}) async {
     final response = await api.post(path, await punchPosition(needsLocation));
     _apply(response);
     sync();
+    return response.ok ? null : response.reason;
   }
 
   void _apply(ApiResponse response) {
@@ -141,8 +143,10 @@ class ShiftReminderDialog extends StatefulWidget {
   final DateTime endAt;
   final int extensionMinutes;
   final String endLabel;
-  final Future<void> Function() onExtend;
-  final Future<void> Function() onClockOut;
+
+  /// Each returns null when it worked, or the reason it did not.
+  final Future<String?> Function() onExtend;
+  final Future<String?> Function() onClockOut;
   final VoidCallback onExpired;
 
   @override
@@ -152,6 +156,7 @@ class ShiftReminderDialog extends StatefulWidget {
 class _ShiftReminderDialogState extends State<ShiftReminderDialog> {
   Timer? _tick;
   bool _busy = false;
+  String? _error;
 
   Duration get _left {
     final d = widget.endAt.difference(DateTime.now().toUtc());
@@ -161,6 +166,10 @@ class _ShiftReminderDialogState extends State<ShiftReminderDialog> {
   @override
   void initState() {
     super.initState();
+    _startTick();
+  }
+
+  void _startTick() {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_left == Duration.zero) {
@@ -179,12 +188,26 @@ class _ShiftReminderDialogState extends State<ShiftReminderDialog> {
     super.dispose();
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  /// A refusal keeps the dialog open and says why (audit 2026-11-27): closing
+  /// silently left the shift ending at the original time unnoticed.
+  Future<void> _run(Future<String?> Function() action) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     _tick?.cancel();
-    await action();
-    if (mounted) Navigator.of(context).pop();
+    final error = await action();
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = error;
+    });
+    _startTick();
   }
 
   @override
@@ -206,6 +229,14 @@ class _ShiftReminderDialogState extends State<ShiftReminderDialog> {
           ),
           const SizedBox(height: 12),
           Text('$mm:$ss', style: Theme.of(context).textTheme.headlineMedium),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              key: const ValueKey('shift-reminder-error'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
         ],
       ),
       actions: [

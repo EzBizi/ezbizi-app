@@ -87,7 +87,7 @@ class InventorySalesController extends Controller
         $sales = $query
             ->with(['customer', 'lines.item'])
             ->orderByDesc('created_at')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         return response()->json([
             'data' => collect($sales->items())->map(

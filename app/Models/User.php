@@ -590,11 +590,32 @@ class User extends Authenticatable implements HoldsPersonalData
     /** Every franchise this user may act on, across all their assignments. */
     public function reachableFranchises(): Collection
     {
-        return Franchise::query()
-            ->where('organization_id', $this->organization_id)
-            ->get()
-            ->filter(fn (Franchise $f) => $this->canActOnFranchise($f))
-            ->values();
+        $all = Franchise::query()->where('organization_id', $this->organization_id)->get();
+
+        // canActOnFranchise's rules, with each company assignment's subtree
+        // read once rather than once per franchise.
+        if (! $this->is_active) {
+            return $all->take(0)->values();
+        }
+        if ($this->isAdministrator()) {
+            return $all->values();
+        }
+
+        $wholeOrg = false;
+        $companyIds = [];
+        $franchiseIds = [];
+        foreach ($this->assignments as $assignment) {
+            match ($assignment->scopeType()) {
+                Assignment::SCOPE_ORGANIZATION => $wholeOrg = $wholeOrg
+                    || $assignment->assigned_organization_id === $this->organization_id,
+                Assignment::SCOPE_COMPANY => array_push($companyIds, ...($assignment->assignedCompany?->subtreeCompanyIds() ?? [])),
+                Assignment::SCOPE_FRANCHISE => $franchiseIds[] = $assignment->assigned_franchise_id,
+            };
+        }
+
+        return $all->filter(fn (Franchise $f) => $wholeOrg
+            || in_array($f->company_id, $companyIds, true)
+            || in_array($f->getKey(), $franchiseIds, true))->values();
     }
 
     /** Every company this user may act on, parents and Sub Companies alike. */

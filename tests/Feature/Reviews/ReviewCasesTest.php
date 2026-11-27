@@ -177,4 +177,20 @@ class ReviewCasesTest extends TestCase
         $this->assertEquals(['average' => 5.0, 'count' => 1], $this->list(['location' => 'locations/2'])['meta']['stats']['this_month'],
             'other filters do');
     }
+
+    /** Audit 2026-11-27: a branch's review never suggests, nor links, another company's customer. */
+    public function test_customer_suggestions_stay_within_reach(): void
+    {
+        $other = $this->inTenant($this->t['org'], function () {
+            $co = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co', 'is_active' => true]);
+
+            return Franchise::create(['company_id' => $co->id, 'name' => 'Other Branch']);
+        });
+        $theirs = $this->inTenant($this->t['org'], fn () => Customer::create(['owning_franchise_id' => $this->t['franchise']->id, 'number' => 'C-9', 'name' => 'Dana Whitfield']));
+        $review = $this->review(['company_id' => $other->company_id, 'franchise_id' => $other->id]);
+        $as = $this->signedInAs($this->userWithRole($this->t, 'Branch', ['reviews.view', 'reviews.manage'], onlyAt: $other));
+
+        $as->getJson("/api/v1/reviews/{$review->id}/customer-suggestions")->assertOk()->assertJsonCount(0, 'data');
+        $as->putJson("/api/v1/reviews/{$review->id}/customer", ['customer_id' => $theirs->id])->assertUnprocessable();
+    }
 }

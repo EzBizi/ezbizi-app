@@ -118,8 +118,13 @@ class RingCentralLeadCallsTest extends TestCase
             $calls->file([self::rc('7b', '+15550000007', now()->toIso8601String())], self::LINES, $t['company']->id);
             $this->assertTrue($ls->conversations()->where('remote_id', 'rc_7b')->exists(), 'filed on the caller\'s LS lead');
 
+            // Audit 11-27: our callback a minute after Google's call is ours, not a copy of it.
+            LeadConversation::create(['organization_id' => $t['org']->id, 'lead_id' => $ls->id, 'remote_id' => 'rc_out7',
+                'channel' => 'PHONE_CALL', 'participant' => 'ADVERTISER', 'occurred_at' => now()->subHour()->addSeconds(90)]);
+
             $this->assertSame(1, $calls->withdrawDuplicates(\Carbon\CarbonImmutable::now()->subDays(2)));
             $this->assertTrue($ls->conversations()->where('remote_id', 'rc_7b')->exists(), 'never matched to itself');
+            $this->assertTrue($ls->conversations()->where('remote_id', 'rc_out7')->exists(), 'the callback stays');
             $this->assertSame(['15550000008'], Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->pluck('phone_digits')->all());
         });
     }
@@ -708,6 +713,14 @@ class RingCentralLeadCallsTest extends TestCase
 
         $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => null])->assertOk();
         $this->assertSame([], $read());
+
+        // Audit 11-27: a branch manager cannot take another company's line, nor file one there.
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => 'company:'.$ed->id])->assertOk();
+        $manager = $this->signedInAs($this->userWithRole($t, 'Branch manager', ['leads.view', 'leads.manage'], onlyAt: $t['franchise']));
+        $manager->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => 'franchise:'.$t['franchise']->id])->assertNotFound();
+        $manager->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550102', 'place' => 'company:'.$ed->id])->assertNotFound();
+        $manager->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550102', 'place' => 'franchise:'.$t['franchise']->id])->assertOk();
+        $this->assertSame(['+17815550100' => 'company:'.$ed->id, '+17815550102' => 'franchise:'.$t['franchise']->id], $read());
     }
 
     /**

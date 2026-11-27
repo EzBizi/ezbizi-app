@@ -460,4 +460,58 @@ class VehiclesApiTest extends TestCase
             ])
             ->assertForbidden();
     }
+
+    /**
+     * Through POST /vehicles, as the app creates one: the creation period is
+     * not history, so a vehicle added by mistake can be removed. Control: an
+     * ended period (sold) is history and refuses.
+     */
+    public function test_a_vehicle_added_in_the_app_can_be_removed_until_it_has_history(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $add = fn (string $vin) => $this->signedInAs($admin)->postJson('/api/v1/vehicles', [
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+            'year' => 2024, 'make' => 'Ford', 'model' => 'Transit', 'vin' => $vin,
+            'body_type' => 'van', 'fuel_type' => 'gas',
+            'ownership' => ['kind' => 'owned'],
+        ])->assertCreated()->json('data.id');
+
+        $fresh = $add('1FTBW2CM5NKA00011');
+        $this->signedInAs($admin)->deleteJson('/api/v1/vehicles/'.$fresh)->assertNoContent();
+
+        $sold = $add('1FTBW2CM5NKA00012');
+        $this->inTenant($tenant['org'], fn () => VehicleOwnershipPeriod::query()
+            ->where('vehicle_id', $sold)->update(['ended_on' => now()->toDateString()]));
+        $this->signedInAs($admin)->deleteJson('/api/v1/vehicles/'.$sold)->assertStatus(422);
+
+        $this->inTenant($tenant['org'], function () use ($fresh, $sold) {
+            $this->assertFalse(Vehicle::query()->whereKey($fresh)->exists());
+            $this->assertTrue(Vehicle::query()->whereKey($sold)->exists());
+        });
+    }
+    /** Without financials the toll rate is not shown, so it is not written either (audit 2026-11-27). */
+    public function test_toll_rate_is_not_written_without_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $vehicle = $this->inTenant($tenant['org'], fn () => Vehicle::factory()->create([
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+            'toll_flat_rate_cents' => 1500,
+        ]));
+        $editor = $this->userWithRole($tenant, 'Fleet editor', [
+            'fleet_management.view', 'fleet_management.vehicles.view', 'fleet_management.edit',
+        ]);
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/vehicles/'.$vehicle->id, ['toll_flat_rate_cents' => 9900, 'toll_plan' => 'E-ZPass'])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($vehicle) {
+            $fresh = $vehicle->fresh();
+            $this->assertSame(1500, $fresh->toll_flat_rate_cents);
+            $this->assertSame('E-ZPass', $fresh->toll_plan, 'control: the rest of the save still lands');
+        });
+    }
 }

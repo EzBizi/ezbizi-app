@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../widgets/step_timeline.dart';
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +82,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   /// Tick-box answers, which are bools rather than text or lists.
   final Map<String, bool> _checks = {};
 
+  /// A multiple choice's picks, as a list (audit 11-27: one text box held
+  /// one value, and a saved list read back as the string "[a, b]").
+  final Map<String, List<String>> _multi = {};
+
   /// Recommended-work answers: a list of priced picks per field.
   final Map<String, List<Map<String, dynamic>>> _work = {};
 
@@ -95,6 +101,11 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   @override
   void dispose() {
+    // Typing then leaving the tab must not lose it (audit 11-27).
+    if (_typing?.isActive ?? false) {
+      _typing!.cancel();
+      _save();
+    }
     _search.dispose();
     for (final c in _fields.values) {
       c.dispose();
@@ -261,6 +272,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     _fields.clear();
     _photos.clear();
     _checks.clear();
+    _multi.clear();
     _work.clear();
     _catalogue = [
       for (final s in (run['services'] as List? ?? const []))
@@ -301,6 +313,17 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           continue;
         }
 
+        if (field['type'] == 'choice' && field['multiple'] == true) {
+          final saved = answers[key];
+          _multi[key] = [
+            if (saved is List)
+              for (final v in saved) '$v'
+            else if (saved != null && '$saved' != '')
+              '$saved',
+          ];
+          continue;
+        }
+
         if (field['type'] == 'checkbox') {
           _checks[key] = answers[key] == true;
           continue;
@@ -312,7 +335,8 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           ];
           continue;
         }
-        _fields[key] = TextEditingController(text: '${answers[key] ?? ''}');
+        _fields[key] = TextEditingController(text: '${answers[key] ?? ''}')
+          ..addListener(_typed);
       }
     }
     setState(() {
@@ -325,12 +349,28 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     });
   }
 
-  Future<void> _save() async {
+  Timer? _typing;
+  bool _submitting = false;
+
+  /// Typed answers save a moment after the last keystroke, not only on Next.
+  void _typed() {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 1500), _save);
+  }
+
+  /// False, with the reason under the button, when the server did not take it:
+  /// Next and Submit stop rather than file stale answers (audit 11-27).
+  Future<bool> _save() async {
+    _typing?.cancel();
     final run = _run;
-    if (run == null) return;
-    await widget.api.patch('/inspections/runs/${run['id']}', {
+    if (run == null) return true;
+    final response = await widget.api.patch('/inspections/runs/${run['id']}', {
       'answers': _answers(),
     });
+    if (!response.ok && mounted) {
+      setState(() => _blocked = 'Not saved: ${response.reason}');
+    }
+    return response.ok;
   }
 
   /// What gets sent. Text fields and photo fields, in one map.
@@ -338,6 +378,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     for (final e in _fields.entries) e.key: e.value.text,
     for (final e in _photos.entries) e.key: e.value,
     for (final e in _checks.entries) e.key: e.value,
+    for (final e in _multi.entries) e.key: e.value,
     for (final e in _work.entries) e.key: e.value,
   };
 
@@ -475,7 +516,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     if (rule is Map) {
       final other = '${rule['field'] ?? ''}';
       final equals = '${rule['equals'] ?? rule['value'] ?? ''}';
-      needs = needs || answers[other] == equals;
+      // As strings: a checkbox answer is a bool and the rule's value a
+      // string, and `true == 'true'` never fired (audit 11-27).
+      needs = needs || '${answers[other]}' == equals;
     }
 
     if (!needs) return null;
@@ -503,7 +546,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       );
       return;
     }
-    await _save();
+    if (!await _save()) return;
     if (_screen >= screens.length - 1) {
       await _submit();
       return;
@@ -516,13 +559,14 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   Future<void> _submit() async {
     final run = _run;
-    if (run == null) return;
-    await _save();
+    if (run == null || _submitting) return;
+    setState(() => _submitting = true);
     final response = await widget.api.post(
       '/inspections/runs/${run['id']}/submit',
       {},
     );
     if (!mounted) return;
+    setState(() => _submitting = false);
     if (!response.ok) {
       setState(() {
         _blocked = response.reason;
@@ -734,6 +778,33 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         final choices = InspectionOption.allOf(field['options']);
         final options = [for (final o in choices) o.value];
         final current = _fields[key]?.text ?? '';
+
+        if (field['multiple'] == true) {
+          final picked = _multi[key] ??= [];
+          return InputDecorator(
+            key: widgetKey,
+            decoration: InputDecoration(labelText: label),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final choice in choices)
+                  FilterChip(
+                    label: Text(choice.label),
+                    selected: picked.contains(choice.value),
+                    onSelected: (on) {
+                      setState(() {
+                        on
+                            ? picked.add(choice.value)
+                            : picked.remove(choice.value);
+                      });
+                      _save();
+                    },
+                  ),
+              ],
+            ),
+          );
+        }
 
         return SearchPickerField<String>(
           key: widgetKey,
@@ -988,7 +1059,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             ErrorNote(_blocked!),
             const SizedBox(height: 8),
           ],
-          FilledButton(onPressed: _next, child: Text(last ? 'Submit' : 'Next')),
+          FilledButton(
+            onPressed: _submitting ? null : _next,
+            child: Text(last ? 'Submit' : 'Next'),
+          ),
         ],
       ),
     );

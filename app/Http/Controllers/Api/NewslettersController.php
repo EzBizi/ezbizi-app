@@ -136,6 +136,26 @@ class NewslettersController extends Controller
     }
 
     /**
+     * GET /newsletters/{id}: one row, shaped as index shapes it. Reload after a
+     * conflict reads the open newsletter here, since it can be older than the
+     * fifty index returns.
+     */
+    public function show(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $this->mayView($request);
+        abort_unless(
+            $user->hasPermission('newsletter.dashboard.view')
+                || $user->hasPermission('newsletter.composer.view'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('open this tab')->message(),
+        );
+        $row = $this->findInView($user, $newsletter);
+        $row->loadMissing('author:id,name');
+
+        return response()->json(['data' => $this->present($row)]);
+    }
+
+    /**
      * What the dashboard reports, scoped the same way the list is.
      *
      * @return array<string, mixed>
@@ -1106,6 +1126,12 @@ class NewslettersController extends Controller
         // script would differ from what the author previewed. Nothing saves.
         if (is_string($data['html_override'] ?? null) && HtmlImportConverter::unsafe($data['html_override'])) {
             throw ValidationException::withMessages(['html_override' => HtmlImportConverter::UNSAFE_MESSAGE]);
+        }
+        // A block hand-edited in HTML mode is sent as written, so it is held to the same rule.
+        foreach (is_array($data['blocks'] ?? null) ? $data['blocks'] : [] as $i => $block) {
+            if (is_array($block) && is_string($block['html'] ?? null) && HtmlImportConverter::unsafe($block['html'])) {
+                throw ValidationException::withMessages(["blocks.{$i}.html" => HtmlImportConverter::UNSAFE_MESSAGE]);
+            }
         }
 
         return $data;

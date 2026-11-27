@@ -92,7 +92,12 @@ class _FieldMapTabState extends State<FieldMapTab> {
     super.initState();
     _load();
     _loadPlaces();
+    final visible = LiveChanges.visible(this);
     _refresh = Timer.periodic(const Duration(seconds: 30), (_) {
+      // Hidden behind another tab: no reads (audit 11-27).
+      if (!visible()) return;
+      // A street map that failed to load is asked for again.
+      _tilesAsked.removeWhere((t) => !_tiles.containsKey(t));
       _load();
       if (_personId != null && _isToday) _loadTrail(fit: false);
     });
@@ -135,7 +140,14 @@ class _FieldMapTabState extends State<FieldMapTab> {
     final today = DateTime(now.year, now.month, now.day);
     final d = DateTime(day.year, day.month, day.day);
     setState(() {
-      _day = d.isAfter(today.add(const Duration(days: 60))) ? today : d;
+      // The date picker's range, for the arrows too (audit 11-27).
+      final first = today.subtract(const Duration(days: 90));
+      final last = today.add(const Duration(days: 60));
+      _day = d.isBefore(first)
+          ? first
+          : d.isAfter(last)
+          ? last
+          : d;
       _jobId = null;
       _eta = null;
       _route = null;
@@ -173,15 +185,17 @@ class _FieldMapTabState extends State<FieldMapTab> {
     if (!_tilesAsked.add(theme)) return;
     final response = await widget.api.get('/field/map/tiles', {'theme': theme});
     if (!mounted) return;
+    // A failed read is not "not set up": it is asked again on the next tick.
+    if (!response.ok) return;
     setState(
-      () => _tiles[theme] = response.ok
-          ? ((response.body['data'] as Map?)?['url'] as String?)
-          : null,
+      () =>
+          _tiles[theme] = ((response.body['data'] as Map?)?['url'] as String?),
     );
     _viewportChanged();
   }
 
   Future<void> _load() async {
+    final day = _ymd;
     final responses = await Future.wait([
       widget.api.get('/field/map'),
       if (widget.canSeeJobs) widget.api.get('/field/jobs', {'date': _ymd}),
@@ -190,12 +204,15 @@ class _FieldMapTabState extends State<FieldMapTab> {
     final people = responses.first;
     setState(() {
       _loading = false;
-      _error = people.ok ? null : people.message;
+      // A failed background read keeps the map it has (audit 11-27); only a
+      // map with nothing on it yet shows the error.
+      _error = people.ok || _people.isNotEmpty ? null : people.message;
       if (people.ok) {
         _people = (people.body['data'] as List? ?? const [])
             .cast<Map<String, dynamic>>();
       }
-      if (responses.length > 1 && responses[1].ok) {
+      // Answered for a day the map has since left: dropped.
+      if (responses.length > 1 && responses[1].ok && day == _ymd) {
         _jobs = (responses[1].body['data'] as List? ?? const [])
             .cast<Map<String, dynamic>>();
       }
@@ -555,7 +572,11 @@ class _FieldMapTabState extends State<FieldMapTab> {
                       jobs: _jobs,
                       showJobs: widget.canSeeJobs,
                       tab: _tab,
-                      onTab: (t) => setState(() => _tab = t),
+                      // The box is new for each tab; so is the search (audit 11-27).
+                      onTab: (t) => setState(() {
+                        _tab = t;
+                        _query = '';
+                      }),
                       query: _query,
                       onQuery: (q) => setState(() => _query = q),
                       selectedPersonId: _personId,

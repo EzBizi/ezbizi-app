@@ -600,21 +600,31 @@ class TaskBoardsController extends Controller
      */
     public function update(Request $request, TaskBoard $taskBoard): JsonResponse
     {
+        // Each part of the request is authorized on its own (audit 11-27: a mixed request rode the weakest check).
+        $known = false;
         if ($request->hasAny(['name', 'visibility'])) {
+            $known = true;
             $this->authorizeManage($request->user(), $taskBoard);
-        } elseif ($request->hasAny(['folder_id', 'colour', 'position'])) {
+        }
+        if ($request->hasAny(['folder_id', 'colour', 'position'])) {
             // Arranging the list (folders, colours, order) is shared for the
             // organization: the right to make boards, on a board you can see.
+            $known = true;
             $this->authorize('view', $taskBoard);
             abort_unless($request->user()->hasPermission('tasks.create_boards'), 403, 'Only somebody who may make boards can arrange the board list.');
-        } elseif ($request->has('edit_mode')) {
+        }
+        if ($request->has('edit_mode')) {
             // Automatic boards too: A-1's busiest place board is the one that needs it.
+            $known = true;
             $this->authorize('view', $taskBoard);
             abort_unless($this->boards->canManage($request->user(), $taskBoard), 403, 'Only an owner of this board or an Administrator can do that.');
-        } elseif (! $request->hasAny(['builtin_columns', 'column_order'])) {
-            $this->authorizeManage($request->user(), $taskBoard);
-        } else {
+        }
+        if ($request->hasAny(['builtin_columns', 'column_order'])) {
+            $known = true;
             $this->authorize('update', $taskBoard);
+        }
+        if (! $known) {
+            $this->authorizeManage($request->user(), $taskBoard);
         }
         $input = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],

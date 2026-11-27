@@ -114,7 +114,18 @@ class ApiKeysController
                 ->orWhere('metadata->path', 'like', $like)))
             ->when($admin && $request->filled('user_id'), fn ($q) => $q->where('actor_id', $request->string('user_id')))
             ->when($request->filled('key_id'), fn ($q) => $q->where('target_id', (string) $request->integer('key_id')))
-            ->when($request->filled('before'), fn ($q) => $q->where('occurred_at', '<', $request->date('before')))
+            // Compound cursor: the timestamp is whole seconds, so `before` alone
+            // skipped rows sharing the boundary second (audit 11-27). With
+            // `before_id`, rows in that second are continued by id (UUIDv7).
+            ->when($request->filled('before'), fn ($q) => $request->filled('before_id')
+                ? $q->where(fn ($q) => $q->where('occurred_at', '<', $request->date('before'))
+                    ->orWhere(fn ($q) => $q->where('occurred_at', $request->date('before'))->where('id', '<', $request->string('before_id'))))
+                : $q->where('occurred_at', '<', $request->date('before')))
+            // Changes only, decided here: filtering the 200 rows the client got
+            // said "no changes yet" whenever they were all reads.
+            ->when($request->boolean('changes_only'), fn ($q) => $q->where(fn ($q) => $q
+                ->where('action', '!=', 'api_key.request')
+                ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.method')) <> 'GET'")))
             ->orderByDesc('occurred_at')
             // occurred_at is whole seconds; the UUIDv7 id breaks ties in call order.
             ->orderByDesc('id')

@@ -116,6 +116,7 @@ class MailMessageView extends StatelessWidget {
                         SenderAvatar(
                           name: message.fromName,
                           email: message.fromAddress,
+                          authenticated: message.fromAuthenticated,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -363,7 +364,11 @@ class MailMessageView extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SenderAvatar(name: part.fromName, email: part.fromAddress),
+        SenderAvatar(
+          name: part.fromName,
+          email: part.fromAddress,
+          authenticated: part.fromAuthenticated,
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(

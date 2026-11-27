@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -928,5 +929,56 @@ void main() {
     expect(asked.queryParameters.containsKey('connection_id'), isFalse);
     expect(calls.where((c) => c.contains('/ads/performance')), isEmpty);
     expect(find.text('Angi Sweep - Bucks'), findsWidgets);
+  });
+
+  /// Audit 11-27: an answer for the old range landed after the new one.
+  testWidgets('a late answer for an earlier range is dropped', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final hold = Completer<void>();
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final json = {'content-type': 'application/json'};
+        if (request.url.path.contains('/ads/accounts')) {
+          return http.Response(jsonEncode({'data': twoAccounts()}), 200, headers: json);
+        }
+        if (request.url.path.contains('/ads/performance')) {
+          final old = request.url.queryParameters['from'] == '2026-10-18';
+          if (old) await hold.future;
+          final r = report();
+          (r['account'] as Map)['cost'] = old ? 9999 : 111;
+          return http.Response(jsonEncode({'data': [r], 'refused': []}), 200, headers: json);
+        }
+        return http.Response('{}', 200, headers: json);
+      }),
+    );
+    final span = ValueNotifier(DateSpan(DateTime(2026, 10, 18), DateTime(2026, 11, 15)));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ValueListenableBuilder<DateSpan>(
+            valueListenable: span,
+            builder: (context, s, _) => ReportRange(
+              span: s,
+              onChanged: (_) {},
+              child: AdsPerformanceScreen(api: api, session: Session(api)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pump();
+
+    span.value = DateSpan(DateTime(2026, 11, 1), DateTime(2026, 11, 15));
+    await tester.pumpAndSettle();
+    hold.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('111'), findsWidgets);
+    expect(find.textContaining('9,999'), findsNothing);
   });
 }

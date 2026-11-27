@@ -329,6 +329,9 @@ class _FormViewState extends State<FormView> {
   int _round = 0;
   String? _note;
 
+  /// A submit is on its way; a second press would add the record twice.
+  bool _busy = false;
+
   @override
   Widget build(BuildContext context) {
     if (!widget.canEdit) {
@@ -361,20 +364,26 @@ class _FormViewState extends State<FormView> {
             Align(
               alignment: Alignment.centerLeft,
               child: FilledButton(
-                onPressed: () async {
-                  final error = await widget.onSubmit(
-                    {..._values}..removeWhere((k, v) => v == null),
-                  );
-                  if (!mounted) return;
-                  setState(() {
-                    _note =
-                        error ?? 'Added. The form is ready for the next one.';
-                    if (error == null) {
-                      _values = {};
-                      _round++;
-                    }
-                  });
-                },
+                key: const ValueKey('form-view-submit'),
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        setState(() => _busy = true);
+                        final error = await widget.onSubmit(
+                          {..._values}..removeWhere((k, v) => v == null),
+                        );
+                        if (!mounted) return;
+                        setState(() {
+                          _busy = false;
+                          _note =
+                              error ??
+                              'Added. The form is ready for the next one.';
+                          if (error == null) {
+                            _values = {};
+                            _round++;
+                          }
+                        });
+                      },
                 child: const Text('Submit'),
               ),
             ),

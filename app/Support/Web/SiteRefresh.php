@@ -89,6 +89,7 @@ final class SiteRefresh
 
         try {
             return Http::withBasicAuth($site->service_user_login, $site->service_password)
+            ->withoutRedirecting() // audit 2026-11-27: a redirect would carry the call (and the password) past the host check
                 ->accept('application/json')
                 ->timeout(10)
                 ->post($this->content->restBase($site).'ezbizi/v1/refresh')

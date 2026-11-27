@@ -95,7 +95,7 @@ class InventoryItemsController extends Controller
 
         $items = $query
             ->orderBy('name')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         $onHand = $this->onHandFor(collect($items->items()), $user, $scope);
 

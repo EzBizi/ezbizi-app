@@ -94,7 +94,7 @@ class NewsletterImageCopyTest extends TestCase
     public function test_a_company_host_that_resolves_to_a_private_address_is_refused(): void
     {
         [$admin] = $this->a1();
-        foreach (['10.0.0.5', '127.0.0.1', '169.254.169.254', '192.168.1.1', '::1'] as $ip) {
+        foreach (['10.0.0.5', '127.0.0.1', '169.254.169.254', '192.168.1.1', '::1', '100.64.0.1', '198.18.0.1'] as $ip) {
             $this->dns = ['93.184.216.34', $ip];
             $this->copy($admin, 'https://www.a-1chimney.test/logo.png')
                 ->assertUnprocessable()->assertJsonPath('errors.url.0', fn ($m) => str_contains($m, 'private or local'));

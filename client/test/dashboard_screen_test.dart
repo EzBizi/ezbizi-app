@@ -324,6 +324,56 @@ void main() {
     hang.complete(http.Response('{}', 500));
     await tester.pumpAndSettle();
   });
+
+  // Audit: a live reload that started before an edit answered after it and
+  // put the old period back. An edit bumps the ticket, so it is dropped.
+  testWidgets('a load that started before an edit does not undo it', (
+    tester,
+  ) async {
+    final inner = _handler();
+    Completer<http.Response>? heldGet;
+    Completer<http.Response>? heldPut;
+    var holdNext = false;
+    await _pump(tester, (request) {
+      final path = request.url.path;
+      if (heldGet == null &&
+          request.method == 'GET' &&
+          path.endsWith('/dashboard') &&
+          holdNext) {
+        heldGet = Completer<http.Response>();
+        return heldGet!.future;
+      }
+      if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
+        heldPut = Completer<http.Response>();
+        return heldPut!.future;
+      }
+      return inner(request);
+    });
+
+    holdNext = true;
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pump();
+    expect(heldGet, isNotNull, reason: 'Refresh did not start a load.');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Week'));
+    await tester.pump();
+    expect(heldPut, isNotNull, reason: 'Week did not save.');
+
+    // The old read answers "month" while the save is still in flight.
+    heldGet!.complete(await inner(http.Request('GET', Uri.parse('http://x/api/dashboard'))));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Week')).selected,
+      isTrue,
+      reason: 'The stale load put the old period back.',
+    );
+
+    holdNext = false;
+    heldPut!.complete(_json({'ok': true}));
+    await tester.pumpAndSettle();
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {

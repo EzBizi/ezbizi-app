@@ -198,9 +198,14 @@ class _FilesTabState extends State<FilesTab> {
     });
   }
 
+  /// Bumped per listing request: a slow answer for a folder or device that
+  /// is no longer showing must not replace the current one (audit 11-27).
+  int _openSeq = 0;
+
   Future<void> _open(String path) async {
     final device = _device;
     if (device == null) return;
+    final seq = ++_openSeq;
 
     setState(() {
       _browsing = true;
@@ -211,7 +216,7 @@ class _FilesTabState extends State<FilesTab> {
 
     try {
       final listing = await _browser.list(device['id'] as String, path);
-      if (!mounted) return;
+      if (!mounted || seq != _openSeq) return;
       setState(() {
         _listing = listing;
         _browsing = false;
@@ -221,7 +226,7 @@ class _FilesTabState extends State<FilesTab> {
         }
       });
     } on FileAccessException catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _openSeq) return;
       setState(() {
         _browsing = false;
         if (e.slug == 'locked') {
@@ -1072,10 +1077,11 @@ class _FilesTabState extends State<FilesTab> {
     setState(() => _previews[path] = null);
     try {
       final file = await _browser.download(device['id'] as String, path);
-      if (!mounted) return;
+      // Another device chosen meanwhile: this file is not on its disk.
+      if (!mounted || !identical(_device, device)) return;
       setState(() => _previews[path] = file.bytes);
     } on FileAccessException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !identical(_device, device)) return;
       setState(() {
         _previews.remove(path);
         if (e.slug == 'locked') {

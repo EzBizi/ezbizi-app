@@ -85,7 +85,7 @@ class _EzChatAppState extends State<EzChatApp> {
       return UpdateRequiredScreen(
         notice: blocked,
         onTryAgain: () => _versionGate.value = null,
-        onSignOut: _session.signedIn ? _session.signOut : null,
+        onSignOut: _session.signedIn ? _session.logOut : null,
       );
     }
     if (!_session.restored) {
@@ -191,7 +191,7 @@ class _EzChatHomeState extends State<EzChatHome> {
                       ),
                       const SizedBox(height: 16),
                       TextButton(
-                        onPressed: widget.session.signOut,
+                        onPressed: widget.session.logOut,
                         child: Text('Sign out ${me.name}'),
                       ),
                     ],
@@ -252,7 +252,7 @@ class _You extends StatelessWidget {
             key: const ValueKey('ezchat-sign-out'),
             leading: const Icon(Icons.logout),
             title: Text('Sign out ${me.name}'),
-            onTap: session.signOut,
+            onTap: session.logOut,
           ),
         ),
       ],

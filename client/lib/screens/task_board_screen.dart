@@ -557,7 +557,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
     // A mention or reply's bell opens the thread at that update (Jennine 11-24).
-    if (mounted) _openTaskById(link.id, update: link.update);
+    if (!mounted || _openTaskById(link.id, update: link.update)) return;
+    // Beyond the loaded page (audit 11-27): open the panel from the fetched task.
+    final data = res.body['data'];
+    if (data is Map) {
+      await _openTask(
+        Map<String, dynamic>.from(data),
+        updatesOnly: link.update != null,
+        focusUpdate: link.update,
+      );
+    }
+  }
+
+  /// Opens a task wherever it is: this board's list, else fetched by its link.
+  Future<void> _openAnywhere(String id) async {
+    if (_openTaskById(id)) return;
+    DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
+    await _takeLink();
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -881,9 +897,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// A picked row carries every picked row with it, in board order.
   Future<void> _moveTo(String id, Object? groupId, int? position) async {
     if (groupId == null) return;
-    final ids = _picked.contains(id) && _picked.length > 1
+    final all = _picked.contains(id) && _picked.length > 1
         ? _inBoardOrder(_picked)
         : [id];
+    // A rolled-up row lives on its branch's board; this board's group id would
+    // move it here (audit 11-27). It is reordered on its own board.
+    final ids = [
+      for (final one in all)
+        if (_tasks.where((t) => t['id'] == one).firstOrNull?['rolled_up_from'] == null) one,
+    ];
+    if (ids.length < all.length) {
+      _say('A row from a branch board moves on its own board');
+      if (ids.isEmpty) return;
+    }
     String? failed;
     for (final (n, one) in ids.indexed) {
       final res = await widget.api.patch('/tasks/$one/move', {
@@ -1246,7 +1272,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (mounted) _say('Name copied');
       case 'copy-link':
         await Clipboard.setData(
-          ClipboardData(text: '${Uri.base.origin}/tasks/$id'),
+          ClipboardData(text: '${_appOrigin()}/tasks/$id'),
         );
         if (mounted) _say('Link copied');
       case 'below':
@@ -3969,7 +3995,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             people: _people,
             onOpenTask: (id) {
               Navigator.of(context).maybePop();
-              _openTaskById(id);
+              _openAnywhere(id);
             },
           ),
         ),
@@ -3986,9 +4012,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             formats: _formats,
             onOpenTask: (id) async {
               Navigator.of(context).maybePop();
-              if (_openTaskById(id)) return;
-              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
-              await _takeLink();
+              await _openAnywhere(id);
             },
           ),
         ),
@@ -4005,9 +4029,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             formats: _formats,
             onOpenTask: (id) async {
               Navigator.of(context).maybePop();
-              if (_openTaskById(id)) return;
-              DeepLinks.open(DeepLink(module: 'tasks', type: 'task', id: id));
-              await _takeLink();
+              await _openAnywhere(id);
             },
           ),
         ),
@@ -5691,7 +5713,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Future<void> _goToTask(String boardId, String taskId) async {
     final at = _boards.indexWhere((b) => b['id'] == boardId);
     if (at >= 0 && _board?['id'] != boardId) await _open(at);
-    if (mounted) _openTaskById(taskId);
+    if (mounted) await _openAnywhere(taskId);
   }
 
   /// Due, edited where it is like any date column.
@@ -5819,7 +5841,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         // Plain text that only looks like JSON.
       }
     } else if (c.type == 'number' || c.type == 'currency') {
-      value = num.tryParse(text.trim());
+      value = num.tryParse(text.trim().replaceAll(RegExp(r'[,$\s]'), ''));
+      // Text that is not a number never clears the range (audit 11-27).
+      if (value == null && text.trim().isNotEmpty) {
+        return _say('Not a number: nothing pasted');
+      }
     } else if (c.type == 'checkbox') {
       value = text.trim() == 'true';
     }
@@ -8036,7 +8062,7 @@ class _TaskPanelState extends State<_TaskPanel> {
           key: const Key('task-copy-link'),
           onPressed: () async {
             await Clipboard.setData(
-              ClipboardData(text: '${Uri.base.origin}/tasks/${widget.taskId}'),
+              ClipboardData(text: '${_appOrigin()}/tasks/${widget.taskId}'),
             );
             if (context.mounted) {
               ScaffoldMessenger.of(
@@ -8885,3 +8911,8 @@ Widget _formatShortcuts(FormattedNotesController c, Widget child) =>
       },
       child: child,
     );
+
+/// The web app's origin for a shared link: this page's on web; app.ezbizi.com on a native
+/// build, where Uri.base is a file: URI whose origin throws (audit 11-27).
+String _appOrigin() =>
+    Uri.base.isScheme('http') || Uri.base.isScheme('https') ? Uri.base.origin : 'https://app.ezbizi.com';

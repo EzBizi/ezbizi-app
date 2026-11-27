@@ -94,9 +94,10 @@ class ChatStore extends ChangeNotifier with WidgetsBindingObserver {
       final typingChanged = nextTyping.toString() != typing.toString();
       typing = nextTyping;
       if (rev != _rev) {
-        _rev = rev;
         tick++;
-        await load();
+        // The rev is spent only once the list really reloaded; a failed read
+        // tries again on the next beat instead of leaving the list stale.
+        if (await load()) _rev = rev;
       } else if (typingChanged) {
         notifyListeners();
       }
@@ -105,9 +106,9 @@ class ChatStore extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> load() async {
+  Future<bool> load() async {
     final r = await api.get('/chat/chats');
-    if (_disposed) return;
+    if (_disposed) return false;
     loaded = true;
     if (r.ok && r.data is List) {
       chats = [
@@ -119,6 +120,13 @@ class ChatStore extends ChangeNotifier with WidgetsBindingObserver {
       error = r.reason;
     }
     notifyListeners();
+    return r.ok;
+  }
+
+  /// "Mark all read": one request; the list reloads with the counts cleared.
+  Future<void> readAll() async {
+    final r = await api.post('/chat/read-all', {});
+    if (r.ok && !_disposed) await load();
   }
 
   Future<void> loadContacts() async {

@@ -60,6 +60,7 @@ final class SiteContent
         $base = $this->restBase($site);
 
         $response = Http::withBasicAuth($site->service_user_login, $site->service_password)
+            ->withoutRedirecting() // audit 2026-11-27: a redirect would carry the call (and the password) past the host check
             ->accept('application/json')
             ->timeout(12)
             ->get($base.'wp/v2/'.self::TYPES[$type], array_filter([
@@ -201,6 +202,7 @@ final class SiteContent
         }
 
         $response = Http::withBasicAuth($site->service_user_login, $site->service_password)
+            ->withoutRedirecting() // audit 2026-11-27: a redirect would carry the call (and the password) past the host check
             ->accept('application/json')
             ->timeout(12)
             ->get($this->restBase($site).$route, [

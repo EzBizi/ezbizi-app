@@ -8,6 +8,7 @@
 // ponytail: no drag-and-drop (gallery option 2); the arrows order the slots.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -24,12 +25,20 @@ class RoleMobileBar extends StatefulWidget {
     required this.role,
     required this.writable,
     required this.onSaved,
+    this.blockedReason,
+    this.onDirty,
   });
 
   final ApiClient api;
   final RoleSummary role;
   final bool writable;
   final VoidCallback onSaved;
+
+  /// Why saving is held back (unsaved permission edits on the page), or null.
+  final String? blockedReason;
+
+  /// Told whether the slots differ from what was last saved.
+  final ValueChanged<bool>? onDirty;
 
   /// The shell's default, the same four it fills an unset bar with.
   static const fallback = ['jobs', 'scheduling', 'leads', 'phone'];
@@ -45,12 +54,25 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
       s.tab == null ? s.module : '${s.module}:${s.tab}',
   ];
 
+  /// The slots as last loaded or saved.
+  late List<String> _savedSlots = List.of(_slots);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    final dirty = !listEquals(_slots, _savedSlots);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onDirty?.call(dirty);
+    });
+  }
+
   /// module → (label, [(tab, label)]), only what this role can reach.
   Map<String, (String, List<(String, String)>)> _modules = const {};
   bool _loaded = false;
   bool _open = false;
   bool _busy = false;
   String? _error;
+  String? _loadError;
 
   Future<void> _load() async {
     final r = await widget.api.get(
@@ -59,11 +81,13 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
     if (!mounted) return;
     final data = r.data is Map ? (r.data as Map)['modules'] : null;
     setState(() {
-      _loaded = true;
+      // Loaded only on success, so a failure can be retried.
       if (!r.ok || data is! List) {
-        _error = r.reason;
+        _loadError = r.reason;
         return;
       }
+      _loaded = true;
+      _loadError = null;
       _modules = {
         for (final m in data)
           if (m is Map && m['module'] is String)
@@ -128,6 +152,7 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
       _busy = false;
       if (!r.ok) _error = r.reason;
       if (r.ok && slots == null) _slots = [];
+      if (r.ok) _savedSlots = List.of(_slots);
     });
     if (r.ok) widget.onSaved();
   }
@@ -223,14 +248,27 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
           Wrap(
             spacing: 8,
             children: [
+              if (widget.blockedReason != null)
+                Padding(
+                  key: const ValueKey('role-mobile-bar-blocked'),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    widget.blockedReason!,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
               OutlinedButton(
                 key: const ValueKey('role-mobile-bar-reset'),
-                onPressed: _busy ? null : () => _save(null),
+                onPressed: _busy || widget.blockedReason != null
+                    ? null
+                    : () => _save(null),
                 child: const Text('Reset to default'),
               ),
               FilledButton(
                 key: const ValueKey('role-mobile-bar-save'),
-                onPressed: _busy ? null : () => _save(List.of(_slots)),
+                onPressed: _busy || widget.blockedReason != null
+                    ? null
+                    : () => _save(List.of(_slots)),
                 child: Text(_busy ? 'Saving…' : 'Save bar'),
               ),
             ],
@@ -278,6 +316,24 @@ class _RoleMobileBarState extends State<RoleMobileBar> {
             ),
             if (!_open)
               const SizedBox.shrink()
+            else if (!_loaded && _loadError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    Expanded(child: ErrorNote(_loadError!)),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      key: const ValueKey('role-mobile-bar-retry'),
+                      onPressed: () {
+                        setState(() => _loadError = null);
+                        _load();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              )
             else if (!_loaded)
               const Padding(
                 padding: EdgeInsets.only(top: 12),

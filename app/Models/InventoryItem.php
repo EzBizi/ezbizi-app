@@ -87,6 +87,7 @@ class InventoryItem extends Model implements StatesRetention
             && ! $this->purchaseOrderLines()->exists()
             && ! $this->issueLines()->exists()
             && ! $this->transferLines()->exists()
+            && ! $this->saleLines()->exists()
             && ! $this->adjustments()->exists();
     }
 
@@ -118,6 +119,12 @@ class InventoryItem extends Model implements StatesRetention
     public function transferLines(): HasMany
     {
         return $this->hasMany(InventoryTransferLine::class, 'item_id');
+    }
+
+    /** Sale lines restrict the item's delete at the database (audit 11-27). */
+    public function saleLines(): HasMany
+    {
+        return $this->hasMany(InventorySaleLine::class, 'item_id');
     }
 
     public function adjustments(): HasMany

@@ -680,9 +680,15 @@ class _QuestionEditorState extends State<QuestionEditor> {
             option['label'] = text;
             if (plain) {
               // Plain words are their own value, so the value follows the
-              // words, and so does every condition waiting for them.
+              // words, and so does every condition waiting for them — unless
+              // another answer still holds the old value: mid-typing "Ye" on
+              // the way to "Yes" moved the real "Yes"'s conditions (audit
+              // 11-27).
               option['value'] = text;
-              renameAnswer(widget.kit.definition, key, was, text);
+              final shared = options.any(
+                (o) => !identical(o, option) && '${o['value'] ?? ''}' == was,
+              );
+              if (!shared) renameAnswer(widget.kit.definition, key, was, text);
             }
             widget.kit.onChanged();
           },
@@ -705,6 +711,25 @@ class _QuestionEditorState extends State<QuestionEditor> {
             _changed();
           },
           onRemove: () {
+            final value = '${options[i]['value'] ?? ''}';
+            final shared = options.any(
+              (o) =>
+                  !identical(o, options[i]) && '${o['value'] ?? ''}' == value,
+            );
+            final waiting = shared
+                ? const <String>[]
+                : waitingForAnswer(widget.kit.definition, key, value);
+            if (waiting.isNotEmpty) {
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '${waiting.join(', ')} waits for this answer. '
+                    'Change that condition first.',
+                  ),
+                ),
+              );
+              return;
+            }
             (_field['options'] as List).removeAt(i);
             _openFollowUps.clear();
             _changed();

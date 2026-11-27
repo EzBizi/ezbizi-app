@@ -79,8 +79,8 @@ class _AddStockMovePaneState extends State<AddStockMovePane> {
   }
 
   Future<void> _load() async {
-    final locations = await widget.api.get('/inventory/locations');
-    final items = await widget.api.get('/inventory/items', {'per_page': '200'});
+    final locations = await inventoryAllPages(widget.api, '/inventory/locations');
+    final items = await inventoryAllPages(widget.api, '/inventory/items');
     if (!mounted) return;
 
     if (!locations.ok) {

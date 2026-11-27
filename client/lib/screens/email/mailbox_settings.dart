@@ -213,7 +213,11 @@ class MailboxConnection {
         lastReachedKnown: json.containsKey('last_reached_at'),
         sendCheckedAt: json['send_checked_at'] as String?,
         sendProblem: json['send_problem'] as String?,
-        mailServer: json['mail_server'] as Map<String, dynamic>? ?? const {},
+        // PHP sends an empty array as [] (audit 11-27: that crashed the tab).
+        mailServer: switch (json['mail_server']) {
+          final Map m => m.cast<String, dynamic>(),
+          _ => const <String, dynamic>{},
+        },
         mayManage: json['may_manage'] == true,
         markReadAtSource: json['mark_read_at_source'] == true,
         canMarkReadAtSource: json['can_mark_read_at_source'] == true,
