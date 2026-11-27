@@ -449,7 +449,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // `weekday` is 1..7 from Monday, which is the order `days` is written in,
     // so the -1 is an index rather than an assumption about locale.
-    final window = days[WorkScheduleCard.days[DateTime.now().weekday - 1]];
+    final window = days[weekdayKeys[DateTime.now().weekday - 1]];
     if (window is! Map) return UiStrings.t('time_clock.off_today');
 
     return UiStrings.t('time_clock.today_hours')

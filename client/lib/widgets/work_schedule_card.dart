@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../core/ui_strings.dart';
 
 /// The week at a glance: one row per day, green in and coral out, or
@@ -28,16 +29,6 @@ class WorkScheduleCard extends StatelessWidget {
   /// One line under the heading, e.g. that these are the business hours
   /// because the person has no schedule of their own.
   final String? caption;
-
-  static const days = [
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-    'sunday',
-  ];
 
   static String title(String day) => day[0].toUpperCase() + day.substring(1, 3);
 
@@ -99,7 +90,7 @@ class WorkScheduleCard extends StatelessWidget {
                   children: c.maxWidth < 600
                       ? _phone(context, theme, map)
                       : [
-                          for (final day in days)
+                          for (final day in weekdayKeys)
                             _row(context, theme, map, day),
                           const Divider(),
                           Row(
@@ -187,16 +178,16 @@ class WorkScheduleCard extends StatelessWidget {
 
   /// Today at the top, then the rest of the week small.
   ///
-  /// `DateTime.now().weekday` is 1..7 from Monday, which is the order [days]
+  /// `DateTime.now().weekday` is 1..7 from Monday, which is the order [weekdayKeys]
   /// is written in -- so the -1 is an index and not an assumption about
   /// locale. The week still shows in full underneath: the point is that today
   /// is found for you, not that the other six stop being reachable.
   List<Widget> _phone(BuildContext context, ThemeData theme, Map map) {
-    final today = days[DateTime.now().weekday - 1];
+    final today = weekdayKeys[DateTime.now().weekday - 1];
     return [
       _today(context, theme, map, today),
       const SizedBox(height: 4),
-      for (final day in days)
+      for (final day in weekdayKeys)
         if (day != today) _row(context, theme, map, day, wide: false),
     ];
   }
@@ -275,7 +266,7 @@ class WorkScheduleCard extends StatelessWidget {
     return end > start ? end - start : end + 1440 - start;
   }
 
-  static int _weekMinutes(Map map) => days
+  static int _weekMinutes(Map map) => weekdayKeys
       .where((d) => map[d] is Map)
       .fold(0, (sum, d) => sum + minutes(map[d] as Map));
 

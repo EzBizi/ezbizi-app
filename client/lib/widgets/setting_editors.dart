@@ -125,22 +125,13 @@ class HoursButton extends StatelessWidget {
 
   final ValueChanged<Map<String, dynamic>> onChanged;
 
-  static const List<String> weekdays = [
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-    'sunday',
-  ];
 
   static String title(String day) => day[0].toUpperCase() + day.substring(1, 3);
 
   Map<String, dynamic> get _week {
     final raw = value is Map ? Map<String, dynamic>.from(value as Map) : {};
 
-    return {for (final day in weekdays) day: raw[day]};
+    return {for (final day in weekdayKeys) day: raw[day]};
   }
 
   @override
@@ -196,7 +187,7 @@ class HoursButton extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final day in weekdays)
+              for (final day in weekdayKeys)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(

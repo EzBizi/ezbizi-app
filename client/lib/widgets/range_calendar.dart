@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/timestamps.dart';
+
 /// One month, two clicks: the first day picked starts the range, the second
 /// ends it (Jose, 2026-11-16: the timeline cell showed two half-width
 /// calendars with digits stacked). Days are yyyy-mm-dd strings, as stored.
@@ -22,8 +24,6 @@ class RangeCalendar extends StatefulWidget {
 }
 
 DateTime? _day(String? s) => s == null ? null : DateTime.tryParse(s);
-String _iso(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class _RangeCalendarState extends State<RangeCalendar> {
   late DateTime? _from = _day(widget.from);
@@ -49,27 +49,13 @@ class _RangeCalendarState extends State<RangeCalendar> {
         _picking = false;
       });
     }
-    widget.onChanged?.call(_iso(_from!), _iso(_to!));
+    widget.onChanged?.call(formatCalendarDay(_from!), formatCalendarDay(_to!));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    const names = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
     final first = DateTime(_month.year, _month.month);
     final lead = first.weekday % 7; // Sunday first.
     final days = DateTime(_month.year, _month.month + 1, 0).day;
@@ -86,7 +72,7 @@ class _RangeCalendarState extends State<RangeCalendar> {
           !d.isBefore(_from!) &&
           !d.isAfter(_to!);
       return InkWell(
-        key: ValueKey('range-day-${_iso(d)}'),
+        key: ValueKey('range-day-${formatCalendarDay(d)}'),
         onTap: widget.onChanged == null ? null : () => _tap(d),
         borderRadius: BorderRadius.circular(6),
         child: Container(
@@ -127,7 +113,7 @@ class _RangeCalendarState extends State<RangeCalendar> {
             children: [
               Expanded(
                 child: Text(
-                  '${names[_month.month - 1]} ${_month.year}',
+                  '${longMonths[_month.month - 1]} ${_month.year}',
                   style: theme.textTheme.titleSmall,
                 ),
               ),

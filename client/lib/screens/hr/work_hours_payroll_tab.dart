@@ -546,11 +546,7 @@ String _money(Object? dollars) =>
 String? _paidOn(Object? at) {
   final d = DateTime.tryParse('${at ?? ''}')?.toLocal();
   if (d == null) return null;
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  return 'paid ${months[d.month - 1]} ${d.day}';
+  return 'paid ${shortMonths[d.month - 1]} ${d.day}';
 }
 
 String _hours(Object? hours) {

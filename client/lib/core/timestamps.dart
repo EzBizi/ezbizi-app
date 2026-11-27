@@ -192,6 +192,13 @@ const longWeekdays = [
   'Sunday',
 ];
 
+/// The server's weekday keys (schedules, hours), Monday first like
+/// [DateTime.weekday]: `weekdayKeys[d.weekday - 1]`.
+const weekdayKeys = [
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', //
+  'sunday',
+];
+
 /// A calendar day as `YYYY-MM-DD`. Null when the string is empty or not a day.
 ///
 /// Rejects overflow (`2026-02-31`) rather than letting [DateTime] roll it into
