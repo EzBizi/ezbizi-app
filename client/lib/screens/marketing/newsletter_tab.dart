@@ -472,6 +472,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       newsletterId: id,
       localBlocks: _blocks,
       localHtml: _htmlOverride,
+      localActiveDesign: _activeDesign,
       company: widget.session.me?.organization.name ?? 'EzBizi',
     );
   }
@@ -623,6 +624,15 @@ class _NewsletterTabState extends State<NewsletterTab> {
     final id = _selectedId;
     await _reloadList();
     if (!mounted) return;
+    // The open row by id: the list holds only the newest fifty, and an older
+    // one kept there is the stale copy that was refused.
+    final one = id == null ? null : await widget.api.get('/newsletters/$id');
+    if (!mounted) return;
+    final data = one != null && one.ok ? one.body['data'] : null;
+    if (data is Map<String, dynamic>) {
+      final row = _Newsletter.fromJson(data);
+      _all = [for (final n in _all) n.id == row.id ? row : n];
+    }
     final fresh = _all.where((n) => n.id == id).toList();
     if (id != null) NewsletterLocalCopy.clear(id);
     setState(() {
