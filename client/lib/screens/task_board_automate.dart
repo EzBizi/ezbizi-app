@@ -355,19 +355,20 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
     });
     final id = (created.body['data'] as Map?)?['id'];
     // Saved off, as every rule is; a recipe here is meant on.
-    final on = created.ok
+    final on = created.ok && id != null
         ? await widget.api.patch('/automations/$id', {'is_active': true})
         : created;
     if (!mounted) return;
+    // Audit 11-27: once it is made the composer closes and the list reloads,
+    // even if switching it on failed, so a retry never makes it twice.
     setState(() {
       _saving = false;
+      if (created.ok) _adding = false;
       if (!on.ok) {
-        _error = on.message;
-      } else {
-        _adding = false;
+        _error = created.ok ? 'Saved, but not switched on: ${on.message}' : on.message;
       }
     });
-    if (on.ok) await _load();
+    if (created.ok) await _load();
   }
 
   Future<void> _write(Future<ApiResponse> call) async {
@@ -447,7 +448,11 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   key: const Key('board-rule-add'),
-                  onPressed: () => setState(() => _adding = true),
+                  onPressed: () => setState(() {
+                    _adding = true;
+                    _statusId = _groupId = _toStatus = _columnId = _actionColumn = null;
+                    _value = _value2 = '';
+                  }),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add an automation'),
                 ),
@@ -522,7 +527,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 (v) => _columnId = v,
               ),
             if (_trigger == 'task.column_changed')
-              text('board-rule-value', 'Changes to', (v) => _value = v),
+              text('board-rule-value', 'Changes to', (v) => _value = v, _value),
             if (_trigger == 'task.date_arrived')
               pick<int>('board-rule-days', 'When', _daysUntil, const [
                 SearchOption(value: 0, label: 'on the day'),
@@ -588,6 +593,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 'board-rule-set-value',
                 'To (a label, or today)',
                 (v) => _value2 = v,
+                _value2,
               ),
             ] else
               pick<String>('board-rule-person', 'Who', _person, [

@@ -42,7 +42,11 @@ class _BoardActivityPanelState extends State<BoardActivityPanel> {
     _load();
   }
 
+  /// Only the newest request's answer shows (audit 11-27: a slow older filter overwrote a newer one).
+  int _request = 0;
+
   Future<void> _load() async {
+    final mine = ++_request;
     setState(() => _rows = null);
     final res = await widget.api
         .get('/task-boards/${widget.board['id']}/activity', {
@@ -51,7 +55,7 @@ class _BoardActivityPanelState extends State<BoardActivityPanel> {
           'label': ?_label,
           'user_id': ?_person,
         });
-    if (!mounted) return;
+    if (!mounted || mine != _request) return;
     setState(() {
       _error = res.ok ? null : res.reason;
       _rows = res.ok
