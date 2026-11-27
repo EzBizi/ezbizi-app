@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', items: [
+      'Task Board on phones: a one-line header and a floating bar for search, filter, sort, hide and quick filters, like Monday',
+      'Task Board: tasks on deleted boards stop sending reminders, and only an update author or an Administrator can change its files',
+    ]),
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
       'Phone: a line can turn recording off even when its company records, the company after-hours forward applies to lines, the Everyone ring group rings only that company staff, and removing a menu, hours or mailbox asks first',
