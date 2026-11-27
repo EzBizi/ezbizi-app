@@ -833,6 +833,15 @@ class NotificationDispatcher
 
         $franchiseId = $this->franchiseIdFor($subject);
 
+        // A company-level record (no branch) reaches only who can see that
+        // company — it reached the whole organization (audit 2026-11-27).
+        $companyId = $franchiseId === null ? $subject?->getAttribute('company_id') : null;
+        if (is_string($companyId) && $companyId !== '') {
+            return $users
+                ->filter(fn (User $user) => $this->reach->covers($user, Assignment::SCOPE_COMPANY, $companyId))
+                ->values();
+        }
+
         if ($franchiseId === null) {
             // Nothing to scope by — an organization-level event. Everyone active
             // hears about it, which is right for "your trial ends tomorrow" and
