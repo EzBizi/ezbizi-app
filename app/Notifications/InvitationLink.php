@@ -84,7 +84,7 @@ class InvitationLink extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $organization = $this->invitation->organization->name;
-        $inviter      = $this->invitation->invitedBy?->name;
+        $inviter = $this->invitation->invitedBy?->name;
 
         $greeting = $this->invitation->first_name !== null
             ? "Hello {$this->invitation->first_name},"
@@ -98,8 +98,8 @@ class InvitationLink extends Notification
                 : "{$inviter} has invited you to join {$organization} on EzBizi.")
             ->action('Set up your account', $this->acceptUrl)
             ->line(sprintf(
-                'The link works once, and stops working on %s.',
-                $this->invitation->expires_at->toDayDateTimeString(),
+                'The link works once, and stops working on %s UTC.',
+                $this->invitation->expires_at->copy()->utc()->toDayDateTimeString(),
             ))
             // Jose, 2026-10-08: the invitation also points at the apps.
             ->line('EzBizi works in your browser, and there are apps for your phone and computer: '
