@@ -35,7 +35,7 @@ final class ReviewLinkMatcher
         $franchiseOf = fn (Review $r) => $listings->first(fn ($l) => str_ends_with((string) $r->location_name, $l['tail']))['franchise_id'] ?? null;
 
         $sends = $this->sends($since->copy()->subDays(self::WINDOW_DAYS));
-        $clicked = DB::table('review_link_events')->where('kind', 'google')->pluck('job_id')->flip();
+        $clicked = DB::table('review_link_events')->where('kind', 'google')->whereIn('job_id', $sends->pluck('job_id')->unique()->all())->pluck('job_id')->flip();
         $made = 0;
 
         Review::query()->where('source', Review::SOURCE_GOOGLE)->where('reviewed_at', '>=', $since)
@@ -78,6 +78,8 @@ final class ReviewLinkMatcher
             ->join('automation_events as e', 'e.id', '=', 'r.event_id')
             ->join('jobs as j', 'j.id', '=', 'e.subject_id')
             ->join('customers as c', 'c.id', '=', 'j.customer_id')
+            // This tenant's sends only: a raw query has no tenant scope (audit 2026-11-27).
+            ->where('e.organization_id', app(\App\Support\Tenancy\TenantContext::class)->idOrFail())
             ->where('e.subject_type', \App\Models\Job::class)
             ->where('r.status', 'succeeded')->where('r.is_test', false)
             ->where('r.actions_snapshot', 'like', '%review_link%')

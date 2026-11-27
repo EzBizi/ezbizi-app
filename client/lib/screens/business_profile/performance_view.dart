@@ -508,14 +508,36 @@ class _BusinessProfilePerformanceState
     );
   }
 
+  /// The period before, over as many days as Google has filled in now: a
+  /// partly filled period against a full one reads as a drop on every tile
+  /// (audit 2026-11-27). Null when nothing is filled in yet.
+  int? _beforeValue(String key) {
+    final last = DateTime.tryParse('${_data?['last_date'] ?? ''}');
+    if (last == null) return null;
+    if (!last.isBefore(_span.to)) {
+      return _tileValue(_previous!['totals'] as Map?, key);
+    }
+    final filled = last.difference(_span.from).inDays;
+    if (filled < 0) return null;
+    final start = DateTime.parse('${_previous!['from']}');
+    final cutoff = formatCalendarDay(
+      DateTime(start.year, start.month, start.day + filled),
+    );
+    var total = 0;
+    for (final d in (_previous!['daily'] as List? ?? const [])) {
+      if (d is Map && '${d['date']}'.compareTo(cutoff) <= 0) {
+        total += _tileValue(d, key);
+      }
+    }
+    return total;
+  }
+
   Widget _tile(BuildContext context, String key, String label) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final totals = _data?['totals'] as Map?;
     final value = _tileValue(totals, key);
-    final before = _previous == null
-        ? null
-        : _tileValue(_previous!['totals'] as Map?, key);
+    final before = _previous == null ? null : _beforeValue(key);
     final selected = _metric == key;
     final maps = _sum(totals, _mapsViews);
 
