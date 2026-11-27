@@ -7,7 +7,7 @@ namespace App\Support\Dashboard\Widgets;
  *
  * ── Why this is its own trait ────────────────────────────────────
  *
- * It began inside ScopesToReach, next to the franchise filter, because at the
+ * It began inside the old ScopesToReach, next to the franchise filter, because at the
  * time every widget wanted both. The HR widgets want the period and must NOT
  * have the franchise filter: people are assigned at organization, company or
  * franchise level (§4), so a `where franchise_id in (…)` would silently drop

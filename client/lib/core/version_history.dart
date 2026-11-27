@@ -15,11 +15,16 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
+      'Email: incoming mail can no longer break out of its styles, Outlook mailboxes no longer re-announce old mail when it is read or moved, and the search box only searches',
+      'Website chat: a visitor only ever sees their own chat, never an earlier visitor with the same phone or email',
+      'Reports: a WhatsApp report request no longer leaves the asker signed in on the queue worker for later jobs',
+      'Leads: approving or booking a request twice no longer books two jobs or sends two texts',
+      'Phone: the Windows softphone keeps ringing after its hourly token renewal, and people are no longer left stuck as on a call',
       'Automations: Test and Run now only use events the rule and the person can see, and rule templates never read secret fields',
       'Security: resetting someone else 2FA or password now requires being allowed to assign their role',
       'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
     ]),
-    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', deployed: '2026-11-27 15:34', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
       'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',
     ]),

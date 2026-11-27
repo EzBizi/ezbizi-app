@@ -359,12 +359,6 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
         ]);
     }
 
-    /** Has EzBizi ever actually opened this mailbox? */
-    public function hasEverBeenReached(): bool
-    {
-        return $this->last_reached_at !== null;
-    }
-
     // ── the watcher's position (see the 2026-08-13 migration) ────
 
     /**

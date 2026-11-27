@@ -7,8 +7,8 @@ use RuntimeException;
 /**
  * An AI that answers a question as JSON matching a schema. GrokCli picks one
  * (GrokCli::provider) and every caller goes through GrokCli, so the AI is a
- * removable add-on: swap it, or run with none (Jose, 2026-10-27). The same
- * pattern as Reports' CallTagger, generalised.
+ * removable add-on: swap it, or run with none (Jose, 2026-10-27). Reports'
+ * call labels ask each one that is set up (LabelReportCalls).
  */
 interface AiProvider
 {

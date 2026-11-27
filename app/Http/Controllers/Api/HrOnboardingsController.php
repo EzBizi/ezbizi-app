@@ -1699,36 +1699,6 @@ class HrOnboardingsController extends Controller
         }
     }
 
-    private function assertInvitationCanCarryAnOnboarding(Invitation $invitation): void
-    {
-        if ($invitation->onboarding !== null) {
-            $live = $invitation->onboarding;
-
-            throw ValidationException::withMessages(['invitation_id' => $live->status === Onboarding::COMPLETED
-                    ? 'That invitation already produced a signed agreement. A second '
-                        .'onboarding against it would be two contracts for one arrival, with '
-                        .'nothing saying which is real.'
-                    : 'That invitation already has an onboarding in flight. Cancel it first '
-                        .'if you meant a different contract.',
-            ]);
-        }
-
-        if ($invitation->revoked_at !== null) {
-            throw ValidationException::withMessages(['invitation_id' => 'That invitation was withdrawn, so nobody is coming. Send a new one if that '
-                .'has changed.',
-            ]);
-        }
-
-        // An expired link is one nobody can accept, so the form would have no
-        // second side. Resending restarts the week, which is what that button is
-        // for and is a smaller act than starting paperwork.
-        if ($invitation->accepted_at === null && $invitation->hasExpired()) {
-            throw ValidationException::withMessages(['invitation_id' => 'That invitation has lapsed and its link no longer works, so the person could '
-                .'never fill in their half. Resend it first.',
-            ]);
-        }
-    }
-
     /** @return string[] */
     private function partiesFor(User $actor, Onboarding $onboarding): array
     {

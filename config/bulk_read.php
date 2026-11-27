@@ -36,7 +36,7 @@
  * above the ordinary traffic, not above it. Distinct list URLs max 9.
  */
 return [
-    'window_minutes' => (int) env('BULK_READ_WINDOW_MINUTES', 10),
+    'window_minutes' => 10,
 
     'thresholds' => [
         'default' => ['records' => 150, 'pages' => 200],

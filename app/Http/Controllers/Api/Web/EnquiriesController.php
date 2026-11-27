@@ -805,6 +805,16 @@ class EnquiriesController extends Controller
 
         return LeadConversation::query()
             ->where('lead_id', $chat->lead_id)
+            /*
+             * Only this chat's share of the lead (audit 2026-11-27, HIGH):
+             * startChat joins any recent chat lead with the same phone or
+             * email, so the lead's whole thread would go to whoever typed
+             * that phone. A token reads its own messages (remote_id is
+             * "{chat}:...") and replies made after it was minted.
+             */
+            ->where(fn ($q) => $q->where('remote_id', 'like', $chat->getKey().':%')
+                ->orWhere(fn ($q) => $q->where('participant', '!=', LeadConversation::FROM_CONSUMER)
+                    ->where('occurred_at', '>=', $chat->created_at)))
             ->orderBy('occurred_at')
             ->orderBy('id')
             ->get(['id', 'participant', 'text', 'occurred_at', 'attachments', 'is_automatic'])

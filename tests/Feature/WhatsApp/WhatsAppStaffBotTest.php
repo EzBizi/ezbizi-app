@@ -1001,6 +1001,7 @@ class WhatsAppStaffBotTest extends TestCase
         $run = fn ($user) => app()->call([new SendRequestedReport($numberId, '17865550102', (string) $user->id, 'send me the company report for last month'), 'handle']);
 
         $run($t['admin']);
+        $this->assertFalse(auth()->hasUser(), 'the worker\'s next job is nobody\'s, not the asker\'s');
         $this->assertCount(1, $uploads);
         $this->assertSame('document', end($sent)['type']);
         $this->assertSame('Company 2026-09-01 to 2026-09-30.pdf', end($sent)['document']['filename']);

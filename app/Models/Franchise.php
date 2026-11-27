@@ -60,31 +60,4 @@ class Franchise extends Model
     {
         return $this->belongsTo(Company::class);
     }
-
-    /**
-     * The company this franchise reports up through, and that company's parent
-     * if it is a Sub Company. This is the settings-resolution chain (§6):
-     *
-     *   Franchise → owning Company/Sub Company → parent Company → Organization
-     *
-     * The parent step is the one my first draft of the plan omitted, which would
-     * have made a franchise under a Sub Company inherit from the grandparent and
-     * silently ignore every setting the Sub Company defined.
-     */
-    public function settingsChain(): array
-    {
-        $chain = [$this];
-
-        if ($company = $this->company) {
-            $chain[] = $company;
-
-            if ($parent = $company->parent) {
-                $chain[] = $parent;
-            }
-        }
-
-        $chain[] = $this->organization;
-
-        return array_filter($chain);
-    }
 }
