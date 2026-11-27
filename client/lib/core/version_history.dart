@@ -15,6 +15,10 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Customers: a failed load offers Retry, delete needs two presses, and edits only send what changed',
+      'Sign-in emails show link expiry times in UTC, and reset and verification links are encrypted while queued',
+      'Email: changing a mail server forgets the old password, and Outlook catch-up follows every page',
+      'Settings: new list rows save with an Add button, a refused save keeps the form open with the reason, and record numbers use the business local year',
     ]),
     VersionRelease(version: '0.0.0659', date: '27 Nov 2026', items: [
       'Estimates: editing the title or note of an imported estimate never wipes its lines or total',
