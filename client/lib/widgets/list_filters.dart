@@ -224,6 +224,12 @@ class FilterPanel extends StatefulWidget {
 class _FilterPanelState extends State<FilterPanel> {
   late bool _any = widget.view.any;
   late final List<FilterRule> _rules = [...widget.view.filters];
+
+  /// Each rule's own id, beside it in [_rules]: its row is keyed by it, so
+  /// removing a rule, or changing its column, never hands another rule's
+  /// typed value box to it (audit 2026-11-27: a stale box matched all).
+  int _nextId = 0;
+  late final List<int> _ids = [for (final _ in _rules) _nextId++];
   late final List<SortRule> _sort = [...widget.view.sort];
 
   FilterField? _field(String key) =>
@@ -353,6 +359,7 @@ class _FilterPanelState extends State<FilterPanel> {
           const SizedBox(height: 12),
           for (final (i, r) in _rules.indexed)
             Padding(
+              key: ValueKey('filter-rule-${_ids[i]}'),
               padding: const EdgeInsets.only(bottom: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,13 +373,15 @@ class _FilterPanelState extends State<FilterPanel> {
                       fieldMenu(
                         ValueKey('filter-field-$i'),
                         r.field.isEmpty ? null : r.field,
-                        (v) => setState(
-                          () => _rules[i] = (
+                        (v) => setState(() {
+                          _rules[i] = (
                             field: v,
                             op: filterOps(_field(v)!.kind).first.$1,
                             value: null,
-                          ),
-                        ),
+                          );
+                          // A new column is a new rule: fresh value box.
+                          _ids[i] = _nextId++;
+                        }),
                       ),
                       const SizedBox(width: 8),
                       if (_field(r.field) case final f?)
@@ -397,7 +406,10 @@ class _FilterPanelState extends State<FilterPanel> {
                       IconButton(
                         tooltip: 'Remove',
                         icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => setState(() => _rules.removeAt(i)),
+                        onPressed: () => setState(() {
+                          _rules.removeAt(i);
+                          _ids.removeAt(i);
+                        }),
                       ),
                     ],
                   ),
@@ -410,9 +422,10 @@ class _FilterPanelState extends State<FilterPanel> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               key: const Key('filter-add'),
-              onPressed: () => setState(
-                () => _rules.add((field: '', op: 'is', value: null)),
-              ),
+              onPressed: () => setState(() {
+                _rules.add((field: '', op: 'is', value: null));
+                _ids.add(_nextId++);
+              }),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a filter'),
             ),
