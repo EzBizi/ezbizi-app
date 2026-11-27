@@ -249,6 +249,12 @@ class PhoneCallService extends ChangeNotifier {
   /// The line calls go out on, for a screen that wants to name it.
   String? get callerId => _callerId;
 
+  /// The line the call in progress is on: an extra line's device for a call
+  /// that rang there, otherwise the primary. `on_call` is written and released
+  /// on THIS id (audit 11-27: the tab wrote the selected line, the service
+  /// released another, and people stayed on_call).
+  String? get callConnectionId => _activeConnection ?? _connectionId;
+
   /// Mounted by the shell. Null on every platform but Windows.
   Object? get platformView => _device?.platformView;
 

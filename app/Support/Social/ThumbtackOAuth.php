@@ -2,7 +2,6 @@
 
 namespace App\Support\Social;
 
-use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -82,9 +81,10 @@ final class ThumbtackOAuth implements SocialOAuth
         )));
     }
 
+    /** ORY Hydra supports PKCE but their spec does not require it, and no live call has asked for it. */
     public function usesPkce(): bool
     {
-        return (bool) config('services.thumbtack.pkce', false);
+        return false;
     }
 
     public function requiresRefreshToken(): bool
@@ -150,11 +150,6 @@ final class ThumbtackOAuth implements SocialOAuth
 
         if ($this->scopes() !== []) {
             $query['scope'] = implode(' ', $this->scopes());
-        }
-
-        if ($verifier !== null && $this->usesPkce()) {
-            $query['code_challenge']        = Pkce::challenge($verifier);
-            $query['code_challenge_method'] = 'S256';
         }
 
         return rtrim((string) config('services.thumbtack.authorize_url'), '?')
@@ -229,10 +224,6 @@ final class ThumbtackOAuth implements SocialOAuth
             'code'         => $code,
             'redirect_uri' => $this->redirectUri(),
         ];
-
-        if ($verifier !== null && $this->usesPkce()) {
-            $form['code_verifier'] = $verifier;
-        }
 
         try {
             $response = $this->token()->post((string) config('services.thumbtack.token_url'), $form);

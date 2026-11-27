@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
+      'Training: tests can now be published from their editor, so learners can take them',
+      'Phone: the Windows softphone keeps ringing after its hourly token renewal, and people are no longer left stuck as on a call',
+      'Automations: Test and Run now only use events the rule and the person can see, and rule templates never read secret fields',
+      'Security: resetting someone else 2FA or password now requires being allowed to assign their role',
+      'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
+    ]),
     VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
       'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',

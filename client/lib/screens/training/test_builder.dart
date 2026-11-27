@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/tag.dart';
 
 /// The test builder — the right half of layout 8's storyboard
 /// (`docs/previews/training-layouts.html`, task-15 brief), and also its own
@@ -373,6 +374,20 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
 
   int? _parseInt(String text) => text.trim().isEmpty ? null : int.tryParse(text.trim());
 
+  // Tests are created as drafts; without this nobody could ever take one.
+  late String _status = widget.test['status'] as String? ?? 'draft';
+
+  Future<void> _togglePublish() async {
+    final next = _status == 'published' ? 'draft' : 'published';
+    final response = await widget.api.patch('/training/tests/${widget.testId}', {'status': next});
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _saveError = response.reason);
+      return;
+    }
+    setState(() => _status = next);
+  }
+
   Future<void> _save() async {
     setState(() {
       _saving = true;
@@ -533,13 +548,23 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         _lockoutWarning(),
         const SizedBox(height: 14),
         if (_saveError != null) ...[ErrorNote(_saveError!), const SizedBox(height: 12)],
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ElevatedButton(
-            key: const Key('training.save-test'),
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ElevatedButton(
+              key: const Key('training.save-test'),
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
+            Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
+            OutlinedButton(
+              key: const Key('training.publish-test'),
+              onPressed: _togglePublish,
+              child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
+            ),
+          ],
         ),
       ],
     );

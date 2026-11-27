@@ -6,7 +6,7 @@
  */
 return [
     // How long GET monitoring/bridge/work holds before answering unchanged.
-    'long_poll_seconds' => (int) env('CAMERA_BRIDGE_LONG_POLL', 25),
+    'long_poll_seconds' => 25,
 
     // Where a bridge publishes (RTMPS) and how long its token lives.
     'publish_url' => env('CAMERA_RELAY_PUBLISH_URL', 'rtmps://cams.ezbizi.com:1936'),
