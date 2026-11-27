@@ -1062,9 +1062,15 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
           in ((response.body['meta'] as Map?)?['notes'] as List?) ?? const []) {
         if (n is! Map) continue;
         final id = '${n['company_id']}';
+        // Audit 11-27: a box with an unsaved draft keeps it.
+        final draft = _boxes[id];
+        final edited =
+            draft != null && draft.markup.trim() != (_saved[id] ?? '').trim();
         _saved[id] = '${n['text'] ?? ''}';
-        _boxes.remove(id)?.dispose();
-        _box(id, _saved[id]);
+        if (!edited) {
+          _boxes.remove(id)?.dispose();
+          _box(id, _saved[id]);
+        }
       }
     });
   }

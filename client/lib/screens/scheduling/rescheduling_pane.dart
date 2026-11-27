@@ -59,7 +59,10 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
 
   /// The open row, by its job; on a phone the list gives way to it.
   String? _open;
-  bool _confirming = false;
+
+  /// The job whose Move is armed (audit 11-27: keyed by job, so a search or
+  /// area change cannot carry it to another one).
+  String? _confirming;
   bool _moving = false;
   String? _moveError;
   String? _moved;
@@ -71,7 +74,9 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     // A job booked, moved or cancelled elsewhere changes who needs moving:
     // the list re-reads quietly; the open row and the search stay.
     _live = LiveChanges.of(widget.api).subscribe({'jobs'}, (_) {
-      if (!_loading && !_moving && !_confirming) return _load(quiet: true);
+      if (!_loading && !_moving && _confirming == null) {
+        return _load(quiet: true);
+      }
     }, active: () => widget.visible && LiveChanges.visible(this)());
   }
 
@@ -222,7 +227,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
         return;
       }
       _moved = '#${job['number'] ?? ''} moved to ${_then(row)}.';
-      _confirming = false;
+      _confirming = null;
       _open = null;
     });
     if (response.ok) await _load();
@@ -247,7 +252,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
 
   void _select(Map<String, dynamic> row) => setState(() {
     _open = _id(row);
-    _confirming = false;
+    _confirming = null;
     _moveError = null;
   });
 
@@ -1123,7 +1128,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if (_confirming)
+                  if (_confirming == _id(row))
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -1138,7 +1143,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                         TextButton(
                           onPressed: _moving
                               ? null
-                              : () => setState(() => _confirming = false),
+                              : () => setState(() => _confirming = null),
                           child: const Text('Cancel'),
                         ),
                         FilledButton(
@@ -1159,7 +1164,8 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                         ),
                         FilledButton(
                           key: const Key('rescheduling-move'),
-                          onPressed: () => setState(() => _confirming = true),
+                          onPressed: () =>
+                              setState(() => _confirming = _id(row)),
                           child: const Text('Move…'),
                         ),
                       ],

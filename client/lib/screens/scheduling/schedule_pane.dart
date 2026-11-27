@@ -42,7 +42,6 @@ class SchedulePane extends StatefulWidget {
 }
 
 class _SchedulePaneState extends State<SchedulePane> {
-
   static const double _techColumn = 190;
   static const double _windowColumn = 250;
 
@@ -70,13 +69,9 @@ class _SchedulePaneState extends State<SchedulePane> {
     super.initState();
     _load();
     // A job booked, moved or assigned anywhere shows on the open day.
-    _live = LiveChanges.of(widget.api).subscribe(
-      {'jobs'},
-      (_) {
-        if (!_busy && _board != null) return _load();
-      },
-      active: () => widget.visible && LiveChanges.visible(this)(),
-    );
+    _live = LiveChanges.of(widget.api).subscribe({'jobs'}, (_) {
+      if (!_busy && _board != null) return _load();
+    }, active: () => widget.visible && LiveChanges.visible(this)());
   }
 
   LiveSubscription? _live;
@@ -209,7 +204,7 @@ class _SchedulePaneState extends State<SchedulePane> {
           IconButton(
             tooltip: 'Previous day',
             icon: const Icon(Icons.chevron_left),
-            onPressed: () => _go(_day.subtract(const Duration(days: 1))),
+            onPressed: () => _go(DateUtils.addDaysToDate(_day, -1)),
           ),
           TextButton(
             key: const Key('schedule-day'),
@@ -219,7 +214,7 @@ class _SchedulePaneState extends State<SchedulePane> {
           IconButton(
             tooltip: 'Next day',
             icon: const Icon(Icons.chevron_right),
-            onPressed: () => _go(_day.add(const Duration(days: 1))),
+            onPressed: () => _go(DateUtils.addDaysToDate(_day, 1)),
           ),
           OutlinedButton(
             onPressed: () => _go(DateTime.now()),
@@ -445,7 +440,10 @@ class _SchedulePaneState extends State<SchedulePane> {
     final muted = theme.colorScheme.onSurfaceVariant;
     if (techs.isEmpty) {
       return [
-        SizedBox(height: 160, child: _empty(theme, 'No technicians in this view.')),
+        SizedBox(
+          height: 160,
+          child: _empty(theme, 'No technicians in this view.'),
+        ),
       ];
     }
     String windowLabel(Object? w) {
@@ -456,19 +454,21 @@ class _SchedulePaneState extends State<SchedulePane> {
 
     final index = {for (final (i, t) in techs.indexed) t['id']: i};
     final names = {for (final t in techs) t['id']: '${t['name'] ?? ''}'};
-    Color colourOf(Object? id) => EzBiziTheme
-        .avatarPalette[(index[id] ?? 0) % EzBiziTheme.avatarPalette.length];
-    final shown = [
-      for (final c in cards)
-        if (_phoneTech == null || c['technician_id'] == _phoneTech) c,
-    ]..sort((a, b) {
-        final w = ((a['window'] as int?) ?? 99).compareTo(
-          (b['window'] as int?) ?? 99,
-        );
-        return w != 0
-            ? w
-            : '${a['time'] ?? ''}'.compareTo('${b['time'] ?? ''}');
-      });
+    Color colourOf(Object? id) =>
+        EzBiziTheme.avatarPalette[(index[id] ?? 0) %
+            EzBiziTheme.avatarPalette.length];
+    final shown =
+        [
+          for (final c in cards)
+            if (_phoneTech == null || c['technician_id'] == _phoneTech) c,
+        ]..sort((a, b) {
+          final w = ((a['window'] as int?) ?? 99).compareTo(
+            (b['window'] as int?) ?? 99,
+          );
+          return w != 0
+              ? w
+              : '${a['time'] ?? ''}'.compareTo('${b['time'] ?? ''}');
+        });
     final monday = _day.subtract(Duration(days: _day.weekday - 1));
     final today = DateUtils.dateOnly(DateTime.now());
 
@@ -483,7 +483,7 @@ class _SchedulePaneState extends State<SchedulePane> {
               tooltip: 'Previous week',
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.chevron_left),
-              onPressed: () => _go(_day.subtract(const Duration(days: 7))),
+              onPressed: () => _go(DateUtils.addDaysToDate(_day, -7)),
             ),
             for (var i = 0; i < 7; i++)
               Expanded(
@@ -497,7 +497,7 @@ class _SchedulePaneState extends State<SchedulePane> {
               tooltip: 'Next week',
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.chevron_right),
-              onPressed: () => _go(_day.add(const Duration(days: 7))),
+              onPressed: () => _go(DateUtils.addDaysToDate(_day, 7)),
             ),
           ],
         ),

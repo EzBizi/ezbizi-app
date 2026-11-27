@@ -239,16 +239,17 @@ void main() {
 
       expect(saves, hasLength(1), reason: 'Adding one zip saves immediately.');
 
-      final zips = (saves.first['zips'] as List).cast<Map<String, dynamic>>();
+      // Audit 11-27: only the change travels, never the whole stale list.
+      final zips = (saves.first['add'] as List).cast<Map<String, dynamic>>();
 
-      expect(zips.map((z) => z['zip']), containsAll(['75201', '75202']));
-
-      final added = zips.firstWhere((z) => z['zip'] == '75202');
-      expect(added['city'], 'Plano');
+      expect(zips.map((z) => z['zip']), ['75202']);
+      expect(zips.single['city'], 'Plano');
+      expect(saves.first['remove'], isEmpty);
+      expect(saves.first.containsKey('zips'), isFalse);
     },
   );
 
-  testWidgets('removing a zip sends the set without it', (tester) async {
+  testWidgets('removing a zip sends only that zip to remove', (tester) async {
     final saves = <Map<String, dynamic>>[];
 
     await _pump(
@@ -274,7 +275,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saves, hasLength(1));
-    expect(saves.first['zips'] as List, isEmpty);
+    expect(saves.first['remove'], ['75201']);
+    expect(saves.first['add'], isEmpty);
   });
 
   /// Delete asks where the area's ZIPs go, in a side pane (UI queue 125), and

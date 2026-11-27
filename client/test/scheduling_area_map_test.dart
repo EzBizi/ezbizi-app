@@ -435,17 +435,23 @@ void main() {
     expect(find.byKey(const ValueKey('area-review')), findsOneWidget);
   });
 
-  testWidgets('Clear drawing sends no shapes', (tester) async {
+  testWidgets('Clear drawing only clears the editor; Save sends no shapes', (
+    tester,
+  ) async {
     await pump(tester);
     await draw(tester);
     await tester.tap(find.byKey(const ValueKey('area-map-clear')));
+    await tester.pumpAndSettle();
+    // Audit 11-27: nothing is written until Save.
+    expect(sent('PUT', '/polygons'), isEmpty);
+    await tester.tap(find.byKey(const ValueKey('area-map-save')));
     await tester.pumpAndSettle();
 
     final put =
         jsonDecode(sent('PUT', '/areas/a-down/polygons').single.body)
             as Map<String, dynamic>;
     expect(put['polygons'], isEmpty);
-    expect(put.containsKey('take'), isFalse);
+    expect(put['take'], isEmpty);
   });
 
   testWidgets('Cancel puts the saved drawing back and saves nothing', (
