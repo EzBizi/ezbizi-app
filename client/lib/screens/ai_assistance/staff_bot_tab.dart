@@ -48,6 +48,13 @@ class _StaffBotTabState extends State<StaffBotTab> {
 
   final _newMenu = TextEditingController();
 
+  /// A write in flight: role toggles and reorders build on the loaded menu,
+  /// so a second one before the reload would overwrite the first (audit 11-27).
+  bool _writing = false;
+
+  /// The menu whose delete was tapped once; the second tap deletes it.
+  String? _deleteArmed;
+
   @override
   void initState() {
     super.initState();
@@ -100,14 +107,19 @@ class _StaffBotTabState extends State<StaffBotTab> {
 
   /// One write, then the menus again: the server's word on what is stored.
   Future<bool> _write(Future<ApiResponse> call) async {
-    final response = await call;
-    if (!mounted) return false;
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return false;
+    setState(() => _writing = true);
+    try {
+      final response = await call;
+      if (!mounted) return false;
+      if (!response.ok) {
+        setState(() => _error = response.message);
+        return false;
+      }
+      await _load();
+      return true;
+    } finally {
+      if (mounted) setState(() => _writing = false);
     }
-    await _load();
-    return true;
   }
 
   Future<void> _addMenu() async {
@@ -127,10 +139,11 @@ class _StaffBotTabState extends State<StaffBotTab> {
     await _load();
   }
 
-  Future<void> _toggleRole(Map<String, dynamic> menu, String roleId) {
+  Future<void> _toggleRole(Map<String, dynamic> menu, String roleId) async {
+    if (_writing) return;
     final roles = [...((menu['role_ids'] as List?) ?? const []).cast<String>()];
     roles.contains(roleId) ? roles.remove(roleId) : roles.add(roleId);
-    return _write(
+    await _write(
       widget.api.put('$_path/menus/${menu['id']}', {'role_ids': roles}),
     );
   }
@@ -151,6 +164,7 @@ class _StaffBotTabState extends State<StaffBotTab> {
   }
 
   Future<void> _reorder(Map<String, dynamic> menu, int from, int to) async {
+    if (_writing) return;
     final ids = [for (final i in _items) i['id'] as String];
     final moved = ids.removeAt(from);
     ids.insert(to > from ? to - 1 : to, moved);
@@ -464,14 +478,28 @@ class _StaffBotTabState extends State<StaffBotTab> {
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
+                // One tap arms, the second deletes the menu and its topics.
+                if (_deleteArmed == menu['id'])
+                  Text(
+                    'Tap again to delete',
+                    style: theme.textTheme.labelMedium,
+                  ),
                 IconButton(
                   key: const Key('staff-bot-delete-menu'),
-                  tooltip: 'Delete this menu',
+                  tooltip: _deleteArmed == menu['id']
+                      ? 'Tap again to delete this menu and its topics'
+                      : 'Delete this menu',
                   onPressed: () async {
-                    await _write(
+                    if (_deleteArmed != menu['id']) {
+                      setState(() => _deleteArmed = menu['id'] as String?);
+                      return;
+                    }
+                    final ok = await _write(
                       widget.api.delete('$_path/menus/${menu['id']}'),
                     );
+                    if (!mounted || !ok) return;
                     setState(() {
+                      _deleteArmed = null;
                       _menuId = _menus.firstOrNull?['id'] as String?;
                       _itemId = null;
                       _phoneItems = false;

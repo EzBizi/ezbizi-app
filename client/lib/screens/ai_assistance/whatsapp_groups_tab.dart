@@ -143,20 +143,21 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
     });
   }
 
-  Future<void> _saveMembers(
+  Future<bool> _saveMembers(
     Map<String, dynamic> group,
     List<String> ids,
   ) async {
     final id = '${group['id']}';
     setState(() => _busy.add(id));
     final response = await widget.api.patch('$_path/$id', {'member_ids': ids});
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _busy.remove(id));
     if (!response.ok) {
       _say(response.reason);
-      return;
+      return false;
     }
     _replace(Map<String, dynamic>.from(response.data as Map));
+    return true;
   }
 
   /// The ✕ is small and a stray tap took somebody out with no way back
@@ -168,11 +169,12 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
     String name,
   ) async {
     final before = [for (final m in members) m.id];
-    await _saveMembers(group, [
+    final ok = await _saveMembers(group, [
       for (final other in before)
         if (other != id) other,
     ]);
-    if (!mounted) return;
+    // Only on success: a failed save already said why (audit 11-27).
+    if (!mounted || !ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$name taken out'),

@@ -1061,7 +1061,14 @@ class _EntryDialogState extends State<_EntryDialog> {
     });
   }
 
+  /// The first tap arms Delete; the second deletes (audit 11-27: one tap hard-deleted).
+  bool _deleteArmed = false;
+
   Future<void> _delete() async {
+    if (!_deleteArmed) {
+      setState(() => _deleteArmed = true);
+      return;
+    }
     setState(() => _busy = true);
     final response = await widget.api.delete(
       '/ai-assistance/entries/${widget.entry!['id']}',
@@ -1103,7 +1110,7 @@ class _EntryDialogState extends State<_EntryDialog> {
         if (widget.entry != null)
           TextButton(
             onPressed: _busy ? null : _delete,
-            child: const Text('Delete'),
+            child: Text(_deleteArmed ? 'Tap again to delete' : 'Delete'),
           ),
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),

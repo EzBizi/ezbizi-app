@@ -493,12 +493,21 @@ class _ManualsTabState extends State<ManualsTab> {
     if (saved == true) _load();
   }
 
+  /// The manual whose delete was tapped once; the second tap deletes the PDF and its pages.
+  String? _deleteArmed;
+
   Future<void> _delete(Map<String, dynamic> m) async {
+    if (_deleteArmed != m['id']) {
+      setState(() => _deleteArmed = m['id'] as String?);
+      return;
+    }
     final response = await widget.api.delete(
       '/ai-assistance/manuals/${m['id']}',
     );
     if (!mounted) return;
-    response.ok ? _load() : setState(() => _error = response.message);
+    _deleteArmed = null;
+    // A failed row action says so and keeps the list (audit 11-27: it blanked the tab).
+    response.ok ? _load() : _actionFailed(context, response.message);
   }
 
   @override
@@ -614,8 +623,14 @@ class _ManualsTabState extends State<ManualsTab> {
                   if (widget.canEdit)
                     IconButton(
                       key: ValueKey('ai-manual-delete-${m['id']}'),
-                      tooltip: 'Delete',
-                      icon: const Icon(Icons.delete_outline),
+                      tooltip: _deleteArmed == m['id']
+                          ? 'Tap again to delete the PDF and its pages'
+                          : 'Delete',
+                      icon: Icon(
+                        _deleteArmed == m['id']
+                            ? Icons.delete_forever
+                            : Icons.delete_outline,
+                      ),
                       onPressed: () => _delete(m),
                     ),
                 ],
@@ -757,7 +772,14 @@ class _AnswersTabState extends State<AnswersTab> {
   }
 
   Future<void> _load() async {
-    final response = await widget.api.get('/ai-assistance/answers');
+    // The tiles count everything, so the filter goes to the server; the search
+    // box still narrows the latest 200 here.
+    // ponytail: the endpoint has no search parameter; add one if 200 falls short.
+    final response = await widget.api.get(
+      _filter == null
+          ? '/ai-assistance/answers'
+          : '/ai-assistance/answers?review=$_filter',
+    );
     if (!mounted) return;
     setState(() {
       _error = response.ok ? null : response.message;
@@ -796,7 +818,7 @@ class _AnswersTabState extends State<AnswersTab> {
       {'review': review, 'correction': ?correction},
     );
     if (!mounted) return;
-    response.ok ? _load() : setState(() => _error = response.message);
+    response.ok ? _load() : _actionFailed(context, response.message);
   }
 
   Future<void> _open(Map<String, dynamic> a) async {
@@ -876,7 +898,10 @@ class _AnswersTabState extends State<AnswersTab> {
         FilterTiles(
           prefix: 'ai-answers',
           picked: _filter,
-          onPick: (k) => setState(() => _filter = k),
+          onPick: (k) {
+            setState(() => _filter = k);
+            _load();
+          },
           tiles: [
             FilterTile(
               key: null,
@@ -1040,4 +1065,11 @@ class _AnswerPanelState extends State<_AnswerPanel> {
       ),
     );
   }
+}
+
+/// A row action that failed: said in a SnackBar, the list stays.
+void _actionFailed(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+  );
 }
