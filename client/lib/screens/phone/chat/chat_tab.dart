@@ -69,6 +69,9 @@ class _ChatTabState extends State<ChatTab> {
   // New group: who, then what it is called.
   final Set<String> _picked = {};
   bool _creating = false;
+
+  bool get _showPreview =>
+      widget.session.me?.preferences['chat.show_preview'] != false;
   bool _naming = false;
   final _groupName = TextEditingController();
   String? _groupError;
@@ -448,9 +451,14 @@ class _ChatTabState extends State<ChatTab> {
                           setState(() => _side = _Side.archived);
                         } else if (v == 'read') {
                           unawaited(_store.readAll());
+                        } else if (v == 'preview') {
+                          widget.session.setPreference(
+                            'chat.show_preview',
+                            !_showPreview,
+                          );
                         }
                       },
-                      itemBuilder: (_) => const [
+                      itemBuilder: (_) => [
                         PopupMenuItem(value: 'group', child: Text('New group')),
                         PopupMenuItem(
                           value: 'starred',
@@ -463,6 +471,11 @@ class _ChatTabState extends State<ChatTab> {
                         PopupMenuItem(
                           value: 'read',
                           child: Text('Mark all read'),
+                        ),
+                        CheckedPopupMenuItem(
+                          value: 'preview',
+                          checked: _showPreview,
+                          child: const Text('Message text in notifications'),
                         ),
                       ],
                     ),

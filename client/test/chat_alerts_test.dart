@@ -4,6 +4,8 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/os_notifications.dart';
 import 'package:ezbizi_client/screens/phone/chat/chat_alerts.dart';
 import 'package:ezbizi_client/screens/phone/chat/chat_tab.dart';
+import 'package:ezbizi_client/screens/phone/chat/chat_thread.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -106,6 +108,28 @@ void main() {
       chat('g1', 'm9', type: 'group', name: 'Dispatch'),
     ]);
     expect(shown, ['Dispatch']);
+  });
+
+  test('an @mention is highlighted, the longest name first', () {
+    final theme = ThemeData();
+    final spans = richText(
+      'ask @Ana Maria and @Ana',
+      theme,
+      mentions: const ['Ana', 'Ana Maria'],
+    ).cast<TextSpan>();
+    final bold = [
+      for (final s in spans)
+        if (s.style?.fontWeight == FontWeight.w600) s.text,
+    ];
+    expect(bold, ['@Ana Maria', '@Ana']);
+    // Without mentions, an @ is plain text.
+    expect(
+      richText(
+        'ask @Ana',
+        theme,
+      ).cast<TextSpan>().every((s) => s.style == null),
+      isTrue,
+    );
   });
 
   test('a notification payload names its chat', () {

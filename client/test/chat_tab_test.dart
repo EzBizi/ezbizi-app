@@ -180,6 +180,45 @@ void main() {
     expect(fake.sent.single['reply_to_id'], 'm-1');
   });
 
+  // Desk 11-27: @mentions. Typing @ in a group lists its people; picking one
+  // writes the name and sends their id.
+  testWidgets('@ in a group picks a person and sends the mention', (
+    tester,
+  ) async {
+    final fake = _Fake()
+      ..members = [
+        {'id': 'u-1', 'name': 'Jose Silva'},
+        {'id': 'u-2', 'name': 'Ana Ruiz'},
+      ];
+    fake.chats.first['type'] = 'group';
+    fake.chats.first['name'] = 'Crew';
+    await _pump(tester, fake);
+    await tester.tap(find.byKey(const ValueKey('chat-row-c-1')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('chat-input')), 'ask @An');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('chat-mention-picker')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-mention-u-1')),
+      findsNothing,
+      reason: 'never myself',
+    );
+    await tester.tap(find.byKey(const ValueKey('chat-mention-u-2')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('chat-input')))
+          .controller!
+          .text,
+      'ask @Ana Ruiz ',
+    );
+    await tester.tap(find.byKey(const ValueKey('chat-send')));
+    await tester.pumpAndSettle();
+
+    expect(fake.sent.single['mentions'], ['u-2']);
+  });
+
   testWidgets('a new group picks people, then a name, and opens', (
     tester,
   ) async {
@@ -216,6 +255,7 @@ class _Fake {
   final groups = <Map<String, dynamic>>[];
   final jobLinks = <Object?>[];
   var jobsView = false;
+  var members = <Object>[];
 
   final chats = <Map<String, Object?>>[
     {
@@ -389,7 +429,7 @@ class _Fake {
     }
     if (path.contains('/chat/chats/') && method == 'GET') {
       return _json({
-        'data': {...chats.first, 'members': <Object>[], 'i_am_admin': false},
+        'data': {...chats.first, 'members': members, 'i_am_admin': false},
       });
     }
     if (path.contains('/users/') && path.endsWith('/avatar')) {
