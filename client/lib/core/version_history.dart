@@ -26,7 +26,7 @@ class VersionHistory {
       'If the server cannot be reached when the app opens, it keeps you signed in and retries instead of showing the sign-in screen',
       'The app own customer export can be imported back, and attachments are only removed after their record is really deleted',
     ]),
-    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', deployed: '2026-11-27 21:04', items: [
       'Task Board on phones: a one-line header and a floating bar for search, filter, sort, hide and quick filters, like Monday',
       'Training: overdue and expiry dates use your local day, and unsaved edits and blank answers are handled before submit',
       'Scheduling: same-day overbookings are flagged in local time, each company can own its own ZIP codes, slot offers use the lead company, and clearing a map drawing asks first',
