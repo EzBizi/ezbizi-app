@@ -86,6 +86,8 @@ void main() {
         final body = request.body.isEmpty ? null : jsonDecode(request.body);
         if (request.method != 'GET') log.add((request.method, path, body));
 
+        // A preference saved (the phone home's recently visited) is taken.
+        if (path == '/me/preferences') return json({'data': body});
         if (path.endsWith('/me')) {
           return json({
             'data': {
@@ -593,6 +595,18 @@ void main() {
       ),
       findsWidgets,
     );
+  });
+
+  testWidgets('row 70: on a phone the board title opens the Task Board home: '
+      'greeting, recently visited (the board just opened), workspaces', (tester) async {
+    await pumpBoard(tester, size: const Size(390, 844));
+    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tasks-phone-home')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Good (morning|afternoon|evening)')), findsOneWidget);
+    expect(find.text('Recently visited'), findsOneWidget);
+    expect(find.text('Workspaces'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('row 70: a phone has one header line and a floating pill; '

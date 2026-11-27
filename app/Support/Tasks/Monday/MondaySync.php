@@ -156,8 +156,10 @@ final class MondaySync
 
     private function save(Organization $org, SocialConnection $connection, array $state): void
     {
-        $this->tenant->run($org, function () use ($connection, $state) {
-            $connection->refresh();
+        // Audit 11-27: only the sync's own keys (cursors, partial, last) are written, onto the row as it
+        // is now and under a lock, so webhooks or people saved meanwhile by another writer survive.
+        $this->tenant->run($org, fn () => \Illuminate\Support\Facades\DB::transaction(function () use ($connection, $state) {
+            $connection = SocialConnection::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($connection->getKey());
             $setup = (array) ($connection->setup ?? []);
             // Cursors another writer moved on (the import, a parallel run) are not moved back.
             foreach ((array) ($setup['monday']['cursors'] ?? []) as $id => $at) {
@@ -165,8 +167,12 @@ final class MondaySync
                     $state['cursors'][$id] = $at;
                 }
             }
-            $connection->forceFill(['setup' => ['monday' => $state] + $setup])->save();
-        });
+            $mine = array_intersect_key($state, array_flip(['cursors', 'partial', 'last']));
+            if (! isset($state['partial'])) {
+                unset($setup['monday']['partial']);
+            }
+            $connection->forceFill(['setup' => ['monday' => $mine + (array) ($setup['monday'] ?? [])] + $setup])->save();
+        }));
     }
 
     /**
