@@ -29,6 +29,10 @@ class SocialProvidersController extends Controller
         );
 
         $catalogue = $this->providers->catalogue($request->query('include') === 'data_sources');
+        // The Monday tile shows only while Monday is on (Jose 11-27: on until Monday stops).
+        if (! config('services.monday.enabled')) {
+            $catalogue = array_values(array_filter($catalogue, fn (array $e) => $e['value'] !== 'monday'));
+        }
 
         // Whether this view already has each product (design 183). A Facebook
         // product rides on the Page rows, so it is there when a Page row's

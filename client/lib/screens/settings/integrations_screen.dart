@@ -404,8 +404,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     // evidence that it exists.
     final providers = {
       ...byProvider.keys,
-      // Monday is off since the 11-26 cut-over: no tile.
-      ..._catalogue.keys.where((p) => p != 'workiz_web' && p != 'monday'),
+      ..._catalogue.keys.where((p) => p != 'workiz_web'),
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
       if (_sending != null || _sendingRefusal != null) 'sending_server',
