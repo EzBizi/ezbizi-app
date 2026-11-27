@@ -68,6 +68,18 @@ class PostSidePanelEditTest extends TestCase
         $this->assertFalse(Storage::disk('local')->exists('social/old.png'), 'the replaced picture is deleted');
     }
 
+    public function test_a_replaced_picture_with_no_file_extension_is_stored_as_what_it_is(): void
+    {
+        [$t, $post] = $this->awaitingGbpDraft();
+
+        $this->signedInAs($t['admin'])
+            ->post("/api/v1/social/posts/{$post->id}/media", ['media' => UploadedFile::fake()->createWithContent('photo', $this->png(400, 300, 2))], ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonPath('data.has_media', true);
+
+        $path = (string) $this->inTenant($t['org'], fn () => $post->fresh()->media_path);
+        $this->assertStringEndsWith('.png', $path, 'stored under the extension its bytes show, not the empty one the client sent');
+    }
+
     public function test_a_picture_google_would_refuse_is_refused(): void
     {
         [$t, $post] = $this->awaitingGbpDraft();
