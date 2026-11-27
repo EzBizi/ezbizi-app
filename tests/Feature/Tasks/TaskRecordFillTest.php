@@ -79,6 +79,31 @@ class TaskRecordFillTest extends TestCase
         });
     }
 
+    /** Audit 11-27 (HIGH): another org's customer with the same phone, name or job number never fills this org's task. */
+    public function test_another_orgs_customer_never_fills_a_task(): void
+    {
+        $other = $this->provisionTenant('Beta');
+        $theirs = $this->inTenant($other['org'], function () use ($other) {
+            $c = Customer::factory()->create(['owning_franchise_id' => $other['franchise']->id, 'name' => 'Kerry Fairway', 'phone' => '(732) 555-0199']);
+
+            return Job::factory()->create(['franchise_id' => $other['franchise']->id, 'customer_id' => $c->id]);
+        });
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t, $theirs) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $phone = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Phone number', 'type' => 'text', 'position' => 1]);
+            $jobNo = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'EzBizi Job #', 'type' => 'text', 'position' => 2]);
+            $name = TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Client name', 'type' => 'text', 'position' => 3]);
+            $byPhone = app(TaskWriter::class)->create($board, ['title' => 'Kerry Fairway', 'values' => [$phone->id => '+17325550199']], $t['admin']);
+            $byNumber = app(TaskWriter::class)->create($board, ['title' => 'Call back', 'values' => [$jobNo->id => $theirs->number]], $t['admin']);
+
+            $this->assertNull(app(TaskRecordFill::class)->jobFor($byPhone));
+            $this->assertNull(app(TaskRecordFill::class)->jobFor($byNumber));
+            app(TaskRecordFill::class)->fill($byPhone->load('board'), null, $t['admin']);
+            $this->assertNull($byPhone->values()->where('column_id', $jobNo->id)->value('value_text'));
+        });
+    }
+
     /** Desk 11-20: CT Debby Brook had only a Workiz Job ID; that Workiz job's EzBizi job fills the rest. */
     public function test_a_task_with_only_a_workiz_id_finds_its_job(): void
     {
