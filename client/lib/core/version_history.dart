@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0656', date: '27 Nov 2026', items: [
+      'Leaderboard: the top three are ranked by booking rate; answer rate and call score show beside each name, not ranked by',
+    ]),
     VersionRelease(version: '0.0.0655', date: '26 Nov 2026', deployed: '2026-11-26 14:16', items: [
       'Review auto-replies: a review Google removed is marked removed and skipped, and a listing Google calls unclaimed is parked with that reason, instead of failing every day',
       'Desktop monitoring: a heartbeat that hit a brief database clash is retried instead of failing',
