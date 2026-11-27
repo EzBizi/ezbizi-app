@@ -71,6 +71,9 @@ class TaskBoardScreen extends StatefulWidget {
   /// Under this the table's fixed columns leave the task's name no room.
   static const double tableAbove = 760;
 
+  /// Below this a phone: Monday's dense table with the name pinned (row 70).
+  static const double phoneTableBelow = 600;
+
   @override
   State<TaskBoardScreen> createState() => _TaskBoardScreenState();
 }
@@ -3099,6 +3102,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
+        // Row 70 (Jose 11-27, "identical as Monday"): a phone gets Monday's
+        // dense table, the name pinned and the columns sliding under it.
+        _phoneTable = constraints.maxWidth < TaskBoardScreen.phoneTableBelow;
+        _phoneWidth = constraints.maxWidth;
 
         // One page colour behind the picker, toolbar and table: the canvas
         // on the table alone left a band above it (Jose 11-24).
@@ -3146,7 +3153,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   formats: _formats,
                                   onOpenTask: _openTaskById,
                                 ),
-                                _ => _tableView(context, cards: cards),
+                                _ => _tableView(context, cards: cards && !_phoneTable),
                               },
                             ),
                           ],
@@ -4470,11 +4477,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                 '${group['name']}',
                                 key: ValueKey('task-group-title-$fold'),
                                 // A phone wraps a long name to two lines (phone 6).
-                                maxLines: cards ? 2 : 1,
+                                maxLines: cards || _phoneTable ? 2 : 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   color: ink,
-                                  fontSize: cards ? 18 : 20,
+                                  fontSize: cards || _phoneTable ? 18 : 20,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -4803,7 +4810,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       : _builtinDefaults.keys.toList().indexOf(key);
 
   /// A column's width: being dragged, saved by this person, or the default.
-  double _w(String key) =>
+  double _w(String key) => key == 'task' && _phoneTable
+      ? (_phoneWidth * 0.56).clamp(170.0, 260.0)
+      : _wSaved(key);
+
+  double _wSaved(String key) =>
       _dragWidths[key] ??
       _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
@@ -5217,6 +5228,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
+  /// Set by [_screen] each layout: a phone shows Monday's dense table (row 70).
+  bool _phoneTable = false;
+  double _phoneWidth = 400;
+
+  void _rowLongPress(_Json t) {
+    final box = context.findRenderObject() as RenderBox?;
+    final at = box == null
+        ? Offset.zero
+        : box.localToGlobal(box.size.center(Offset.zero));
+    _rowRightClick(t, at);
+  }
+
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
     final owners = _ownerNames(t);
@@ -5236,6 +5259,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onSecondaryTapDown: sub
             ? null
             : (d) => _rowRightClick(t, d.globalPosition),
+        // A phone has no right button: a long press opens the same menu (row 70).
+        onLongPress: sub || !_phoneTable ? null : () => _rowLongPress(t),
         child: _RowShade(
           key: ValueKey('task-shade-${t['id']}'),
           selected: _openId == t['id'],
@@ -5261,7 +5286,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                       padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                       child: Row(
                         children: [
-                          if (!sub && _canEdit) ...[
+                          if (!sub && _canEdit && !_phoneTable) ...[
                             SizedBox(width: 18, child: _dragHandle(context, t)),
                             SizedBox(
                               width: 32,
@@ -5279,7 +5304,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                               ),
                             ),
                           ],
-                          if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
+                          if (!sub && !_phoneTable) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
                             // Jose 11-24: the name edits in the same card as
