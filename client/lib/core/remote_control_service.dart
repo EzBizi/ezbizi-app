@@ -155,6 +155,10 @@ class RemoteControlService {
         'device_key': deviceKey,
       });
 
+      // Disposed while the poll was in flight: inject nothing and leave the
+      // indicator alone (dispose already turned it off; audit 11-27).
+      if (_disposed) return;
+
       // Not ok covers a 404 (this device has never heartbeat-registered) and
       // any transient failure alike — neither is a reason to apply anything,
       // and neither should knock the cadence off its baseline, so leave the
