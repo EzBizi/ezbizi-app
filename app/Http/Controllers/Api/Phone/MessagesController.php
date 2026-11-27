@@ -143,17 +143,6 @@ class MessagesController extends Controller
         return response()->json(['data' => $this->row($message)], Status::HTTP_CREATED);
     }
 
-    private function matchCustomer(string $e164): ?string
-    {
-        if ($e164 === '') {
-            return null;
-        }
-
-        return Customer::query()
-            ->where('phone', $e164)
-            ->value('id');
-    }
-
     /** @return array<string, mixed> */
     private function row(PhoneMessage $message): array
     {
@@ -169,20 +158,5 @@ class MessagesController extends Controller
             'customer_id' => $message->customer_id,
             'created_at' => $message->created_at?->toIso8601String(),
         ];
-    }
-
-    /** @return array<string, mixed> */
-    private function payload(PhoneMessage $message): array
-    {
-        return ['after' => [
-            'id' => $message->id,
-            'twilio_sid' => $message->twilio_sid,
-            'direction' => $message->direction,
-            'from_e164' => $message->from_e164,
-            'to_e164' => $message->to_e164,
-            'body' => $message->body,
-            'number_id' => $message->number_id,
-            'customer_id' => $message->customer_id,
-        ]];
     }
 }

@@ -12,7 +12,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Collection;
 
 /**
  * How one site's chat bubble and contact form look, and what the form asks.
@@ -185,11 +184,5 @@ class WebWidget extends Model implements StatesRetention
         $site->loadMissing('company');
 
         return Branding::colour($site->company, $site->company?->organization);
-    }
-
-    /** @return Collection<int, WebWidget> */
-    public static function forSites(Collection $siteIds): Collection
-    {
-        return self::query()->whereIn('site_id', $siteIds)->get();
     }
 }
