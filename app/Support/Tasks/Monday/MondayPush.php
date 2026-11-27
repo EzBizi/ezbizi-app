@@ -560,7 +560,14 @@ final class MondayPush
 
     private function close(MondayOutboxEntry $entry, string $state, ?string $why = null): string
     {
-        $entry->forceFill(['state' => $state, 'sent_at' => $state === MondayOutboxEntry::SENT ? now() : null, 'error' => $why])->save();
+        // Audit 11-27: a change merged into this row while it was sending bumped changed_at; then the row
+        // stays pending, so the next run sends it (the kinds already sent go again, harmlessly).
+        $closed = MondayOutboxEntry::query()->whereKey($entry->getKey())->where('changed_at', $entry->getRawOriginal('changed_at'))
+            ->update(['state' => $state, 'sent_at' => $state === MondayOutboxEntry::SENT ? now() : null, 'error' => $why]);
+        if ($closed === 0) {
+            return 'sent';
+        }
+        $entry->forceFill(['state' => $state, 'sent_at' => $state === MondayOutboxEntry::SENT ? now() : null, 'error' => $why])->syncOriginal();
 
         return $state === MondayOutboxEntry::SENT ? 'sent' : 'superseded';
     }
