@@ -560,7 +560,8 @@ class ReportsApiTest extends TestCase
     public function test_a_saved_report_downloads_as_csv(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $this->makeJob($tenant, ['title' => 'Sweep']);
+        // A title an outsider typed, which a spreadsheet would run (audit 2026-11-27).
+        $this->makeJob($tenant, ['title' => '=SUM(A1)']);
 
         $report = $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
@@ -576,7 +577,7 @@ class ReportsApiTest extends TestCase
             ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
 
         $this->assertStringContainsString('Open-jobs-', (string) $response->headers->get('Content-Disposition'));
-        $this->assertSame("Title\nSweep\n", $response->getContent());
+        $this->assertSame("Title\n'=SUM(A1)\n", $response->getContent(), 'a formula is text, as in every export');
     }
 
     /** The builder brief's filters: one of, between, empty, a named period, and any/all. */
@@ -771,6 +772,22 @@ class ReportsApiTest extends TestCase
             ->assertJsonPath('data.count', 1);
     }
 
+    /** Audit 2026-11-27: a report read every customer's contact details for someone without customers.view. */
+    public function test_a_resource_read_needs_its_own_permission(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, ['title' => 'Sweep']);
+        $id = $this->signedInAs($tenant['admin'])->postJson('/api/v1/reports', ['company_id' => $tenant['company']->id, 'name' => 'Customers',
+            'definition' => ['root' => 'customers', 'columns' => [['resource' => 'customers', 'column' => 'phone']], 'filters' => []]])
+            ->assertCreated()->json('data.id');
+        $run = fn (array $grants) => $this->signedInAs($this->userWithRole($tenant, 'Runner '.count($grants), $grants))
+            ->postJson('/api/v1/reports/'.$id.'/run');
+
+        $run(['reports.view', 'reports.library.view', 'reports.build', 'jobs.view'])->assertUnprocessable()
+            ->assertJsonPath('errors.definition.0', "'Customers' needs the customers.view permission, which you do not have.");
+        $run(['reports.view', 'reports.library.view', 'customers.view'])->assertOk()->assertJsonPath('data.count', 1);
+    }
+
     public function test_the_tab_is_refused_without_any_reports_permission(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -898,6 +915,28 @@ class ReportsApiTest extends TestCase
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('definition');
+    }
+
+    /** Audit 2026-11-27: update() re-filed a report with none of store()'s checks. */
+    public function test_an_edit_keeps_the_place_and_a_move_is_checked_as_a_new_filing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+        $branch = fn () => $this->signedInAs($tenant['admin'])->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id);
+
+        $id = $branch()->postJson('/api/v1/reports', ['name' => 'Branch report', 'definition' => $this->titlesDefinition()])
+            ->assertCreated()->json('data.id');
+
+        // Renamed from the group view: it stays on the branch, not moved to the group.
+        $renamed = $this->signedInAs($tenant['admin'])->withHeader('X-EzBizi-View', 'organization')
+            ->patchJson('/api/v1/reports/'.$id, ['name' => 'Renamed', 'definition' => $this->titlesDefinition()])
+            ->assertOk()->json('data');
+        $this->assertSame([$tenant['company']->id, $tenant['franchise']->id], [$renamed['company_id'], $renamed['franchise_id']]);
+
+        // Moved to a branch this view does not stand in: refused, as a new one would be.
+        $branch()->patchJson('/api/v1/reports/'.$id, ['company_id' => $tenant['company']->id, 'franchise_id' => $other->id,
+            'name' => 'Renamed', 'definition' => $this->titlesDefinition()])->assertStatus(422);
+        $this->assertSame($tenant['franchise']->id, $this->inTenant($tenant['org'], fn () => SavedReport::query()->find($id)->franchise_id));
     }
 
     public function test_a_sibling_franchises_report_is_not_listed_from_this_view(): void

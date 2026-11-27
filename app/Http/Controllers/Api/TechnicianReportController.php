@@ -134,7 +134,7 @@ class TechnicianReportController extends Controller
     {
         $zone = ReportView::zone();
         $jobs = DB::table('jobs as j')->where('j.organization_id', $org)->whereNull('j.deleted_at')
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('j.franchise_id', $ids))
+            ->where(fn ($w) => ReportView::whereInView($w, 'j.franchise_id'))
             ->whereIn(DB::raw('lower(trim(j.status))'), ['done', 'completed'])
             ->leftJoin('workiz_jobs as w', 'w.job_id', '=', 'j.id')->leftJoin('customers as c', 'c.id', '=', 'j.customer_id')
             ->whereBetween(DB::raw('coalesce(w.scheduled_for, j.scheduled_for)'), [CarbonImmutable::parse($from)->subDay()->toDateString(), CarbonImmutable::parse($to)->addDays(2)->toDateString()])

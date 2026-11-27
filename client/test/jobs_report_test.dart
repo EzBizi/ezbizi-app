@@ -93,9 +93,12 @@ void main() {
     expect(find.textContaining('Ace Fireplace · Akron'), findsWidgets);
     expect(find.text('\$601.00'), findsOneWidget);
 
+    // Pressed twice before the page arrives: one request, its rows once (audit 2026-11-27).
     await tester.tap(find.byKey(const ValueKey('jobs-more')));
+    await tester.tap(find.byKey(const ValueKey('jobs-more')), warnIfMissed: false);
     await tester.pumpAndSettle();
 
+    expect(asked.where((q) => q['offset'] == '1'), hasLength(1));
     expect(asked.last['offset'], '1');
     expect(find.text('6000J2'), findsOneWidget);
     expect(find.text('6000J1'), findsOneWidget);

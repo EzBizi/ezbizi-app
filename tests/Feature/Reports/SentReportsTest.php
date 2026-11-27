@@ -107,6 +107,30 @@ class SentReportsTest extends TestCase
         $this->assertNull(ActionRunner::reportKey('report.text', [], null), 'no rule, no report key');
     }
 
+    /** Audit 2026-11-27: a branch read every branch's report texts. */
+    public function test_a_branch_view_reads_only_the_reports_filed_on_that_branch(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $other = $this->extraFranchise($t, 'A1 F2');
+        [$here, $there, $group] = $this->inTenant($t['org'], fn () => array_map(function (array $place) use ($t) {
+            $rule = Automation::create(['name' => 'Report '.($place[1] ?? 'group'), 'trigger_key' => 'automation.schedule_reached',
+                'is_active' => true, 'created_by' => $t['admin']->id, 'scope_type' => $place[0], 'scope_id' => $place[1]]);
+            $rule->addVersion(null, [['type' => 'email.send', 'to_field' => 'office@example.test', 'subject' => 'Figures', 'body' => 'x']], $t['admin']);
+
+            return 'automation:'.$rule->id;
+        }, [['franchise', $t['franchise']->id], ['franchise', $other->id], [null, null]]));
+        $as = fn (string $view) => $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', $view);
+        $branch = 'franchise:'.$t['franchise']->id;
+
+        $this->assertSame([$here], array_column($as($branch)->getJson('/api/v1/reports/sent')->assertOk()->json('data'), 'key'));
+        $this->assertEqualsCanonicalizing([$here, $there, $group],
+            array_column($as('organization')->getJson('/api/v1/reports/sent')->assertOk()->json('data'), 'key'));
+        $as($branch)->getJson('/api/v1/reports/sent/history?report='.$here)->assertOk();
+        foreach ([$there, $group, 'same-day'] as $key) {
+            $as($branch)->getJson('/api/v1/reports/sent/history?report='.$key)->assertNotFound();
+        }
+    }
+
     public function test_the_list_and_its_history_are_the_librarys(): void
     {
         $t = $this->provisionTenant('A1-Group');

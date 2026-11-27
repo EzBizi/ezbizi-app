@@ -102,6 +102,8 @@ class ScoringReportTest extends TestCase
             ->assertOk()->json('data.people'))->keyBy('person');
 
         $this->assertSame(40, $people['Ada']['conversion']);
+        // The rate's own counts beside it, not her 9 jobs (audit 2026-11-27).
+        $this->assertSame([4, 10], [$people['Ada']['booked'], $people['Ada']['decided']]);
         $this->assertNull($people['Cris']['conversion'], 'handles Existing');
         $this->assertNull($people['Few']['conversion'], 'one new call is no rate');
     }

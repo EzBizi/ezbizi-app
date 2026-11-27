@@ -76,6 +76,6 @@ class MetaAdsReportController extends Controller
     /** Campaigns of the branches in view; unassigned ones only in the organization view. */
     private static function inView()
     {
-        return MetaAdCampaign::query()->when(ReportView::franchiseIds(), fn ($q, $ids) => $q->whereIn('franchise_id', $ids));
+        return MetaAdCampaign::query()->where(fn ($q) => ReportView::whereInView($q, 'franchise_id'));
     }
 }
