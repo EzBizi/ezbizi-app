@@ -148,7 +148,7 @@ final class ReportMap
                     'number' => ['label' => 'Number',    'type' => 'string'],
                     'title' => ['label' => 'Title',     'type' => 'string'],
                     'status' => ['label' => 'Status',    'type' => 'string'],
-                    'scheduled_for' => ['label' => 'Scheduled', 'type' => 'datetime'],
+                    'scheduled_for' => ['label' => 'Scheduled', 'type' => 'datetime', 'wall_clock' => true],
                     'earned_at' => ['label' => 'Earned',    'type' => 'datetime'],
                     'duration_minutes' => ['label' => 'Minutes',   'type' => 'integer'],
                     // Money needs jobs.financials (Jose, 2026-09-29: "a

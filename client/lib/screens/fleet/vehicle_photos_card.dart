@@ -26,6 +26,11 @@ class VehiclePhotosCard extends StatefulWidget {
 
 class _VehiclePhotosCardState extends State<VehiclePhotosCard> {
   List<Map<String, dynamic>> _photos = const [];
+
+  /// Only the newest load may land: a slow answer for the previous record
+  /// must not replace this one's files, or Remove would aim at its file
+  /// (audit 2026-11-27).
+  int _loadSeq = 0;
   final Map<String, Uint8List> _bytes = {};
   bool _loading = true;
   bool _busy = false;
@@ -44,6 +49,7 @@ class _VehiclePhotosCardState extends State<VehiclePhotosCard> {
   }
 
   Future<void> _load() async {
+    final seq = ++_loadSeq;
     setState(() {
       _loading = _photos.isEmpty;
       _error = null;
@@ -54,7 +60,7 @@ class _VehiclePhotosCardState extends State<VehiclePhotosCard> {
       'attachable_id': widget.vehicleId,
     });
 
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
 
     if (!response.ok) {
       setState(() {

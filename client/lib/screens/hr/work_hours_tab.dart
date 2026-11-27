@@ -1457,7 +1457,9 @@ class _Week {
   static String? _shift(String date, int days) {
     final at = DateTime.tryParse(date);
     if (at == null) return null;
-    final moved = at.add(Duration(days: days));
+    // Calendar days, not 24-hour steps: across a daylight-saving change a
+    // week of hours lands on the wrong day (audit 2026-11-27).
+    final moved = DateTime(at.year, at.month, at.day + days);
 
     return formatCalendarDay(moved);
   }

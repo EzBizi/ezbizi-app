@@ -44,11 +44,18 @@ void main() {
   testWidgets('opens on the first base that has weeks, not the first base', (
     tester,
   ) async {
-    await _pump(tester, weeksIn: 'c');
+    final asked = <Uri>[];
+    await _pump(tester, weeksIn: 'c', asked: asked);
 
     expect(find.text('Base C'), findsOneWidget);
     expect(find.text('NJ'), findsOneWidget);
     expect(find.text('6 Jul - 12 Jul'), findsOneWidget);
+    // The probe that found the weeks is the week shown: read once, not twice
+    // (audit 2026-11-27).
+    expect(
+      asked.where((u) => u.queryParameters['connection'] == 'c'),
+      hasLength(1),
+    );
   });
 
   testWidgets('with weeks in no base it lands on the first and says why', (
@@ -112,6 +119,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required String? weeksIn,
   Map<String, dynamic>? week,
+  List<Uri>? asked,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -119,6 +127,7 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      asked?.add(request.url);
       if (request.url.path.endsWith('/reports/profit-loss/sources')) {
         return _json({
           'sources': [

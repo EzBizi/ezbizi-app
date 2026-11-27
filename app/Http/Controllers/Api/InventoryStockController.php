@@ -117,7 +117,7 @@ class InventoryStockController extends Controller
             ->orderBy('inventory_items.name')
             ->orderBy('inventory_locations.name')
             ->with(['item', 'location'])
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         return response()->json([
             'data' => collect($balances->items())->map(

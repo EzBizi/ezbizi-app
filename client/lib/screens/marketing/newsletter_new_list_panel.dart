@@ -88,12 +88,14 @@ class _NewListPanelState extends State<_NewListPanel> {
     }
     final d = r.body['data'] as Map<String, dynamic>? ?? const {};
     Navigator.of(context).pop(
-      NewsletterAudience(
-        id: '${d['id'] ?? ''}',
-        name: d['name'] as String? ?? _name.text.trim(),
-        kind: d['kind'] as String? ?? _kind,
-        tag: tag.isEmpty ? null : tag,
-      ),
+      NewsletterAudience.fromJson({
+        'name': _name.text.trim(),
+        'kind': _kind,
+        if (tag.isNotEmpty) 'tag': tag,
+        'mailchimp_list_id': _listId,
+        ...d,
+        'id': '${d['id'] ?? ''}',
+      }),
     );
   }
 

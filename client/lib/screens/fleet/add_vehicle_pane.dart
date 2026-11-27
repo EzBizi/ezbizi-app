@@ -121,27 +121,14 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
 
   List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
 
-  /// Same degrade as the server: year/make/model · plate → description →
-  /// plate → VIN → Unidentified vehicle. Kept here so the preview cannot
-  /// invent a fourth name.
-  String get _preview {
-    final year = _year.text.trim();
-    final make = _make.text.trim();
-    final model = _model.text.trim();
-    final plate = _plate.text.trim();
-    final vin = _vin.text.trim();
-    final parts = [
-      if (year.isNotEmpty) year,
-      if (make.isNotEmpty) make,
-      if (model.isNotEmpty) model,
-    ];
-    final description = parts.isEmpty ? null : parts.join(' ');
-    if (description != null && plate.isNotEmpty) return '$description · $plate';
-    if (description != null) return description;
-    if (plate.isNotEmpty) return plate;
-    if (vin.isNotEmpty) return vin;
-    return 'Unidentified vehicle';
-  }
+  /// The shared preview (vehicle_card.dart), so the two cannot drift.
+  String get _preview => fleetPreviewName(
+    year: _year.text,
+    make: _make.text,
+    model: _model.text,
+    plate: _plate.text,
+    vin: _vin.text,
+  );
 
   Future<void> _save() async {
     final companyId = _companyId;

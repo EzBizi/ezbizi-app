@@ -569,6 +569,8 @@ class _Mine extends StatefulWidget {
 
 class _MineState extends State<_Mine> with _Loads {
   List<Map<String, dynamic>> _scored = [];
+  String? _scoredError;
+  int _searches = 0;
   String _query = '';
   String _pick = 'latest';
   String _callFilter = '';
@@ -585,15 +587,20 @@ class _MineState extends State<_Mine> with _Loads {
   /// Their latest, best and worst scored calls; or, searched, the matches.
   Future<void> _search(String q) async {
     _query = q.trim();
+    final ticket = ++_searches;
     final r = await widget.api.get(
       '/leaderboard/mine/calls?$_dates'
       '${_query.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(_query)}'}',
     );
-    if (!mounted || !r.ok) return;
-    setState(
-      () =>
-          _scored = [for (final c in r.body['data'] as List) (c as Map).cast()],
-    );
+    // An older search answering late does not replace a newer one.
+    if (!mounted || ticket != _searches) return;
+    setState(() {
+      // A failed search says so, not "No scored calls" (audit 2026-11-27).
+      _scoredError = r.ok ? null : r.message;
+      _scored = r.ok
+          ? [for (final c in r.body['data'] as List) (c as Map).cast()]
+          : [];
+    });
   }
 
   @override
@@ -856,10 +863,14 @@ class _MineState extends State<_Mine> with _Loads {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    _query.isEmpty
-                        ? 'No scored calls in this week.'
-                        : 'No scored calls match "$_query".',
-                    style: muted,
+                    _scoredError ??
+                        (_query.isEmpty
+                            ? 'No scored calls in this week.'
+                            : 'No scored calls match "$_query".'),
+                    key: const ValueKey('leaderboard-scored-empty'),
+                    style: _scoredError == null
+                        ? muted
+                        : muted?.copyWith(color: theme.colorScheme.error),
                   ),
                 ),
               for (final c in shown)

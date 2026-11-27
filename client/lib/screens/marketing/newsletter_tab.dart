@@ -472,6 +472,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       newsletterId: id,
       localBlocks: _blocks,
       localHtml: _htmlOverride,
+      localActiveDesign: _activeDesign,
       company: widget.session.me?.organization.name ?? 'EzBizi',
     );
   }
@@ -558,6 +559,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
     });
 
     if (!mounted) return;
+    // Another newsletter was opened meanwhile: this answer is not about it.
+    if (_selectedId != id) {
+      setState(() => _saving = false);
+      return;
+    }
 
     if (response.statusCode == 409) {
       _settleTimer?.cancel();
@@ -603,7 +609,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
     if (id == null || !_mayOpen('composer')) return;
 
     final response = await widget.api.get('/newsletters/$id/preview');
-    if (!mounted || !response.ok) return;
+    if (!mounted || !response.ok || _selectedId != id) return;
 
     final data = response.body['data'];
     setState(
@@ -618,6 +624,15 @@ class _NewsletterTabState extends State<NewsletterTab> {
     final id = _selectedId;
     await _reloadList();
     if (!mounted) return;
+    // The open row by id: the list holds only the newest fifty, and an older
+    // one kept there is the stale copy that was refused.
+    final one = id == null ? null : await widget.api.get('/newsletters/$id');
+    if (!mounted) return;
+    final data = one != null && one.ok ? one.body['data'] : null;
+    if (data is Map<String, dynamic>) {
+      final row = _Newsletter.fromJson(data);
+      _all = [for (final n in _all) n.id == row.id ? row : n];
+    }
     final fresh = _all.where((n) => n.id == id).toList();
     if (id != null) NewsletterLocalCopy.clear(id);
     setState(() {
@@ -941,7 +956,14 @@ class _NewsletterTabState extends State<NewsletterTab> {
                             detail: n.statusWord,
                           ),
                       ],
-                      onChanged: (id) {
+                      onChanged: (id) async {
+                        // Finish the open one's save first, so its edits
+                        // land on it and not on the next one.
+                        _settleTimer?.cancel();
+                        await _saveInFlight;
+                        if (!mounted) return;
+                        if (_dirty && !_conflict) await _save();
+                        if (!mounted) return;
                         final picked = _all.where((n) => n.id == id).toList();
                         if (picked.isEmpty) return;
                         setState(() => _open(picked.first));

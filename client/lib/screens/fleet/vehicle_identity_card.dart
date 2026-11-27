@@ -238,6 +238,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     int? year;
     int? odometer;
     int? nextMiles;
+    int? tollRate;
     try {
       year = fleetParseInt(_year.text, 'Year has to be a number.');
       odometer = fleetParseInt(
@@ -248,6 +249,9 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
         _nextServiceMiles.text,
         'Next service miles has to be a whole number.',
       );
+      // Parsed here, not in the body: a bad rate threw after _busy was set
+      // and locked the card (audit 2026-11-27).
+      if (_financials) tollRate = fleetParseCents(_tollFlatRate.text);
     } on FormatException catch (e) {
       setState(() => _error = e.message);
       return;
@@ -301,7 +305,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           : _tollDeviceNumber.text.trim(),
       'toll_plan': _tollPlan.text.trim().isEmpty ? null : _tollPlan.text.trim(),
       if (_financials)
-        'toll_flat_rate_cents': fleetParseCents(_tollFlatRate.text),
+        'toll_flat_rate_cents': tollRate,
       if (_odometerReadOn.text.trim() != _odometerReadOnLoaded)
         'odometer_updated_at': _odometerReadOn.text.trim().isEmpty
             ? null
@@ -321,6 +325,18 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           'started_on': _startedOn.text.trim(),
       };
     }
+
+    // Only what changed since the record was read, so a save here does not
+    // put back a field somebody else edited meanwhile (audit 2026-11-27).
+    final before = widget.vehicle;
+    dynamic loaded(String key) => switch (key) {
+      'company_id' => fleetMap(before['company'])?['id'],
+      'franchise_id' => fleetMap(before['franchise'])?['id'],
+      _ => before[key],
+    };
+    body.removeWhere(
+      (key, value) => key != 'ownership' && value == loaded(key),
+    );
 
     final response = await widget.api.patch(
       '/vehicles/${widget.vehicle['id']}',

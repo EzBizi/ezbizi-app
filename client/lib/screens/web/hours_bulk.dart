@@ -251,6 +251,11 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       ? 'Google · ${place['name'] ?? ''}'
       : '${place['host'] ?? place['name'] ?? ''}';
 
+  /// One place across websites and listings: listings have no site_id, so
+  /// the id plus where it lives is the key (audit 2026-11-27).
+  static String _placeKey(Map<String, dynamic> p) =>
+      p['site_id'] != null ? '${p['site_id']}' : '${p['destination']}:${p['id']}';
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1079,7 +1084,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         .toList();
 
     return Container(
-      key: ValueKey('hours-bulk-place-${place['site_id']}'),
+      key: ValueKey('hours-bulk-place-${_placeKey(place)}'),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         // Edged in its status's colour all round: a website that changes
@@ -1371,13 +1376,13 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     final results = ((_result?['results'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
         .toList();
-    final applied = {for (final r in results) r['site_id']};
+    final applied = {for (final r in results) _placeKey(r)};
 
     // The review's other websites, which the apply never touched: say what
     // happened to them too, so the list is every website that was ticked.
     final untouched = [
       for (final p in _places)
-        if (!applied.contains(p['site_id'])) p,
+        if (!applied.contains(_placeKey(p))) p,
     ];
 
     Widget line(String host, (String, Tone) pill, String? reason) => Container(
@@ -1413,7 +1418,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         const SizedBox(height: 8),
         for (final r in results)
           line(
-            r['host'] as String? ?? '',
+            _placeName(r),
             _resultPill(r['status'] as String?),
             r['reason'] as String?,
           ),

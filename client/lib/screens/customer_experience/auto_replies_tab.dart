@@ -104,9 +104,10 @@ class _AutoRepliesTabState extends State<AutoRepliesTab> {
     final theme = Theme.of(context);
     final rows = _rows;
     int count(String k) => (_counts[k] as num?)?.toInt() ?? 0;
+    // Every branch this person reaches, not only those on the loaded page,
+    // so the picked one stays shown while filtering (audit 2026-11-27).
     final branches = <String, String>{
-      for (final r in rows ?? const <Map<String, dynamic>>[])
-        if (r['franchise'] case final Map f) '${f['id']}': '${f['name']}',
+      for (final f in widget.session.me?.franchises ?? const []) f.id: f.name,
     };
 
     return ListView(

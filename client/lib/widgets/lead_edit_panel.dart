@@ -16,19 +16,29 @@ Future<Map<String, dynamic>?> showLeadEditPanel(
   required ApiClient api,
   required Map<String, dynamic> lead,
   RecordingPlayer? player,
+  bool Function(String permission)? can,
 }) => showSidePanel<Map<String, dynamic>>(
   context,
-  builder: (panel) => _LeadEditPanel(api: api, lead: lead, player: player),
+  builder: (panel) =>
+      _LeadEditPanel(api: api, lead: lead, player: player, can: can),
 );
 
 const _classes = {'BOOK': 'Book', 'SUPPORT': 'Support', 'ARCHIVE': 'Archive'};
 
 class _LeadEditPanel extends StatefulWidget {
-  const _LeadEditPanel({required this.api, required this.lead, this.player});
+  const _LeadEditPanel({
+    required this.api,
+    required this.lead,
+    this.player,
+    this.can,
+  });
 
   final ApiClient api;
   final Map<String, dynamic> lead;
   final RecordingPlayer? player;
+
+  /// The reader's permissions; null shows every control.
+  final bool Function(String permission)? can;
 
   @override
   State<_LeadEditPanel> createState() => _LeadEditPanelState();
@@ -53,6 +63,8 @@ class _LeadEditPanelState extends State<_LeadEditPanel> {
   List<Map<String, dynamic>>? _timeline;
 
   String get _id => '${widget.lead['id']}';
+
+  bool _may(String permission) => widget.can?.call(permission) ?? true;
 
   @override
   void initState() {
@@ -84,12 +96,18 @@ class _LeadEditPanelState extends State<_LeadEditPanel> {
       _busy = true;
       _message = null;
     });
+    // Audit 11-27: only what changed. Sending the dispatcher every time was
+    // a 403 without leads.dispatcher, and otherwise marked it "set by hand";
+    // "Not classified" (null) was dropped and did nothing.
+    final wasClass = (widget.lead['classification'] as String?)?.toUpperCase();
+    final dispatcher = backToRingCentral ? '' : _dispatcher.text.trim();
     final response = await widget.api.patch('/leads/$_id', {
       'contact_name': _name.text.trim(),
       'postal_code': _zip.text.trim(),
-      'classification': ?_class,
-      // Blank hands the dispatcher back to RingCentral.
-      'dispatcher': backToRingCentral ? '' : _dispatcher.text.trim(),
+      if (_class != wasClass) 'classification': _class,
+      if (dispatcher != (widget.lead['dispatcher'] as String? ?? '') ||
+          backToRingCentral)
+        'dispatcher': dispatcher,
     });
     if (!mounted) return;
     setState(() => _busy = false);
@@ -184,17 +202,18 @@ class _LeadEditPanelState extends State<_LeadEditPanel> {
             onChanged: (v) => setState(() => _class = v),
           ),
           const SizedBox(height: 10),
-          TextField(
-            key: const ValueKey('lead-edit-dispatcher'),
-            controller: _dispatcher,
-            decoration: InputDecoration(
-              labelText: 'Dispatcher',
-              helperText: overridden
-                  ? 'Set by hand'
-                  : 'From RingCentral, who answered the call',
+          if (_may('leads.dispatcher'))
+            TextField(
+              key: const ValueKey('lead-edit-dispatcher'),
+              controller: _dispatcher,
+              decoration: InputDecoration(
+                labelText: 'Dispatcher',
+                helperText: overridden
+                    ? 'Set by hand'
+                    : 'From RingCentral, who answered the call',
+              ),
             ),
-          ),
-          if (overridden)
+          if (overridden && _may('leads.dispatcher'))
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -204,15 +223,16 @@ class _LeadEditPanelState extends State<_LeadEditPanel> {
               ),
             ),
           const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              key: const ValueKey('lead-edit-reclassify'),
-              onPressed: _busy ? null : _reclassify,
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Re-classify'),
+          if (_may('leads.reclassify'))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('lead-edit-reclassify'),
+                onPressed: _busy ? null : _reclassify,
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('Re-classify'),
+              ),
             ),
-          ),
           if (_message != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),

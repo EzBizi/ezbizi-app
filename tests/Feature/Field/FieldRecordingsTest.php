@@ -101,6 +101,19 @@ class FieldRecordingsTest extends TestCase
         $this->assertSame('second', $this->get("/api/v1/field/recordings/{$id}/audio/1")->assertOk()->streamedContent());
     }
 
+    public function test_the_day_filter_is_the_viewers_day_not_the_utc_day(): void
+    {
+        // 8 PM in New York on 10-15 is 00:00 UTC on 10-16 (audit 11-27).
+        $id = $this->signedInAs($this->tech)->postJson('/api/v1/field/recordings', [
+            'started_at' => '2026-10-16T00:30:00Z', 'disclosure_confirmed' => true,
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson('/api/v1/field/recordings?from=2026-10-15T04:00:00Z&to=2026-10-16T04:00:00Z')
+            ->assertJsonPath('data.0.id', $id);
+        $this->getJson('/api/v1/field/recordings?from=2026-10-16T04:00:00Z&to=2026-10-17T04:00:00Z')
+            ->assertJsonCount(0, 'data');
+    }
+
     public function test_nobody_else_adds_to_a_recording(): void
     {
         $id = $this->record($this->tech);

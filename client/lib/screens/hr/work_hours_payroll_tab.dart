@@ -103,7 +103,12 @@ class _WorkHoursPayrollTabState extends State<WorkHoursPayrollTab> {
 
   String? get _weekStart => _week?['week_start'] as String?;
 
+  /// A field being typed into saves on blur: let it, into ITS week, before
+  /// anything moves or approves (audit 2026-11-27).
+  void _commitTyping() => FocusManager.instance.primaryFocus?.unfocus();
+
   void _move(int days) {
+    _commitTyping();
     final day = parseCalendarDay(_weekStart);
     if (day == null) return;
     unawaited(
@@ -128,21 +133,35 @@ class _WorkHoursPayrollTabState extends State<WorkHoursPayrollTab> {
     }
   }
 
-  Future<void> _save(String userId, Map<String, dynamic> values) => _send(
-    widget.api.put('/hr/time-clock/payroll/$userId', {
-      'week': _weekStart,
-      ...values,
-    }),
+  /// [week]: the week the field was drawn for, not the one shown when it blurs.
+  Future<void> _save(
+    String userId,
+    Map<String, dynamic> values,
+    String? week,
+  ) => _send(
+    widget.api.put('/hr/time-clock/payroll/$userId', {'week': week, ...values}),
   );
 
-  Future<void> _approve(String userId) => _send(
+  Future<void> _approve(String userId) async {
+    _commitTyping();
+    await Future<void>.delayed(Duration.zero);
+    return _approveNow(userId);
+  }
+
+  Future<void> _approveNow(String userId) => _send(
     widget.api.post('/hr/time-clock/payroll/approve', {
       'user_id': userId,
       'week': _weekStart,
     }),
   );
 
-  Future<void> _approveAll() => _send(
+  Future<void> _approveAll() async {
+    _commitTyping();
+    await Future<void>.delayed(Duration.zero);
+    return _approveAllNow();
+  }
+
+  Future<void> _approveAllNow() => _send(
     widget.api.post('/hr/time-clock/payroll/approve-all', {'week': _weekStart}),
   );
 
@@ -188,6 +207,7 @@ class _WorkHoursPayrollTabState extends State<WorkHoursPayrollTab> {
       }
       return const Center(child: CircularProgressIndicator());
     }
+    final weekStart = week['week_start'] as String?;
 
     return LayoutBuilder(
       key: const ValueKey('tour-work_hours-payroll'),
@@ -228,7 +248,7 @@ class _WorkHoursPayrollTabState extends State<WorkHoursPayrollTab> {
                   ? _notesOpen.remove(id)
                   : _notesOpen.add(id),
             ),
-            onSave: (values) => _save(id, values),
+            onSave: (values) => _save(id, values, weekStart),
             onApprove: () => _approve(id),
           );
           return phone
@@ -793,6 +813,16 @@ class _NoteFieldState extends State<_NoteField> {
     });
   }
 
+  /// Another week's note, unless it is being typed (audit 2026-11-27: the
+  /// old week's text stayed and could be saved into the new week).
+  @override
+  void didUpdateWidget(_NoteField old) {
+    super.didUpdateWidget(old);
+    if (!_focus.hasFocus && old.value != widget.value) {
+      _text.text = widget.value;
+    }
+  }
+
   @override
   void dispose() {
     _text.dispose();
@@ -869,7 +899,15 @@ const _wStatus = 200.0;
 /// to share. Narrower, the table ran off the right (Android on its side: 115
 /// px; the unfolded Duo, beside its sidebar: ~300), so the cards draw.
 const _tableNeeds =
-    _wRate + _wHours + 2 * _wField + _wExpenses + _wPay + 16 + _wStatus + 32 + 100;
+    _wRate +
+    _wHours +
+    2 * _wField +
+    _wExpenses +
+    _wPay +
+    16 +
+    _wStatus +
+    32 +
+    100;
 
 /// One table line: the name grows, the figures keep their widths and sit
 /// right, with a gap so two headings never touch.

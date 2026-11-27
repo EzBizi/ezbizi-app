@@ -36,10 +36,12 @@ class LeadPhoneLinesController extends Controller
             $conn = $account === null ? null : SocialConnection::query()->find($account);
             $names = $log->numberNames();
             asort($names, SORT_NATURAL | SORT_FLAG_CASE);
+            // A number filed under a place this reader cannot reach is not theirs to see (audit 11-27).
+            $mine = array_values(array_filter(array_keys($names), fn (string $n) => self::reaches($assigned[$n] ?? null)));
             $accounts[] = [
                 'id' => $account,
                 'name' => self::accountName($conn),
-                'numbers' => array_map(fn (string $n) => ['number' => $n, 'label' => $names[$n], 'place' => $assigned[$n] ?? null], array_keys($names)),
+                'numbers' => array_map(fn (string $n) => ['number' => $n, 'label' => $names[$n], 'place' => $assigned[$n] ?? null], $mine),
             ];
         }
         $log->only(null);
@@ -64,6 +66,11 @@ class LeadPhoneLinesController extends Controller
 
         $org = Auth::user()->organization;
         $map = (array) $settings->get(self::SETTING, $org);
+        // Audit 11-27: both the place it leaves and the place it goes must be in reach,
+        // or a branch manager could file another company's calls under their own branch.
+        if (! self::reaches($place) || ! self::reaches($map[$input['number']] ?? null)) {
+            abort(404);
+        }
         if ($place === null) {
             unset($map[$input['number']]);
         } else {
@@ -72,6 +79,22 @@ class LeadPhoneLinesController extends Controller
         $settings->set(self::SETTING, $org, $map);
 
         return response()->json(['data' => ['number' => $input['number'], 'place' => $place]]);
+    }
+
+    /** Null (unfiled) is everyone's; a company or branch only when the user reaches it. */
+    private static function reaches(?string $place): bool
+    {
+        if ($place === null) {
+            return true;
+        }
+        [$type, $id] = explode(':', $place, 2) + [1 => ''];
+        // Read once per request: the index asks for every number.
+        $reach = request()->attributes->get('lead-lines-reach') ?? tap([
+            'company' => Auth::user()->reachableCompanies()->map(fn ($c) => (string) $c->getKey())->flip(),
+            'franchise' => Auth::user()->reachableFranchises()->map(fn ($f) => (string) $f->getKey())->flip(),
+        ], fn ($r) => request()->attributes->set('lead-lines-reach', $r));
+
+        return isset($reach[$type]) && $reach[$type]->has($id);
     }
 
     /** "RingCentral · Everdoors Connecticut": whose account, as its connection is scoped. */

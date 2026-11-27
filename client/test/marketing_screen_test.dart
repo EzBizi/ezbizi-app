@@ -403,6 +403,7 @@ void main() {
       await _pumpScreen(
         tester,
         _handler(
+          canEdit: true,
           connections: const [_facebookPage, _pinterestBoard, _xAccount],
         ),
       );
@@ -456,7 +457,7 @@ void main() {
     testWidgets('Pinterest Connect stays off until the installation is ready', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler());
+      await _pumpScreen(tester, _handler(canEdit: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
@@ -477,7 +478,7 @@ void main() {
     testWidgets('Pinterest Connect is enabled when the catalogue says it is usable', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler(pinterestUsable: true));
+      await _pumpScreen(tester, _handler(canEdit: true, pinterestUsable: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
@@ -504,7 +505,7 @@ void main() {
         'form again', (tester) async {
       await _pumpScreen(
         tester,
-        _handler(bluesky: true, connections: const [_blueskyAccount]),
+        _handler(canEdit: true, bluesky: true, connections: const [_blueskyAccount]),
       );
 
       await _openConnectPanel(tester);
@@ -527,7 +528,7 @@ void main() {
         'puts it away', (tester) async {
       await _pumpScreen(
         tester,
-        _handler(bluesky: true, connections: const [_blueskyAccount]),
+        _handler(canEdit: true, bluesky: true, connections: const [_blueskyAccount]),
       );
 
       await _openConnectPanel(tester);
@@ -553,7 +554,7 @@ void main() {
     testWidgets('an unconnected Bluesky is still the form on its own', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler(bluesky: true));
+      await _pumpScreen(tester, _handler(canEdit: true, bluesky: true));
 
       await _openConnectPanel(tester);
 
@@ -898,6 +899,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Healthy'), findsOneWidget);
     expect(find.byKey(const ValueKey('social-reconnect-conn-2')), findsNothing);
+  });
+
+  testWidgets('without Marketing edit, Connect and Disconnect are refused', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _handler(connections: const [_pinterestBoard]),
+    );
+    await tester.tap(
+      find.widgetWithText(ChoiceChip, 'Social Media Management'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('social-connections')));
+    await tester.pumpAndSettle();
+
+    for (final control in [
+      find.widgetWithText(TextButton, 'Disconnect'),
+      find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
+    ]) {
+      final button = tester.widget<ButtonStyleButton>(control);
+      expect(button.onPressed, isNull);
+      expect(
+        find.ancestor(of: control, matching: find.byType(Refused)),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Tooltip &&
+            (w.message ?? '').contains('cannot connect or disconnect'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('disconnect confirms in a panel, never a dialog', (tester) async {
@@ -1426,6 +1462,38 @@ void main() {
             .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Later'))
             .selected,
         isTrue,
+      );
+    });
+
+    testWidgets('a second tap on the same day opens Compose at 9:00 again', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final now = DateTime.now();
+      final add = find.byKey(Key('plan-add-${now.month}-${now.day}'));
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      // The time is cleared, the composer closed, and the same + tapped again.
+      tester
+          .widget<CalendarDayField>(find.byType(CalendarDayField))
+          .controller
+          .clear();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      String two(int n) => n.toString().padLeft(2, '0');
+      expect(
+        tester
+            .widget<CalendarDayField>(find.byType(CalendarDayField))
+            .controller
+            .text,
+        '${now.year}-${two(now.month)}-${two(now.day)} 09:00',
       );
     });
 
@@ -6649,6 +6717,113 @@ void _jose1116Tests() {
         '/api/v1/social/connections/conn-1/comments/youtube/yt-1/hide',
       ]);
     });
+
+    testWidgets('Delete on a comment asks for a second tap first', (tester) async {
+      final deleted = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (request.method == 'GET' && path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              {
+                'id': 'ig-1',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'p', 'text': 'A post'},
+                'author': 'someone',
+                'text': 'Nice work',
+                'timestamp': '2026-11-13T10:00:00Z',
+                'hidden': false,
+                'replies': [],
+                'actions': ['delete'],
+                'unavailable': {},
+              },
+            ],
+            'sources': [],
+          });
+        }
+        if (request.method == 'DELETE') {
+          deleted.add(path);
+          return _json({'data': {'deleted': true}});
+        }
+        return inner(request);
+      });
+      await tester.tap(find.byKey(const Key('social-comments')));
+      await tester.pumpAndSettle();
+
+      final delete = find.byKey(const Key('social-comment-delete-ig-1'));
+      await tester.ensureVisible(delete);
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(deleted, isEmpty);
+      expect(find.text('Tap again to delete'), findsOneWidget);
+
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(deleted, ['/api/v1/social/connections/conn-1/comments/instagram/ig-1']);
+    });
+  });
+
+  testWidgets('removing a block inside a column does not hand its text to '
+      'the next one', (tester) async {
+    const letter = {
+      'id': 'n-col',
+      'subject': 'Columns',
+      'status': 'draft',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'blocks': [
+        {
+          'type': 'columns',
+          'columns': [
+            {
+              'blocks': [
+                {'type': 'text', 'text': 'First'},
+                {'type': 'text', 'text': 'Second'},
+              ],
+            },
+            {'blocks': <Map<String, dynamic>>[]},
+          ],
+        },
+      ],
+    };
+    final saved = <Map<String, dynamic>>[];
+    final inner = _handler(canEdit: true, newsletters: const [letter]);
+    await _pumpComposer(tester, (request) {
+      if (request.method == 'PUT') {
+        saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return Future.value(_json({'data': {...letter, 'revision': saved.length + 1}}));
+      }
+      return inner(request);
+    });
+    await _toStep(tester, 'design');
+    await tester.tap(find.byKey(const Key('newsletter-block-0')));
+    await tester.pumpAndSettle();
+
+    final remove = find.byTooltip('Remove').first;
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    final field = find.descendant(
+      of: find.byKey(const ValueKey('newsletter-inspector')),
+      matching: find.byKey(const ValueKey('newsletter-field-text')),
+    );
+    expect(field, findsOneWidget);
+    expect(find.descendant(of: field, matching: find.text('Second')), findsOneWidget);
+
+    await tester.enterText(field, 'Second!');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    final cols = ((saved.last['blocks'] as List).first as Map)['columns'] as List;
+    expect((cols.first as Map)['blocks'], [
+      {'type': 'text', 'text': 'Second!'},
+    ]);
   });
 }
 

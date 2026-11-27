@@ -76,6 +76,35 @@ void main() {
       expect(_savedWalls(control), hasLength(_fixtureWalls.length));
     });
 
+    testWidgets('a dragged wall is saved with whole-number coordinates', (
+      tester,
+    ) async {
+      // Audit 11-27: moving a wall made its ends doubles; a native build sends
+      // 2.0 as "2.0" and the server refused the save.
+      final fake = await _pumpTab(tester);
+      await _selectPlan(tester);
+      await _enterEdit(tester);
+      await _enterWallMode(tester);
+
+      final canvas = find.byKey(const Key('floor-plan-canvas'));
+      final cell = tester.getSize(canvas).width / _gridCols;
+      await tester.drag(
+        find.byKey(const ValueKey('floor-plan-wall-0')),
+        Offset(cell * 2, cell),
+        touchSlopX: 0,
+        touchSlopY: 0,
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      await _save(tester);
+
+      final moved = _savedWalls(fake).first;
+      expect(moved, isNot(_fixtureWalls.first), reason: 'the wall did move');
+      for (final v in moved.values) {
+        expect(v, isA<int>(), reason: '$moved');
+      }
+    });
+
     testWidgets('a half-drawn wall is thrown away when wall mode is left', (
       tester,
     ) async {
@@ -318,7 +347,7 @@ void main() {
       expect(find.byKey(const Key('plan-name')), findsOneWidget);
     });
 
-    testWidgets('a rename sends the new name AND the layout it must not lose', (
+    testWidgets('a rename sends only the new name, never a layout it could overwrite', (
       tester,
     ) async {
       final fake = await _pumpTab(tester);
@@ -340,13 +369,10 @@ void main() {
       final body = fake.puts.single;
       expect(body['name'], 'Ground floor');
 
-      // The load-bearing half. PUT replaces the layout with whatever it is
-      // given, so a rename that sent nothing — or an empty document — would
-      // wipe the walls and computers off the plan it was renaming.
-      final layout = body['layout'] as Map<String, dynamic>;
-      expect(layout['walls'], hasLength(_fixtureWalls.length));
-      expect(layout['nodes'], hasLength(1));
-      expect((layout['nodes'] as List).single, containsPair('id', 'n0'));
+      // The load-bearing half (audit 11-27). The server keeps the layout when
+      // none is sent (FloorPlanWriteTest), and a layout sent from a screen
+      // opened earlier overwrote one saved meanwhile.
+      expect(body.containsKey('layout'), isFalse);
     });
 
     testWidgets('deleting asks first, and cancelling sends nothing', (

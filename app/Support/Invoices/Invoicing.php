@@ -115,11 +115,15 @@ final class Invoicing
         $scope = $issuer ?? Organization::find($sheet->organization_id);
         $due = (int) $this->settings->get('money.payment_terms_days', $scope);
         $names = collect($sheet->columns)->pluck('name', 'id');
+        // The issuer's own day, not UTC's: an evening invoice is dated today.
+        $today = now((string) ($this->settings->get('timezone', $scope) ?: config('app.timezone')))->startOfDay();
 
         $skipped = [];
-        $made = DB::transaction(function () use ($user, $sheet, $issuer, $scope, $due, $names, &$skipped) {
+        $made = DB::transaction(function () use ($user, $sheet, $issuer, $scope, $due, $names, $today, &$skipped) {
             $made = [];
-            foreach ($sheet->rows()->with('franchise.company')->get() as $row) {
+            // Locked: a second request waits here and then sees invoice_id set.
+            FinancialChargeSheet::query()->whereKey($sheet->id)->lockForUpdate()->first();
+            foreach ($sheet->rows()->with('franchise.company')->lockForUpdate()->get() as $row) {
                 if ($row->invoice_id !== null) {
                     $number = Invoice::query()->whereKey($row->invoice_id)->value('number');
                     $skipped[] = ['row_id' => $row->id, 'label' => $row->label, 'reason' => "Already invoiced ({$number})."];
@@ -135,8 +139,8 @@ final class Invoicing
                 $invoice = Invoice::create([
                     'company_id' => $issuer?->id,
                     'number' => $this->numbers->next(RecordNumberGenerator::INVOICES, $scope),
-                    'issued_on' => today()->toDateString(),
-                    'due_on' => today()->addDays($due)->toDateString(),
+                    'issued_on' => $today->toDateString(),
+                    'due_on' => $today->copy()->addDays($due)->toDateString(),
                     'bill_to_type' => 'franchise',
                     'bill_to_id' => $row->franchise_id,
                     'bill_to_name' => $row->label,
@@ -233,6 +237,9 @@ final class Invoicing
             $this->mustBe($invoice, ['approved', 'sent'], 'Approve an invoice before sending it.');
         }
         $first = $invoices[0];
+        if (collect($invoices)->pluck('company_id')->unique()->count() > 1) {
+            throw ValidationException::withMessages(['ids' => 'These invoices come from different companies. Send each company\'s on its own.']);
+        }
         $issuer = $first->company ?? Organization::find($first->organization_id);
         $chosen = $this->channels->chosen($issuer);
         foreach ($chosen as $channel) {
@@ -264,7 +271,7 @@ final class Invoicing
         }
 
         $sent = [];
-        foreach ($batches as [$group, $addresses]) {
+        $email = function (array $group, array $addresses) use ($issuer, $columns, &$sent) {
             $subject = count($group) === 1 ? "Invoice {$group[0]->number} from {$issuer->name}" : "Invoices from {$issuer->name}";
             $mail = new InvoiceMail($group, $columns, (string) $issuer->name, $subject);
             try {
@@ -275,26 +282,44 @@ final class Invoicing
             foreach ($group as $invoice) {
                 $sent[$invoice->id]['email'] = $addresses;
             }
-        }
-        foreach ($invoices as $invoice) {
-            foreach ($texting as $channel) {
-                try {
-                    $this->channels->{$channel}($issuer, $invoice, $phonesFor($invoice));
-                } catch (Throwable $e) {
-                    throw ValidationException::withMessages(['send' => $e->getMessage() ?: 'The message could not be sent.']);
+        };
+        try {
+            // A summary goes first; otherwise each invoice finishes all its
+            // channels before the next starts, so a failure stops at one invoice.
+            if ($mode === 'summary' && $batches !== []) {
+                $email(...$batches[0]);
+            }
+            foreach ($invoices as $i => $invoice) {
+                if ($mode !== 'summary' && $batches !== []) {
+                    $email(...$batches[$i]);
                 }
-                $sent[$invoice->id][$channel] = $phonesFor($invoice);
+                foreach ($texting as $channel) {
+                    try {
+                        $this->channels->{$channel}($issuer, $invoice, $phonesFor($invoice));
+                    } catch (Throwable $e) {
+                        throw ValidationException::withMessages(['send' => $e->getMessage() ?: 'The message could not be sent.']);
+                    }
+                    $sent[$invoice->id][$channel] = $phonesFor($invoice);
+                }
+            }
+        } finally {
+            // Whatever went out is recorded, so a retry after a failure does not resend it.
+            foreach ($invoices as $invoice) {
+                if (array_diff($chosen, array_keys($sent[$invoice->id] ?? [])) === []) {
+                    $this->markSent($user, $invoice, $sent[$invoice->id]);
+                }
             }
         }
+    }
 
-        foreach ($invoices as $invoice) {
-            $by = $sent[$invoice->id] ?? [];
-            $invoice->forceFill(['status' => 'sent', 'sent_by_user_id' => $user->id, 'sent_at' => now(),
-                'bill_to_emails' => $invoice->bill_to_emails ?: ($by['email'] ?? null),
-                'bill_to_phones' => $invoice->bill_to_phones ?: ($by['sms'] ?? $by['whatsapp'] ?? null)])->save();
-            $this->audit->log('invoice.sent', $invoice, metadata: ['to' => $by['email'] ?? [], 'channels' => $by], actor: $user);
-            $this->events->emit('invoice.sent', $invoice, ['number' => $invoice->number, 'channels' => array_keys($by)], $user);
-        }
+    /** @param array<string, list<string>> $by channel => recipients */
+    private function markSent(User $user, Invoice $invoice, array $by): void
+    {
+        $invoice->forceFill(['status' => 'sent', 'sent_by_user_id' => $user->id, 'sent_at' => now(),
+            'bill_to_emails' => $invoice->bill_to_emails ?: ($by['email'] ?? null),
+            'bill_to_phones' => $invoice->bill_to_phones ?: ($by['sms'] ?? $by['whatsapp'] ?? null)])->save();
+        $this->audit->log('invoice.sent', $invoice, metadata: ['to' => $by['email'] ?? [], 'channels' => $by], actor: $user);
+        $this->events->emit('invoice.sent', $invoice, ['number' => $invoice->number, 'channels' => array_keys($by)], $user);
     }
 
     /**
@@ -347,6 +372,10 @@ final class Invoicing
     public function void(User $user, Invoice $invoice, string $reason): void
     {
         $this->mustBe($invoice, ['draft', 'approved', 'sent'], 'A paid invoice is not voided; record a refund instead.');
+        // Voiding frees its charge-sheet row to be billed again in full.
+        if ($invoice->payments()->exists()) {
+            throw ValidationException::withMessages(['status' => 'This invoice has payments recorded. Record a refund instead of voiding it.']);
+        }
         $invoice->forceFill(['status' => 'void', 'voided_at' => now(), 'void_reason' => $reason])->save();
         FinancialChargeSheetRow::query()->where('invoice_id', $invoice->id)->update(['invoice_id' => null]);
         $this->audit->log('invoice.voided', $invoice, metadata: ['reason' => $reason], actor: $user);

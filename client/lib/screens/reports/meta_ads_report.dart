@@ -78,7 +78,12 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     _load();
   }
 
+  int _loads = 0;
+
   Future<void> _load() async {
+    // Only the newest load lands: an older range answering late no longer
+    // replaces a newer one (audit 2026-11-27).
+    final ticket = ++_loads;
     final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/meta', {
       'from': formatCalendarDay(from),
@@ -87,7 +92,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
       'category': ?_category,
       'region': ?_region,
     });
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
     setState(() {
       if (response.ok) {
         _data = (response.data as Map).cast<String, dynamic>();

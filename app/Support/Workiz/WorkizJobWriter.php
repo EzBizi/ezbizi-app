@@ -165,7 +165,8 @@ final class WorkizJobWriter
         // killed there leaves no refusal for anyone to act on. So the wait plus
         // Workiz's own 30 seconds stays inside it, and the hold expires soon
         // after a killed run rather than keeping the projection off.
-        $lock = Cache::lock(ProjectWorkizRecords::LOCK, 60);
+        // 150 s: v2's lookups plus the POST run up to ~105 s (audit 11-27); the projection's row claim covers a lapse.
+        $lock = Cache::lock(ProjectWorkizRecords::LOCK, 150);
 
         try {
             $lock->block(15);

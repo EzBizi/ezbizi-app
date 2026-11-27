@@ -63,8 +63,13 @@ class OwnershipController extends Controller
             'scope_id' => ['required_with:scope_type', 'nullable', 'uuid'],
             'user_id' => ['present', 'nullable', 'uuid', Rule::exists('users', 'id')->where('organization_id', $actor->organization_id)],
         ]);
+        // No scope is the whole organization: only someone who reaches the
+        // organization may set its owners, not any company editor (audit
+        // 2026-11-27).
         if (! empty($input['scope_type'])) {
             $this->reach->assertCovers($actor, $input['scope_type'], $input['scope_id']);
+        } else {
+            $this->reach->assertCovers($actor, 'organization', $actor->organization_id);
         }
 
         $where = ['kind' => $input['kind'], 'key' => $input['key'],

@@ -32,7 +32,15 @@ class DateSpan {
 
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  int get days => to.difference(from).inDays + 1;
+  // In UTC: across the spring change a local day is 23 hours and
+  // `inDays` counted one too few (audit 2026-11-27).
+  int get days =>
+      DateTime.utc(
+        to.year,
+        to.month,
+        to.day,
+      ).difference(DateTime.utc(from.year, from.month, from.day)).inDays +
+      1;
   bool get single => from == to;
 
   String get fromKey => formatCalendarDay(from);

@@ -734,6 +734,79 @@ void main() {
     expect(field.enabled, isFalse);
   });
 
+  testWidgets('Save sends only the fields that changed', (tester) async {
+    Map<String, dynamic>? sent;
+    await _pumpScreen(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+        'fleet_management.edit',
+      ],
+      vehicles: [_platedVan],
+      size: const Size(1280, 2400),
+      onRequest: (request) {
+        if (request.method != 'PATCH') return null;
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'data': {..._platedVan, 'plate': 'NEW-1'},
+          }),
+          200,
+        );
+      },
+    );
+    await tester.tap(find.text(_platedVan['label']! as String).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Plate number'),
+      'NEW-1',
+    );
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    // A whole-record PATCH put back fields somebody else had just changed
+    // (audit 2026-11-27).
+    expect(sent, {'plate': 'NEW-1'});
+  });
+
+  testWidgets('a bad toll rate says so and leaves Save usable', (tester) async {
+    await _pumpIdentity(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+        'fleet_management.edit',
+        'fleet_management.financials',
+      ],
+    );
+
+    await tester.ensureVisible(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Toll flat rate'),
+      'twelve',
+    );
+
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    // It threw after the card went busy and locked it (audit 2026-11-27).
+    expect(find.textContaining('Enter the price in dollars'), findsOneWidget);
+    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+  });
+
   testWidgets('with financials the same control is live', (tester) async {
     await _pumpIdentity(
       tester,

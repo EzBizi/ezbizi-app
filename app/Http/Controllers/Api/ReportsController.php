@@ -129,22 +129,7 @@ class ReportsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $this->validated($request);
-
-        $company = $data['company_id'] === null
-            ? null
-            : Company::query()->findOrFail($data['company_id']);
-
-        $franchise = $data['franchise_id'] === null
-            ? null
-            : Franchise::query()->findOrFail($data['franchise_id']);
-
-        if ($company === null) {
-            $this->authorize('createOnOrganization', SavedReport::class);
-        } else {
-            $this->authorize('create', [SavedReport::class, $company, $franchise]);
-        }
-
-        PlaceInView::assert($request->user(), $company, $franchise, 'report');
+        $this->authorizePlace($request, $data);
 
         $report = SavedReport::create($data);
 
@@ -166,7 +151,15 @@ class ReportsController extends Controller
         $report = SavedReport::query()->findOrFail($id);
         $this->authorize('update', $report);
 
-        $report->update($this->validated($request));
+        $data = $this->validated($request);
+        if (! $request->has('company_id') && ! $request->has('franchise_id')) {
+            // A rename or a new definition stays where it was filed.
+            [$data['company_id'], $data['franchise_id']] = [$report->company_id, $report->franchise_id];
+        } elseif ([$data['company_id'], $data['franchise_id']] !== [$report->company_id, $report->franchise_id]) {
+            // Moving it is filing it again: the same checks as store().
+            $this->authorizePlace($request, $data);
+        }
+        $report->update($data);
 
         $this->audit->logChange('report.updated', $report);
 
@@ -280,6 +273,26 @@ class ReportsController extends Controller
             'capped' => $result->capped,
             'total' => $result->total,
         ]]);
+    }
+
+    /** Who may file a report there, and only where the reader stands. */
+    private function authorizePlace(Request $request, array $data): void
+    {
+        $company = $data['company_id'] === null
+            ? null
+            : Company::query()->findOrFail($data['company_id']);
+
+        $franchise = $data['franchise_id'] === null
+            ? null
+            : Franchise::query()->findOrFail($data['franchise_id']);
+
+        if ($company === null) {
+            $this->authorize('createOnOrganization', SavedReport::class);
+        } else {
+            $this->authorize('create', [SavedReport::class, $company, $franchise]);
+        }
+
+        PlaceInView::assert($request->user(), $company, $franchise, 'report');
     }
 
     private function validated(Request $request): array

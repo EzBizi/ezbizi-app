@@ -99,7 +99,9 @@ class StartersAndLeavers
      */
     private function inView(array $places): Builder
     {
-        return User::query()->where(function (Builder $visible) use ($places) {
+        // removed(false): an erased account is no longer a starter or a
+        // leaver (audit 2026-11-27), as HR's own overview already counts.
+        return User::query()->removed(false)->where(function (Builder $visible) use ($places) {
             $visible->whereHas(
                 'assignments',
                 fn (Builder $a) => $this->constrainToPlaces($a, $places),

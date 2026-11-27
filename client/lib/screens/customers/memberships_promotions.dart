@@ -224,6 +224,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
       _optedOut = (data['opted_out'] as num?)?.toInt() ?? 0;
       _loaded = true;
       _unticked.clear();
+      _prunePicks();
       if (!_canPicture) {
         _picture = null;
         _picturePath = null;
@@ -384,6 +385,22 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
       ],
     ],
   );
+
+  /// After a reload, keep only the picks the new range still offers (audit
+  /// 11-27: a hidden picker's pick still filtered the list).
+  void _prunePicks() {
+    final jobs = [
+      for (final r in _rows)
+        for (final j in (r['jobs'] as List? ?? const [])) j as Map,
+    ];
+    _branches.retainAll(_rows.map((r) => '${r['franchise'] ?? ''}').toSet());
+    _types.retainAll(jobs.map((j) => '${j['type'] ?? ''}').toSet());
+    _services.retainAll(jobs.expand((j) => _strings(j['services'])).toSet());
+    _jobTags.retainAll(jobs.expand((j) => _strings(j['tags'])).toSet());
+    _customerTags.retainAll(
+      _rows.expand((r) => _strings(r['customer_tags'])).toSet(),
+    );
+  }
 
   Widget _filters(ThemeData theme) {
     final jobs = [
@@ -1316,8 +1333,10 @@ class _PhoneMock extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(radius),
-                            child: Image.memory(
-                              Uint8List.fromList(picture!.bytes),
+                            child: Image(
+                              image: _pictureImages[picture!] ??= MemoryImage(
+                                Uint8List.fromList(picture!.bytes),
+                              ),
                               fit: BoxFit.cover,
                             ),
                           ),
@@ -1349,3 +1368,7 @@ class _PhoneMock extends StatelessWidget {
     );
   }
 }
+
+/// One decoded image per picked picture: a fresh byte copy on every rebuild
+/// re-decoded it on every keystroke (audit 11-27).
+final _pictureImages = Expando<MemoryImage>();

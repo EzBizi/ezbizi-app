@@ -144,10 +144,16 @@ class _PageEditorState extends State<PageEditor> {
       _fields = ((data['fields'] as List<dynamic>?) ?? const [])
           .cast<Map<String, dynamic>>();
       _siteValues = (data['values'] as Map<String, dynamic>?) ?? const {};
+      _high = (data['numbered_high'] as Map?)?.cast<String, dynamic>() ?? const {};
       _pageValues =
           ((data['pages'] as Map<String, dynamic>?) ?? const {})[widget.path]
                   as Map<String, dynamic>? ??
               const {};
+      // Boxes made while loading hold ''; give them the stored value now
+      // (audit 2026-11-27). Boxes somebody already typed in keep their text.
+      for (final e in _boxes.entries) {
+        if (e.value.text.isEmpty) e.value.text = _current(e.key);
+      }
     });
 
     _loadOptions();
@@ -542,9 +548,13 @@ class _PageEditorState extends State<PageEditor> {
   /// are: removing field 2 of three must not hand field 3's name to a new field
   /// whose words are different, on a page where `[ezbizi_x_field_3]` is already
   /// pasted into the template.
+  /// Highest number ever used per family, from the server: a removed top
+  /// number is never reused (audit 2026-11-27).
+  Map<String, dynamic> _high = const {};
+
   void _addTextField() {
     final slug = _slug(widget.path);
-    var highest = 0;
+    var highest = (_high['${slug}_field'] as num?)?.toInt() ?? 0;
 
     for (final key in _textKeys) {
       final match = RegExp('^${RegExp.escape(slug)}_field_([0-9]+)\$').firstMatch(key);

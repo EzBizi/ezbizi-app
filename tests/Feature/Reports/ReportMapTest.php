@@ -4,6 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Reports\ReportMap;
+use App\Support\Time\FranchiseWallTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,22 @@ class ReportMapTest extends TestCase
             $this->assertNotEmpty($resource['table'], "{$key} has no table");
             $this->assertNotEmpty($resource['permission'], "{$key} has no permission");
         }
+    }
+
+    /** A column its model keeps in the branch's wall time is read as one (audit 2026-11-27: jobs.scheduled_for). */
+    public function test_a_wall_time_column_is_marked_wall_clock(): void
+    {
+        $seen = 0;
+        foreach (ReportMap::all() as $key => $resource) {
+            $casts = (new $resource['model'])->getCasts();
+            foreach ($resource['columns'] as $column => $declared) {
+                if (($casts[$column] ?? null) === FranchiseWallTime::class) {
+                    $seen++;
+                    $this->assertTrue($declared['wall_clock'] ?? false, "{$key}.{$column} is wall time");
+                }
+            }
+        }
+        $this->assertGreaterThan(0, $seen, 'no wall-time column was found, so nothing was asserted');
     }
 
     /**

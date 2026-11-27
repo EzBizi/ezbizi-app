@@ -58,7 +58,7 @@ class ServicesController extends Controller
         $scope = ViewScope::forUser($user);
 
         $query = InventoryVisibility::constrain(Service::query(), $user, $scope)
-            ->with(['group:id,name', 'label:id,name', 'company:id,name', 'franchise:id,name']);
+            ->with(['group:id,name', 'label:id,name', 'company:id,name', 'franchise:id,name', 'attachments']);
 
         if (filled($request->query('search'))) {
             $term = trim((string) $request->query('search'));
@@ -68,6 +68,12 @@ class ServicesController extends Controller
                     ->orWhere('number', 'like', $like)
                     ->orWhere('description', 'like', $like);
             });
+        }
+
+        // Sorted here, not on the loaded page: a price sort over one page of
+        // a longer catalogue put the cheapest of THAT page first.
+        if ($request->query('sort') === 'price') {
+            $query->orderByRaw('price_minor IS NULL')->orderBy('price_minor');
         }
 
         $services = $query
@@ -194,29 +200,33 @@ class ServicesController extends Controller
             );
         }
 
-        $group = array_key_exists('group_id', $input)
-            ? $this->taxonomyInPlace(
-                $input['group_id'] === null ? null : ServiceGroup::query()->findOrFail($input['group_id']),
-                $company?->getKey(),
-                $franchise?->getKey(),
-                'group_id',
-            )
-            : $service->group;
-        $label = array_key_exists('label_id', $input)
-            ? $this->taxonomyInPlace(
-                $input['label_id'] === null ? null : ServiceLabel::query()->findOrFail($input['label_id']),
-                $company?->getKey(),
-                $franchise?->getKey(),
-                'label_id',
-            )
-            : $service->label;
+        // Checked against the NEW place even when unchanged: moving a service to
+        // another company must not keep a group that company cannot see.
+        $group = $this->taxonomyInPlace(
+            array_key_exists('group_id', $input)
+                ? ($input['group_id'] === null ? null : ServiceGroup::query()->findOrFail($input['group_id']))
+                : $service->group,
+            $company?->getKey(),
+            $franchise?->getKey(),
+            'group_id',
+        );
+        // Checked against the NEW place even when unchanged: moving a service to
+        // another company must not keep a label that company cannot see.
+        $label = $this->taxonomyInPlace(
+            array_key_exists('label_id', $input)
+                ? ($input['label_id'] === null ? null : ServiceLabel::query()->findOrFail($input['label_id']))
+                : $service->label,
+            $company?->getKey(),
+            $franchise?->getKey(),
+            'label_id',
+        );
 
         $service->fill([
             ...collect($input)->only(['name', 'description', 'price_minor'])->all(),
             'company_id' => $company?->getKey(),
             'franchise_id' => $franchise?->getKey(),
-            'group_id' => array_key_exists('group_id', $input) ? $group?->getKey() : $service->group_id,
-            'label_id' => array_key_exists('label_id', $input) ? $label?->getKey() : $service->label_id,
+            'group_id' => $group?->getKey(),
+            'label_id' => $label?->getKey(),
         ]);
         DB::transaction(function () use ($service, $before) {
             $service->save();
