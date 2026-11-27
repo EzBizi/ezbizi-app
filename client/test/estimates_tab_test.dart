@@ -725,7 +725,7 @@ class _Server {
       });
     }
     if (path.endsWith('/jobs')) {
-      if (request.url.queryParameters['search'] == 'Nina Patel') {
+      if (request.url.queryParameters['customer_id'] == 'c-9') {
         return _json({
           'data': [
             {

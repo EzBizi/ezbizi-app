@@ -1561,7 +1561,8 @@ class _JobsScreenState extends State<JobsScreen> {
         _roleId == null &&
         _where == null &&
         _types.isEmpty &&
-        _tags.isEmpty) {
+        _tags.isEmpty &&
+        _money == null) {
       return switch (_when) {
         // Not "No jobs yet" — there may be thousands, all of them behind Past.
         'upcoming' when (_whenCounts['past'] ?? 0) > 0 =>

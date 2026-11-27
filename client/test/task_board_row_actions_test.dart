@@ -227,11 +227,12 @@ void main() {
     expect(log.last.$2, '/tasks/t1/restore');
     expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
   });
-  testWidgets('a phone card has the menu too', (tester) async {
+  testWidgets('row 70: on a phone a long press opens the row menu', (tester) async {
     await pumpBoard(tester, size: const Size(390, 844));
-    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    expect(find.byKey(const ValueKey('task-menu-t1')), findsNothing);
+    await tester.longPress(find.text('Sweep the Oak Park flue'));
     await tester.pumpAndSettle();
-    expect(find.text('Move to…'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-rc-open')), findsOneWidget);
     expect(find.byKey(const Key('task-bulk-bar')), findsNothing);
   });
 

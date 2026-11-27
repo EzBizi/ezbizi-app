@@ -273,7 +273,7 @@ class JobsController extends Controller
                 ->orderByDesc('created_at'),
         };
 
-        $jobs = $query->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+        $jobs = $query->paginate(perPage: min(max((int) $request->query('per_page', 50), 1), 200));
 
         $meta = $this->pageMeta($jobs);
 

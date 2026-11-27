@@ -1699,7 +1699,7 @@ class TwimlRendererTest extends TestCase
             return $this->number($t, $connection, [
                 'ring_group_id' => null,
                 'recording_notice' => null,
-                'record' => false,
+                'record' => null, // null = follows the company (audit 11-27)
             ])->fresh();
         });
 

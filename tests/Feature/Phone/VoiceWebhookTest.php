@@ -1042,7 +1042,11 @@ class VoiceWebhookTest extends TestCase
             ['is_system' => false],
         );
 
-        return User::create([
+        // A real desk can use the line it calls from: the outbound caller ID
+        // is checked against that (audit 11-27).
+        $role->syncPermissionKeys(['phone.view']);
+
+        $user = User::create([
             'organization_id' => $tenant['org']->id,
             'role_id' => $role->id,
             'name' => $name,
@@ -1050,6 +1054,13 @@ class VoiceWebhookTest extends TestCase
             'password' => 'a-real-password',
             'is_active' => true,
         ]);
+        \App\Models\Assignment::create([
+            'organization_id' => $tenant['org']->id,
+            'user_id' => $user->id,
+            'assigned_organization_id' => $tenant['org']->id,
+        ]);
+
+        return $user;
     }
 
     /** @return array<string, string> */

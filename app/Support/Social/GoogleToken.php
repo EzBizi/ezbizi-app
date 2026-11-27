@@ -177,10 +177,14 @@ final class GoogleToken
                 );
             }
 
-            $connection->forceFill([
+            // Saved inside its organization (audit 11-27): a scheduled sweep has
+            // no tenant set, and the save threw instead of marking it broken.
+            $org = \App\Models\Organization::withoutGlobalScopes()->find($connection->organization_id);
+            $mark = fn () => $connection->forceFill([
                 'status' => SocialConnection::STATUS_BROKEN,
                 'status_reason' => 'Google would not renew this connection. It needs connecting again.',
             ])->save();
+            $org === null ? $mark() : app(\App\Support\Tenancy\TenantContext::class)->run($org, $mark);
 
             throw new RuntimeException(
                 'Google would not renew this connection. It needs connecting again.'

@@ -594,13 +594,13 @@ void main() {
     );
   });
 
-  testWidgets('on a phone each task is a card with its status in words', (
-    tester,
-  ) async {
+  testWidgets('row 70: a phone shows Monday\'s dense table, name pinned, '
+      'status in words, no drag handle or pick box', (tester) async {
     await pumpBoard(tester, size: const Size(390, 844));
 
-    expect(find.text('OWNER'), findsNothing);
     expect(find.byKey(const ValueKey('task-t2')), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('task-t2'))).height, lessThan(48));
+    expect(find.byKey(const ValueKey('task-pick-t2')), findsNothing);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('task-t2')),

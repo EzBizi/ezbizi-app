@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -58,6 +59,32 @@ class _StaffThreadState extends State<StaffThread> {
   void initState() {
     super.initState();
     _load();
+    // ponytail: a 10 s poll, a push subscription if threads get busy.
+    // Audit 11-27: an open thread never showed new replies.
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+  }
+
+  Timer? _poll;
+
+  Future<void> _refresh() async {
+    if (_loading) return;
+    final response = await widget.api.get('/staff-messages', {
+      'with': widget.withUserId,
+    });
+    if (!mounted || !response.ok) return;
+    final rows = [
+      for (final row in (response.data as List? ?? const []))
+        if (row is Map<String, dynamic>) _Msg.fromJson(row),
+    ];
+    if (rows.length == _messages.length &&
+        (rows.isEmpty ||
+            (rows.last.body == _messages.last.body &&
+                rows.last.readAt == _messages.last.readAt))) {
+      return;
+    }
+    setState(() => _messages = rows);
+    widget.onRead();
+    _toBottom();
   }
 
   @override
@@ -74,6 +101,7 @@ class _StaffThreadState extends State<StaffThread> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     _composer.dispose();
     _scroll.dispose();
     super.dispose();

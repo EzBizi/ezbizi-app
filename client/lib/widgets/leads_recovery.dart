@@ -288,13 +288,17 @@ class _MessageCardState extends State<_MessageCard> {
     super.dispose();
   }
 
+  /// Only the newest preview is drawn (audit 11-27: answers could cross).
+  int _renderSeq = 0;
+
   Future<void> _render() async {
     if (_text.text.trim().isEmpty) return;
+    final seq = ++_renderSeq;
     final response = await widget.api.post('/leads/recovery/preview', {
       'text': _text.text,
       'company_id': ?widget.companyId,
     });
-    if (!mounted || !response.ok) return;
+    if (!mounted || seq != _renderSeq || !response.ok) return;
     final data = response.data as Map<String, dynamic>;
     setState(() {
       _preview = '${data['text']}';

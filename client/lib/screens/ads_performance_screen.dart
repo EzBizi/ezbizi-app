@@ -558,7 +558,14 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       _changeResult = null;
     });
 
-    final asked = _picked.toList();
+    // Only rows on screen (audit 11-27: a filter hid ticked campaigns and
+    // Pause still acted on them).
+    final shown = {for (final c in _campaignRows().$2) '${c['id']}'};
+    final asked = _picked.where(shown.contains).toList();
+    if (asked.isEmpty) {
+      setState(() => _changing = false);
+      return;
+    }
     final response = await widget.api.post('/ads/campaigns/status', {
       'connection_id': id,
       'campaign_ids': asked,
@@ -657,6 +664,26 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   Widget _accountList(ThemeData theme) {
     if (_loadingAccounts) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // A failed list is not "nothing connected" (audit 11-27).
+    if (_accounts.isEmpty && _error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _error!,
+              key: const ValueKey('ads-accounts-error'),
+              textAlign: TextAlign.center,
+            ),
+            TextButton(
+              onPressed: _loadAccounts,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_accounts.isEmpty) {

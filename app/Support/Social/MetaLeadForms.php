@@ -44,14 +44,13 @@ final class MetaLeadForms
         $made = 0;
 
         // ponytail: the first 100 forms, and 100 leads a form since $since.
-        foreach ((array) Http::timeout(self::TIMEOUT)->get($graph.$page->remote_id.'/leadgen_forms', [
-            'fields' => 'id', 'limit' => 100, 'access_token' => $token,
+        foreach ((array) Http::withToken($token)->timeout(self::TIMEOUT)->get($graph.$page->remote_id.'/leadgen_forms', [
+            'fields' => 'id', 'limit' => 100,
         ])->json('data', []) as $form) {
-            $leads = Http::timeout(self::TIMEOUT)->get($graph.$form['id'].'/leads', [
+            $leads = Http::withToken($token)->timeout(self::TIMEOUT)->get($graph.$form['id'].'/leads', [
                 'fields' => 'id',
                 'limit' => 100,
                 'filtering' => json_encode([['field' => 'time_created', 'operator' => 'GREATER_THAN', 'value' => $since->getTimestamp()]]),
-                'access_token' => $token,
             ])->json('data', []);
 
             foreach ((array) $leads as $lead) {
@@ -174,8 +173,8 @@ final class MetaLeadForms
         if ($formId === '') {
             return null;
         }
-        $name = Http::timeout(self::TIMEOUT)->get('https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$formId,
-            ['fields' => 'name', 'access_token' => $page->credentials['access_token'] ?? ''])->json('name');
+        $name = Http::withToken($page->credentials['access_token'] ?? '')->timeout(self::TIMEOUT)->get('https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$formId,
+            ['fields' => 'name'])->json('name');
 
         return is_string($name) && $name !== '' ? mb_substr($name, 0, 255) : null;
     }
@@ -187,11 +186,10 @@ final class MetaLeadForms
      */
     private function read(string $leadgenId, SocialConnection $page): array
     {
-        $response = Http::timeout(self::TIMEOUT)->get(
+        $response = Http::withToken($page->credentials['access_token'] ?? '')->timeout(self::TIMEOUT)->get(
             'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$leadgenId,
             [
                 'fields' => 'created_time,field_data,platform,ad_name,adset_name,campaign_name',
-                'access_token' => $page->credentials['access_token'] ?? '',
             ],
         );
 

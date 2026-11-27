@@ -15,6 +15,12 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Phone: a line can turn recording off even when its company records, the company after-hours forward applies to lines, the Everyone ring group rings only that company staff, and removing a menu, hours or mailbox asks first',
+      'Leads: the rest of the audit fixes, including accented first names, safer Google sign-in checks and a Try again on failed Ads loads',
+      'Jobs and Project Management: the rest of the audit fixes, and project reminders are sent once per day and retried when they fail',
+      'Task Board on phones: boards are now a dense table like Monday, with the name column pinned, the other columns sliding underneath, and the group colour down the left edge; long-press a row for its menu',
+      'Scoring: jobs tagged Training, and the calls to or from their numbers, no longer count in Performance, Scoring, the Leaderboard or My performance',
+      'Meta and WhatsApp: access tokens never travel in URLs, customer erasure covers WhatsApp messages, and the staff bot Daily conversion uses your own day',
       'Leaderboard: a new full-width design with a podium for the top three, everyone else ranked by place and rate, and a You panel showing the bookings that move you up',
       'Monitoring: camera health only says OK when a stream is connected, and the recorder password is no longer left in a file on the recorder PC',
       'Task Board: deleting a folder moves its boards and subfolders up instead of removing them, sensitive task text stays hidden in the updates feed, plus 12 more fixes',

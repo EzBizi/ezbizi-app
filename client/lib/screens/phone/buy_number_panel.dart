@@ -389,6 +389,9 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
           showSelectedIcon: false,
           onSelectionChanged: (picked) => setState(() {
             _mode = picked.first;
+            // A state picked under Local must not ride along hidden
+            // (audit 11-27).
+            if (_mode != 'local') _region.clear();
 
             // The old mode's answer is not this one's question. Leaving an
             // area code behind when somebody switches to toll-free searches

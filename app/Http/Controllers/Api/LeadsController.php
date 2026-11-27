@@ -659,7 +659,10 @@ class LeadsController extends Controller
         $data['seen_at'] = now()->toIso8601String();
 
         $matches = $this->customerMatches($lead);
+        // Only customers this reader may open (audit 11-27: names and phones
+        // reached people without customers.view).
         $data['customer_matches'] = $matches
+            ->filter(fn (Customer $c) => (bool) request()->user()?->can('view', $c))
             ->map(fn (Customer $c) => ['id' => $c->id, 'number' => $c->number, 'name' => $c->name, 'phone' => $c->phone])
             ->values()
             ->all();
@@ -1767,7 +1770,9 @@ class LeadsController extends Controller
         $input = $request->validate([
             'status' => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
             'starred' => ['sometimes', 'boolean'],
-            'note' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            // 4,000 characters of words; the bold/italic/underline tags are not
+            // counted (audit 11-27: the box counted words, this counted tags).
+            'note' => ['sometimes', 'nullable', 'string', 'max:16000', fn ($attribute, $value, $fail) => mb_strlen((string) \App\Support\NotesMarkup::plain($value)) > 4000 ? $fail('A note is at most 4,000 characters.') : null],
             'mentions' => ['sometimes', 'array', 'max:50'],
             'mentions.*' => ['uuid'],
             'contact_name' => ['sometimes', 'nullable', 'string', 'max:191'],
@@ -1995,18 +2000,9 @@ class LeadsController extends Controller
         // sources they were granted are half of what that means. Marking a
         // hidden Thumbtack enquiry read on their behalf is not harmful, but it
         // is a row written about a lead they are not allowed to know exists.
-        $ids = Lead::query()->select('id')->sourceVisibleTo($user);
-
-        $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-        $companyIds = $user->reachableCompanies()->pluck('id')->all();
-
-        if (! $user->canActOnOrganization($user->organization)) {
-            $ids->where(function ($q) use ($companyIds, $franchiseIds) {
-                $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds)
-                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
-            });
-        }
+        // Reach, view, source and hidden, as the list reads them (audit 11-27:
+        // reach alone marked leads outside the view, hidden ones included).
+        $ids = self::scopeToReader(Lead::query()->select('leads.id'), $user);
 
         $ids->chunkById(1000, function ($chunk) use ($now, &$count) {
             DB::table('leads')->whereIn('id', $chunk->pluck('id'))->update(['read_at' => $now]);

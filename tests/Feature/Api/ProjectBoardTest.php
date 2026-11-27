@@ -978,6 +978,10 @@ class ProjectBoardTest extends TestCase
             ]);
         $post(['op' => 'update', 'name' => 'contractor: omer', 'to' => 'OMER CONTRACTOR', 'user_id' => $alpha['admin']->id])->assertOk()
             ->assertJsonPath('data.list.1', ['name' => 'OMER CONTRACTOR', 'phone' => null, 'user_id' => $alpha['admin']->id]);
+        // An ordinary tag is never renamed or deleted across the accounts (audit 2026-11-27).
+        $post(['op' => 'delete', 'name' => 'DEPOSIT RECEIVED'])->assertStatus(422);
+        $post(['op' => 'update', 'name' => 'DEPOSIT RECEIVED', 'to' => 'REPAIR TEAM: X'])->assertStatus(422);
+        $post(['op' => 'update', 'name' => 'KENNI REPAIR TEAM', 'to' => 'DEPOSIT'])->assertStatus(422);
         $post(['op' => 'delete', 'name' => 'KENNI REPAIR TEAM'])->assertOk()->assertJsonCount(1, 'data.list');
         // Only the list counts now: the job's KENNI tag is no longer its repair team.
         $this->assertNull($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.repair_team'));
@@ -1140,6 +1144,51 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('Crizzel Ann', $rows[$ids['workiz']]['booked_by']);
         $this->assertSame('Online booking', $rows[$ids['online']]['booked_by']);
         $this->assertNull($rows[$ids['phone']]['booked_by']);
+    }
+
+    /**
+     * Audit 2026-11-27: a failing reminder notes the job once and retries
+     * with backoff, not every sweep; a rescheduled job is reminded again.
+     */
+    public function test_a_failing_reminder_notes_once_and_a_rescheduled_job_is_reminded_again(): void
+    {
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->count();
+        $this->travelTo(now('America/New_York')->setTime(10, 0)->utc());
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+            app(\App\Support\Settings\SettingsResolver::class)->set('project_board.client_messages', $alpha['org'], [
+                'day_before' => ['on' => true, 'since' => now()->subDay()->toIso8601String(), 'text' => 'See you tomorrow'],
+            ]);
+            $alpha['franchise']->forceFill(['timezone' => 'America/New_York'])->save();
+
+            // No phone yet: the reminder cannot go.
+            return $this->job($alpha['franchise'], 'J-1', 'Submitted', now()->addDay()->toDateTimeString(), ['DEPOSIT RECEIVED']);
+        });
+        $notes = fn () => $this->inTenant($alpha['org'], fn () => JobNote::query()->where('job_id', $id)->where('body', 'like', 'Client text%')->count());
+
+        foreach (range(1, 4) as $i) {
+            $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+            $this->travel(15)->minutes();
+        }
+        $this->assertSame(1, $notes(), 'One note, not one per sweep.');
+
+        $this->inTenant($alpha['org'], fn () => Job::query()->find($id)->customer->forceFill(['phone' => '+15125550101'])->save());
+        $this->travel(2)->hours();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(1, $sends(), 'Retried after the backoff, then sent once.');
+
+        // Moved a week out: reminded again the day before the new date.
+        $this->inTenant($alpha['org'], fn () => Job::query()->whereKey($id)->update(['scheduled_for' => now()->addDays(8)]));
+        $this->travel(7)->days();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame(2, $sends());
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string

@@ -305,7 +305,9 @@ class _RecordsTabState extends State<RecordsTab> {
       });
     }
 
-    final pages = quiet ? _page : 1;
+    // A live change re-reads page 1 and merges it over what is loaded
+    // (audit 11-27: it refetched every loaded page and every number).
+    const pages = 1;
     final calls = [
       for (var p = 1; p <= pages; p++)
         widget.api.get('/phone/calls', {
@@ -320,11 +322,12 @@ class _RecordsTabState extends State<RecordsTab> {
           'page': '$p',
         }),
     ];
-    final numbers = widget.api.get('/phone/numbers');
+    final numbers = quiet ? null : widget.api.get('/phone/numbers');
 
     final callPages = await Future.wait(calls);
     final messagePages = await Future.wait(messages);
     final numbersRes = await numbers;
+    final keptPage = _page;
     final callsRes = callPages.firstWhere(
       (r) => !r.ok,
       orElse: () => callPages.first,
@@ -334,8 +337,6 @@ class _RecordsTabState extends State<RecordsTab> {
       orElse: () => messagePages.first,
     );
     if (!mounted || (quiet && !(callsRes.ok && messagesRes.ok))) return;
-    // Quiet: "Load older" ran meanwhile; its pages are not in this read.
-    if (quiet && pages != _page) return;
 
     if (!callsRes.ok) {
       setState(() {
@@ -354,7 +355,10 @@ class _RecordsTabState extends State<RecordsTab> {
 
     final labels = <String, String>{};
     final connections = <String, String>{};
-    if (numbersRes.ok) {
+    if (numbersRes == null) {
+      labels.addAll(_labels);
+      connections.addAll(_connectionOf);
+    } else if (numbersRes.ok) {
       for (final row in (numbersRes.data as List? ?? const [])) {
         if (row is Map<String, dynamic>) {
           final id = row['id'] as String? ?? '';
@@ -380,16 +384,22 @@ class _RecordsTabState extends State<RecordsTab> {
         for (final res in callPages)
           for (final row in (res.data as List? ?? const []))
             if (row is Map<String, dynamic>) _Call.fromJson(row),
+        if (quiet) ..._calls,
       ].where((c) => seenCalls.add(c.id)).toList();
       _messages = [
         for (final res in messagePages)
           for (final row in (res.data as List? ?? const []))
             if (row is Map<String, dynamic>) _Message.fromJson(row),
+        if (quiet) ..._messages,
       ].where((m) => seenTexts.add(m.id)).toList();
-      _page = pages;
-      _hasOlder =
-          ((callPages.last.data as List?)?.length ?? 0) >= _pageSize ||
-          ((messagePages.last.data as List?)?.length ?? 0) >= _pageSize;
+      if (quiet) {
+        _page = keptPage;
+      } else {
+        _page = pages;
+        _hasOlder =
+            ((callPages.last.data as List?)?.length ?? 0) >= _pageSize ||
+            ((messagePages.last.data as List?)?.length ?? 0) >= _pageSize;
+      }
     });
   }
 
@@ -655,7 +665,8 @@ class _RecordsTabState extends State<RecordsTab> {
           key: null,
           label: 'All calls',
           count: _calls.length,
-          note: 'every call',
+          // Counts are over the loaded calls (audit 11-27); say so.
+          note: _hasOlder ? 'loaded so far' : 'every call',
         ),
         FilterTile(
           key: _Outcome.answered.name,
@@ -975,7 +986,12 @@ class _RecordsTabState extends State<RecordsTab> {
 
   Widget _pane({required bool showBack}) {
     final theme = Theme.of(context);
-    final call = _openCall;
+    // The freshest copy from the list, so live updates reach an open call
+    // (audit 11-27: it kept the copy from when it was opened).
+    final opened = _openCall;
+    final call = opened == null
+        ? null
+        : _calls.where((c) => c.id == opened.id).firstOrNull ?? opened;
     final thread = _openThread == null
         ? null
         : _threads.where((row) => row.peer == _openThread).firstOrNull;

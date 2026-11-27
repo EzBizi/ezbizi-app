@@ -70,21 +70,25 @@ class TrustController extends Controller
             ->whereIn('connection_id', $connectionIds)
             ->where('direction', PhoneCall::DIRECTION_OUTBOUND)
             ->where('created_at', '>=', $since)
-            ->get(['attestation']);
+            // Counted in SQL (audit 11-27: it loaded every outbound call).
+            ->groupBy('attestation')
+            ->selectRaw('attestation, count(*) as n')
+            ->pluck('n', 'attestation');
 
         $counts = ['A' => 0, 'B' => 0, 'C' => 0, Attestation::NONE => 0];
         $uncaptured = 0;
+        $total = 0;
 
-        foreach ($calls as $call) {
-            $grade = $call->attestation;
+        foreach ($calls as $grade => $n) {
+            $total += (int) $n;
 
-            if ($grade === null || ! array_key_exists($grade, $counts)) {
-                $uncaptured++;
+            if ($grade === '' || ! array_key_exists($grade, $counts)) {
+                $uncaptured += (int) $n;
 
                 continue;
             }
 
-            $counts[$grade]++;
+            $counts[$grade] += (int) $n;
         }
 
         $graded = $counts['A'] + $counts['B'] + $counts['C'] + $counts[Attestation::NONE];
@@ -92,7 +96,7 @@ class TrustController extends Controller
 
         return response()->json(['data' => [
             'days' => $days,
-            'total' => $calls->count(),
+            'total' => $total,
             'graded' => $graded,
             'uncaptured' => $uncaptured,
             'full' => $counts['A'],
