@@ -152,6 +152,19 @@ class ValuesController extends Controller
             }
         }
 
+        // Remember the highest number used per family, so removing the top
+        // one never frees it for reuse (audit 2026-11-27).
+        $high = $site->numbered_high ?? [];
+        foreach (array_keys($input['values']) as $key) {
+            if ((PageFields::isCustomKey($key) || PageFields::isTemplateKey($key))
+                && preg_match('/^(.*?)_([0-9]+)$/', $key, $m) === 1) {
+                $high[$m[1]] = max((int) ($high[$m[1]] ?? 0), (int) $m[2]);
+            }
+        }
+        if ($high !== ($site->numbered_high ?? [])) {
+            $site->forceFill(['numbered_high' => $high])->save();
+        }
+
         DB::transaction(function () use ($site, $path, $input): void {
             foreach ($input['values'] as $key => $value) {
                 $value = is_string($value) ? trim($value) : null;
@@ -264,6 +277,7 @@ class ValuesController extends Controller
             'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
             ...$payload,
             'not_needed' => $site->not_needed_fields ?? [],
+            'numbered_high' => (object) ($site->numbered_high ?? []),
         ];
     }
 
