@@ -24,7 +24,7 @@ class VersionHistory {
       'Security: resetting someone else 2FA or password now requires being allowed to assign their role',
       'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
     ]),
-    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', deployed: '2026-11-27 15:34', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
       'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',
     ]),
