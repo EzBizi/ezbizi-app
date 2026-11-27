@@ -624,7 +624,7 @@ return [
         // installed (a worker of its own); until then 'default', so nothing waits on a queue nobody serves.
         'staff_queue' => env('QUEUE_STAFF', 'default'),
         'claude' => [
-            'key' => env('AI_CLAUDE_KEY'),   // falls back to ANTHROPIC_API_KEY (Reports' tagger)
+            'key' => env('AI_CLAUDE_KEY', env('ANTHROPIC_API_KEY')),
             'model' => env('AI_CLAUDE_MODEL', 'claude-opus-5-5'),
             'effort' => 'low',
         ],

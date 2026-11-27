@@ -4,15 +4,19 @@ namespace Tests\Feature\Reports;
 
 use App\Models\CallReportLabel;
 use App\Models\CallReportTranscript;
+use App\Support\Ai\AiProvider;
+use App\Support\Ai\ClaudeProvider;
+use App\Support\Ai\GrokCliProvider;
 use App\Support\Reports\Tagging\CallLabels;
-use App\Support\Reports\Tagging\CallTagger;
-use App\Support\Reports\Tagging\ClaudeTagger;
-use App\Support\Reports\Tagging\GrokTagger;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -152,20 +156,10 @@ class LabelReportCallsTest extends TestCase
     /** Grok is asked for one label from the list, by schema, and an off-list answer is not stored as one. */
     public function test_grok_asks_for_one_label_by_schema_and_refuses_an_invented_one(): void
     {
-        config(['experimental_reports.tagging.grok.key' => 'k', 'experimental_reports.tagging.grok.model' => 'grok-4.6']);
+        $this->labelOneCallThroughTheCli('Grr.', Process::result('{"structuredOutput":{"label":"angry"}}'));
 
-        Http::fake(['api.x.ai/*' => Http::sequence()
-            ->push(['choices' => [['message' => ['content' => '{"label":"billing"}']]]])
-            ->push(['choices' => [['message' => ['content' => '{"label":"angry"}']]]]),
-        ]);
-
-        $grok = app(GrokTagger::class);
-
-        $this->assertSame('billing', $grok->tag('About my invoice.', 'Why?', CallLabels::EXISTING));
-        $this->assertNull($grok->tag('Grr.', 'Why?', CallLabels::EXISTING));
-
-        Http::assertSent(fn ($request) => $request['model'] === 'grok-4.6'
-            && $request['response_format']['json_schema']['schema']['properties']['label']['enum'] === array_keys(CallLabels::EXISTING));
+        $this->assertSame([null], CallReportLabel::withoutGlobalScopes()->where('provider', 'grok')->pluck('label')->all());
+        Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), '"enum":'.json_encode(array_keys(CallLabels::EXISTING))));
     }
 
     /**
@@ -175,16 +169,9 @@ class LabelReportCallsTest extends TestCase
      */
     public function test_grok_can_answer_through_the_cli_without_the_transcript_on_its_command_line(): void
     {
-        config(['experimental_reports.tagging.grok.key' => null, 'services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        Process::fake([
-            '*' => Process::result('{"usage":{"costUSD":0.007},"structuredOutput":{"label":"billing"}}'),
-        ]);
+        $this->labelOneCallThroughTheCli('A secret about my invoice.', Process::result('{"usage":{"costUSD":0.007},"structuredOutput":{"label":"billing"}}'));
 
-        $grok = app(GrokTagger::class);
-
-        $this->assertTrue($grok->configured());
-        $this->assertSame('billing', $grok->tag('A secret about my invoice.', 'Why?', CallLabels::EXISTING));
-
+        $this->assertSame(['billing'], CallReportLabel::withoutGlobalScopes()->where('provider', 'grok')->pluck('label')->all());
         Process::assertRan(function ($process) {
             $command = implode(' ', (array) $process->command);
 
@@ -200,14 +187,10 @@ class LabelReportCallsTest extends TestCase
     /** An expired sign-in fails loudly, never as calls that had no label. */
     public function test_a_failing_grok_cli_is_an_error_not_an_empty_label(): void
     {
-        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        Process::fake([
-            '*' => Process::result('', 'Error: 401 Unauthorized - please log in', 1),
-        ]);
+        $this->labelOneCallThroughTheCli('Hello.', Process::result('', 'Error: 401 Unauthorized - please log in', 1));
 
-        $this->expectExceptionMessage('The Grok CLI failed (exit 1): Error: 401 Unauthorized');
-
-        app(GrokTagger::class)->tag('Hello.', 'Why?', CallLabels::EXISTING);
+        $this->assertSame(0, CallReportLabel::withoutGlobalScopes()->count());
+        $this->assertStringContainsString('401 Unauthorized', Cache::get('grok.last_failure')['why'] ?? '');
     }
 
     /** The Leads speaker split, reused: IVR menu / Dispatcher / Customer, shown in place of the raw words. */
@@ -360,7 +343,25 @@ class LabelReportCallsTest extends TestCase
             ->assertJsonPath('calls.0.labels.grok', 'availability');
     }
 
-    /** Both providers faked: each answers from a word in the transcript. */
+    /** One existing-client call labelled by Grok through the CLI, which answers $cli. */
+    private function labelOneCallThroughTheCli(string $words, ProcessResult $cli): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true,
+            'services.grok_cli.home' => '/var/lib/ezbizi-grok', 'services.ai.claude.key' => null]);
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->ringCentral([$this->rcCall('rc-1', 'A1 - Existing Client')]);
+        $this->transcript($tenant, 'rc-1', $words);
+        Process::fake(['*' => $cli]);
+
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])->assertSuccessful();
+    }
+
+    /**
+     * Both providers faked: each answers a label question from a word in the
+     * transcript. Any other question (the speaker split) goes to the real
+     * provider when the test set it up, and fails like an unset one when not.
+     */
     private function fakeTaggers(): object
     {
         $asked = new class
@@ -370,14 +371,14 @@ class LabelReportCallsTest extends TestCase
             public array $labelSets = [];
         };
 
-        foreach (['claude' => ClaudeTagger::class, 'grok' => GrokTagger::class] as $name => $class) {
-            $this->app->instance($class, new class($name, $asked) implements CallTagger
+        foreach ([ClaudeProvider::class, GrokCliProvider::class] as $class) {
+            $this->app->instance($class, new class(app($class), $asked) implements AiProvider
             {
-                public function __construct(private string $provider, private object $asked) {}
+                public function __construct(private AiProvider $real, private object $asked) {}
 
                 public function name(): string
                 {
-                    return $this->provider;
+                    return $this->real->name();
                 }
 
                 public function configured(): bool
@@ -385,12 +386,23 @@ class LabelReportCallsTest extends TestCase
                     return true;
                 }
 
-                public function tag(string $transcript, string $question, array $labels): ?string
+                public function askMany(array $prompts, array $schema, int $timeout, array $files = []): array
                 {
-                    $this->asked->questions[] = $question;
-                    $this->asked->labelSets[] = array_keys($labels);
+                    $labels = $schema['properties']['label']['enum'] ?? null;
 
-                    return str_contains($transcript, 'money') ? 'price' : (str_contains($transcript, 'tech') ? 'eta' : 'other');
+                    if ($labels === null) {
+                        return $this->real->configured()
+                            ? $this->real->askMany($prompts, $schema, $timeout, $files)
+                            : array_map(fn () => new RuntimeException('Not set up in this test.'), $prompts);
+                    }
+
+                    return array_map(function (string $prompt) use ($labels) {
+                        $this->asked->questions[] = $prompt;
+                        $this->asked->labelSets[] = $labels;
+                        $transcript = Str::after($prompt, "Transcript:\n\n");
+
+                        return ['label' => str_contains($transcript, 'money') ? 'price' : (str_contains($transcript, 'tech') ? 'eta' : 'other')];
+                    }, $prompts);
                 }
             });
         }

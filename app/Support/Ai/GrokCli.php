@@ -74,9 +74,9 @@ final class GrokCli
      *                          or answers without the structured output: loud,
      *                          never an empty answer
      */
-    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
+    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT, array $files = [], ?AiProvider $provider = null): array
     {
-        $answer = self::askMany([$prompt], $schema, $timeout, $files)[0];
+        $answer = self::askMany([$prompt], $schema, $timeout, $files, $provider)[0];
 
         if ($answer instanceof RuntimeException) {
             throw $answer;
@@ -97,11 +97,12 @@ final class GrokCli
      * @param  list<string>  $prompts
      * @param  array<string, string>  $files  name => bytes put beside the question for it to read (a photo), read-only
      * @param  array<string, mixed>  $schema
+     * @param  AiProvider|null  $provider  one AI in particular (Reports' call labels ask each); null is provider()
      * @return list<array<string, mixed>|RuntimeException> in the prompts' order
      */
-    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
+    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = [], ?AiProvider $provider = null): array
     {
-        $provider = self::provider();
+        $provider ??= self::provider();
 
         // No AI configured for this install: every question gets the same calm
         // failure its caller already handles, never a crash (Jose, 2026-10-27:
