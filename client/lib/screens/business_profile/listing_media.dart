@@ -314,6 +314,8 @@ class _CopyMediaPanelState extends State<CopyMediaPanel> {
       _busy = false;
       _refused = answer.refused;
       _results = {for (final r in answer.results ?? const []) r.id: r};
+      // A listing that already took the copy is unticked, so Copy cannot send it twice (audit 2026-11-27).
+      _ticked.removeWhere((id) => _results[id]?.ok == true);
     });
   }
 

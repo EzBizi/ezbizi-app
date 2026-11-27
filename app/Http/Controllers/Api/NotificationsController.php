@@ -69,7 +69,7 @@ class NotificationsController extends Controller
         $rows = (clone $base)
             ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
             ->latest('created_at')
-            ->limit(min((int) $request->query('limit', 50), 200))
+            ->limit(max(1, min((int) $request->query('limit', 50), 200)))
             ->get();
 
         /*
@@ -160,6 +160,23 @@ class NotificationsController extends Controller
         $notification->markRead();
 
         return response()->json(['data' => ['id' => $notification->id, 'read_at' => $notification->read_at]]);
+    }
+
+    /**
+     * DELETE /api/v1/notifications/devices {token} — this handset signs out.
+     * Only the signed-in person's own row: a shared phone stopped showing the
+     * previous person's pushes once they left (audit 2026-11-27).
+     */
+    public function unregisterDevice(Request $request): JsonResponse
+    {
+        $token = (string) $request->validate(['token' => ['required', 'string', 'max:4096']])['token'];
+
+        $deleted = DeviceToken::query()
+            ->where('user_id', $request->user()->getKey())
+            ->where('token', $token)
+            ->delete();
+
+        return response()->json(['data' => ['deleted' => $deleted]]);
     }
 
     /** GET /api/v1/notifications/kinds — the grouped list the settings screen draws. */

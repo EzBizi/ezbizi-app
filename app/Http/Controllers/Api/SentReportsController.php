@@ -12,6 +12,7 @@ use App\Models\WhatsAppMessage;
 use App\Support\Automations\ActionRunner;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Reports\Texts\DailyTexts;
+use App\Support\Scoping\ViewScope;
 use App\Support\Social\ThumbtackAssociatePhoneNumbers;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +42,7 @@ final class SentReportsController extends Controller
     public function index(Request $request, ModuleRegistry $modules): JsonResponse
     {
         $seesRules = $request->user()->hasPermission('automations.view');
+        $view = ViewScope::forUser($request->user());
         $sent = $this->sentByReport();
         $users = User::query()->pluck('name', 'id');
         $groups = WhatsAppGroup::query()->get()->mapWithKeys(fn (WhatsAppGroup $g) => [$g->purpose => $g->subject ?: $g->purpose]);
@@ -50,7 +52,7 @@ final class SentReportsController extends Controller
             $steps = collect($rule->activeVersion?->actions ?? [])
                 ->filter(fn ($step) => is_array($step) && is_string($step['type'] ?? null) && ActionRunner::reportKey($step['type'], $step, $rule) !== null)
                 ->values();
-            if ($steps->isEmpty()) {
+            if ($steps->isEmpty() || ! self::inView($rule, $view)) {
                 continue;
             }
 
@@ -81,7 +83,7 @@ final class SentReportsController extends Controller
         }
 
         // Whatever else sent in the last 90 days: a sender outside rules, or a rule since deleted.
-        foreach ($sent as $key => $tally) {
+        foreach ($view->isOrganization() ? $sent : [] as $key => $tally) {
             [$name, $about, $when] = self::OTHER[$key]
                 ?? (str_starts_with($key, 'workspace:') ? ['Sent from Reports › Workspace', DailyTexts::KINDS[substr($key, 10)] ?? substr($key, 10), 'When somebody sends it']
                 : ['A rule since deleted', '', '']);
@@ -109,6 +111,9 @@ final class SentReportsController extends Controller
         $key = (string) $request->validate([
             'report' => ['required', 'string', 'max:100', 'regex:/^[a-z_.-]+(:[A-Za-z0-9_.-]+)?$/'],
         ])['report'];
+        $view = ViewScope::forUser($request->user());
+        abort_unless($view->isOrganization()
+            || (str_starts_with($key, 'automation:') && self::inView(Automation::query()->find(substr($key, 11)), $view)), 404);
 
         $names = User::query()->whereNotNull('phone')->get(['name', 'phone'])
             ->mapWithKeys(fn (User $u) => [ltrim((string) ThumbtackAssociatePhoneNumbers::e164((string) $u->phone), '+') => $u->name]);
@@ -213,6 +218,21 @@ final class SentReportsController extends Controller
             'sms.send' => ['about' => null, 'to' => [$recipient], 'channel' => 'sms'],
             'send_report' => ['about' => 'Work Hours report', 'to' => [], 'channel' => 'email'],
             default => ['about' => 'A saved report', 'to' => [], 'channel' => 'email'],
+        };
+    }
+
+    /**
+     * A report is read where the reader stands (audit 2026-11-27: a branch
+     * read every branch's texts): a rule filed inside the view. Group-wide
+     * rules and the senders outside rules carry every branch's figures, so
+     * only the organization view reads those.
+     */
+    private static function inView(?Automation $rule, ViewScope $view): bool
+    {
+        return $view->isOrganization() || match ($rule?->scope_type) {
+            'franchise' => $view->coversFranchise($rule->scope_id),
+            'company' => $view->type === ViewScope::COMPANY && $view->coversCompany($rule->scope_id),
+            default => false,
         };
     }
 

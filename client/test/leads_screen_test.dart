@@ -52,12 +52,18 @@ void main() {
       'Marcus Bellamy',
     );
     await tester.enterText(find.byKey(const ValueKey('lead-edit-zip')), '62704');
+    // Audit 11-27: without leads.dispatcher / leads.reclassify neither is
+    // offered, and an untouched dispatcher or classification is not sent.
+    expect(find.byKey(const ValueKey('lead-edit-dispatcher')), findsNothing);
+    expect(find.byKey(const ValueKey('lead-edit-reclassify')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('lead-edit-save')));
     await tester.pumpAndSettle();
 
     expect(_patches['lead-1']?['contact_name'], 'Marcus Bellamy');
     expect(_patches['lead-1']?['postal_code'], '62704');
     expect(_patches['lead-1']!.containsKey('phone'), isFalse);
+    expect(_patches['lead-1']!.containsKey('dispatcher'), isFalse);
+    expect(_patches['lead-1']!.containsKey('classification'), isFalse);
   });
 
   _conversationRowTests();
@@ -78,6 +84,54 @@ void main() {
 
     expect(find.text('Dana Whitfield'), findsNWidgets(2));
     expect(find.text('Marcus Bell'), findsOneWidget);
+  });
+
+  /// Audit 11-27: the notification's lead, fetched from beyond the page, was
+  /// kept on top under every later filter.
+  testWidgets('a notification lead pinned on top leaves when the filter '
+      'changes', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        for (var i = 1; i <= 80; i++) _lead('lead-$i', 'Person $i'),
+      ],
+      connections: _connected,
+      initialLeadId: 'lead-80',
+    );
+    expect(find.text('Person 80'), findsWidgets, reason: 'pinned and opened');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Chat'));
+    await tester.pumpAndSettle();
+    expect(find.text('Person 80'), findsNothing);
+  });
+
+  /// Audit 11-27: a failed next page was asked for again every frame.
+  testWidgets('a failed next page stops paging until Try again', (
+    tester,
+  ) async {
+    _pageAsks = 0;
+    _pagesFail = true;
+    addTearDown(() => _pagesFail = false);
+    await _pump(
+      tester,
+      leads: [for (var i = 1; i <= 80; i++) _lead('lead-$i', 'Person $i')],
+      connections: _connected,
+    );
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('leads-more-retry')),
+      find.byKey(const ValueKey('leads-list')),
+      const Offset(0, -400),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(_pageAsks, 1);
+
+    _pagesFail = false;
+    await tester.tap(find.byKey(const ValueKey('leads-more-retry')));
+    await tester.pumpAndSettle();
+    expect(_pageAsks, greaterThan(1));
+    expect(find.byKey(const ValueKey('leads-more-retry')), findsNothing);
   });
 
   /// Jose, 2026-11-05: a notification for A1 Garage Doors opened while the
@@ -2282,6 +2336,9 @@ Map<String, String> _lastListQuery = const {};
 double _railRight(WidgetTester tester) =>
     tester.getTopRight(find.byKey(const ValueKey('source-rail'))).dx + 1;
 
+var _pageAsks = 0;
+var _pagesFail = false;
+
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
@@ -2453,6 +2510,13 @@ Future<void> _pump(
 
       if (request.url.path.endsWith('/leads')) {
         _lastListQuery = request.url.queryParameters;
+        if (request.url.queryParameters.containsKey('page')) {
+          _pageAsks++;
+          if (_pagesFail) {
+            return http.Response('{"message":"Too many requests"}', 429,
+                headers: {'content-type': 'application/json'});
+          }
+        }
         // Paged as the endpoint pages: per_page rows of page N.
         final per = int.tryParse(request.url.queryParameters['per_page'] ?? '') ?? leads.length;
         final page = int.tryParse(request.url.queryParameters['page'] ?? '') ?? 1;

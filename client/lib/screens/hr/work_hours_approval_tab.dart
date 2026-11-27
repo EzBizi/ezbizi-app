@@ -85,7 +85,10 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     final response = await widget.api.get('/hr/time-clock/approvals', {
       if (date != null && date.isNotEmpty) 'date': date,
     });
-    if (!mounted || !response.ok || _busy || _loading) return;
+    // Another day opened while this was in flight: it is stale (audit 2026-11-27).
+    if (!mounted || !response.ok || _busy || _loading || _day?['date'] != date) {
+      return;
+    }
     _adopt(response);
   }
 

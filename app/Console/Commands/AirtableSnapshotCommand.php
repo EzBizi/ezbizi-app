@@ -9,6 +9,7 @@ use App\Support\Reports\Airtable\AirtableSnapshot;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Throwable;
 
 /** Copies each organization's mapped Airtable tables into EzBizi; see AirtableSnapshot. */
 class AirtableSnapshotCommand extends Command
@@ -41,7 +42,16 @@ class AirtableSnapshotCommand extends Command
                 continue;
             }
 
-            $done = $tenant->run($organization, fn () => $snapshot->sync((string) $orgId, $tokens));
+            try {
+                $done = $tenant->run($organization, fn () => $snapshot->sync((string) $orgId, $tokens));
+            } catch (Throwable $e) {
+                // One organization failing leaves the rest to be copied.
+                report($e);
+                $this->warn("{$organization->name}: {$e->getMessage()}");
+                $ok = false;
+
+                continue;
+            }
 
             $this->info("{$organization->name}: tables {$done['tables']}, rows {$done['rows']}, changed {$done['changed']}, gone {$done['gone']}.");
             foreach ($done['failed'] as $line) {

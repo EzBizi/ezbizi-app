@@ -114,9 +114,15 @@ final class SiteLists
         return Review::query()
             ->where('company_id', $site->company_id)
             ->whereNotNull('rating')
+            ->whereNull('removed_at')
             ->orderByDesc('reviewed_at')
-            ->limit(50)
-            ->get(['reviewer_name', 'reviewer_photo_url', 'rating', 'comment', 'reviewed_at', 'location_name'])
+            ->limit(100)
+            ->get(['source', 'remote_name', 'reviewer_name', 'reviewer_photo_url', 'rating', 'comment', 'reviewed_at', 'location_name'])
+            // A review synced under two resource names counts once, as in reviewSummary.
+            ->unique(fn (Review $r) => str_contains((string) $r->remote_name, '/reviews/')
+                ? $r->source.':'.substr((string) $r->remote_name, strrpos((string) $r->remote_name, '/reviews/'))
+                : spl_object_id($r))
+            ->take(50)
             ->map(fn (Review $r) => [
                 'title' => (string) $r->reviewer_name,
                 'body' => (string) $r->comment,

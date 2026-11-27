@@ -51,7 +51,8 @@ final class MarketFinancials
         }
 
         FinancialExpense::query()->whereBetween('txn_date', [$from, $to])
-            ->orderBy('txn_date')
+            // Unique order: each() pages by offset, and a tie skips or repeats a line.
+            ->orderBy('txn_date')->orderBy('id')
             ->each(function (FinancialExpense $e) use (&$markets, $maps, $inView, $withUnassigned, $blank) {
                 $market = self::marketOf($e, $maps);
                 if ($market === null) {

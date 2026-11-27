@@ -112,6 +112,10 @@ class MondayPushTest extends TestCase
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
+                if ($this->duringSend !== null) {
+                    ($this->duringSend)();
+                    $this->duringSend = null;
+                }
                 if ($this->refusePerson !== null && str_contains($q, 'change_multiple_column_values') && str_contains((string) ($vars['v'] ?? ''), '"id":'.$this->refusePerson)) {
                     return Http::response(['errors' => [['message' => 'invalid value - unable to assign person with id: '.$this->refusePerson.'. Please check our API documentation']]]);
                 }
@@ -164,9 +168,25 @@ class MondayPushTest extends TestCase
 
     private bool $columnsLag = false;
 
+    /** Runs once, inside the first mutation Monday receives: a change landing while a row is sending. */
+    private ?\Closure $duringSend = null;
+
     private function values(int $i = 0): array
     {
         return json_decode((string) ($this->mutations[$i]['vars']['v'] ?? '{}'), true);
+    }
+
+    /** Audit 11-27: a rename merged into the row while it was sending is not lost when the send closes it. */
+    public function test_a_change_merged_during_a_send_stays_pending(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $this->duringSend = fn () => \Illuminate\Support\Facades\DB::table('monday_outbox')->where('task_id', $this->task->id)
+            ->update(['kinds' => json_encode(['status', 'title']), 'changed_at' => now()->addMinute()]);
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->sole());
+        $this->assertSame(MondayOutboxEntry::PENDING, $row->state);
+        $this->assertContains('title', (array) $row->kinds);
     }
 
     /** Cut-over 11-26: with Monday off, a change here queues nothing for Monday. */

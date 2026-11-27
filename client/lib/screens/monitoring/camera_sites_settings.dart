@@ -351,8 +351,10 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
                 Expanded(
                   child: TextField(
                     key: ValueKey('camera-found-name-${f.channel}'),
+                    // By site AND channel: channel 1 on one recorder is not
+                    // channel 1 on the next site's (audit 11-27).
                     controller: _foundNames.putIfAbsent(
-                      f.channel,
+                      '${_site?['id']}|${f.channel}',
                       () => TextEditingController(text: f.label),
                     ),
                     enabled: _manage,
@@ -370,7 +372,7 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
                     onPressed: _manage && _adding == null
                         ? () => _addChannel(
                             f.channel,
-                            _foundNames[f.channel]?.text ?? '',
+                            _foundNames['${_site?['id']}|${f.channel}']?.text ?? '',
                           )
                         : null,
                     child: Text(_adding == f.channel ? 'Adding…' : 'Add'),

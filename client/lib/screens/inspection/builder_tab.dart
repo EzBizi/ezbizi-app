@@ -245,8 +245,9 @@ class _BuilderTabState extends State<BuilderTab> {
 
   Future<void> _select(String? id) async {
     if (id == null || id == _selectedId) return;
-    await _flush();
-    if (!mounted) return;
+    // Stay put when this one did not save: switching dropped its edits and
+    // "Try again" then saved the other inspection (audit 11-27).
+    if (!await _flush() || !mounted) return;
     setState(() {
       _selectedId = id;
       _resetPlace();
@@ -284,7 +285,7 @@ class _BuilderTabState extends State<BuilderTab> {
   }
 
   Future<void> _create() async {
-    await _flush();
+    if (!await _flush() || !mounted) return;
     setState(() => _busy = 'create');
     final response = await widget.api.post('/inspections', {});
     if (!mounted) return;
@@ -523,15 +524,20 @@ class _BuilderTabState extends State<BuilderTab> {
     }
 
     fieldsOf(screen).forEach(add);
+    // The other screens only: a question waiting for a neighbour on this
+    // screen goes with it. By identity, not by label — a same-named question
+    // elsewhere was skipped and its condition then blocked saves (audit 11-27).
+    final others = {
+      'screens': [
+        for (final s in screensOf(_selected))
+          if (!identical(s, screen)) s,
+      ],
+    };
     final out = <String>{};
     for (final key in keys) {
-      for (final who in dependentsOf(_selected, key)) {
-        out.add(who);
-      }
+      out.addAll(dependentsOf(others, key));
     }
-    // A question that waits for a neighbour on the same screen goes with it.
-    final here = {for (final f in fieldsOf(screen)) '“${labelOf(f)}”'};
-    return out.where((who) => !here.contains(who)).toList();
+    return out.toList();
   }
 
   void _deleteScreen() {

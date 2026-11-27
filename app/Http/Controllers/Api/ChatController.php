@@ -366,6 +366,10 @@ class ChatController extends Controller
         }
         if (array_key_exists('marked_unread', $input)) {
             $member->marked_unread = $input['marked_unread'];
+            // "Mark as read" reads what is there, so the count clears too.
+            if (! $input['marked_unread']) {
+                $this->readUpToLatest($chat, $member);
+            }
         }
         if (! empty($input['clear'])) {
             $member->cleared_at = now();
@@ -374,6 +378,33 @@ class ChatController extends Controller
         $this->pulse->bump($chat, only: [$me->id]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** POST chat/read-all — "Mark all read": every chat of mine, read up to now. */
+    public function readAll(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $members = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->with('chat')->get();
+        foreach ($members as $member) {
+            if ($member->chat === null) {
+                continue;
+            }
+            $member->marked_unread = false;
+            $this->readUpToLatest($member->chat, $member);
+            $member->save();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** My read and delivered marks moved to the chat's latest message; the senders see blue ticks. */
+    private function readUpToLatest(Chat $chat, ChatMember $member): void
+    {
+        $latest = $chat->messages()->max('created_at');
+        if ($latest !== null && ($member->read_at === null || $member->read_at->lt(Carbon::parse($latest)))) {
+            $member->forceFill(['delivered_at' => $latest, 'read_at' => $latest]);
+            $this->pulse->bump($chat);
+        }
     }
 
     /** POST chat/chats/{chat}/typing — "typing…" / "recording audio…" for six seconds. */

@@ -97,4 +97,22 @@ void main() {
     await engine.apply([_w('t1')], _rec);
     expect(started, isEmpty);
   });
+
+  test('a configured stream with no connected producer is not ok', () {
+    // Audit 11-27: "has a producer" read ok for every configured camera.
+    expect(streamFlowing({'producers': [{'url': 'rtsp://cam/1'}]}), isFalse);
+    expect(streamFlowing({'producers': []}), isFalse);
+    expect(streamFlowing(null), isFalse);
+    expect(streamFlowing({'producers': [{'url': 'rtsp://cam/1', 'remote_addr': '10.0.0.5:554'}]}), isTrue);
+    expect(streamFlowing({'producers': [{'url': 'rtsp://cam/1', 'bytes_recv': 1200}]}), isTrue);
+  });
+
+  test('the go2rtc API takes a login when one is given', () {
+    // Audit 11-27: the loopback API had no credentials.
+    final open = go2rtcConfig(_rec, [_w('a')]);
+    final locked = go2rtcConfig(_rec, [_w('a')], apiUser: 'ezbizi', apiPassword: 's3cret');
+    expect(open, isNot(contains('username:')));
+    expect(locked, contains('username: "ezbizi"'));
+    expect(locked, contains('password: "s3cret"'));
+  });
 }

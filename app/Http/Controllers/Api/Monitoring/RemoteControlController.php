@@ -175,13 +175,19 @@ class RemoteControlController extends Controller
         ]);
 
         $key = $this->inputQueueKey($device->id);
-        $queue = array_merge(Cache::get($key, []), $data['events']);
 
-        if (count($queue) > self::MAX_QUEUE_ITEMS) {
-            $queue = array_slice($queue, -self::MAX_QUEUE_ITEMS);
-        }
+        // Read-modify-write under a lock: two batches appending at once each
+        // read the old queue and the later put dropped the other's events
+        // (a lost mouse-up left a remote button held; audit 11-27).
+        Cache::lock($key.':lock', 5)->block(3, function () use ($key, $data) {
+            $queue = array_merge(Cache::get($key, []), $data['events']);
 
-        Cache::put($key, $queue, self::INPUT_QUEUE_TTL_SECONDS);
+            if (count($queue) > self::MAX_QUEUE_ITEMS) {
+                $queue = array_slice($queue, -self::MAX_QUEUE_ITEMS);
+            }
+
+            Cache::put($key, $queue, self::INPUT_QUEUE_TTL_SECONDS);
+        });
 
         return response()->noContent();
     }
@@ -233,8 +239,13 @@ class RemoteControlController extends Controller
         }
 
         $key = $this->inputQueueKey($device->id);
-        $events = Cache::get($key, []);
-        Cache::forget($key);
+        // Same lock: a batch appended between this read and the forget was lost.
+        $events = Cache::lock($key.':lock', 5)->block(3, function () use ($key) {
+            $events = Cache::get($key, []);
+            Cache::forget($key);
+
+            return $events;
+        });
 
         return [
             'events' => $events,

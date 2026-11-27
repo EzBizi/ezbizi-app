@@ -228,6 +228,19 @@ class WebPageFieldsTest extends TestCase
         $this->assertTrue($fields['template_1']['template']);
     }
 
+    /** Audit 2026-11-27: removing the top template does not free its number. */
+    public function test_a_removed_top_number_is_remembered(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+        $id = $site['data']['id'];
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/$id/values", ['values' => ['template_3' => 'x']])->assertOk();
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/$id/values", ['values' => ['template_3' => '']])->assertOk();
+
+        $this->assertSame(3, $this->signedInAs($editor)->getJson("/api/v1/web/sites/$id/values")
+            ->assertOk()->json('data.numbered_high.template'));
+    }
+
     /** It has to reach the website, or the shortcode renders nothing. */
     public function test_the_website_is_told_about_templates(): void
     {

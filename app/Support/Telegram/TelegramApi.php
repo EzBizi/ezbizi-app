@@ -4,6 +4,7 @@ namespace App\Support\Telegram;
 
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -72,7 +73,13 @@ final class TelegramApi
      */
     public function call(string $method, array $params = []): array
     {
-        $response = Http::timeout(20)->asJson()->post($this->base().'/'.$method, $params);
+        // The token is in the URL, and a ConnectionException quotes the URL —
+        // into logs and failed_jobs. Rethrown without it.
+        try {
+            $response = Http::timeout(20)->asJson()->post($this->base().'/'.$method, $params);
+        } catch (ConnectionException) {
+            throw new \RuntimeException('Telegram '.$method.' failed: could not reach Telegram.');
+        }
 
         if (! $response->successful() || $response->json('ok') !== true) {
             throw new \RuntimeException('Telegram '.$method.' failed: '.($response->json('description') ?? $response->status()));
@@ -124,7 +131,11 @@ final class TelegramApi
             throw new \RuntimeException('Telegram did not give a path for that file.');
         }
 
-        $response = Http::timeout(60)->get('https://api.telegram.org/file/bot'.$this->token().'/'.$path);
+        try {
+            $response = Http::timeout(60)->get('https://api.telegram.org/file/bot'.$this->token().'/'.$path);
+        } catch (ConnectionException) {
+            throw new \RuntimeException('Could not download that photo from Telegram.');
+        }
         if (! $response->successful() || strlen($response->body()) > self::MAX_PHOTO_BYTES) {
             throw new \RuntimeException('Could not download that photo from Telegram.');
         }

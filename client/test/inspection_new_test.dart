@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -311,6 +313,58 @@ void main() {
     },
   );
 
+  testWidgets('a failed save stops Next and says so', (tester) async {
+    await _pump(tester, startBody: _steppedRun, saveStatus: 500);
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Not saved'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsNothing, reason: 'still on step 1');
+  });
+
+  testWidgets('a multiple choice keeps every pick, sent as a list', (
+    tester,
+  ) async {
+    final log = <http.Request>[];
+    await _pump(tester, startBody: _multiRun, log: log);
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilterChip, 'Crown'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilterChip, 'Cap'));
+    await tester.pumpAndSettle();
+    final last = log.lastWhere((r) => r.method == 'PATCH');
+    expect((jsonDecode(last.body) as Map)['answers']['parts'], [
+      'crown',
+      'cap',
+    ]);
+  });
+
+  testWidgets('Submit tapped twice submits once', (tester) async {
+    final log = <http.Request>[];
+    await _pump(tester, startBody: _multiRun, log: log);
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
+    await tester.pump();
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Submit'),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(log.where((r) => r.url.path.endsWith('/submit')).length, 1);
+  });
+
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
 
@@ -329,6 +383,8 @@ void main() {
 Future<void> _pump(
   WidgetTester tester, {
   String picker = _picker,
+  int saveStatus = 200,
+  List<http.Request>? log,
   String? searchBody,
   String startBody = _run,
   int startStatus = 201,
@@ -340,6 +396,14 @@ Future<void> _pump(
   final api = ApiClient(
     client: MockClient((request) async {
       final path = request.url.path;
+      log?.add(request);
+      if (path.contains('/inspections/runs/') && request.method == 'PATCH') {
+        return http.Response('{"data":{}}', saveStatus, headers: _json);
+      }
+      if (path.endsWith('/submit')) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return http.Response('{"data":{}}', 201, headers: _json);
+      }
       if (path.endsWith('/inspections/search')) {
         return http.Response(searchBody ?? _hits, 200, headers: _json);
       }
@@ -540,6 +604,12 @@ const _twoDividers = '''
   {"type":"divider","label":"Door and panels"},
   {"key":"lock","type":"text","label":"Lock"},
   {"type":"divider","label":"Seals"}]}]}}
+''';
+
+const _multiRun = '''
+{"data":{"id":"run-1","definition_name":"Level 1","customer_name":"14 Maple","layout_preset":"step_strip","answers":{},
+ "screens":[{"name":"Parts","fields":[
+  {"key":"parts","type":"choice","multiple":true,"label":"Parts","options":[{"value":"crown","label":"Crown"},{"value":"cap","label":"Cap"}]}]}]}}
 ''';
 
 const _steppedRun = '''

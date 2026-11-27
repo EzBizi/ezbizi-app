@@ -735,7 +735,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
     String when(String? iso) {
       final at = DateTime.tryParse(iso ?? '')?.toLocal();
       if (at == null) return '';
-      final days = DateTime.now().difference(at).inDays;
+      // Calendar days, not 24-hour spans: 11 PM yesterday is "yesterday" at 1 AM.
+      final now = DateTime.now();
+      final days = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).difference(DateTime(at.year, at.month, at.day)).inDays;
       return days == 0
           ? 'today'
           : days == 1
@@ -812,7 +818,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           term.isNotEmpty
               // "No customers yet" after a search reads as data loss.
               ? 'Nothing matches "$term".'
-              : _segment != null
+              : _segment != null || _franchiseId != null || _tag != null
               ? 'Nobody here yet.'
               : 'No customers yet.',
         ),

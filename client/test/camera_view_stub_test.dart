@@ -89,4 +89,32 @@ void main() {
         reason: 'A pushed JPEG frame renders inline, off-web, no browser.');
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+
+  testWidgets('a frame whose end marker is split across two chunks still renders', (
+    tester,
+  ) async {
+    // Audit 11-27: the buffer is scanned only when a chunk can end a frame,
+    // including FF in one chunk and D9 in the next.
+    final controller = StreamController<List<int>>();
+    addTearDown(controller.close);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 200,
+          height: 150,
+          child: buildCameraImage('mjpeg://cam', open: (_) => controller.stream),
+        ),
+      ),
+    ));
+
+    final f = _frame(7);
+    controller.add(f.sublist(0, f.length - 1)); // ends on FF
+    await tester.pump();
+    expect(find.byType(Image), findsNothing, reason: 'not complete yet');
+
+    controller.add([0xD9]);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(Image), findsOneWidget);
+  });
 }

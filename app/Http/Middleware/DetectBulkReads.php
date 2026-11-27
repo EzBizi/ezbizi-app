@@ -74,15 +74,28 @@ class DetectBulkReads
         $ttl = now()->addMinutes($minutes * 2);
 
         $key = "bulk_read:{$actor}:{$window}:{$kind}";
+
+        // Atomic per distinct item: a read-modify-write of one array lost
+        // counts under parallel requests, so parallel scraping slipped under
+        // the limit (audit 11-27). add() admits each item once; the counter
+        // is created before increment() because the database store's
+        // increment() answers false on a missing key.
+        if (! Cache::add($key.':i:'.md5($item), true, $ttl)) {
+            return;
+        }
+        Cache::add($key.':n', 0, $ttl);
+        $count = (int) Cache::increment($key.':n');
+
+        // A recent sample for the alert only; losing an entry here costs nothing.
         $seen = Cache::get($key, []);
         $seen[$item] = true;
-        Cache::put($key, $seen, $ttl);
+        Cache::put($key, array_slice($seen, -20, null, true), $ttl);
 
         $roleKey = $isKey ? 'api_key' : Str::snake(Str::lower((string) ($user->role?->name ?? 'default')));
         $limits = config("bulk_read.thresholds.{$roleKey}") ?? config('bulk_read.thresholds.default');
         $limit = (int) ($limits[$kind] ?? PHP_INT_MAX);
 
-        if (count($seen) <= $limit) {
+        if ($count <= $limit) {
             return;
         }
 
@@ -91,7 +104,7 @@ class DetectBulkReads
             return;
         }
 
-        $this->raise($user, $isKey ? $token : null, $kind, count($seen), $limit, $roleKey, $minutes, array_slice(array_keys($seen), -20));
+        $this->raise($user, $isKey ? $token : null, $kind, $count, $limit, $roleKey, $minutes, array_slice(array_keys($seen), -20));
     }
 
     private function raise(User $user, mixed $token, string $kind, int $count, int $limit, string $roleKey, int $minutes, array $sample): void

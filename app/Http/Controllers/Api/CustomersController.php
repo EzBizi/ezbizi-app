@@ -909,6 +909,8 @@ class CustomersController extends Controller
             ->selectRaw("customers.*, {$expression} AS dup_key")
             ->whereRaw("{$expression} IN ({$placeholders})", $keys->all())
             ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name', 'workizClients:id,customer_id,client_id')
+            // One count query for the page, not one per customer (audit 2026-11-27).
+            ->withCount('jobs')
             ->orderBy('name')
             ->get()
             ->groupBy('dup_key')

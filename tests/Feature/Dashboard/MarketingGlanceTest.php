@@ -91,7 +91,12 @@ class MarketingGlanceTest extends TestCase
                 'status' => $status,
             ]);
 
-            if ($sentAt !== null) {
+            // A failed target is never given sent_at in production
+            // (markFailed); it is dated by updated_at. The fixture says so
+            // rather than faking a sent_at the code would never write.
+            if ($sentAt !== null && $status === SocialPostTarget::STATUS_FAILED) {
+                SocialPostTarget::query()->toBase()->where('id', $target->id)->update(['updated_at' => $sentAt]);
+            } elseif ($sentAt !== null) {
                 $target->forceFill(['sent_at' => $sentAt])->save();
             }
 
@@ -262,6 +267,24 @@ class MarketingGlanceTest extends TestCase
      * A refused publish is invisible everywhere but a badge inside the tab, so
      * if it is not the first sentence here it is not anywhere a person looks.
      */
+    /**
+     * The production path: a target marked failed by markFailed() has no
+     * sent_at. The box counted failures by sent_at and so said zero
+     * failures forever (audit 2026-11-27).
+     */
+    public function test_a_target_marked_failed_is_counted(): void
+    {
+        $account = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'head');
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subHour()->toDateTimeString());
+        $target = $this->target($account, SocialPostTarget::STATUS_QUEUED, null);
+        $this->inTenant(fn () => SocialPostTarget::find($target->id)->markFailed('rejected'));
+        $this->assertNull($this->inTenant(fn () => SocialPostTarget::find($target->id)->sent_at));
+
+        $data = $this->payloadFor($this->alpha['admin'])['data'];
+
+        $this->assertSame(1, collect($data['figures'])->firstWhere('key', 'failed')['value']);
+    }
+
     public function test_a_failure_is_the_first_sentence(): void
     {
         $account = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'head');

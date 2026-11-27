@@ -94,8 +94,10 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     _debounce = Timer(const Duration(milliseconds: 400), _load);
   }
 
-  /// Until GuidesController@index and TestsController@index read q, the
-  /// loaded rows are filtered here too.
+  /// Filters on screen while the debounced request is in flight, with the
+  /// server's own rule (title, and a guide's summary) so the two never
+  /// disagree: matching status or counts here showed rows the server then
+  /// dropped.
   List<Map<String, dynamic>> _matching(List<Map<String, dynamic>> rows, String countKey, String unit) {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return rows;
@@ -103,8 +105,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
       for (final row in rows)
         if ([
           row['title'] as String? ?? '',
-          row['status'] == 'published' ? 'Published' : 'Draft',
-          '${row[countKey] ?? 0} $unit',
+          row['summary'] as String? ?? '',
         ].any((field) => field.toLowerCase().contains(q)))
           row,
     ];

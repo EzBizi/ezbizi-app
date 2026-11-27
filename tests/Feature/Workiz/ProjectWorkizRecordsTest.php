@@ -79,6 +79,26 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertNotEmpty($job->title);
     }
 
+    /** Audit 11-27: a row linked after this run picked it (a longer run, or Job create) is not projected twice. */
+    public function test_a_row_linked_after_it_was_picked_is_not_projected_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->mirror($tenant);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $first = $this->inTenant($tenant['org'], fn () => Job::query()->sole());
+        \Illuminate\Support\Facades\DB::table('workiz_jobs')->update(['job_id' => null]);
+
+        // The other writer links the row between this run's pick and its write.
+        \App\Models\WorkizJob::retrieved(function (\App\Models\WorkizJob $row) use ($first) {
+            if (collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 40))->contains('function', 'projectJobs')) {
+                \Illuminate\Support\Facades\DB::table('workiz_jobs')->where('id', $row->id)->update(['job_id' => $first->id]);
+            }
+        });
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, Job::query()->count()));
+    }
+
     /** Jobs, 2026-10-27: a projected job is born when and by whom Workiz says. */
     public function test_a_projected_job_carries_workizs_created_date_and_creator(): void
     {

@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
-use App\Models\WhatsAppPendingReport;
 use App\Support\Reports\Texts\ReportPdf;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -513,28 +512,6 @@ final class WhatsAppGroups
         }
 
         return $id;
-    }
-
-    /**
-     * Send whatever was held for this person. Called when they write in.
-     */
-    public function flushPending(WhatsAppNumber $number, string $counterparty): int
-    {
-        $held = WhatsAppPendingReport::query()
-            ->where('phone_number_id', $number->phone_number_id)
-            ->where('counterparty', $counterparty)
-            ->whereNull('delivered_at')
-            ->oldest()
-            ->get();
-
-        foreach ($held as $report) {
-            $this->cloud->replyFreeForm($number, $counterparty, $report->media_id !== null
-                ? ['type' => 'document', 'document' => ['id' => $report->media_id, 'filename' => $report->filename, 'caption' => $report->body]]
-                : ['type' => 'text', 'text' => ['body' => $report->body]], $report->body);
-            $report->forceFill(['delivered_at' => now()])->save();
-        }
-
-        return $held->count();
     }
 
     /**

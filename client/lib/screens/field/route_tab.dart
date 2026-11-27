@@ -74,7 +74,9 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
       'date': date,
     });
     if (!mounted) return;
-    if (quiet && (!response.ok || userId != _userId || date != _date)) return;
+    // Any answer for a person or day no longer picked is dropped (audit 11-27).
+    if (userId != _userId || date != _date) return;
+    if (quiet && !response.ok) return;
     setState(() {
       _loading = false;
       if (response.ok) {

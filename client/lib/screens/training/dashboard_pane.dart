@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -133,7 +135,9 @@ class _DashboardPaneState extends State<DashboardPane> {
     final itemId = widget.itemId;
     final response = await widget.api.get('/training/dashboard/$itemId/people');
     if (!mounted) return;
-    if (quiet && (!response.ok || itemId != widget.itemId)) return;
+    // An answer for an item no longer shown is dropped, spinner or not.
+    if (itemId != widget.itemId) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -347,6 +351,9 @@ class _AssignPaneState extends State<_AssignPane> {
   /// that a narrower search would find somebody not shown here.
   bool _truncated = false;
 
+  Timer? _debounce;
+  int _searchSeq = 0;
+
   Me get _me => widget.session.me!;
 
   @override
@@ -357,6 +364,7 @@ class _AssignPaneState extends State<_AssignPane> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _search.dispose();
     _dueOn.dispose();
     super.dispose();
@@ -373,13 +381,15 @@ class _AssignPaneState extends State<_AssignPane> {
   }
 
   Future<void> _searchUsers(String term) async {
+    final seq = ++_searchSeq;
     setState(() => _searching = true);
 
     final response = await widget.api.get('/training/assignees', {
       'type': _typeUser,
       if (term.isNotEmpty) 'search': term,
     });
-    if (!mounted) return;
+    // Answers arriving out of order: only the latest search is shown.
+    if (!mounted || seq != _searchSeq) return;
 
     setState(() {
       _searching = false;
@@ -502,7 +512,11 @@ class _AssignPaneState extends State<_AssignPane> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: _searchUsers,
+              // One request after typing pauses, not one per key.
+              onChanged: (term) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 300), () => _searchUsers(term));
+              },
             ),
           ),
           if (_truncated && !_searching)

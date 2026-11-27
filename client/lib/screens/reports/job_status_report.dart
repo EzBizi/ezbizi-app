@@ -100,14 +100,24 @@ class _JobStatusReportState extends State<JobStatusReport> {
     if (_query.isNotEmpty) 'q': _query,
   };
 
+  bool _paging = false;
+  int _loads = 0;
+
   Future<void> _load({bool more = false}) async {
+    // One page at a time, and only the newest load lands: a second "Show
+    // more" added its page twice, and an older filter's answer replaced a
+    // newer one (audit 2026-11-27).
+    if (more && _paging) return;
+    final ticket = more ? _loads : ++_loads;
+    if (more) setState(() => _paging = true);
     final response = await widget.api.get(_path, {
       ..._filters,
       'offset': '${more ? _rows.length : 0}',
       'limit': '$_page',
     });
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
     setState(() {
+      _paging = false;
       if (!response.ok) {
         _error = response.message;
         return;
@@ -365,7 +375,7 @@ class _JobStatusReportState extends State<JobStatusReport> {
             Center(
               child: OutlinedButton(
                 key: ValueKey('$_kind-more'),
-                onPressed: () => _load(more: true),
+                onPressed: _paging ? null : () => _load(more: true),
                 child: Text(
                   'Show ${formatCount((count - _rows.length).clamp(0, _page))} more '
                   'of ${formatCount(count - _rows.length)}',

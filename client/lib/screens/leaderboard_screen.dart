@@ -151,6 +151,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   span: span,
                   formats: formats,
                   onOpenWeek: _openWeek,
+                  myId: me.id,
                 )
               : _Mine(
                   key: ValueKey('mine-$span'),
@@ -250,6 +251,7 @@ mixin _Loads<T extends StatefulWidget> on State<T> {
 
 class _Board extends StatefulWidget {
   const _Board({
+    this.myId,
     super.key,
     required this.api,
     required this.span,
@@ -261,6 +263,9 @@ class _Board extends StatefulWidget {
   final DateSpan span;
   final DisplayFormats formats;
   final ValueChanged<DateTime> onOpenWeek;
+
+  /// Whose row is "You" in the ranked list.
+  final String? myId;
 
   @override
   State<_Board> createState() => _BoardState();
@@ -284,72 +289,6 @@ class _BoardState extends State<_Board> with _Loads {
         for (final w in (r.body['data'] as List? ?? const []))
           (w as Map).cast<String, dynamic>(),
       ],
-    );
-  }
-
-  Widget _person(BuildContext context, Map p, {required bool phone}) {
-    final theme = Theme.of(context);
-    final name = '${p['person'] ?? ''}';
-    final id = p['user_id'];
-    return Padding(
-      key: ValueKey('leaderboard-top-${p['rank']}'),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          _Medal(p['rank'] as int? ?? 1),
-          const SizedBox(width: 10),
-          // On a phone the medal says who is where; the name gets the room.
-          if (!phone) ...[
-            id is String
-                ? UserAvatar(api: widget.api, userId: id, name: name)
-                : CircleAvatar(
-                    radius: 16,
-                    backgroundColor:
-                        EzBiziTheme.avatarPalette[name.hashCode.abs() %
-                            EzBiziTheme.avatarPalette.length],
-                    child: Text(
-                      name.isEmpty ? '?' : name[0].toUpperCase(),
-                      style: const TextStyle(
-                        color: EzBiziTheme.fieldInkLight,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-            const SizedBox(width: 10),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall,
-                ),
-                // Shown, not ranked by (Trey, 2026-11-27).
-                Text(
-                  'Answer rate ${_pct(p['answer_rate'])} · '
-                  'Score ${_score(p['score'])} / 10',
-                  key: ValueKey('leaderboard-top-${p['rank']}-also'),
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(_pct(p['booking_rate']), style: theme.textTheme.titleLarge),
-              Text(
-                '${p['booked'] ?? 0} of ${p['decided'] ?? 0} booked',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -414,6 +353,38 @@ class _BoardState extends State<_Board> with _Loads {
               ],
             ],
           ),
+          if (ranked && _Spark.of(me['trend']).whereType<num>().length > 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _Spark(_Spark.of(me['trend']), width: 220, height: 36),
+            ),
+          // What moves you up (design 214): the bookings that pass the
+          // person above at your call count.
+          if (me['to_next'] case final Map next
+              when ranked && next['bookings'] is int)
+            Padding(
+              key: const ValueKey('leaderboard-to-next'),
+              padding: const EdgeInsets.only(top: 4),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text:
+                          '${next['bookings']} more booking'
+                          '${next['bookings'] == 1 ? '' : 's'}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    TextSpan(
+                      text:
+                          ' at your call count put you past '
+                          '${next['person'] ?? '#${next['rank']}'}'
+                          '${next['person'] != null ? ' (#${next['rank']})' : ''}.',
+                    ),
+                  ],
+                ),
+                style: theme.textTheme.bodyMedium?.copyWith(color: on),
+              ),
+            ),
           const SizedBox(height: 4),
           Text(
             body ??
@@ -495,58 +466,414 @@ class _BoardState extends State<_Board> with _Loads {
     );
   }
 
+  Widget _avatar(Map p, double radius) {
+    final name = '${p['person'] ?? ''}';
+    final id = p['user_id'];
+    return id is String
+        ? UserAvatar(api: widget.api, userId: id, name: name, radius: radius)
+        : CircleAvatar(
+            radius: radius,
+            backgroundColor:
+                EzBiziTheme.avatarPalette[name.hashCode.abs() %
+                    EzBiziTheme.avatarPalette.length],
+            child: Text(
+              name.isEmpty ? '#' : name[0].toUpperCase(),
+              style: TextStyle(
+                color: EzBiziTheme.fieldInkLight,
+                fontWeight: FontWeight.w700,
+                fontSize: radius * 0.8,
+              ),
+            ),
+          );
+  }
+
+  /// The team's week (design 214): five equal tiles, each with its change.
+  Widget _team(BuildContext context, Map team, {required bool phone}) {
+    final theme = Theme.of(context);
+    final change = (team['change'] as Map?) ?? const {};
+    Widget tile(String label, String value, Object? delta, String units) {
+      // "1 pt", "2 pts".
+      final unit = units == ' pts' && delta is num && delta.abs() == 1
+          ? ' pt'
+          : units;
+      final up = delta is num && delta > 0;
+      final down = delta is num && delta < 0;
+      return Card(
+        key: ValueKey('leaderboard-team-$label'),
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value, style: theme.textTheme.headlineSmall),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: label),
+                    if (delta is num)
+                      TextSpan(
+                        text:
+                            '  ${up
+                                ? '▲'
+                                : down
+                                ? '▼'
+                                : '–'} '
+                            '${up || down ? '${delta.abs().toStringAsFixed(delta.abs() < 10 && delta % 1 != 0 ? 1 : 0)}$unit' : ''}',
+                        style: TextStyle(
+                          color: up
+                              ? ToneColours.of(context, Tone.ok).ink
+                              : down
+                              ? ToneColours.of(context, Tone.bad).ink
+                              : null,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final tiles = [
+      tile(
+        'New client calls',
+        '${team['new_calls'] ?? 0}',
+        change['new_calls'],
+        '%',
+      ),
+      tile('Booked', '${team['booked'] ?? 0}', change['booked'], '%'),
+      tile(
+        'Team booking rate',
+        _pct(team['booking_rate']),
+        change['booking_rate'],
+        ' pts',
+      ),
+      tile(
+        'Answer rate',
+        _pct(team['answer_rate']),
+        change['answer_rate'],
+        ' pts',
+      ),
+      if (!phone || team['score'] != null)
+        tile('Avg score', '${_score(team['score'])} / 10', change['score'], ''),
+    ];
+    Widget row(List<Widget> ws) => IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, w) in ws.indexed) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(child: w),
+          ],
+        ],
+      ),
+    );
+    if (!phone) return row(tiles);
+    return Column(
+      children: [
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 10),
+          row([
+            tiles[i],
+            if (i + 1 < tiles.length) tiles[i + 1] else const SizedBox(),
+          ]),
+        ],
+      ],
+    );
+  }
+
+  /// 2 · 1 · 3, the steps in the medals' colours (design 214).
+  Widget _podium(BuildContext context, List<Map> top, {required bool phone}) {
+    final theme = Theme.of(context);
+    final order = [if (top.length > 1) 1, 0, if (top.length > 2) 2];
+    return Row(
+      key: const ValueKey('leaderboard-podium'),
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (final i in order)
+          Expanded(
+            child: Padding(
+              key: ValueKey('leaderboard-top-${top[i]['rank']}'),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _avatar(top[i], phone ? 18 : 26),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${top[i]['person'] ?? ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  Text(
+                    _pct(top[i]['booking_rate']),
+                    style: phone
+                        ? theme.textTheme.titleLarge
+                        : theme.textTheme.headlineMedium,
+                  ),
+                  Text(
+                    '${top[i]['booked'] ?? 0} of ${top[i]['decided'] ?? 0} booked',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  if (!phone) ...[
+                    Text(
+                      'Answer ${_pct(top[i]['answer_rate'])} · '
+                      'Score ${_score(top[i]['score'])}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    _Spark(_Spark.of(top[i]['trend']), width: 110, height: 24),
+                  ],
+                  const SizedBox(height: 6),
+                  Container(
+                    height: (phone
+                        ? [54.0, 40.0, 30.0]
+                        : [88.0, 64.0, 48.0])[i],
+                    alignment: Alignment.topCenter,
+                    padding: const EdgeInsets.only(top: 6),
+                    decoration: BoxDecoration(
+                      color: EzBiziTheme.medals[i],
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      '${i + 1}',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: EzBiziTheme.fieldInkLight,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Everyone ranked (design 214); past 3rd a row without a name shows its
+  /// place and rate only, until Jose says names show for everyone.
+  Widget _ranking(
+    BuildContext context,
+    List<Map> rows, {
+    required bool phone,
+    required String? myId,
+  }) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall;
+    Widget head(String t, {double? width, int flex = 0}) {
+      final text = Text(t, style: muted?.copyWith(fontWeight: FontWeight.w600));
+      return width != null
+          ? SizedBox(width: width, child: text)
+          : Expanded(flex: flex == 0 ? 1 : flex, child: text);
+    }
+
+    return Column(
+      key: const ValueKey('leaderboard-ranked'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              head('#', width: 34),
+              head('Person', flex: 3),
+              head('Booking rate', flex: 3),
+              if (!phone) ...[
+                head('Booked', width: 70),
+                head('Answer', width: 60),
+                head('Score', width: 50),
+                head('6 weeks', width: 90),
+              ],
+              head('Week', width: 44),
+            ],
+          ),
+        ),
+        for (final r in rows)
+          Container(
+            key: ValueKey('leaderboard-row-${r['rank']}'),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(
+              color: (r['me'] == true || (myId != null && r['user_id'] == myId))
+                  ? theme.colorScheme.primaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(6),
+              border: Border(top: BorderSide(color: theme.dividerColor)),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 34,
+                  child: (r['rank'] as int? ?? 9) <= 3
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: _Medal(r['rank'] as int, size: 22),
+                        )
+                      : Text('${r['rank'] ?? ''}'),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Row(
+                    children: [
+                      if (r['person'] != null) ...[
+                        _avatar(r, 12),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          r['me'] == true ||
+                                  (myId != null && r['user_id'] == myId)
+                              ? 'You'
+                              : '${r['person'] ?? '—'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _pct(r['booking_rate']),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (!phone)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: LinearProgressIndicator(
+                              value: ((r['booking_rate'] as num?) ?? 0) / 100,
+                              minHeight: 6,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (!phone) ...[
+                  SizedBox(
+                    width: 70,
+                    child: Text('${r['booked'] ?? 0} / ${r['decided'] ?? 0}'),
+                  ),
+                  SizedBox(width: 60, child: Text(_pct(r['answer_rate']))),
+                  SizedBox(width: 50, child: Text(_score(r['score']))),
+                  SizedBox(
+                    width: 90,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _Spark(_Spark.of(r['trend'])),
+                    ),
+                  ),
+                ],
+                SizedBox(width: 44, child: _Change(r['change'])),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final waiting = pending();
     if (waiting != null) return waiting;
     final theme = Theme.of(context);
     final top = [for (final p in data!['top'] as List) (p as Map).cast()];
+    // Everyone ranked, once Reports sends it; the top three until then.
+    final ranked = [
+      for (final p in (data!['ranked'] as List?) ?? data!['top'] as List)
+        (p as Map).cast(),
+    ];
+    final team = data!['team'] as Map?;
     final me = (data!['me'] as Map).cast<String, dynamic>();
     final min = data!['min_calls_to_rank'];
-    final phone = MediaQuery.sizeOf(context).width < 600;
     const gap = SizedBox(height: 12);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Section(
-                  'Top 3 by booking rate · New Client Calls',
-                  top.isEmpty
-                      ? Text(
-                          'Nobody is ranked yet. No one has answered '
-                          '${min ?? 3} new-client calls in this week; try the '
-                          'week before.',
-                          key: const ValueKey('leaderboard-nobody'),
-                          style: theme.textTheme.bodyMedium,
-                        )
-                      : Column(
-                          children: [
-                            for (final (i, p) in top.indexed) ...[
-                              if (i > 0) const Divider(height: 1),
-                              _person(context, p, phone: phone),
-                            ],
-                          ],
-                        ),
-                ),
-                gap,
-                _you(context, me, min),
-                if (_weeks.any(
-                  (w) => (w['top'] as List?)?.isNotEmpty ?? false,
-                )) ...[
-                  gap,
-                  _past(context),
+    return LayoutBuilder(
+      builder: (context, box) {
+        final phone = box.maxWidth < 600;
+        final wide = box.maxWidth >= 1000;
+        final podium = _Section(
+          'Top 3 by booking rate · New Client Calls',
+          top.isEmpty
+              ? Text(
+                  'Nobody is ranked yet. No one has answered '
+                  '${min ?? 3} new-client calls in this week; try the '
+                  'week before.',
+                  key: const ValueKey('leaderboard-nobody'),
+                  style: theme.textTheme.bodyMedium,
+                )
+              : _podium(context, top, phone: phone),
+        );
+        final list = ranked.length > top.length
+            ? _Section(
+                'Everyone ranked',
+                _ranking(context, ranked, phone: phone, myId: widget.myId),
+              )
+            : null;
+        final you = _you(context, me, min);
+        final past = _weeks.any((w) => (w['top'] as List?)?.isNotEmpty ?? false)
+            ? _past(context)
+            : null;
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (team != null) ...[_team(context, team, phone: phone), gap],
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        podium,
+                        if (list != null) ...[gap, list],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        you,
+                        if (past != null) ...[gap, past],
+                      ],
+                    ),
+                  ),
                 ],
-              ],
-            ),
-          ),
-        ),
-      ],
+              )
+            else ...[
+              podium,
+              gap,
+              you,
+              if (list != null) ...[gap, list],
+              if (past != null) ...[gap, past],
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -569,6 +896,8 @@ class _Mine extends StatefulWidget {
 
 class _MineState extends State<_Mine> with _Loads {
   List<Map<String, dynamic>> _scored = [];
+  String? _scoredError;
+  int _searches = 0;
   String _query = '';
   String _pick = 'latest';
   String _callFilter = '';
@@ -585,15 +914,20 @@ class _MineState extends State<_Mine> with _Loads {
   /// Their latest, best and worst scored calls; or, searched, the matches.
   Future<void> _search(String q) async {
     _query = q.trim();
+    final ticket = ++_searches;
     final r = await widget.api.get(
       '/leaderboard/mine/calls?$_dates'
       '${_query.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(_query)}'}',
     );
-    if (!mounted || !r.ok) return;
-    setState(
-      () =>
-          _scored = [for (final c in r.body['data'] as List) (c as Map).cast()],
-    );
+    // An older search answering late does not replace a newer one.
+    if (!mounted || ticket != _searches) return;
+    setState(() {
+      // A failed search says so, not "No scored calls" (audit 2026-11-27).
+      _scoredError = r.ok ? null : r.message;
+      _scored = r.ok
+          ? [for (final c in r.body['data'] as List) (c as Map).cast()]
+          : [];
+    });
   }
 
   @override
@@ -856,10 +1190,14 @@ class _MineState extends State<_Mine> with _Loads {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    _query.isEmpty
-                        ? 'No scored calls in this week.'
-                        : 'No scored calls match "$_query".',
-                    style: muted,
+                    _scoredError ??
+                        (_query.isEmpty
+                            ? 'No scored calls in this week.'
+                            : 'No scored calls match "$_query".'),
+                    key: const ValueKey('leaderboard-scored-empty'),
+                    style: _scoredError == null
+                        ? muted
+                        : muted?.copyWith(color: theme.colorScheme.error),
                   ),
                 ),
               for (final c in shown)
@@ -989,6 +1327,106 @@ class _MineState extends State<_Mine> with _Loads {
           ],
         );
       },
+    );
+  }
+}
+
+/// A person's last weeks as a line (design 214): booking rate per week,
+/// oldest first, a gap where they were not ranked, a dot on the latest.
+class _Spark extends StatelessWidget {
+  const _Spark(this.values, {this.width = 80, this.height = 22});
+
+  final List<num?> values;
+  final double width;
+  final double height;
+
+  static List<num?> of(Object? trend) => [
+    for (final v in (trend as List?) ?? const []) v is num ? v : null,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    if (values.whereType<num>().length < 2) {
+      return SizedBox(width: width, height: height);
+    }
+    return SizedBox(
+      width: width,
+      height: height,
+      child: CustomPaint(
+        painter: _SparkPainter(values, Theme.of(context).colorScheme.primary),
+      ),
+    );
+  }
+}
+
+class _SparkPainter extends CustomPainter {
+  _SparkPainter(this.values, this.colour);
+
+  final List<num?> values;
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final known = values.whereType<num>();
+    final lo = known.reduce((a, b) => a < b ? a : b) - 2;
+    final hi = known.reduce((a, b) => a > b ? a : b) + 2;
+    final pen = Paint()
+      ..color = colour
+      ..strokeWidth = 2
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    Offset at(int i) => Offset(
+      values.length == 1 ? 0 : i / (values.length - 1) * size.width,
+      size.height - (values[i]! - lo) / (hi - lo) * size.height,
+    );
+    final path = Path();
+    var drawing = false;
+    Offset? last;
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] == null) {
+        drawing = false;
+        continue;
+      }
+      final p = at(i);
+      drawing ? path.lineTo(p.dx, p.dy) : path.moveTo(p.dx, p.dy);
+      drawing = true;
+      last = p;
+    }
+    canvas.drawPath(path, pen);
+    if (last != null) canvas.drawCircle(last, 2.6, Paint()..color = colour);
+  }
+
+  @override
+  bool shouldRepaint(_SparkPainter old) =>
+      old.colour != colour || old.values.join() != values.join();
+}
+
+/// Places up or down since last week: ▲ 2, ▼ 1, – , or New.
+class _Change extends StatelessWidget {
+  const _Change(this.change);
+
+  final Object? change;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = change is Map ? (change as Map)['rank'] : null;
+    final (String text, Color colour) = switch (c) {
+      final int n when n > 0 => ('▲ $n', ToneColours.of(context, Tone.ok).ink),
+      final int n when n < 0 => (
+        '▼ ${-n}',
+        ToneColours.of(context, Tone.bad).ink,
+      ),
+      0 => ('–', theme.colorScheme.onSurfaceVariant),
+      _ when change is Map => ('New', theme.colorScheme.primary),
+      _ => ('', theme.colorScheme.onSurfaceVariant),
+    };
+    return Text(
+      text,
+      style: theme.textTheme.labelMedium?.copyWith(
+        color: colour,
+        fontWeight: FontWeight.w700,
+      ),
     );
   }
 }

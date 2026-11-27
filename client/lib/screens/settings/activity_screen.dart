@@ -134,7 +134,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
   String? get _actorId =>
       _who != null && _who!.startsWith('actor:') ? _who!.substring(6) : null;
 
+  // Only the newest request lands (audit 2026-11-27: filters raced).
+  int _request = 0;
+
   Future<void> _load({bool append = false}) async {
+    final mine = ++_request;
     setState(() => _loading = true);
     final q = _search.text.trim();
 
@@ -144,11 +148,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
       'actor_id': ?_actorId,
       'module': ?_module,
       if (q.isNotEmpty) 'q': q,
-      if (append && _rows.isNotEmpty)
+      if (append && _rows.isNotEmpty) ...{
         'before': _rows.last['occurred_at'] as String,
+        'before_id': _rows.last['id'] as String,
+      },
     });
 
-    if (!mounted) return;
+    if (!mounted || mine != _request) return;
 
     setState(() {
       _loading = false;

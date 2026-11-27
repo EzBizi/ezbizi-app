@@ -158,6 +158,9 @@ final class FieldRecordingsController extends Controller
         $data = $request->validate([
             'user_id' => ['nullable', 'uuid'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            // The viewer's day as UTC bounds; `date` (a UTC day) is for older builds.
+            'from' => ['nullable', 'date', 'required_with:to'],
+            'to' => ['nullable', 'date', 'after:from'],
             'q' => ['nullable', 'string', 'max:200'],
         ]);
         $actor = $request->user();
@@ -171,7 +174,10 @@ final class FieldRecordingsController extends Controller
         } else {
             $query->where('user_id', $actor->getKey());
         }
-        if (isset($data['date'])) {
+        if (isset($data['from'])) {
+            $query->where('started_at', '>=', Carbon::parse($data['from'])->utc())
+                ->where('started_at', '<', Carbon::parse($data['to'])->utc());
+        } elseif (isset($data['date'])) {
             $query->whereDate('started_at', $data['date']);
         }
         // Who recorded it, the job it was on, or why it was flagged.

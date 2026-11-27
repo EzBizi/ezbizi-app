@@ -108,6 +108,8 @@ class LightingService {
       await _startEngine();
     }
     await _rescan();
+    // Stopped during the slow start: no poll timer to orphan (audit 11-27).
+    if (_stopped) return;
     _poll = Timer.periodic(
       const Duration(seconds: 10),
       (_) => unawaited(_tick()),
@@ -267,7 +269,10 @@ class LightingService {
     }
   }
 
+  bool _stopped = false;
+
   void _stop() {
+    _stopped = true;
     _poll?.cancel();
     unawaited(_rgb?.close());
     _proc?.kill();

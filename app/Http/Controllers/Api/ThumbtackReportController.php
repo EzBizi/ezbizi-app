@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,11 +37,13 @@ class ThumbtackReportController extends Controller
             // A lead no branch has claimed yet stays in every view, under "No
             // branch": all 19 of A-1's had none, so a company view showed
             // nothing (2026-11-04).
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->where(fn ($w) => $w->whereIn('leads.franchise_id', $ids)->orWhereNull('leads.franchise_id')));
+            ->when(ReportView::franchiseIds() !== null, fn ($w) => $w->where(fn ($w) => ReportView::whereInView($w, 'leads.franchise_id')->orWhereNull('leads.franchise_id')));
 
         $rows = $leads()
             ->leftJoin('franchises as f', 'f.id', '=', 'leads.franchise_id')
-            ->whereBetween('leads.received_at', [$q['from'].' 00:00:00', $q['to'].' 23:59:59'])
+            // received_at is UTC; the days are the organization's.
+            ->whereBetween('leads.received_at', [CarbonImmutable::parse($q['from'], ReportView::zone())->startOfDay()->utc(),
+                CarbonImmutable::parse($q['to'], ReportView::zone())->endOfDay()->utc()])
             ->when($q['category'] ?? null, fn ($w, $c) => $w->where('leads.category', $c))
             ->when($q['state'] ?? null, fn ($w, $s) => $w->where('leads.service_state', $s))
             ->when($q['branch'] ?? null, fn ($w, $b) => $b === 'none' ? $w->whereNull('leads.franchise_id') : $w->where('leads.franchise_id', $b))
