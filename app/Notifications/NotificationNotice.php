@@ -38,6 +38,15 @@ class NotificationNotice extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    /** One SES hiccup must not lose the mail for good (audit 2026-11-27). */
+    public int $tries = 3;
+
+    /** @return list<int> seconds between tries */
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
+
     public function __construct(
         private readonly string $title,
         private readonly ?string $body = null,

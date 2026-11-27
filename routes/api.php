@@ -3814,6 +3814,7 @@ Route::prefix('v1')
         // there is nothing to authorize beyond being signed in.
         Route::get('notifications', [NotificationsController::class, 'index']);
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
+        Route::delete('notifications/devices', [NotificationsController::class, 'unregisterDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
         Route::get('notifications/kinds', [NotificationsController::class, 'kinds']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
