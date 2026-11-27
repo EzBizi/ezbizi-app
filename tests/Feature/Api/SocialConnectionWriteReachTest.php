@@ -56,8 +56,9 @@ class SocialConnectionWriteReachTest extends TestCase
             ->assertForbidden();
         $this->assertTrue($this->inTenant($t['org'], fn () => SocialConnection::query()->whereKey($org->getKey())->exists()));
 
-        $this->signedInAs($t['admin'])
-            ->deleteJson('/api/v1/social/connections/'.$org->getKey(), $this->authenticatorCode($t['admin']))
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin']->fresh())
+            ->deleteJson('/api/v1/social/connections/'.$org->getKey(), $code)
             ->assertOk();
     }
 
@@ -68,8 +69,9 @@ class SocialConnectionWriteReachTest extends TestCase
         $own = $this->connection($t, 'franchise', $t['franchise']->id, 'own-1');
         $branch = $this->branchUser($t);
 
-        $this->signedInAs($branch)
-            ->deleteJson('/api/v1/social/providers/pinterest/connections', $this->authenticatorCode($branch))
+        $code = $this->authenticatorCode($branch);
+        $this->signedInAs($branch->fresh())
+            ->deleteJson('/api/v1/social/providers/pinterest/connections', $code)
             ->assertOk();
 
         $left = $this->inTenant($t['org'], fn () => SocialConnection::query()->pluck('remote_id')->all());
