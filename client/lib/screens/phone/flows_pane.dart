@@ -258,7 +258,6 @@ class _FlowsPaneState extends State<FlowsPane> {
   }
 
   Future<void> _delete(_Flow flow) async {
-    if (!await confirmPhoneRemove(context, '"${flow.name}"')) return;
     final response = await widget.api.delete('/phone/flows/${flow.id}');
 
     if (!mounted) return;
@@ -440,10 +439,7 @@ class _FlowsPaneState extends State<FlowsPane> {
                         }),
                         child: const Text('Edit'),
                       ),
-                      TextButton(
-                        onPressed: () => _delete(flow),
-                        child: const Text('Remove'),
-                      ),
+                      TwoTapRemove(onRemove: () => _delete(flow)),
                     ],
                   )
                 : const SizedBox.shrink(),

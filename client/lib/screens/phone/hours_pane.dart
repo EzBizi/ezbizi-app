@@ -157,7 +157,6 @@ class _HoursPaneState extends State<HoursPane> {
   }
 
   Future<void> _delete(_Schedule schedule) async {
-    if (!await confirmPhoneRemove(context, '"${schedule.name}"')) return;
     final response = await widget.api.delete('/phone/hours/${schedule.id}');
 
     if (!mounted) return;
@@ -322,10 +321,7 @@ class _HoursPaneState extends State<HoursPane> {
                         }),
                         child: const Text('Edit'),
                       ),
-                      TextButton(
-                        onPressed: () => _delete(schedule),
-                        child: const Text('Remove'),
-                      ),
+                      TwoTapRemove(onRemove: () => _delete(schedule)),
                     ],
                   )
                 : const SizedBox.shrink(),

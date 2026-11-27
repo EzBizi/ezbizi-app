@@ -214,7 +214,7 @@ void main() {
     expect(s.reads['/complaints/c-1'], opened + 1, reason: 'another one');
   });
 
-  testWidgets('Phone Records: a call arriving re-reads every page loaded', (
+  testWidgets('Phone Records: a call arriving re-reads page 1 only and keeps older pages', (
     tester,
   ) async {
     final s = await _pump(
@@ -250,7 +250,8 @@ void main() {
       for (final u in s.requests.skip(before))
         if (u.path.endsWith('/phone/calls')) u.queryParameters['page'],
     ];
-    expect(pages, ['1', '2'], reason: 'older pages stay and re-read too');
+    // Audit 11-27: page 1 merged over what is loaded, not every page again.
+    expect(pages, ['1'], reason: 'only the newest page is re-read');
   });
 
   for (final (name, path, type, permissions, home)

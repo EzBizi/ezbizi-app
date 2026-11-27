@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'number_quality_pane.dart';
 import 'phone_refs.dart';
 
@@ -495,14 +496,19 @@ class _TrustPaneState extends State<TrustPane> {
             children: [
               // Which line was observed (audit 11-27: always the first).
               if (_numbers.length > 1)
-                DropdownButton<String>(
-                  key: const ValueKey('trust-observed-number'),
-                  value: _numbers.contains(_observedNumber) ? _observedNumber : null,
-                  items: [
-                    for (final n in _numbers)
-                      DropdownMenuItem(value: n, child: Text(n)),
-                  ],
-                  onChanged: (n) => setState(() => _observedNumber = n),
+                SizedBox(
+                  width: 200,
+                  child: SearchPickerField<String>(
+                    key: const ValueKey('trust-observed-number'),
+                    value: _numbers.contains(_observedNumber) ? _observedNumber : null,
+                    label: 'Line',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    options: [
+                      for (final n in _numbers) SearchOption(value: n, label: n),
+                    ],
+                    onChanged: (n) => setState(() => _observedNumber = n),
+                  ),
                 ),
               SizedBox(
                 width: 180,
