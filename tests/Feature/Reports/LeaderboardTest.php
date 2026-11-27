@@ -70,9 +70,15 @@ class LeaderboardTest extends TestCase
             'new_client' => $new, 'booked_new' => $booked, 'needs_attention' => $attention, 'awaiting_review' => 0];
         $people = collect([$row('Ada', 6, 10), $row('Bo', 6, 12), $row('Cy', 3, 4), $row('Di', 2, 4, 1), $row('Ed', 9, 10), $row('Fe', 2, 2)])
             ->keyBy('person')->all();
-        $this->mock(PerformancePeople::class, function ($mock) use ($people) {
+        // The weeks before, Di booked one: her trend and her change since.
+        $earlier = ['Di' => $row('Di', 1, 4, 1)] + $people;
+        $this->mock(PerformancePeople::class, function ($mock) use ($people, $earlier) {
             // The week of 11-16 October holds them; the next one nobody yet.
-            $mock->shouldReceive('for')->andReturnUsing(fn ($user, $from) => $from->toDateString() < '2026-10-17' ? $people : []);
+            $mock->shouldReceive('for')->andReturnUsing(fn ($user, $from) => match (true) {
+                $from->toDateString() >= '2026-10-17' => [],
+                $from->toDateString() < '2026-10-11' => $earlier,
+                default => $people,
+            });
             $mock->shouldReceive('trainingCalls')->andReturn([]);
             $mock->shouldReceive('report')->andReturn(['people' => array_values($people), 'calls' => [
                 ['id' => 'k1', 'answered_by' => 'Di', 'rang' => ['Di']],
@@ -96,7 +102,19 @@ class LeaderboardTest extends TestCase
             array_keys($board['top'][0]), 'three names and their numbers, nothing else of theirs');
         $this->assertSame([$this->users['Di']->id, true], [$board['top'][1]['user_id'], is_numeric($board['top'][0]['score'])], 'a photo; the score still shown');
         $this->assertSame(['person' => 'Di', 'rank' => 2, 'of' => 4, 'booking_rate' => 67, 'booked' => 2, 'decided' => 3, 'answer_rate' => 80, 'calls_scored' => 3, 'why' => null],
-            array_diff_key($board['me'], ['score' => true]));
+            array_diff_key($board['me'], ['score' => true, 'trend' => true, 'to_next' => true]));
+
+        // Everyone ranked (Jose: "more elaborate", UI/UX 214), names past third left out until Jose says.
+        $this->assertSame([[1, 'Cy', 0, false], [2, 'Di', 2, true], [3, 'Ada', -1, false], [4, null, -1, false]],
+            array_map(fn ($p) => [$p['rank'], $p['person'], $p['change']['rank'], $p['me']], $board['ranked']));
+        $this->assertSame([null, 50], [$board['ranked'][3]['user_id'], $board['ranked'][3]['booking_rate']]);
+        $this->assertSame([33, 33, 33, 33, 33, 67], $board['ranked'][1]['trend'], 'six weeks, oldest first, this one last');
+        $this->assertEquals(33.3, $board['ranked'][1]['change']['rate_pts']);
+        $this->assertSame([$board['ranked'][1]['trend'], ['rank' => 1, 'person' => 'Cy', 'bookings' => 1]], [$board['me']['trend'], $board['me']['to_next']],
+            'one more booking of her three calls puts her past Cy');
+        // Everyone marked New: Ada, Bo, Cy, Di and Fe, not Ed.
+        $this->assertSame([32, 19, 61, 80], [$board['team']['new_calls'], $board['team']['booked'], $board['team']['booking_rate'], $board['team']['answer_rate']]);
+        $this->assertEquals(['new_calls' => 0, 'booked' => 5.6, 'booking_rate' => 3.2, 'answer_rate' => 0], array_diff_key($board['team']['change'], ['score' => true]));
 
         $why = fn (string $who) => $this->signedInAs($this->users[$who])->getJson('/api/v1/leaderboard'.self::WEEK)->assertOk()->json('data.me');
         $this->assertSame([null, 'not_new', 90], [$why('Ed')['rank'], $why('Ed')['why'], $why('Ed')['booking_rate']]);
