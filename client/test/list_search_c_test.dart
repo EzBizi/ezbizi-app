@@ -104,7 +104,8 @@ void main() {
       '/inventory/sales',
     ]) {
       expect(server.last(path)['q'], 'acme', reason: path);
-      expect(server.last(path).containsKey('page'), isFalse, reason: path);
+      // Every page is read since the audit (11-27); a search starts at 1.
+      expect(server.last(path)['page'], '1', reason: path);
     }
     expect(find.text('PO-1001'), findsOneWidget);
     expect(find.text('PO-1002'), findsNothing);
