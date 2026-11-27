@@ -89,14 +89,19 @@ class _PayrollTabState extends State<PayrollTab> {
     super.dispose();
   }
 
+  /// The newest filter wins: an older reload landing last must not overwrite
+  /// it (full-code audit, 2026-11-27).
+  int _request = 0;
+
   Future<void> _load() async {
+    final request = ++_request;
     setState(() {
       _loading = true;
       _error = null;
     });
 
     final response = await widget.api.get('/hr/payroll', _query);
-    if (!mounted) return;
+    if (!mounted || request != _request) return;
 
     setState(() {
       _loading = false;

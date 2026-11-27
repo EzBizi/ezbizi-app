@@ -202,6 +202,7 @@ final class TaxForms
      */
     public static function render(string $kind, array $values, ?string $signaturePng, string $date, ?string $basePng = null): string
     {
+        $values = self::onlyChosen($kind, $values);
         $layout = self::LAYOUT[$kind];
         $image = base64_encode($basePng ?? (string) file_get_contents(resource_path('hr/tax-forms/'.$layout['image'])));
         $e = fn (string $v) => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -264,6 +265,7 @@ final class TaxForms
      */
     public static function renderPng(string $kind, array $values, ?string $signaturePng, string $date, ?string $basePng = null): string
     {
+        $values = self::onlyChosen($kind, $values);
         $layout = self::LAYOUT[$kind];
         $page = $basePng !== null
             ? imagecreatefromstring($basePng)
@@ -325,5 +327,25 @@ final class TaxForms
         imagedestroy($img);
 
         return (string) ob_get_clean();
+    }
+
+    /**
+     * A W-9's LLC code and "other" text print only for the classification
+     * that asks for them; a hidden box left filled is dropped (full-code
+     * audit, 2026-11-27).
+     */
+    private static function onlyChosen(string $kind, array $values): array
+    {
+        if ($kind !== self::W9) {
+            return $values;
+        }
+        if (($values['classification'] ?? null) !== 'llc') {
+            unset($values['llc_code']);
+        }
+        if (($values['classification'] ?? null) !== 'other') {
+            unset($values['other_classification']);
+        }
+
+        return $values;
     }
 }

@@ -169,8 +169,13 @@ class _HrOverviewState extends State<HrOverview> {
   String _untilDays(Object? iso) {
     final at = DateTime.tryParse('${iso ?? ''}');
     if (at == null) return '';
-    final days = at.difference(DateTime.now()).inDays;
-    return days <= 1 ? '1 day' : '$days days';
+    // Calendar days, not 24-hour blocks: tomorrow is 1 even at 3pm today
+    // (full-code audit, 2026-11-27).
+    final now = DateTime.now();
+    final days = DateTime(at.year, at.month, at.day)
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
+    return days <= 0 ? 'today' : (days == 1 ? '1 day' : '$days days');
   }
 
   void _open(BuildContext context, _List list, {required bool phone}) {
@@ -311,8 +316,13 @@ class _HrOverviewState extends State<HrOverview> {
             'Onboarding in flight',
             'Started and not finished, oldest first.',
             [
+              // The figure counts "to approve" too, so the list does
+              // (full-code audit, 2026-11-27).
               for (final r in _waiting)
-                if (r.pill == 'To sign' || r.pill == 'Filling in') r,
+                if (r.pill == 'To sign' ||
+                    r.pill == 'Filling in' ||
+                    r.pill == 'To approve')
+                  r,
             ],
           ),
           phone: phone,

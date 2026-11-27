@@ -1195,11 +1195,10 @@ class _PersonRecordState extends State<_PersonRecord> {
       key: ValueKey('employment-$_version'),
       api: widget.api,
       personId: widget.personId,
+      // The record changes, the section stays: re-keying it threw away
+      // unsaved Employment edits (full-code audit, 2026-11-27).
       onPlaces: (record) {
-        setState(() {
-          _person = record;
-          _version++;
-        });
+        setState(() => _person = record);
         widget.onChanged();
       },
       person: _person,
@@ -2721,7 +2720,9 @@ class _DetailKind {
 
   static String _date(Object? iso, DisplayFormats formats) {
     final at = DateTime.tryParse(iso?.toString() ?? '');
-    return at == null ? '' : formats.formatDate(at);
+    // An instant (a note's time) is UTC: shown on the reader's day. A plain
+    // date parses as local and stays as it is (full-code audit, 2026-11-27).
+    return at == null ? '' : formats.formatDate(at.isUtc ? at.toLocal() : at);
   }
 
   static String _join(List<String?> parts) =>
