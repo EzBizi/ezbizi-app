@@ -1,3 +1,6 @@
+import 'package:ezbizi_client/core/field_tracker.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/deep_links.dart';
@@ -119,6 +122,44 @@ void main() {
     expect(find.text('Tap again to send SOS'), findsNothing);
   });
 
+  testWidgets('a phone with no location fix still sends the SOS, once', (
+    tester,
+  ) async {
+    // Audit 11-27: no fix used to stop the SOS on the phone.
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    FieldTracker.locate = () async => null;
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      FieldTracker.locate = FieldTracker.currentPosition;
+    });
+    final sent = <Map<String, dynamic>>[];
+    final answer = Completer<void>();
+    await _pump(
+      tester,
+      grants: ['field.dashboard.view'],
+      tracked: true,
+      sos: sent,
+      sosAnswer: answer.future,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('field-sos')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('field-sos')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(sent, [<String, dynamic>{}], reason: 'Sent without lat/lng.');
+    expect(find.text('Sending SOS…'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('field-sos')));
+    await tester.pump();
+    expect(sent, hasLength(1), reason: 'A tap while sending does nothing.');
+
+    answer.complete();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('without your location'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('with no tab granted it says what to ask for', (tester) async {
     await _pump(tester, grants: []);
 
@@ -130,6 +171,8 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<String> grants,
   bool tracked = false,
+  List<Map<String, dynamic>>? sos,
+  Future<void>? sosAnswer,
 }) async {
   tester.view.physicalSize = const Size(1400, 1200);
   tester.view.devicePixelRatio = 1.0;
@@ -143,6 +186,11 @@ Future<void> _pump(
         return _json({
           'data': _me(['field.view', ...grants]),
         });
+      }
+      if (path.endsWith('/field/sos') && sos != null) {
+        sos.add(jsonDecode(request.body) as Map<String, dynamic>);
+        await sosAnswer;
+        return _json({'data': {}}, 201);
       }
       if (path.endsWith('/field/dashboard')) {
         return _json({
