@@ -15,11 +15,11 @@ class TaskGroup extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'board_id', 'name', 'colour', 'position', 'external_ref'];
+    protected $fillable = ['organization_id', 'board_id', 'name', 'colour', 'position', 'external_ref', 'archived_at'];
 
     protected function casts(): array
     {
-        return ['position' => 'integer'];
+        return ['position' => 'integer', 'archived_at' => 'datetime'];
     }
 
     public static function retention(): RetentionPolicy

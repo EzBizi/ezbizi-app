@@ -3,6 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\Assignment;
+use App\Models\Attachment;
+use App\Models\Chat;
+use App\Models\ChatMember;
+use App\Models\ChatMessage;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\ServiceArea;
@@ -13,6 +17,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleAssignment;
 use App\Models\VehicleServiceVisit;
+use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -137,6 +142,7 @@ class DemoFill extends Command
             $this->scheduling($dry);
             $this->fleet($dry);
             $this->timeClock($dry);
+            $this->chat($dry);
         });
 
         return self::SUCCESS;
@@ -435,5 +441,202 @@ class DemoFill extends Command
                 $this->info(sprintf('  time clock: %s — 2 closed%s', $person->name, $i < 2 ? ', 1 open' : ''));
             }
         }
+    }
+
+    /**
+     * Chat for the store screenshots (Apple, 2026-11-25): the App Review login
+     * in a handful of chats with the invented staff, with recent messages, a
+     * quick reply, a photo, a voice message and call lines.
+     *
+     * Insert-only like the rest. Its guard is the parent already having demo
+     * history: once the review login shares a chat with any demo staffer, this
+     * step has run and does nothing. The photo is drawn here and the voice note
+     * is a quiet generated tone; neither is anybody's real file.
+     */
+    private function chat(bool $dry): void
+    {
+        $me = User::query()->where('email', 'apple@ezbizi.com')->first();
+        $staff = User::query()->where('email', 'like', '%@'.self::STAFF_DOMAIN)->get()->keyBy('name');
+
+        if ($me === null || $staff->count() < 4) {
+            $this->line('  chat: skipped — needs apple@ezbizi.com and the demo staff');
+
+            return;
+        }
+
+        $already = ChatMember::query()
+            ->where('user_id', $me->id)
+            ->whereIn('chat_id', ChatMember::query()->whereIn('user_id', $staff->pluck('id'))->select('chat_id'))
+            ->exists();
+        if ($already) {
+            $this->line('  chat: already there');
+
+            return;
+        }
+        if ($dry) {
+            $this->line('  chat: would add 6 chats for apple@ezbizi.com');
+
+            return;
+        }
+
+        $ada = $staff['Ada Vance'];
+        $marcus = $staff['Marcus Iheme'];
+        $priya = $staff['Priya Raghunathan'];
+        $tomas = $staff['Tomas Bergqvist'];
+        $rosa = $staff['Rosa Delgado'];
+        $at = fn (int $minutesAgo) => now()->subMinutes($minutesAgo);
+
+        $made = [];
+        $make = function (string $type, array $people, ?string $name = null) use ($me, &$made): Chat {
+            $chat = Chat::query()->create([
+                'organization_id' => $this->organizationId,
+                'type' => $type,
+                'name' => $name,
+                'direct_key' => $type === 'direct' ? Chat::directKey($me->id, $people[0]->id) : null,
+                'created_by' => $me->id,
+            ]);
+            foreach ([$me, ...$people] as $i => $person) {
+                ChatMember::query()->create([
+                    'organization_id' => $this->organizationId,
+                    'chat_id' => $chat->id,
+                    'user_id' => $person->id,
+                    'is_admin' => $type === 'group' && $i === 0,
+                ]);
+            }
+
+            $made[] = $chat->id;
+
+            return $chat;
+        };
+
+        $say = function (Chat $chat, User $from, int $minutesAgo, array $fields) {
+            $message = new ChatMessage([
+                'organization_id' => $this->organizationId,
+                'chat_id' => $chat->id,
+                'sender_id' => $from->id,
+                'kind' => 'text',
+                ...$fields,
+            ]);
+            $message->created_at = now()->subMinutes($minutesAgo);
+            $message->updated_at = $message->created_at;
+            $message->save();
+            $chat->forceFill(['last_message_at' => $message->created_at, 'updated_at' => $message->created_at])->save();
+
+            return $message;
+        };
+
+        $file = function (ChatMessage $message, User $by, string $name, string $mime, string $bytes, string $ext) {
+            $files = app(FileStore::class);
+            $disk = $files->defaultDisk();
+            $path = $files->putContents($bytes, $files->directoryFor('attachments', $this->organizationId), $ext, $disk);
+            (new Attachment([
+                'organization_id' => $this->organizationId,
+                'attachable_type' => 'chat_messages',
+                'attachable_id' => $message->id,
+                'original_name' => $name,
+                'mime' => $mime,
+                'uploaded_by_user_id' => $by->id,
+            ]))->forceFill([
+                'disk' => $disk, 'path' => $path, 'size_bytes' => strlen($bytes),
+                'checksum' => hash('sha256', $bytes), 'encrypted' => false,
+            ])->save();
+        };
+
+        // Ada, dispatch: the job of the day, a photo, a missed video call.
+        $c = $make('direct', [$ada]);
+        $say($c, $ada, 95, ['body' => 'Morning! You have the Elm St chimney cap first, then two sweeps in West Hartford.']);
+        $say($c, $me, 92, ['body' => 'Got it, loading the van now']);
+        $say($c, $ada, 60, ['kind' => 'call', 'meta' => ['status' => 'missed', 'video' => true, 'started_at' => $at(60)->toIso8601String(), 'joined' => [$ada->id]]]);
+        $photo = $say($c, $ada, 38, ['kind' => 'image', 'body' => 'This is the cap the customer sent']);
+        $file($photo, $ada, 'chimney-cap.png', 'image/png', $this->chimneyPicture(), 'png');
+        $say($c, $me, 12, ['body' => 'On my way']);
+        $say($c, $ada, 9, ['body' => 'Thanks! Customer says the side gate is open 👍', 'reactions' => [$me->id => '👍']]);
+
+        // Marcus: a voice message and an answered call.
+        $c = $make('direct', [$marcus]);
+        $say($c, $marcus, 240, ['kind' => 'call', 'meta' => ['status' => 'answered', 'video' => false, 'started_at' => $at(240)->toIso8601String(), 'joined' => [$marcus->id, $me->id], 'duration' => 134]]);
+        $voice = $say($c, $marcus, 47, ['kind' => 'voice', 'meta' => ['seconds' => 14]]);
+        $file($voice, $marcus, 'voice.wav', 'audio/wav', $this->quietTone(14), 'wav');
+        $say($c, $me, 44, ['body' => 'Running late, about 15 min']);
+
+        // The crew group.
+        $c = $make('group', [$ada, $marcus, $tomas], 'Hartford crew');
+        $say($c, $me, 600, ['kind' => 'system', 'meta' => ['event' => 'created', 'name' => 'Hartford crew']]);
+        $say($c, $tomas, 30, ['body' => 'Ladder is back at the shop']);
+        $say($c, $marcus, 26, ['body' => 'Who has the 9" flue brush?']);
+        $say($c, $me, 24, ['body' => 'In my van, I can drop it at noon']);
+        $say($c, $ada, 20, ['body' => '*Reminder:* photos before and after on every job', 'reactions' => [$tomas->id => '🙏', $marcus->id => '👍']]);
+
+        // Priya: unread, waiting on the reviewer.
+        $c = $make('direct', [$priya]);
+        $unread = $c->id;
+        $say($c, $me, 180, ['body' => 'Need parts: two 13x13 caps and a damper']);
+        $say($c, $priya, 5, ['body' => 'Ordered. Can you approve the PO when you are back?']);
+
+        // Rosa: yesterday.
+        $c = $make('direct', [$rosa]);
+        $say($c, $rosa, 60 * 20, ['body' => 'Your hours for last week are approved']);
+        $say($c, $me, 60 * 19, ['body' => 'Done']);
+
+        // Dispatch group.
+        $c = $make('group', [$ada, $rosa, $priya], 'Dispatch');
+        $say($c, $rosa, 60 * 26, ['body' => 'Tomorrow is fully booked; overflow goes to Thursday']);
+        $say($c, $me, 60 * 25, ['kind' => 'call', 'meta' => ['status' => 'answered', 'video' => true, 'started_at' => $at(60 * 25)->toIso8601String(), 'joined' => [$me->id, $ada->id, $rosa->id], 'duration' => 412]]);
+
+        // Everyone has read everything, except the reviewer in Priya's chat,
+        // which therefore shows as unread.
+        $stamp = now()->format('Y-m-d H:i:s.u');
+        ChatMember::query()->whereIn('chat_id', $made)
+            ->where(fn ($q) => $q->where('chat_id', '!=', $unread)->orWhere('user_id', '!=', $me->id))
+            ->update(['read_at' => $stamp, 'delivered_at' => $stamp]);
+
+        $this->info('  chat: added 6 chats for apple@ezbizi.com');
+    }
+
+    /** A small drawn picture of a roof and a capped chimney (PNG), invented. */
+    private function chimneyPicture(): string
+    {
+        $w = 640;
+        $h = 480;
+        $img = imagecreatetruecolor($w, $h);
+        for ($y = 0; $y < $h; $y++) {
+            $t = $y / $h;
+            imageline($img, 0, $y, $w, $y, imagecolorallocate($img, (int) (120 + 90 * $t), (int) (170 + 60 * $t), (int) (230 + 20 * $t)));
+        }
+        $roof = imagecolorallocate($img, 70, 74, 82);
+        imagefilledpolygon($img, [0, 480, 0, 330, 320, 180, 640, 330, 640, 480], $roof);
+        $brick = imagecolorallocate($img, 168, 74, 52);
+        $mortar = imagecolorallocate($img, 214, 196, 180);
+        imagefilledrectangle($img, 380, 120, 470, 300, $brick);
+        for ($y = 120; $y <= 300; $y += 18) {
+            imageline($img, 380, $y, 470, $y, $mortar);
+            $offset = (($y - 120) / 18) % 2 === 0 ? 0 : 22;
+            for ($x = 380 + $offset; $x <= 470; $x += 44) {
+                imageline($img, $x, $y, $x, min($y + 18, 300), $mortar);
+            }
+        }
+        $steel = imagecolorallocate($img, 190, 196, 204);
+        imagefilledrectangle($img, 368, 104, 482, 120, $steel);
+        imagefilledrectangle($img, 384, 84, 466, 104, imagecolorallocate($img, 60, 64, 70));
+        imagefilledrectangle($img, 360, 74, 490, 86, $steel);
+        ob_start();
+        imagepng($img);
+        imagedestroy($img);
+
+        return (string) ob_get_clean();
+    }
+
+    /** A quiet, wordless tone of the given length (8 kHz mono WAV), invented. */
+    private function quietTone(int $seconds): string
+    {
+        $rate = 8000;
+        $samples = '';
+        for ($i = 0; $i < $rate * $seconds; $i++) {
+            $envelope = 0.5 + 0.5 * sin($i / $rate * 2 * M_PI * 3);
+            $samples .= chr((int) (128 + 18 * $envelope * sin($i / $rate * 2 * M_PI * 220)));
+        }
+        $n = strlen($samples);
+
+        return 'RIFF'.pack('V', 36 + $n).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, $rate, $rate, 1, 8).'data'.pack('V', $n).$samples;
     }
 }

@@ -9,10 +9,7 @@ import '../../core/live_changes.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
-import 'financial_cells.dart';
-
-String _money(int cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+import 'invoice_common.dart';
 
 const _kinds = {
   'refund': 'Refund',
@@ -254,7 +251,7 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
       ),
       trailing: a['cents'] == null
           ? null
-          : Text(_money((a['cents'] as num).toInt())),
+          : Text(invoiceMoney((a['cents'] as num).toInt())),
       onTap: widget.canEdit || widget.canDelete ? () => _edit(a) : null,
     );
   }

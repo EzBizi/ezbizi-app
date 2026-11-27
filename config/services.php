@@ -113,6 +113,8 @@ return [
      * APP_URL/api/v1/social/monday/callback.
      */
     'monday' => [
+        // Monday off (Jose, cut-over 11-26): no sync, push, parity or Monday job runs. MONDAY_ENABLED=true brings it back.
+        'enabled' => (bool) env('MONDAY_ENABLED', false),
         'client_id' => env('MONDAY_CLIENT_ID'),
         'client_secret' => env('MONDAY_CLIENT_SECRET'),
         'signing_secret' => env('MONDAY_SIGNING_SECRET'),
@@ -547,6 +549,8 @@ return [
         'team_id' => env('APNS_TEAM_ID'),
         'key' => env('APNS_KEY_FILE'),
         'topic' => env('APNS_TOPIC', 'com.ezbizi.app'),
+        // EzChat, the chat companion app (its own bundle id).
+        'ezchat_topic' => env('APNS_EZCHAT_TOPIC', 'com.ezbizi.ezchat'),
         'production' => env('APNS_PRODUCTION', true),
     ],
 

@@ -59,6 +59,9 @@ val hasUploadKey = keyProperties.getProperty("storeFile") != null
 // useless to upload and harmless, which is the right way round for an artefact
 // nobody stamped.
 
+/** EZBIZI_APP=ezchat builds EzChat, the chat companion (see defaultConfig). */
+val ezChat = System.getenv("EZBIZI_APP") == "ezchat"
+
 android {
     namespace = "com.ezbizi.ezbizi_client"
     compileSdk = flutter.compileSdkVersion
@@ -85,7 +88,19 @@ android {
         // Locked by Google Play at first publish and unchangeable afterwards —
         // a rename means a new listing and no install base. It must also match
         // the package name on the Play Console exactly.
-        applicationId = "com.ezbizi.app"
+        applicationId = if (ezChat) "com.ezbizi.ezchat" else "com.ezbizi.app"
+
+        // EzChat, the chat companion app (Jose 2026-11-25), is this same
+        // project built with EZBIZI_APP=ezchat and -t lib/main_ezchat.dart.
+        // An environment switch rather than product flavors: flavors would
+        // rename every artefact path the release scripts read and make
+        // --flavor mandatory on every Android build anybody runs.
+        manifestPlaceholders["appLabel"] = if (ezChat) "EzChat" else "EzBizi"
+        manifestPlaceholders["appIcon"] =
+            if (ezChat && file("src/main/res/mipmap-hdpi/ic_launcher_ezchat.png").exists())
+                "@mipmap/ic_launcher_ezchat"
+            else
+                "@mipmap/ic_launcher"
 
         // 26 (Android 8.0), not flutter.minSdkVersion, which is 24.
         //

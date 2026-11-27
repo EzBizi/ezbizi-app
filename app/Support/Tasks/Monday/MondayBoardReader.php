@@ -126,11 +126,21 @@ final class MondayBoardReader
         }
         if ($this->folders === null) {
             $this->folders = [];
-            $workspaces = array_column($this->api->query('{ workspaces(limit:100) { id } }')['workspaces'] ?? [], 'id');
-            $rows = $workspaces === [] ? [] : ($this->api->query('query($w:[ID]){ folders(workspace_ids:$w, limit:100) { id name color parent { id } } }', ['w' => $workspaces])['folders'] ?? []);
+            // A workspace that is not Main and has one person is that person's own space (row 68).
+            $owner = [];
+            $spaces = $this->api->query('{ workspaces(limit:100) { id is_default_workspace owners_subscribers { email } } }')['workspaces'] ?? [];
+            foreach ($spaces as $w) {
+                $people = array_values(array_filter(array_column($w['owners_subscribers'] ?? [], 'email')));
+                if (empty($w['is_default_workspace']) && count($people) === 1) {
+                    $owner[(string) $w['id']] = mb_strtolower($people[0]);
+                }
+            }
+            $workspaces = array_column($spaces, 'id');
+            $rows = $workspaces === [] ? [] : ($this->api->query('query($w:[ID]){ folders(workspace_ids:$w, limit:100) { id name color parent { id } workspace { id } } }', ['w' => $workspaces])['folders'] ?? []);
             foreach ($rows as $f) {
                 $this->folders[(string) $f['id']] = ['name' => (string) $f['name'], 'colour' => self::FOLDER_COLOURS[(string) ($f['color'] ?? '')] ?? null,
-                    'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null];
+                    'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null,
+                    'owner_email' => $owner[(string) ($f['workspace']['id'] ?? '')] ?? null];
             }
         }
         if (! isset($this->folders[$folderId])) {
@@ -138,7 +148,8 @@ final class MondayBoardReader
         }
         $path = [];
         for ($id = $folderId; $id !== null && isset($this->folders[$id]) && count($path) < 10; $id = $this->folders[$id]['parent']) {
-            array_unshift($path, ['name' => $this->folders[$id]['name'], 'colour' => $this->folders[$id]['colour']]);
+            array_unshift($path, array_filter(['name' => $this->folders[$id]['name'], 'colour' => $this->folders[$id]['colour'],
+                'owner_email' => $this->folders[$id]['owner_email'] ?? null], fn ($v) => $v !== null) + ['colour' => null]);
         }
 
         return $path;
@@ -854,13 +865,18 @@ final class MondayBoardReader
     {
         // A @mention is a name, not a link (its href is the person's Monday profile).
         $html = (string) preg_replace('/<a\b[^>]*data-mention-type="[^"]*"[^>]*>(.*?)<\/a>/is', '$1', (string) ($u['body'] ?? ''));
-        if (! str_contains($html, '<a ')) {
+        // Bold, italic, underline are kept as our <b>/<i>/<u> (Jose 11-25: updates take them both ways).
+        $html = (string) preg_replace(['#<(/?)strong\b[^>]*>#i', '#<(/?)em\b[^>]*>#i', '#<(/?)([biu])\b[^>]*>#i'], ['<$1b>', '<$1i>', '<$1$2>'], $html);
+        if (! str_contains($html, '<a ') && ! preg_match('#<[biu]>#', $html)) {
             return trim((string) ($u['text_body'] ?? ''));
         }
         $html = (string) preg_replace_callback('/<a\b[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/is',
             // A link to a Monday person is a mention however it is marked: its name alone (Cristine 11-25).
-            fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2])) : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')', $html);
-        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html));
+            fn ($m) => self::isPersonLink($m[1]) ? trim(strip_tags($m[2]))
+                // A Monday file link dies with Monday (11-26): the name; the file itself is the update's attachment.
+                : (preg_match('#monday\.com/(?:protected_static/\d+/)?resources/\d+#', html_entity_decode($m[1])) ? '📎 '.trim(strip_tags($m[2]))
+                    : '['.trim(strip_tags($m[2])).']('.html_entity_decode($m[1]).')'), $html);
+        $text = strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>\s*/i'], ["\n", "\n\n"], $html), '<b><i><u>');
         $text = str_replace("\u{FEFF}", '', html_entity_decode($text, ENT_QUOTES | ENT_HTML5));
 
         return trim((string) preg_replace("/[ \t]*\n[ \t]*/", "\n", (string) preg_replace("/\n{3,}/", "\n\n", $text)));

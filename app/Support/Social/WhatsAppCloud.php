@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Models\SocialConnection;
 use App\Models\WhatsAppMessage;
+use App\Support\Reports\ReportSource;
 use App\Models\WhatsAppNumber;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -204,6 +205,13 @@ final class WhatsAppCloud
             $row->forceFill(['idempotency_key' => $idempotencyKey])->save();
         }
 
+        // A report's text as it went, one value a line: the template's own
+        // words are only its values, and the history shows what was sent
+        // (Jose, 2026-11-25). The blank a padded slot carries is dropped.
+        if ($row->report !== null) {
+            $row->forceFill(['body' => implode("\n", array_filter(array_map('strval', $parameters), fn (string $v) => $v !== "\u{2800}"))])->save();
+        }
+
         return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters), $document);
     }
 
@@ -266,6 +274,8 @@ final class WhatsAppCloud
             // What the person was shown, so the history reads as a
             // conversation rather than as a list of message ids.
             'body' => $bodyForTheRecord,
+            // The report it belongs to, for Reports › Reports (ReportSource).
+            'report' => ReportSource::current(),
         ]);
 
         return $this->deliver($row, [
@@ -463,6 +473,7 @@ final class WhatsAppCloud
             'status' => WhatsAppMessage::STATUS_QUEUED,
             'kind' => 'template',
             'template_name' => $template,
+            'report' => ReportSource::current(),
         ]);
     }
 

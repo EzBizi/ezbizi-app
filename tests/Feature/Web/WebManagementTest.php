@@ -421,7 +421,7 @@ class WebManagementTest extends TestCase
          * together — consistent with each other and wrong about the world.
          * Pinning the number here means the next such revert goes red.
          */
-        $this->assertStringContainsString('Tested up to: 7.1', $readme);
+        $this->assertStringContainsString('Tested up to: 7.2', $readme);
 
         $this->assertNotFalse(
             $zip->locateName('ezbizi/uninstall.php'),

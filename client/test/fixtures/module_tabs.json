@@ -440,6 +440,23 @@
                 ]
             }
         },
+        "leaderboard": {
+            "label": "Leaderboard",
+            "parent": null,
+            "tabs": [
+                "Leaderboard",
+                "My performance"
+            ],
+            "grants": {
+                "Leaderboard": [
+                    "leaderboard.view"
+                ],
+                "My performance": [
+                    "leaderboard.mine.view",
+                    "leaderboard.view"
+                ]
+            }
+        },
         "leads": {
             "label": "Leads",
             "parent": null,
@@ -721,6 +738,7 @@
             "parent": null,
             "tabs": [
                 "Phone",
+                "Chat",
                 "Users",
                 "Records",
                 "Reports",
@@ -730,6 +748,10 @@
             "grants": {
                 "Phone": [
                     "phone.phone.view",
+                    "phone.view"
+                ],
+                "Chat": [
+                    "phone.chat.view",
                     "phone.view"
                 ],
                 "Users": [
@@ -1248,6 +1270,8 @@
         "jobs.financials",
         "jobs.materials.view",
         "jobs.view",
+        "leaderboard.mine.view",
+        "leaderboard.view",
         "leads.bad_rating.view",
         "leads.dispatcher",
         "leads.edit",
@@ -1313,6 +1337,7 @@
         "organizations.settings.view",
         "organizations.view",
         "phone.alerts.view",
+        "phone.chat.view",
         "phone.edit",
         "phone.phone.view",
         "phone.records.view",
@@ -1401,6 +1426,7 @@
         "work_hours.approve",
         "work_hours.general.view",
         "work_hours.manage",
+        "work_hours.own_schedule",
         "work_hours.payroll",
         "work_hours.pto.edit",
         "work_hours.pto.request",

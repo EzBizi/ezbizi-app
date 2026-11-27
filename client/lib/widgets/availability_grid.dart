@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../screens/scheduling/zip_reports.dart';
 
 /// A window picked on the [AvailabilityGrid]: its day and times ("HH:MM").
@@ -60,9 +61,6 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
     }
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   /// Fetches the days again: on a page turn, or after Create was refused
   /// because a window filled meanwhile.
   Future<void> reload() async {
@@ -75,7 +73,7 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
       else
         'zip': widget.zip,
       'days': '${widget.days}',
-      if (_from != null) 'from': _ymd(_from!),
+      if (_from != null) 'from': formatCalendarDay(_from!),
     });
     if (!mounted || key != _key) return;
     // 404: no area covers the ZIP, which is an answer, not a failure.
@@ -209,8 +207,6 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
 
   static String _span(String start, String end) =>
       '${_clock(start)}–${_clock(end)}';
-
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   /// Every distinct window across the days, earliest first: the rows.
   static List<(String, String)> _rows(List<Map<String, dynamic>> days) {
@@ -414,7 +410,7 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
                 child: Column(
                   children: [
                     Text(
-                      _weekdays[DateTime.parse(d['date']).weekday - 1],
+                      shortWeekdays[DateTime.parse(d['date']).weekday - 1],
                       style: head,
                     ),
                     Text(
@@ -482,7 +478,7 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
                     showCheckmark: false,
                     selected: d == chosen,
                     label: Text(
-                      '${_weekdays[DateTime.parse(d['date']).weekday - 1]} ${DateTime.parse(d['date']).day}',
+                      '${shortWeekdays[DateTime.parse(d['date']).weekday - 1]} ${DateTime.parse(d['date']).day}',
                       style: hasRoom(d)
                           ? null
                           : TextStyle(color: theme.disabledColor),

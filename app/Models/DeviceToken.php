@@ -28,8 +28,11 @@ class DeviceToken extends Model implements HoldsPersonalData
 
     public const PLATFORMS = ['android', 'ios'];
 
+    /** The apps a token can belong to; see the add_app_to_device_tokens migration. */
+    public const APPS = ['ezbizi', 'ezchat'];
+
     protected $fillable = [
-        'organization_id', 'user_id', 'platform', 'token', 'last_registered_at', 'created_at',
+        'organization_id', 'user_id', 'platform', 'app', 'token', 'last_registered_at', 'created_at',
     ];
 
     /**

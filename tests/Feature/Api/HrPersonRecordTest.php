@@ -185,7 +185,8 @@ class HrPersonRecordTest extends TestCase
         // The franchise's company takes in the franchise's people.
         $this->assertContains($atFranchise->id, $ids('company_id='.$t['franchise']->company_id));
         $this->assertNotContains($atOther->id, $ids('company_id='.$t['franchise']->company_id));
-        $this->assertSame([$atOther->id], $ids('company_id='.$other->id));
+        // The reader is always in their own list (Jose, 2026-11-25); nobody else from outside.
+        $this->assertEqualsCanonicalizing([$atOther->id, $t['admin']->id], $ids('company_id='.$other->id));
         $this->assertContains($atFranchise->id, $ids('franchise_id='.$t['franchise']->id));
         $this->assertNotContains($atOther->id, $ids('franchise_id='.$t['franchise']->id));
         $this->assertSame([], $ids('company_id='.$other->id.'&role_id='.$atFranchise->role_id), 'The filters did not combine.');
@@ -605,5 +606,40 @@ class HrPersonRecordTest extends TestCase
 
         $this->signedInAs($t['admin'])->patchJson($url, ['first_name' => 'Nicholas', 'last_name' => 'Frias'])->assertOk();
         $this->assertSame('Nicholas Frias', $person->fresh()->name);
+    }
+
+    /** You are always in your own list, whatever place is picked (Jose, 2026-11-25). */
+    public function test_a_place_filter_that_excludes_you_still_finds_you_by_name(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $elsewhere = $this->extraFranchise($t, 'Elsewhere');
+        $me = $this->userWithRole($t, 'Branch HR', ['hr.view', 'hr.records.view'], 'me@alpha.test', onlyAt: $t['franchise']);
+        $this->inTenant($t['org'], fn () => $me->forceFill(['first_name' => 'Zelda', 'last_name' => 'Quill', 'name' => 'Zelda Quill'])->save());
+
+        $ids = fn (string $q) => array_column($this->signedInAs($t['admin'])->getJson("/api/v1/hr/people?{$q}")->assertOk()->json('data'), 'id');
+        // The control: someone else filtered to a branch they are not at is gone.
+        $this->assertNotContains($me->id, $ids("franchise_id={$elsewhere->id}&search=Zelda"));
+
+        $mine = fn (string $q) => array_column($this->signedInAs($me)->getJson("/api/v1/hr/people?{$q}")->assertOk()->json('data'), 'id');
+        $this->assertContains($me->id, $mine("franchise_id={$elsewhere->id}&search=Zelda"));
+        $this->assertContains($me->id, $mine("company_id={$t['company']->id}&search=Quill"));
+        // Search still applies to you.
+        $this->assertNotContains($me->id, $mine("franchise_id={$elsewhere->id}&search=Nobody"));
+    }
+
+    /** Full or part time, chosen by HR; null goes back to the schedule (Eric, 2026-11-25). */
+    public function test_full_or_part_time_is_set_and_cleared(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+        $hr = $this->signedInAs($t['admin']);
+
+        $this->assertNull($hr->getJson($url)->assertOk()->json('data.hours_type'));
+        $hr->patchJson($url, ['hours_type' => 'sometimes'])->assertUnprocessable()->assertJsonValidationErrors('hours_type');
+        $hr->patchJson($url, ['hours_type' => 'part_time'])->assertOk();
+        $this->assertSame('part_time', $hr->getJson($url)->json('data.hours_type'));
+        $hr->patchJson($url, ['hours_type' => null])->assertOk();
+        $this->assertNull($person->fresh()->hours_type);
     }
 }

@@ -31,6 +31,7 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 Schedule::command('ezbizi:purge-deleted-task-boards')->dailyAt('03:55')->withoutOverlapping(30);
 // Expired, never-accepted invitations are withdrawn (Jose, 2026-11-03).
 Schedule::command('ezbizi:revoke-expired-invitations')->dailyAt('06:20')->withoutOverlapping(30);
+Schedule::command('ezbizi:notify-invitation-follow-ups')->dailyAt('14:10')->withoutOverlapping(30);
 // Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).
 Schedule::command('ezbizi:meta-access-check')->dailyAt('07:15')->withoutOverlapping(30);
 // Every connected token gets one cheap read; a refused one turns red (Jose, 2026-11-03).
@@ -216,7 +217,7 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
 // Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
 // minutes (Monday's date filter, since each board's cursor), webhooks in between.
-Schedule::command('ezbizi:monday-sync --max-seconds=900')->everyTenMinutes()->withoutOverlapping(20);
+config('services.monday.enabled') && Schedule::command('ezbizi:monday-sync --max-seconds=900')->everyTenMinutes()->withoutOverlapping(20);
 // The board's own columns on any task, ours or from Monday, from whatever identifier it carries (Jose, 2026-11-20).
 Schedule::command('ezbizi:tasks-fill-from-record --all-open --done --since=15')->everyTenMinutes()->withoutOverlapping(20);
 // Nightly: every board listed (a subitem-only change can miss Monday's date filter); only changed items are read.
@@ -226,21 +227,21 @@ Schedule::command('ezbizi:quickbooks-sync')->everySixHours(17)->withoutOverlappi
 Schedule::command('ezbizi:quickbooks-sync --full')->dailyAt('04:10')->timezone('America/New_York')->withoutOverlapping(120);
 // Plaid -> Financials > Bank (Jose, 11-24): Plaid's webhook runs it per bank; this is the backstop. Read only. Slow lane.
 Schedule::command('ezbizi:plaid-sync')->everySixHours(23)->withoutOverlapping(60);
-Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
+config('services.monday.enabled') && Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 // Desk 11-18: four parallel senders, each on its own share of tasks (a task's rows stay in order),
 // on the "monday-push" queue with one worker each. ezbizi:monday-push stays for a manual run.
-foreach (range(0, 3) as $shard) {
+foreach (config('services.monday.enabled') ? range(0, 3) : [] as $shard) {
     Schedule::job(new PushMondayShard($shard, 4), 'monday-push')->everyMinute()->name('monday-push-shard-'.$shard);
 }
 // Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
 // Every 30 minutes, group moves only (desk 11-18: a missed call closed on Monday must close here soon,
 // and a Monday move may not bump the item's clock), plus what Monday archived or deleted (state-confirmed):
 // every board up to 2,000 items; NW stays nightly.
-Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2000')->everyThirtyMinutes()->withoutOverlapping(25);
-Schedule::command('ezbizi:monday-parity --values')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
+config('services.monday.enabled') && Schedule::command('ezbizi:monday-parity --fix --groups-only --gone --max-items=2000')->everyThirtyMinutes()->withoutOverlapping(25);
+config('services.monday.enabled') && Schedule::command('ezbizi:monday-parity --values')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Desk 11-24: a Monday board nobody mirrored (DMV NEW) is reported within the hour.
-Schedule::command('ezbizi:monday-unmirrored')->hourly()->withoutOverlapping(30);
+config('services.monday.enabled') && Schedule::command('ezbizi:monday-unmirrored')->hourly()->withoutOverlapping(30);
 // Gap review 11-24: scheduled task updates post on their minute.
 Schedule::command('ezbizi:tasks-post-scheduled-updates')->everyMinute()->withoutOverlapping(5);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").

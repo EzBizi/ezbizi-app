@@ -15,6 +15,7 @@ import 'core/files.dart';
 import 'core/live_view_service.dart';
 import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
+import 'screens/phone/chat/chat_calls.dart';
 import 'screens/leads_screen.dart';
 import 'core/field_tracker.dart';
 import 'core/issue_reporter.dart';
@@ -32,6 +33,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/app_zoom.dart';
 import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
@@ -236,12 +238,19 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * the shell is unaffected and appears either way; see IncomingCallPopup
        * for why both exist.
        */
-      builder: (context, child) => PageProblemBanner(
-        child: Stack(
-          children: [
-            ?child,
-            IncomingCallPopup(api: _api, session: _session),
-          ],
+      // Zoom on the desktop apps (Kimberly 01a213cf): everything below,
+      // popups and calls included, at the person's own level.
+      builder: (context, child) => AppZoom(
+        session: _session,
+        child: PageProblemBanner(
+          child: Stack(
+            children: [
+              ?child,
+              IncomingCallPopup(api: _api, session: _session),
+              // Chat calls (Twilio Video): the ring and the call, any screen.
+              ChatCallLayer(api: _api, session: _session),
+            ],
+          ),
         ),
       ),
       home: _home(),

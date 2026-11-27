@@ -34,7 +34,7 @@ class LeadsRead extends Command
             ->when($this->option('lead') !== [],
                 fn ($q) => $q->whereIn('id', $this->option('lead')),
                 // Unread, or the customer wrote again since the last read (the
-                // reply reader, Jose 2026-11-13: Rose Wyka's reply was never read).
+                // reply reader, Jose 2026-11-13: Rose Wynn's reply was never read).
                 fn ($q) => $q->where(fn ($w) => $w
                     ->where(fn ($n) => $n->whereNull('classification')
                         ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since())))
@@ -81,7 +81,7 @@ class LeadsRead extends Command
                     // service we may not offer as ARCHIVE too, and those are people.
                     $applicant = $answer['job_applicant'] && $before === Lead::STATUS_NEW;
                     // Never somebody who is already a customer (Jose, 2026-10-16:
-                    // James Blanke, C-06974, was set Not a lead from a 5-second call).
+                    // James Barrow, C-06974, was set Not a lead from a 5-second call).
                     $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW
                         && ! \App\Support\Leads\KnownCustomer::is($lead->phone);
                     $lost = ! $applicant && ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
@@ -120,7 +120,7 @@ class LeadsRead extends Command
                     ], fn ($v) => $v !== null && $v !== '');
 
                     // The reply reader: a blank is filled, a different value is
-                    // only offered ("Use (516) 404-1690?"), never overwritten.
+                    // only offered ("Use (516) 555-0100?"), never overwritten.
                     $contacts = self::contacts($lead, $answer);
                     $aiSet += $contacts['fill'];
                     $reading = array_filter([
@@ -188,7 +188,7 @@ class LeadsRead extends Command
     /**
      * Our own booking widget's message ("Name: / Phone: / Address: / ZIP:",
      * WebsiteEnquiries) is read by its labels, not by a model, and wins over
-     * the model (Jose, 2026-11-13: Charlotte Owens' booking left the lead
+     * the model (Jose, 2026-11-13: Charlotte Ogden' booking left the lead
      * unnamed, and her free-text "available tomorrow" landed in the address).
      */
     public static function withForm(Lead $lead, array $answer): array

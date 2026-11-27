@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/soft_keyboard.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -105,6 +106,11 @@ void main() {
 
   late List<String> opened;
   List<Map<String, Object?>> folders = [];
+  var orgName = 'A1 Group';
+  var companies = <Map<String, Object?>>[
+    {'id': 'c-1', 'name': 'A-1 Chimney'},
+    {'id': 'c-2', 'name': 'Northside Chimney'},
+  ];
   Map<String, Object?> groupColours = {};
   var arrange = false;
   final patches = <Object?>[];
@@ -141,11 +147,8 @@ void main() {
               'modules': <dynamic>[],
               'preferences': <String, dynamic>{},
               'scope': {'type': 'company', 'id': 'c-1'},
-              'organization': {'id': 'org-1', 'name': 'A1 Group'},
-              'companies': [
-                {'id': 'c-1', 'name': 'A-1 Chimney'},
-                {'id': 'c-2', 'name': 'Northside Chimney'},
-              ],
+              'organization': {'id': 'org-1', 'name': orgName},
+              'companies': companies,
               'franchises': [
                 {'id': 'f-1', 'name': 'Boston', 'company_id': 'c-1'},
               ],
@@ -275,8 +278,35 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await pumpBoard(tester, boards: [...fixture, everyone]);
     expect(inTree("EVERYONE'S BOARDS"), findsOneWidget);
-    expect(inTree('Ben Okafor · 1 board'), findsOneWidget);
+    // Folded until opened (design 211: 130-odd boards on prod).
+    expect(row('b-ben'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('tasks-fold-everyone')));
+    await tester.pumpAndSettle();
+    // One row per board; a person is a group only with two (Jose 11-25:
+    // "Adnan Alvi · 1 board ▸ Adnan Alvi ... what is the point").
+    expect(inTree('Ben Okafor · 1 board'), findsNothing);
     expect(inTree('Ben Okafor'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await pumpBoard(
+      tester,
+      boards: [
+        ...fixture,
+        everyone,
+        board(
+          'b-ben2',
+          'user',
+          'Ben 2',
+          section: 'everyone',
+          owner: 'Ben Okafor',
+        ),
+      ],
+    );
+    expect(
+      find.byKey(const ValueKey('tasks-fold-person:Ben Okafor')),
+      findsOneWidget,
+    );
+    expect(row('b-ben2'), findsOneWidget);
   });
 
   testWidgets('search filters the tree, and a branch found says its company', (
@@ -478,7 +508,7 @@ void main() {
     },
   );
 
-  testWidgets('My Board is the first entry, above Shared with me, Folders, '
+  testWidgets('My Board is the first entry, above Shared with me, '
       'Companies and Everyone, even when filed in a folder (Jose 11-16)', (
     tester,
   ) async {
@@ -514,11 +544,11 @@ void main() {
     );
     final first = y(row('b-me'));
     for (final below in [
-      heading('My boards'),
+      // Design 211: a custom board I own has its place like any other
+      // (here, of no company: the organization's own), not a second list.
+      find.byKey(const ValueKey('tasks-fold-org')),
       row('b-mine2'),
-      heading('Companies'),
       heading('Shared with me'),
-      heading('Folders'),
       heading("Everyone's boards"),
     ]) {
       expect(below, findsOneWidget);
@@ -587,12 +617,34 @@ void main() {
       reason: "the company's folder is the company",
     );
     expect(inTree('Franchise boards'), findsNothing);
-    expect(y(row('b-ev')), lessThan(y(inTree('Partners'))));
-    expect(y(inTree('Partners')), lessThan(y(row('b-pa'))));
+    // Design 211: no FOLDERS section; a folder of no company is under
+    // Organization, below the companies, and one of one board is that board
+    // with the folder's name beside it.
+    expect(inTree('FOLDERS'), findsNothing);
+    // The organization first, its own folders, then its companies (Jose
+    // 11-25: the organization is "the highest one").
+    final org = find.byKey(const ValueKey('tasks-fold-org'));
+    expect(y(org), lessThan(y(row('b-pa'))));
+    expect(y(row('b-pa')), lessThan(company));
+    expect(company, lessThan(y(row('b-ev'))));
+    // A folder of one board stays a folder (Jose 11-25, row 68).
+    final partners = find.byKey(const ValueKey('tasks-fold-folder:fo-p'));
+    expect(partners, findsOneWidget);
+    expect(y(partners), lessThan(y(row('b-pa'))));
+    expect(
+      find.descendant(
+        of: row('b-pa'),
+        matching: find.textContaining('Partners'),
+      ),
+      findsNothing,
+    );
+    // The company's own board first, then its branches.
+    expect(y(row('b-op')), lessThan(y(row('b-ct'))));
   });
 
-  testWidgets('a board in a folder shows under Folders, in its colour, and '
-      'nowhere else (Jose 11-13, Monday parity)', (tester) async {
+  testWidgets('design 211: a board of a company is under its company even '
+      'when filed in a folder of none; folders are plain; an empty folder is '
+      'not drawn', (tester) async {
     folders = [
       {
         'id': 'fo-1',
@@ -601,21 +653,27 @@ void main() {
         'colour': '#e2445c',
         'position': 0,
       },
+      {
+        'id': 'fo-2',
+        'parent_id': null,
+        'name': 'Old stuff',
+        'colour': '#e2445c',
+        'position': 1,
+      },
+      {'id': 'fo-3', 'parent_id': null, 'name': 'Empty', 'position': 2},
     ];
     addTearDown(() => folders = []);
     await pumpBoard(
       tester,
       boards: [
-        {
-          ...board(
-            'b-a1',
-            'company',
-            'A-1 Chimney',
-            section: 'place',
-            companyId: 'c-1',
-            companyName: 'A-1 Chimney',
-          ),
-        },
+        board(
+          'b-a1',
+          'company',
+          'A-1 Chimney',
+          section: 'place',
+          companyId: 'c-1',
+          companyName: 'A-1 Chimney',
+        ),
         {
           ...board(
             'b-cu',
@@ -628,19 +686,41 @@ void main() {
           'folder_id': 'fo-1',
           'colour': '#00c875',
         },
+        {
+          ...board('b-o1', 'custom', 'Archive one', section: 'place'),
+          'folder_id': 'fo-2',
+        },
+        {
+          ...board('b-o2', 'custom', 'Archive two', section: 'place'),
+          'folder_id': 'fo-2',
+        },
       ],
     );
-    expect(inTree('FOLDERS'), findsOneWidget);
-    expect(inTree('Partners'), findsOneWidget);
-    expect(inTree('Estimates follow-up'), findsOneWidget);
+    expect(inTree('FOLDERS'), findsNothing);
+    expect(row('b-cu'), findsOneWidget, reason: 'once, under its company');
     double y(Finder f) => tester.getTopLeft(f).dy;
-    // Under its folder; a folder of no company sits below the companies (Jose 11-25).
-    expect(y(row('b-a1')), lessThan(y(inTree('Partners'))));
-    expect(y(inTree('Partners')), lessThan(y(row('b-cu'))));
+    expect(y(row('b-a1')), lessThan(y(row('b-cu'))));
+    // A board keeps its own colour.
     final icon = tester.widget<Icon>(
       find.descendant(of: row('b-cu'), matching: find.byType(Icon)).first,
     );
     expect(icon.color, EzBiziTheme.boardPalette[4]);
+    // Partners holds nothing of no company and Empty holds nothing: neither
+    // is drawn. Old stuff, of two boards, is a plain folder under Organization.
+    expect(inTree('Partners'), findsNothing);
+    expect(inTree('Empty'), findsNothing);
+    final folder = find.byKey(const ValueKey('tasks-fold-folder:fo-2'));
+    expect(folder, findsOneWidget);
+    // The organization's own folder, above its companies.
+    expect(y(folder), lessThan(y(row('b-a1'))));
+    final label = tester.widget<Text>(
+      find.descendant(of: folder, matching: find.text('Old stuff')),
+    );
+    expect(
+      label.style?.color,
+      isNot(const Color(0xFFE2445C)),
+      reason: 'a folder wears no colour',
+    );
   });
 
   testWidgets("a company group wears the organization's colour, and one who "
@@ -653,14 +733,25 @@ void main() {
       arrange = false;
     });
     await pumpBoard(tester);
+    // Northside has one board: its row is the company, with its colour.
     final tint = tester.widget<Icon>(
-      find.byKey(const ValueKey('group-tint-company:Northside Chimney')),
+      find
+          .descendant(
+            of: row('b-ns'),
+            matching: find.byWidgetPredicate(
+              (w) => w is Icon && w.icon == Icons.circle,
+            ),
+          )
+          .first,
     );
     expect(tint.color, EzBiziTheme.boardPalette[4]);
-    expect(
-      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
-      findsNothing,
-    );
+    // Every company has its dot (one look per level); no colour set: outline.
+    Color? a1() => tester
+        .widget<Icon>(
+          find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+        )
+        .color;
+    expect(a1(), isNot(EzBiziTheme.boardPalette[4]));
 
     await tester.tap(
       find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney')),
@@ -679,10 +770,7 @@ void main() {
       'group': 'company:A-1 Chimney',
       'colour': '#e2445c',
     });
-    expect(
-      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
-      findsOneWidget,
-    );
+    expect(a1(), const Color(0xFFE2445C));
   });
 
   testWidgets('design 200: a star puts a board in Favorites, on top, saved '
@@ -714,5 +802,437 @@ void main() {
       'preferences': {'task_board.favorites': <Object?>[]},
     });
     expect(favourites, findsNothing);
+  });
+
+  // Design 211 on Jose's own list (prod, 11-25): what he complained about,
+  // measured on what he sees, not on invented boards.
+  testWidgets('design 211 on the real Triplex list: company board first, '
+      'Branches, folders inside their company, Templates, no FOLDERS', (
+    tester,
+  ) async {
+    final prod =
+        jsonDecode(
+              File(
+                'test/fixtures/task_board_tree_prod.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final saved = companies;
+    orgName = 'Triplex Group';
+    companies = [
+      {'id': 'c-a1', 'name': 'A-1 Chimney'},
+      {'id': 'c-ev', 'name': 'Everdoors'},
+      {'id': 'c-tx', 'name': 'Triplex Group'},
+    ];
+    folders = [
+      for (final f in prod['folders'] as List) Map<String, Object?>.from(f),
+    ];
+    addTearDown(() {
+      folders = [];
+      companies = saved;
+      orgName = 'A1 Group';
+    });
+    await pumpBoard(
+      tester,
+      size: const Size(1400, 2600),
+      boards: [
+        for (final b in prod['boards'] as List) Map<String, Object?>.from(b),
+      ],
+    );
+    double y(Finder f) => tester.getTopLeft(f.first).dy;
+    String id(String name) =>
+        (prod['boards'] as List).firstWhere((b) => b['name'] == name)['id']
+            as String;
+    Finder board(String name) => row(id(name));
+
+    expect(inTree('FOLDERS'), findsNothing);
+    expect(inTree('Dark Theme · 1 board'), findsNothing);
+    // A-1 Chimney first, its company board first inside it, then Branches,
+    // then its Monday folders.
+    final a1 = find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney'));
+    final everdoors = find.byKey(
+      const ValueKey('tasks-fold-company:Everdoors'),
+    );
+    expect(y(a1), lessThan(y(everdoors)));
+    expect(y(a1), lessThan(y(board('A1 - Operation'))));
+    final branches = find.byKey(
+      const ValueKey('tasks-fold-branches:A-1 Chimney'),
+    );
+    expect(y(board('A1 - Operation')), lessThan(y(branches)));
+    expect(y(branches), lessThan(y(board('DMV'))));
+    // Office Management and Marketing hold only people's boards, cut here.
+    expect(y(board('TX- Texas')), lessThan(y(inTree('Field Management'))));
+    expect(y(inTree('Field Management')), lessThan(y(everdoors)));
+    // Everdoors: its Operation board first; Partners, of one board, is a
+    // folder holding it.
+    expect(y(everdoors), lessThan(y(board('Everdoors - Operation'))));
+    expect(y(board('Everdoors - Operation')), lessThan(y(board('Yosef'))));
+    final partners = find.byKey(
+      const ValueKey('tasks-fold-folder:01a1d6b2-be35-73d2-9681-eac7a799977d'),
+    );
+    expect(y(everdoors), lessThan(y(partners)));
+    expect(y(partners), lessThan(y(board('Yosef'))));
+    expect(y(board('Everdoors - Brand')), greaterThan(y(everdoors)));
+    // Triplex Group is the organization: the root, its own boards first,
+    // then its companies, each level one indent step in (Jose 11-25).
+    final org = find.byKey(const ValueKey('tasks-fold-org'));
+    expect(
+      find.descendant(of: org, matching: find.text('Triplex Group')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tasks-fold-company:Triplex Group')),
+      findsNothing,
+    );
+    expect(y(org), lessThan(y(board('Triplex Group - Files'))));
+    expect(
+      y(board('Triplex Group - Files')),
+      lessThan(y(board('Reviews & Complaints'))),
+    );
+    expect(y(board('Reviews & Complaints')), lessThan(y(a1)));
+    expect(y(board('Analytics Dashboard')), lessThan(y(a1)));
+    double x(Finder f) => tester
+        .getTopLeft(find.descendant(of: f, matching: find.byType(Text)).first)
+        .dx;
+    expect(x(org), lessThan(x(a1)));
+    expect(x(a1), lessThan(x(board('A1 - Operation'))));
+    expect(x(a1), lessThan(x(branches)));
+    expect(x(branches), lessThan(x(board('DMV'))));
+    // Same level, same x, whatever the row is (board, folder, company).
+    expect(x(board('A1 - Operation')), x(branches));
+    expect(x(a1), x(everdoors));
+    expect(x(board('Triplex Group - Files')), x(a1));
+    expect(x(board('DMV')) - x(branches), x(branches) - x(a1));
+    expect(x(a1) - x(org), x(branches) - x(a1));
+    expect(x(board('Reviews & Complaints')), x(board('A1 - Operation')) - 14);
+    // Then Templates, then Everyone's boards one row each.
+    final templates = inTree('TEMPLATES');
+    expect(y(board('Everdoors - Brand')), lessThan(y(templates)));
+    for (final t in [
+      'New Brand Template',
+      'New Franchise Template',
+      'New Location Template',
+    ]) {
+      expect(board(t), findsOneWidget, reason: t);
+      expect(y(templates), lessThan(y(board(t))), reason: t);
+    }
+    expect(inTree('Adnan Alvi · 1 board'), findsNothing);
+    expect(
+      row('ev-1'),
+      findsNothing,
+      reason: "Everyone's boards starts folded",
+    );
+    await tester.tap(find.byKey(const ValueKey('tasks-fold-everyone')));
+    await tester.pumpAndSettle();
+    expect(row('ev-1'), findsOneWidget);
+    // Every board once (Favorites aside).
+    for (final b in prod['boards'] as List) {
+      expect(row('${b['id']}'), findsOneWidget, reason: '${b['name']}');
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  // Task Board 4ed2eea22: the server names each company's working board
+  // (company_board) and each folder's company (company_id).
+  testWidgets('company_board leads its company and an empty company board '
+      'beside it is not listed; a folder goes by its company_id', (
+    tester,
+  ) async {
+    folders = [
+      {
+        'id': 'fo-ops',
+        'parent_id': null,
+        'name': 'Field Ops',
+        'company_id': 'c-1',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    Map<String, Object?> a1(String id, String kind, String name) => board(
+      id,
+      kind,
+      name,
+      section: 'place',
+      companyId: 'c-1',
+      companyName: 'A-1 Chimney',
+    );
+    await pumpBoard(
+      tester,
+      boards: [
+        {...a1('b-empty', 'company', 'A-1 Chimney'), 'company_board': false},
+        {...a1('b-zz', 'custom', 'Zz notes'), 'company_board': false},
+        {...a1('b-op', 'custom', 'Zulu - Operation'), 'company_board': true},
+        a1('b-bos', 'franchise', 'Boston'),
+        {
+          ...board('b-crew', 'custom', 'Crew list', section: 'place'),
+          'folder_id': 'fo-ops',
+        },
+        {
+          ...board('b-crew2', 'custom', 'Crew two', section: 'place'),
+          'folder_id': 'fo-ops',
+        },
+      ],
+    );
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    expect(row('b-empty'), findsNothing);
+    final company = y(
+      find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney')),
+    );
+    // Named Zulu, still first: it is the company's board.
+    expect(company, lessThan(y(row('b-op'))));
+    expect(y(row('b-op')), lessThan(y(row('b-zz'))));
+    expect(y(row('b-zz')), lessThan(y(row('b-bos'))));
+    // "Field Ops" is named for no company, but its company_id puts it, and
+    // its boards of no company, under A-1 Chimney.
+    final folder = find.byKey(const ValueKey('tasks-fold-folder:fo-ops'));
+    expect(company, lessThan(y(folder)));
+    expect(y(folder), lessThan(y(row('b-crew'))));
+  });
+
+  // Jose 11-25 on the picker: "It should follow your own permissions and
+  // hierarchy". Everything reachable, a sub-company under its parent, and no
+  // line about the Company · Branch picker.
+  testWidgets('a sub-company sits one step under its parent company; the '
+      'picker is not mentioned', (tester) async {
+    final saved = companies;
+    companies = [
+      {'id': 'c-1', 'name': 'A-1 Chimney'},
+      {'id': 'c-3', 'name': 'AngiSweep', 'parent_company_id': 'c-1'},
+      {'id': 'c-2', 'name': 'Northside Chimney'},
+    ];
+    addTearDown(() => companies = saved);
+    Map<String, Object?> of(
+      String id,
+      String kind,
+      String name,
+      String co,
+      String coName,
+    ) => board(
+      id,
+      kind,
+      name,
+      section: 'place',
+      companyId: co,
+      companyName: coName,
+    );
+    await pumpBoard(
+      tester,
+      boards: [
+        of('b-a1', 'company', 'A-1 Chimney', 'c-1', 'A-1 Chimney'),
+        of('b-bos', 'franchise', 'Boston', 'c-1', 'A-1 Chimney'),
+        of('b-as', 'company', 'AngiSweep', 'c-3', 'AngiSweep'),
+        of('b-as2', 'franchise', 'Texas', 'c-3', 'AngiSweep'),
+        of('b-ns', 'company', 'Northside Chimney', 'c-2', 'Northside Chimney'),
+      ],
+    );
+    expect(find.byKey(const ValueKey('tasks-boards-in-view')), findsNothing);
+    expect(inTree('Company · Branch picker'), findsNothing);
+    final a1 = find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney'));
+    final angi = find.byKey(const ValueKey('tasks-fold-company:AngiSweep'));
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    double x(Finder f) => tester
+        .getTopLeft(find.descendant(of: f, matching: find.byType(Text)).first)
+        .dx;
+    // Under A-1 Chimney, after its own boards, before the next company.
+    expect(y(a1), lessThan(y(row('b-bos'))));
+    expect(y(row('b-bos')), lessThan(y(angi)));
+    expect(y(angi), lessThan(y(row('b-as2'))));
+    expect(y(row('b-as2')), lessThan(y(row('b-ns'))));
+    // One step in, and its boards one more.
+    expect(x(angi) - x(a1), x(row('b-a1')) - x(a1));
+    expect(x(row('b-as')) - x(angi), x(row('b-a1')) - x(a1));
+  });
+
+  // Mobile 11-25: on a phone a finger drag on the tree picked a board up
+  // instead of scrolling, and a drop is a production write. Touch gets no
+  // row drag (a long press opens the row's menu); a mouse still drags.
+  for (final touch in [true, false]) {
+    testWidgets(
+      'one who arranges boards: ${touch ? 'a finger scrolls' : 'a mouse drags'}',
+      (tester) async {
+        final platform = hasSoftKeyboard;
+        hasSoftKeyboard = () => touch;
+        arrange = true;
+        addTearDown(() {
+          hasSoftKeyboard = platform;
+          arrange = false;
+        });
+        await pumpBoard(tester);
+        expect(
+          find.byKey(const ValueKey('tasks-board-drag-b-bos')),
+          touch ? findsNothing : findsOneWidget,
+        );
+      },
+    );
+  }
+
+  // Jose 11-25, row 68: colour dots, not grey; a line where a reorder lands,
+  // a fill only when the drop goes into a folder.
+  testWidgets('row 68: dots in colour; reorder shows a line, into a folder '
+      'shows a fill', (tester) async {
+    final platform = hasSoftKeyboard;
+    hasSoftKeyboard = () => false;
+    arrange = true;
+    folders = [
+      {'id': 'fo-x', 'parent_id': null, 'name': 'Archive', 'position': 0},
+    ];
+    addTearDown(() {
+      hasSoftKeyboard = platform;
+      arrange = false;
+      folders = [];
+    });
+    await pumpBoard(
+      tester,
+      boards: [
+        ...fixture,
+        {
+          ...board('b-x1', 'custom', 'Old one', section: 'place'),
+          'folder_id': 'fo-x',
+        },
+      ],
+    );
+    final dot = tester.widget<Icon>(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+    );
+    expect(EzBiziTheme.boardPalette.sublist(1), contains(dot.color));
+
+    Future<void> hold(String from, Finder over, String look) async {
+      final g = await tester.startGesture(
+        tester.getCenter(find.byKey(ValueKey('tasks-board-drag-$from'))),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await g.moveTo(tester.getCenter(over) + const Offset(0, 1));
+      await tester.pump();
+      await g.moveTo(tester.getCenter(over));
+      await tester.pump();
+      expect(find.byKey(ValueKey(look)), findsOneWidget, reason: look);
+      expect(
+        find.byKey(
+          ValueKey(
+            look == 'tasks-drop-line' ? 'tasks-drop-into' : 'tasks-drop-line',
+          ),
+        ),
+        findsNothing,
+      );
+      await g.cancel();
+      await tester.pumpAndSettle();
+    }
+
+    await hold('b-cu', row('b-a1'), 'tasks-drop-line');
+    await hold(
+      'b-cu',
+      find.byKey(const ValueKey('tasks-fold-folder:fo-x')),
+      'tasks-drop-into',
+    );
+  });
+
+  // Row 68 (desk relay of Jose 11-25): brand colours, a personal folder
+  // under Everyone's boards, one folder icon, the line at the landing level.
+  testWidgets('row 68: brand colours, personal folders, one folder icon, an '
+      'indented line', (tester) async {
+    final platform = hasSoftKeyboard;
+    hasSoftKeyboard = () => false;
+    arrange = true;
+    folders = [
+      {
+        'id': 'fo-dark',
+        'parent_id': null,
+        'name': 'Dark Theme',
+        'position': 0,
+        'owner': {'id': 'u-d', 'name': 'Dieuve Ray'},
+      },
+      {'id': 'fo-m', 'parent_id': null, 'name': 'Marketing', 'position': 1},
+    ];
+    addTearDown(() {
+      hasSoftKeyboard = platform;
+      arrange = false;
+      folders = [];
+    });
+    Map<String, Object?> a1(String id, String kind, String name) => {
+      ...board(
+        id,
+        kind,
+        name,
+        section: 'place',
+        companyId: 'c-1',
+        companyName: 'A-1 Chimney',
+      ),
+      'company_colour': '#e2445c',
+      'organization_colour': '#0086c0',
+    };
+    await pumpBoard(
+      tester,
+      boards: [
+        a1('b-a1', 'company', 'A-1 Chimney'),
+        a1('b-bos', 'franchise', 'Boston'),
+        a1('b-ct', 'franchise', 'Hartford'),
+        {
+          ...board('b-an', 'custom', 'Analytics Dashboard', section: 'mine'),
+          'folder_id': 'fo-dark',
+        },
+        {
+          ...board('b-ro', 'custom', 'Rodrigo Mena', section: 'place'),
+          'folder_id': 'fo-m',
+        },
+      ],
+    );
+    Color? dot(String key) =>
+        tester.widget<Icon>(find.byKey(ValueKey('group-tint-$key'))).color;
+    expect(dot('company:A-1 Chimney'), const Color(0xFFE2445C));
+    final org = find.byKey(const ValueKey('tasks-fold-org'));
+    final orgDot = tester.widget<Icon>(
+      find
+          .descendant(
+            of: org,
+            matching: find.byWidgetPredicate(
+              (w) => w is Icon && w.icon == Icons.circle,
+            ),
+          )
+          .first,
+    );
+    expect(orgDot.color, const Color(0xFF0086C0));
+
+    // Dark Theme is Dieuve's: under Everyone's boards, not the organization.
+    expect(
+      find.byKey(const ValueKey('tasks-fold-folder:fo-dark')),
+      findsNothing,
+    );
+    expect(row('b-an'), findsNothing, reason: "Everyone's starts folded");
+    await tester.tap(find.byKey(const ValueKey('tasks-fold-everyone')));
+    await tester.pumpAndSettle();
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    expect(y(find.text("EVERYONE'S BOARDS")), lessThan(y(row('b-an'))));
+
+    // One folder icon: Branches draws the same one as a real folder.
+    IconData? folderIcon(Finder row) => tester
+        .widgetList<Icon>(find.descendant(of: row, matching: find.byType(Icon)))
+        .map((i) => i.icon)
+        .firstWhere(
+          (i) => i != Icons.arrow_drop_down && i != Icons.arrow_right,
+        );
+    expect(
+      folderIcon(find.byKey(const ValueKey('tasks-fold-branches:A-1 Chimney'))),
+      folderIcon(find.byKey(const ValueKey('tasks-fold-folder:fo-m'))),
+    );
+
+    // The insertion line starts where the target row's icon does.
+    final g = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('tasks-board-drag-b-ct'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await g.moveTo(tester.getCenter(row('b-bos')) + const Offset(0, 1));
+    await tester.pump();
+    await g.moveTo(tester.getCenter(row('b-bos')));
+    await tester.pump();
+    final line = find.byKey(const ValueKey('tasks-drop-line'));
+    expect(line, findsOneWidget);
+    final icon = find
+        .descendant(of: row('b-bos'), matching: find.byType(Icon))
+        .first;
+    expect(tester.getTopLeft(line).dx, closeTo(tester.getTopLeft(icon).dx, 1));
+    await g.cancel();
+    await tester.pumpAndSettle();
   });
 }

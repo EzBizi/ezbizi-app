@@ -24,10 +24,10 @@ The two rows, so you can see the discriminator rather than take it:
 
 ```
 589827764535533568   is_test=1   phone '1234567890'   created 2026-09-09 17:02:50   the test negotiation
-575864197057708035   is_test=0   phone '4142023918'   created 2026-09-10 15:00:47   a real enquiry
+575864197057708035   is_test=0   phone '4145550100'   created 2026-09-10 15:00:47   a real enquiry
 ```
 
-`4142023918` is a real number. Leads reports the customer as Reinaldo Ortiz
+`4145550100` is a real number. Leads reports the customer as Reinaldo Oakes
 with ten messages — and it is the enquiry that exposed the reply bug, because
 answering it produced Google's refusal sentence on a Thumbtack thread.
 

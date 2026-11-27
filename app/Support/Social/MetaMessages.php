@@ -166,7 +166,7 @@ final class MetaMessages
 
     /**
      * The phone a lead-ad form put in the chat's first message ("Phone number:
-     * (973) 678-2560"), as its last ten digits, or null.
+     * (973) 555-0101"), as its last ten digits, or null.
      *
      * @param  array<string, mixed>  $event
      */

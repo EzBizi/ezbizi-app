@@ -68,12 +68,6 @@ class LeadSourceFields {
   /// "Chimney repair · Springfield", or null when neither is known.
   String? get jobLine => _join([jobType, city]);
 
-  /// "via ad: X · campaign Y", only when a referral exists.
-  String? get referralLine => _join([
-    if (adName != null) 'via ad: $adName',
-    if (campaignName != null) 'campaign $campaignName',
-  ]);
-
   static String? _text(Object? value) {
     final s = value is String ? value.trim() : null;
 

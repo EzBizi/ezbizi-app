@@ -156,16 +156,19 @@ class HrPeopleController extends Controller
             // franchise (Jose, 2026-10-01: "adding division by company too
             // aside from role"). Somebody placed only at organization level
             // matches neither.
-            ->when($request->query('company_id'), function ($q, $companyId) {
+            ->when($request->query('company_id'), function ($q, $companyId) use ($actor) {
                 $company = Company::query()->find($companyId);
                 $companies = $company?->subtreeCompanyIds() ?? [];
                 $franchises = Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
-                $q->whereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
-                    ->orWhereIn('assigned_franchise_id', $franchises));
+                // You are always in your own list, whatever place is picked
+                // (Jose, 2026-11-25); search and the other filters still apply.
+                $q->where(fn ($in) => $in->whereKey($actor->getKey())
+                    ->orWhereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
+                        ->orWhereIn('assigned_franchise_id', $franchises)));
             })
-            ->when($request->query('franchise_id'), fn ($q, $franchiseId) => $q->whereHas(
-                'assignments', fn ($a) => $a->where('assigned_franchise_id', $franchiseId),
-            ))
+            ->when($request->query('franchise_id'), fn ($q, $franchiseId) => $q->where(fn ($in) => $in
+                ->whereKey($actor->getKey())
+                ->orWhereHas('assignments', fn ($a) => $a->where('assigned_franchise_id', $franchiseId))))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function (Builder $inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")
@@ -678,6 +681,8 @@ class HrPeopleController extends Controller
             // The lock-screen exemption (design 2026-09-08 §4). Same
             // authority as the rest of the row: hr.edit within reach.
             'lock_screen_exempt' => ['sometimes', 'required', 'boolean'],
+            // Full or part time (Eric, 2026-11-25); null goes back to "from the schedule".
+            'hours_type' => ['sometimes', 'nullable', Rule::in(['full_time', 'part_time'])],
 
             // Their personal details, 2026-09-24 (Jose: "able to see more
             // information as well as able to edit"). The SAME columns the person
@@ -979,6 +984,8 @@ class HrPeopleController extends Controller
             'address' => $user->address,
             ...$user->addressParts(),
             'gender' => $user->gender,
+            // Null: the weekly report infers it from the schedule (30 h+ = full time).
+            'hours_type' => $user->hours_type,
             'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
             // How far ahead a certification is "expiring" (the HR overview's
             // own setting), so the record's warn tag says the same thing.
@@ -1263,6 +1270,8 @@ class HrPeopleController extends Controller
          * is drawn with; HR's `edit` on Records keeps working as it did.
          */
         $actor = $request->user();
+        // Not your own, through this door either (Jose, 2026-11-25), unless you hold own_schedule.
+        abort_if($actor->is($user) && ! $actor->hasPermission('work_hours.own_schedule'), 403, 'Your manager sets your work schedule.');
         if ($actor->hasPermission('work_hours.manage')) {
             app(TimeClock::class)->assertReaches($actor, $user);
         } else {

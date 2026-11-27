@@ -192,7 +192,7 @@ class _WorkHoursPayrollTabState extends State<WorkHoursPayrollTab> {
     return LayoutBuilder(
       key: const ValueKey('tour-work_hours-payroll'),
       builder: (context, constraints) {
-        final phone = constraints.maxWidth < 600;
+        final phone = constraints.maxWidth < _tableNeeds;
         final all = _rows;
         final needle = _query.trim().toLowerCase();
         final rows = needle.isEmpty
@@ -546,11 +546,7 @@ String _money(Object? dollars) =>
 String? _paidOn(Object? at) {
   final d = DateTime.tryParse('${at ?? ''}')?.toLocal();
   if (d == null) return null;
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  return 'paid ${months[d.month - 1]} ${d.day}';
+  return 'paid ${shortMonths[d.month - 1]} ${d.day}';
 }
 
 String _hours(Object? hours) {
@@ -868,6 +864,12 @@ const _wExpenses = 132.0;
 const _wPay = 120.0;
 const _flexWarnings = 4;
 const _wStatus = 200.0;
+
+/// The table's fixed columns, its padding, and 100 for the name and warnings
+/// to share. Narrower, the table ran off the right (Android on its side: 115
+/// px; the unfolded Duo, beside its sidebar: ~300), so the cards draw.
+const _tableNeeds =
+    _wRate + _wHours + 2 * _wField + _wExpenses + _wPay + 16 + _wStatus + 32 + 100;
 
 /// One table line: the name grows, the figures keep their widths and sit
 /// right, with a gap so two headings never touch.

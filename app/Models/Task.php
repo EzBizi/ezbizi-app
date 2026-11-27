@@ -66,6 +66,7 @@ class Task extends Model implements HoldsPersonalData
         return [
             'due_on' => 'date',
             'completed_at' => 'datetime',
+            'archived_at' => 'datetime',
             'overdue_announced_at' => 'datetime',
             // Kept in step with Monday (TasksImportMonday / MondaySync).
             'external_updated_at' => 'datetime',

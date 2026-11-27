@@ -86,7 +86,7 @@ class ReplyTemplatesTest extends TestCase
 
     /**
      * {{availability}} reads the area covering the ZIP the customer wrote and
-     * names its first day with room (Jose, 2026-09-30, Karyle Thornton, 44313).
+     * names its first day with room (Jose, 2026-09-30, Karyle Thatcher, 44313).
      */
     public function test_availability_is_filled_from_the_customers_zip(): void
     {
@@ -110,13 +110,13 @@ class ReplyTemplatesTest extends TestCase
             $row->save();
             $lead = Lead::create([
                 'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $row->id,
-                'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'MESSAGE', 'remote_id' => 'L-2', 'contact_name' => 'Karyle Thornton',
+                'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'MESSAGE', 'remote_id' => 'L-2', 'contact_name' => 'Karyle Thatcher',
                 'status' => Lead::STATUS_NEW, 'received_at' => now(),
             ]);
             \App\Models\LeadConversation::create([
                 'organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'c-1',
                 'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'occurred_at' => now(),
-                'text' => '435 Armante Court, Akron, Ohio 44313',
+                'text' => '435 Sampleton Court, Akron, Ohio 44313',
             ]);
             app(\App\Support\Settings\SettingsResolver::class)->set('leads.reply_templates', $t['company'], [
                 ['label' => 'Availability', 'value' => 'The soonest availability we have is {{availability}}.'],

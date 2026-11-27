@@ -47,6 +47,7 @@
 /// average, and none of them can be worked out here.
 library;
 
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 
@@ -256,17 +257,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// hours for that weekday when they have them, 9 to 5 when not.
   _Shift _blankShift(String personId, String date) {
     final person = _week?.people.where((p) => p.id == personId).firstOrNull;
-    const names = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
     final day = DateTime.tryParse(date);
-    final hours = day == null ? null : person?.schedule[names[day.weekday - 1]];
+    final hours = day == null
+        ? null
+        : person?.schedule[weekdayKeys[day.weekday - 1]];
     final start = hours is Map ? '${hours['start'] ?? '09:00'}' : '09:00';
     final end = hours is Map ? '${hours['end'] ?? '17:00'}' : '17:00';
 
@@ -1216,11 +1210,10 @@ class _DayCard extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(top: BorderSide(color: scheme.outlineVariant)),
               ),
-              child: Text(
+              child: FormattedNotesText(
                 note,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
                 ),
               ),
             ),
@@ -2173,7 +2166,8 @@ Future<Map<String, dynamic>?> _writeNote(
   BuildContext context,
   String? current,
 ) {
-  final text = TextEditingController(text: current ?? '');
+  // Bold, italic, underline (Jose, 2026-11-25).
+  final text = FormattedNotesController(markup: current);
   final labels = MaterialLocalizations.of(context);
 
   return showSidePanel<Map<String, dynamic>>(
@@ -2187,18 +2181,17 @@ Future<Map<String, dynamic>?> _writeNote(
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(<String, dynamic>{
-            'note': text.text.trim().isEmpty ? null : text.text.trim(),
+            'note': text.text.trim().isEmpty ? null : text.markup.trim(),
           }),
           child: Text(labels.saveButtonLabel),
         ),
       ],
       child: SizedBox(
         width: 380,
-        child: TextField(
+        child: FormattedNotesField(
           controller: text,
-          maxLines: 4,
+          label: UiStrings.t('time_clock.action.note'),
           maxLength: 2000,
-          autofocus: true,
         ),
       ),
     ),

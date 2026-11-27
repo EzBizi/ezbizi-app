@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
+import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -129,6 +130,10 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   bool _loadingMore = false;
   int? _dayCount;
   int? _totalCount;
+
+  /// When the selected device last captured, from its newest screenshot on
+  /// any day (the freshness line and "stopped" read this, not the strip).
+  DateTime? _latestAt;
 
   /// Bumped every time a shots fetch STARTS — a device switch, a refresh of
   /// the same device, whatever. `_loadShots` captures the value at the top
@@ -394,8 +399,24 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     final page = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
     final meta = response.body['meta'];
 
+    // Today's first page IS the device's newest capture; a past day's is not,
+    // so ask for the single newest one.
+    DateTime? latestAt;
+    if (DateUtils.isSameDay(_day, DateTime.now())) {
+      latestAt = page.isEmpty ? null : DateTime.tryParse(page.first['captured_at'] as String? ?? '');
+    } else {
+      final newest = await widget.api.get('/monitoring/screenshots', {
+        'device_id': deviceId,
+        'limit': '1',
+      });
+      if (!mounted || generation != _loadGeneration) return;
+      final rows = newest.ok ? newest.data as List<dynamic> : const [];
+      latestAt = rows.isEmpty ? null : DateTime.tryParse((rows.first as Map)['captured_at'] as String? ?? '');
+    }
+
     setState(() {
       _loadingShots = false;
+      _latestAt = latestAt;
       if (meta is Map) {
         _dayCount = (meta['in_range'] as num?)?.toInt();
         _totalCount = (meta['total'] as num?)?.toInt();
@@ -482,6 +503,14 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         ? -1
         : 0;
     if (step == 0 || _shots.isEmpty) return KeyEventResult.ignored;
+    _step(step);
+    return KeyEventResult.handled;
+  }
+
+  /// One frame newer (-1) or older (+1), loading the next page at the end of
+  /// what is held. Keys and a swipe on the large view both land here.
+  void _step(int step) {
+    if (_shots.isEmpty) return;
     final at = _shots.indexWhere((s) => s['id'] == _heroId);
     final next = (at < 0 ? 0 : at) + step;
     if (next >= _shots.length) {
@@ -493,7 +522,6 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     } else if (next >= 0) {
       setState(() => _heroId = _shots[next]['id'] as String?);
     }
-    return KeyEventResult.handled;
   }
 
   Map<String, dynamic>? _deviceById(String? id) =>
@@ -937,7 +965,10 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return NoteCard(DesktopMonitoringTab.noDevicesNote);
     }
 
-    final people = groupByPerson(_devices);
+    // By name, so a row never jumps under a finger: the server orders by
+    // last seen, and every heartbeat re-read reshuffled it (Mobile review).
+    final people = groupByPerson(_devices)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final device = _deviceById(_selectedDeviceId) ?? mostRecentlySeen(_devices)!;
     final selectedPersonId = (device['user'] as Map<String, dynamic>?)?['id'] as String?;
     final selectedPerson = _personById(people, selectedPersonId);
@@ -995,10 +1026,11 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     final canCapture = _declaresScreenshot(device);
     final online = isDeviceOnline(device);
 
-    final newest = _shots.isEmpty ? null : _shots.first;
-    final newestAt = newest == null
-        ? null
-        : DateTime.tryParse(newest['captured_at'] as String? ?? '');
+    // The DEVICE's newest capture, whatever day the strip shows: on a past
+    // day `_shots.first` is that day's newest, and reading it here said
+    // "capture stopped 2d ago" for a machine capturing right now (Mobile
+    // review, 11-25).
+    final newestAt = _latestAt;
 
     // "Stopped" is a FAULT: this device is beating right now and still not
     // delivering. Being offline is not that — a laptop that was shut ten
@@ -1112,6 +1144,12 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
                   _ensureBytes(hero['id'] as String);
                   return GestureDetector(
                     onTap: _heroFocus.requestFocus,
+                    // Touch has no arrow keys: swipe left for older, right
+                    // for newer (Mobile review, 11-25).
+                    onHorizontalDragEnd: (d) {
+                      final v = d.primaryVelocity ?? 0;
+                      if (v.abs() > 200) _step(v < 0 ? 1 : -1);
+                    },
                     child: _Hero(
                       shot: hero,
                       bytes: _bytes[hero['id']],
@@ -1897,8 +1935,8 @@ class _DayBar extends StatelessWidget {
     final label = isToday ? 'Today' : ml.formatMediumDate(day);
     final count = [
       if (dayCount != null)
-        '${_n(dayCount!)} ${isToday ? 'today' : 'that day'}',
-      if (totalCount != null) '${_n(totalCount!)} in 30 days',
+        '${formatCount(dayCount!)} ${isToday ? 'today' : 'that day'}',
+      if (totalCount != null) '${formatCount(totalCount!)} in 30 days',
     ].join(' · ');
 
     return Wrap(
@@ -1933,9 +1971,4 @@ class _DayBar extends StatelessWidget {
       ],
     );
   }
-
-  static String _n(int v) => v.toString().replaceAllMapped(
-    RegExp(r'(\d)(?=(\d{3})+$)'),
-    (m) => '${m[1]},',
-  );
 }

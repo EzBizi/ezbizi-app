@@ -81,7 +81,7 @@ class WhatsAppNumberPurposeTest extends TestCase
     public function test_a_rules_report_text_goes_from_the_reports_number_whatever_the_rule_names(): void
     {
         $user = $this->userWithRole($this->t, 'Manager', ['reports.view']);
-        $this->inTenant($this->t['org'], fn () => $user->forceFill(['phone' => '(305) 724-2199'])->save());
+        $this->inTenant($this->t['org'], fn () => $user->forceFill(['phone' => '(305) 555-0107'])->save());
 
         $sent = $this->inTenant($this->t['org'], fn () => ActionRunner::deliverReportText('+19545162455', [$user->id], null, null, 'Daily sales', 'Sales: $1,200'));
 
@@ -92,7 +92,7 @@ class WhatsAppNumberPurposeTest extends TestCase
     public function test_a_file_to_one_person_keeps_its_type(): void
     {
         $user = $this->userWithRole($this->t, 'Manager', ['reports.view']);
-        $this->inTenant($this->t['org'], fn () => $user->forceFill(['phone' => '(305) 724-2199'])->save());
+        $this->inTenant($this->t['org'], fn () => $user->forceFill(['phone' => '(305) 555-0107'])->save());
 
         $this->inTenant($this->t['org'], fn () => app(WhatsAppGroups::class)->deliverDocumentsToUser(
             WhatsAppNumber::forPurpose('reports'), $user, 'CT October', [[
@@ -123,7 +123,7 @@ class WhatsAppNumberPurposeTest extends TestCase
     {
         $user = $this->userWithRole($this->t, 'Manager '.Str::random(4), ['leads.view']);
         $this->inTenant($this->t['org'], function () use ($group, $user) {
-            $user->forceFill(['phone' => '(305) 724-2199'])->save();
+            $user->forceFill(['phone' => '(305) 555-0107'])->save();
             $group->members()->attach($user->id, ['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id]);
         });
     }

@@ -692,6 +692,62 @@ void main() {
     sent(log.last, 'PATCH', '/task-boards/b-1/groups/g2', {'name': 'Soon'});
   });
 
+  testWidgets('row 69: the group menu is Monday\'s: colour, duplicate, '
+      'archive, collapse all and select all', (tester) async {
+    await pump(tester);
+    Future<void> menu() async {
+      await tester.tap(find.byKey(const ValueKey('group-menu-g1')));
+      await tester.pumpAndSettle();
+    }
+
+    await menu();
+    for (final k in [
+      'group-collapse-g1',
+      'group-collapse-all-g1',
+      'group-expand-all-g1',
+      'group-select-all-g1',
+      'group-add-above-g1',
+      'group-add-below-g1',
+      'group-duplicate-g1',
+      'group-rename-g1',
+      'group-colour-g1',
+      'group-export-g1',
+      'group-archive-g1',
+      'group-delete-g1',
+    ]) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+    }
+    await tester.tap(find.byKey(const ValueKey('group-colour-g1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-colour-g1-#ff642e')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1/groups/g1', {
+      'colour': '#ff642e',
+    });
+
+    await menu();
+    await tester.tap(find.byKey(const ValueKey('group-duplicate-g1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-duplicate-g1-false')));
+    await tester.pumpAndSettle();
+    expect(
+      log.any(
+        (l) => l.$1 == 'POST' && l.$2 == '/task-boards/b-1/groups/g1/duplicate',
+      ),
+      isTrue,
+    );
+
+    await menu();
+    await tester.tap(find.byKey(const ValueKey('group-archive-g1')));
+    await tester.pumpAndSettle();
+    expect(
+      log.any(
+        (l) => l.$1 == 'POST' && l.$2 == '/task-boards/b-1/groups/g1/archive',
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('a group with tasks is deleted only by moving them first', (
     tester,
   ) async {
@@ -1518,6 +1574,74 @@ void main() {
       'op': 'status',
       'status_id': 's-wait',
     });
+  });
+
+  testWidgets('row 69: bulk Archive, and a row archived or moved to top', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-bulk-values')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('task-bulk-archive')));
+    await tester.pumpAndSettle();
+    expect(log.where((c) => c.$2 == '/tasks/bulk').single.$3, {
+      'ids': ['t1'],
+      'op': 'archive',
+    });
+
+    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to top').last);
+    await tester.pumpAndSettle();
+    expect(log.any((c) => c.$1 == 'PATCH' && c.$2 == '/tasks/t1/move'), isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive').last);
+    await tester.pumpAndSettle();
+    expect(
+      log.any((c) => c.$1 == 'POST' && c.$2 == '/tasks/t1/archive'),
+      isTrue,
+    );
+  });
+
+  testWidgets('row 69: quick filters show each value with its count, a chip '
+      'filters, Clear all lets go', (tester) async {
+    await pump(tester);
+    final button = find.byKey(const Key('list-toolbar-quick'));
+    if (button.evaluate().isEmpty) {
+      await tester.tap(find.byKey(const Key('tasks-toolbar-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('tasks-more-quick')));
+    } else {
+      tester.widget<ButtonStyleButton>(button).onPressed!();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quick-filters')), findsOneWidget);
+    final showing = RegExp(r'Showing (\d+) of (\d+)');
+    String line() => tester
+        .widgetList<Text>(find.textContaining('Showing '))
+        .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
+        .firstWhere(showing.hasMatch);
+    final before = showing.firstMatch(line())!;
+    expect(before.group(1), before.group(2));
+    final chip = find.byWidgetPredicate(
+      (w) => w is FilterChip && '${w.key}'.contains('quick-status'),
+    );
+    expect(chip, findsWidgets);
+    await tester.tap(chip.first);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(chip.first).selected, isTrue);
+    expect(
+      tester.widget<TextButton>(find.byKey(const Key('quick-clear'))).onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const Key('quick-clear')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(chip.first).selected, isFalse);
+    expect(showing.firstMatch(line())!.group(1), before.group(2));
   });
 
   testWidgets('Esc closes a status menu opened from its cell', (tester) async {

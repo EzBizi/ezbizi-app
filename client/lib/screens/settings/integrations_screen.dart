@@ -18,6 +18,7 @@ import '../../widgets/telegram_linked_staff.dart';
 import '../email/mailbox_panels.dart';
 import '../../widgets/disconnect_panel.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../email/consent_window.dart';
 import '../../widgets/open_destination.dart';
 import 'choose_products_panel.dart';
@@ -1584,11 +1585,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         ? '${d.inMinutes} min ago'
         : d.inDays < 1
         ? '${d.inHours} h ago'
-        : '${at.year}-${_two(at.month)}-${_two(at.day)}';
+        : formatCalendarDay(at);
     return 'Last checked $when';
   }
-
-  static String _two(int n) => n.toString().padLeft(2, '0');
 
   String _beneath(List<IntegrationConnection> rows) =>
       integrationsBeneath(rows);

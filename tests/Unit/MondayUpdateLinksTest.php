@@ -25,4 +25,21 @@ class MondayUpdateLinksTest extends TestCase
         $this->assertSame('↳ @Angela Herrera ch [x](https://x.com)', MondayBoardReader::cleanMentions('↳ [@Angela Herrera](https://a-1group.monday.com/users/119721735) ch [x](https://x.com)'));
     }
 
+    public function test_bold_italic_and_underline_from_monday_are_kept_as_ours(): void
+    {
+        $this->assertSame('<b>Call</b> the <i>owner</i> <u>first</u>', MondayBoardReader::bodyOf([
+            'body' => '<p><strong>Call</strong> the <em class="x">owner</em> <u>first</u></p>', 'text_body' => 'Call the owner first',
+        ]));
+        $this->assertSame('plain', MondayBoardReader::bodyOf(['body' => '<p>plain<br></p>', 'text_body' => 'plain']));
+    }
+
+    public function test_a_monday_file_link_becomes_its_name_since_the_file_is_the_attachment(): void
+    {
+        $this->assertSame('see 📎 W9 GA.pdf', MondayBoardReader::bodyOf([
+            'body' => '<p>see <a href="https://a-1group.monday.com/protected_static/27632623/resources/2465939849/W9%20GA.pdf">W9 GA.pdf</a></p>',
+        ]));
+    }
+
+
+
 }

@@ -71,6 +71,9 @@ const _checks = {
   'asked_for_booking': 'Asked to book',
 };
 
+/// The checks' words, for Leaderboard › My performance.
+const scoringCheckLabels = _checks;
+
 /// The two metrics beside the checks in the weighted score.
 const _metricNames = {'conversion': 'Conversion', 'quality': 'AI call score'};
 

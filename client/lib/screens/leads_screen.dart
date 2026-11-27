@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/mention_field.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
@@ -1899,7 +1900,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     String? note,
     bool clearNote = false,
   }) async {
-    final mentions = note == null ? const <String>[] : _noteMentions.ids(note);
+    final mentions = note == null ? const <String>[] : _noteMentions.ids(NotesMarkup.plain(note));
     final response = await widget.api.patch('/leads/${lead['id']}', {
       'starred': ?starred,
       if (note != null || clearNote) 'note': note,
@@ -2302,7 +2303,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           message: [
             if ((lead['note_by'] as Map?)?['name'] != null)
               'Note · ${(lead['note_by'] as Map)['name']}',
-            '${lead['note']}',
+            NotesMarkup.plain(lead['note'] as String),
           ].join('\n'),
           child: unreadNotesBadge(
             Icon(

@@ -30,6 +30,7 @@ import 'reports/jobs_report.dart';
 import 'reports/ops_reports.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
+import 'reports/sent_report_panel.dart';
 import 'reports/work_hours_report_panel.dart';
 import '../widgets/heading_pin.dart';
 
@@ -154,6 +155,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Map<String, dynamic>>? _scheduling;
   String? _schedulingError;
 
+  /// Every report EzBizi sends, by a rule or otherwise, on any channel (Jose,
+  /// 2026-11-25: "the reports tab is showing only 2"). Each row opens onto
+  /// what it sent.
+  List<Map<String, dynamic>>? _sentReports;
+  String? _sentError;
+
+  /// The channel chip (whatsapp, email, group, sms); null for every channel.
+  String? _channel;
+
   bool get _seesScheduling =>
       widget.session.me?.can('scheduling.rescheduling.view') ?? false;
 
@@ -209,11 +219,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _error = null;
       _hoursError = null;
       _schedulingError = null;
+      _sentError = null;
     });
 
     // All at once, and the library waits for both: "No reports built yet"
     // must not show while the Work Hours list is still on its way.
     final built = widget.api.get('/reports');
+    final sent = widget.api.get('/reports/sent');
     final hours = _seesHours ? widget.api.get('/hr/time-clock/reports') : null;
     final scheduling = _seesScheduling
         ? widget.api.get('/scheduling/reports')
@@ -221,6 +233,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final response = await built;
     final hoursResponse = await hours;
     final schedulingResponse = await scheduling;
+    final sentResponse = await sent;
 
     if (!mounted) return;
 
@@ -250,6 +263,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         } else {
           _schedulingError = schedulingResponse.message;
         }
+      }
+
+      if (sentResponse.ok) {
+        _sentReports = list(sentResponse.body['data']);
+      } else {
+        _sentError = sentResponse.message;
       }
 
       if (hoursResponse == null) return;
@@ -863,12 +882,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final reports = _reports ?? const <SavedReportSummary>[];
     final hours = _hours ?? const <Map<String, dynamic>>[];
     final scheduling = _scheduling ?? const <Map<String, dynamic>>[];
+    final sent = _sentReports ?? const <Map<String, dynamic>>[];
 
     // State 3. Deliberately its own branch and its own widget: refused means
     // "you may not", which is a different fact from "there is nothing", and a
     // reader who cannot tell them apart learns nothing from either. Only when
     // there is nothing else to draw: Work Hours' reports still stand.
-    if (_error != null && hours.isEmpty && scheduling.isEmpty) {
+    if (_error != null && hours.isEmpty && scheduling.isEmpty && sent.isEmpty) {
       return Align(alignment: Alignment.topCenter, child: ErrorNote(_error!));
     }
 
@@ -877,12 +897,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (reports.isEmpty &&
         hours.isEmpty &&
         scheduling.isEmpty &&
+        sent.isEmpty &&
         _hoursError == null &&
-        _schedulingError == null) {
+        _schedulingError == null &&
+        _sentError == null) {
       return _emptyLibrary(context);
     }
 
-    return _library(context, constraints, reports, hours, scheduling);
+    return _library(context, constraints, reports, hours, scheduling, sent);
   }
 
   /// Every saved report, whichever module made it (queue 33, Jose's 1 and
@@ -895,6 +917,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     List<SavedReportSummary> reports,
     List<Map<String, dynamic>> hours,
     List<Map<String, dynamic>> scheduling,
+    List<Map<String, dynamic>> sent,
   ) {
     final wide = constraints.maxWidth >= ReportsScreen.buildAbove;
 
@@ -903,6 +926,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final docked = [
       for (final report in hours) _LibraryRow.hours(report),
       for (final report in scheduling) _LibraryRow.scheduling(report),
+      for (final report in sent) _LibraryRow.sent(report),
     ].where((row) => row.id == _openHours).firstOrNull;
 
     if (!wide && docked != null) return _dockedPanel(docked, inPlace: true);
@@ -914,18 +938,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
         for (final report in hours) _LibraryRow.hours(report),
       if (_kind == null || _kind == 'scheduling')
         for (final report in scheduling) _LibraryRow.scheduling(report),
+      if (_kind == null || _kind == 'sent')
+        for (final report in sent) _LibraryRow.sent(report),
     ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    // The channel chips count within the kind chosen, then narrow to theirs.
+    final byChannel = <String, int>{
+      for (final channel in const ['whatsapp', 'group', 'email', 'sms'])
+        channel: rows.where((row) => _channels(row).contains(channel)).length,
+    }..removeWhere((_, count) => count == 0);
+    final kept = _channel == null
+        ? rows
+        : rows.where((row) => _channels(row).contains(_channel)).toList();
 
     final query = _query.trim().toLowerCase();
     final shown = query.isEmpty
-        ? rows
+        ? kept
         : [
-            for (final row in rows)
+            for (final row in kept)
               if ([
                 row.name,
                 _kindPill(row).label,
                 _about(row),
                 _covers(row),
+                ..._channels(row).map(channelLabel),
               ].any((text) => text.toLowerCase().contains(query)))
                 row,
           ];
@@ -934,6 +969,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       reports.isNotEmpty,
       hours.isNotEmpty,
       scheduling.isNotEmpty,
+      sent.isNotEmpty,
     ].where((present) => present).length;
 
     final scheme = Theme.of(context).colorScheme;
@@ -964,11 +1000,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   reports.length,
                   hours.length,
                   scheduling.length,
+                  sent.length,
                 ),
+              if (byChannel.isNotEmpty) _channelChips(context, byChannel),
             ],
           ),
         ),
-        for (final error in [_error, _hoursError, _schedulingError])
+        for (final error in [_error, _hoursError, _schedulingError, _sentError])
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -1023,6 +1061,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (row.hours case final hours?) {
       return _hoursPanel(hours, inPlace: inPlace);
     }
+    if (row.sentReport case final sent?) {
+      return SentReportPanel(
+        key: ValueKey('sent-report-${row.id}'),
+        api: widget.api,
+        report: sent,
+        formats: widget.session.me!.display,
+        inPlace: inPlace,
+        onClose: () => setState(() => _openHours = null),
+      );
+    }
 
     return OverbookingReportPanel(
       key: ValueKey('scheduling-report-${row.id}'),
@@ -1044,7 +1092,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   });
 
   /// Every report, the Builder's or Work Hours', each with its count.
-  Widget _kinds(BuildContext context, int built, int hours, int scheduling) {
+  Widget _kinds(
+    BuildContext context,
+    int built,
+    int hours,
+    int scheduling,
+    int sent,
+  ) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
 
     Widget chip(String? value, String label, int count) => ChoiceChip(
@@ -1069,21 +1123,75 @@ class _ReportsScreenState extends State<ReportsScreen> {
       spacing: 6,
       runSpacing: 6,
       children: [
-        chip(null, 'All', built + hours + scheduling),
+        chip(null, 'All', built + hours + scheduling + sent),
         if (built > 0) chip('built', 'Built here', built),
         if (hours > 0) chip('hours', 'Work Hours', hours),
         if (scheduling > 0) chip('scheduling', 'Scheduling', scheduling),
+        if (sent > 0) chip('sent', 'Sent by rules and EzBizi', sent),
       ],
     );
   }
 
-  StatusPill _kindPill(_LibraryRow row) => row.built != null
+  /// The channels the listed reports go out on, each with its count; one
+  /// chosen narrows the list to it (Jose, 2026-11-25: a WhatsApp filter).
+  Widget _channelChips(BuildContext context, Map<String, int> counts) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final MapEntry(key: channel, value: count) in counts.entries)
+          FilterChip(
+            key: ValueKey('library-channel-$channel'),
+            showCheckmark: false,
+            selected: _channel == channel,
+            label: Text.rich(
+              TextSpan(
+                text: channelLabel(channel),
+                children: [
+                  TextSpan(
+                    text: '  ${formatCount(count)}',
+                    style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            onSelected: (on) => setState(() => _channel = on ? channel : null),
+          ),
+      ],
+    );
+  }
+
+  /// The channels a row goes out on: Work Hours and Scheduling email theirs;
+  /// a Builder report says none of its own.
+  List<String> _channels(_LibraryRow row) => switch (row) {
+    _LibraryRow(sentReport: final sent?) => [
+      for (final channel in (sent['channels'] as List?) ?? const []) '$channel',
+    ],
+    _LibraryRow(built: _?) => const [],
+    _ => const ['email'],
+  };
+
+  StatusPill _kindPill(_LibraryRow row) => row.sentReport != null
+      ? StatusPill(
+          _channels(row).isEmpty
+              ? 'Sent'
+              : [
+                  channelLabel(_channels(row).first),
+                  if (_channels(row).length > 1)
+                    '+${_channels(row).length - 1}',
+                ].join(' '),
+          tone: Tone.info,
+        )
+      : row.built != null
       ? const StatusPill('Built here')
       : row.hours != null
       ? const StatusPill('Work Hours', tone: Tone.caution)
       : const StatusPill('Scheduling', tone: Tone.caution);
 
   String _about(_LibraryRow row) =>
+      (row.sentReport == null ? null : '${row.sentReport!['about'] ?? ''}') ??
       row.built?.description ??
       (row.scheduling == null
           ? 'Hours each person worked, per week'
@@ -1092,6 +1200,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Who a report covers: a Work Hours one names its roles and people; a
   /// Builder one counts what it is about, within the reader's reach.
   String _covers(_LibraryRow row) {
+    if (row.sentReport case final sent?) {
+      final to = [
+        for (final name in (sent['to'] as List?) ?? const []) '$name',
+      ];
+      return [
+        '${sent['covers'] ?? '—'}',
+        if (to.isNotEmpty) 'To ${to.join(', ')}',
+      ].join(' · ');
+    }
     if (row.hours case final hours?) {
       return workHoursReportCovers(
         hours,
@@ -1111,6 +1228,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// one does (`sent_by` null), which is a different answer from none
   /// (`sent_by` empty).
   ({String when, String? by, bool quiet}) _sent(_LibraryRow row) {
+    if (row.sentReport case final sent?) {
+      final rule = sent['rule'] is Map ? sent['rule'] as Map : null;
+      final week = (sent['sent_7d'] as num?)?.toInt() ?? 0;
+
+      return (
+        when:
+            '${sent['trigger'] ?? (rule == null ? 'Sent automatically' : senderWhen(rule, widget.session.me!.display))}',
+        by: week > 0
+            ? '${formatCount(week)} sent in the last 7 days'
+            : 'None sent in the last 7 days',
+        quiet: sent['is_active'] != true,
+      );
+    }
     final rules =
         row.built?.sentBy ??
         ((row.hours ?? row.scheduling)?['sent_by'] as List?)
@@ -1483,28 +1613,44 @@ class _LibraryRow {
   _LibraryRow.built(SavedReportSummary this.built)
     : hours = null,
       scheduling = null,
+      sentReport = null,
       name = built.name;
 
   _LibraryRow.hours(Map<String, dynamic> this.hours)
     : built = null,
       scheduling = null,
+      sentReport = null,
       name = '${hours['name'] ?? ''}';
 
   _LibraryRow.scheduling(Map<String, dynamic> this.scheduling)
     : built = null,
       hours = null,
+      sentReport = null,
       name = '${scheduling['name'] ?? ''}';
+
+  _LibraryRow.sent(Map<String, dynamic> this.sentReport)
+    : built = null,
+      hours = null,
+      scheduling = null,
+      name = '${sentReport['name'] ?? ''}';
 
   final SavedReportSummary? built;
   final Map<String, dynamic>? hours;
   final Map<String, dynamic>? scheduling;
+
+  /// A row of `GET /reports/sent`: a report EzBizi sends and what it sent.
+  final Map<String, dynamic>? sentReport;
   final String name;
 
   /// Scheduling's ids are words ('overbooking') from another table, so they
   /// are prefixed: a docked row is found by this id across every kind.
   String get id =>
       built?.id ??
-      (hours != null ? '${hours!['id']}' : 'scheduling:${scheduling!['id']}');
+      (hours != null
+          ? '${hours!['id']}'
+          : sentReport != null
+          ? 'sent:${sentReport!['key']}'
+          : 'scheduling:${scheduling!['id']}');
 }
 
 /// One row of `GET /reports`.

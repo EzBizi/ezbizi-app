@@ -47,6 +47,22 @@ class NoteActivityTest extends TestCase
             ->assertJsonPath('data.0.meta.record', ['type' => 'job', 'id' => $job]);
     }
 
+    /** Jose, 2026-11-25: bold notes, but what leaves the note (the mention) is plain text. */
+    public function test_a_bold_job_note_keeps_its_tags_but_its_mention_is_plain_text(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->aJob($alpha);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['jobs.view']);
+
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/jobs/{$job}/notes", ['body' => '@Viewer <b>bring</b> the <u>ladder</u>', 'mentions' => [$viewer->id]])
+            ->assertCreated()->assertJsonPath('data.body', '@Viewer <b>bring</b> the <u>ladder</u>');
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/jobs/{$job}/notes", ['body' => '<b> </b>'])->assertStatus(422);
+
+        $sent = json_encode($this->signedInAs($viewer)->getJson('/api/v1/notifications')->assertOk()->json('data.0'));
+        $this->assertStringContainsString('bring the ladder', $sent);
+        $this->assertStringNotContainsString('<b>', $sent);
+    }
+
     public function test_a_job_counts_notes_by_others_until_they_are_read(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -90,6 +106,24 @@ class NoteActivityTest extends TestCase
 
         $this->signedInAs($alpha['admin'])->patchJson("/api/v1/leads/{$lead}", ['note' => null])->assertOk();
         $this->assertNull($this->inTenant($alpha['org'], fn () => Lead::query()->find($lead)->note_mentions));
+    }
+
+    /** Jose 11-25: notes may be bold/italic/underline; the tags never leave the app. */
+    public function test_a_bolded_lead_note_is_stored_with_its_tags_and_mentions_people_in_plain_text(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $reader = $this->userWithRole($alpha, 'Reader', ['leads.view', 'leads.edit', 'leads.'.Lead::SOURCE_WEBSITE_CHAT.'.view']);
+        $lead = $this->inTenant($alpha['org'], fn () => Lead::create([
+            'company_id' => $alpha['company']->getKey(), 'source' => Lead::SOURCE_WEBSITE_CHAT,
+            'remote_id' => 'chat-1', 'status' => Lead::STATUS_NEW, 'contact_name' => 'Ann', 'received_at' => now(),
+        ])->id);
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/leads/{$lead}", [
+            'note' => '<b>Call back</b> <i>before</i> <u>noon</u>', 'mentions' => [$reader->id],
+        ])->assertOk()->assertJsonPath('data.note', '<b>Call back</b> <i>before</i> <u>noon</u>');
+
+        $body = $this->inTenant($alpha['org'], fn () => Notification::query()->where('user_id', $reader->id)->value('body'));
+        $this->assertSame('Call back before noon', $body);
     }
 
     public function test_reading_needs_sight_of_the_record(): void

@@ -1148,6 +1148,11 @@ final class MondayImport
             } elseif ($found->colour === null && ! empty($f['colour'])) {
                 $found->forceFill(['colour' => $f['colour']])->save();
             }
+            // Row 68: a root folder from someone's own Monday workspace is theirs.
+            if ($i === 0 && ! empty($f['owner_email']) && ($owner = $this->person((string) $f['owner_email'])) !== null
+                && $found->owner_user_id !== $owner->id) {
+                $found->forceFill(['owner_user_id' => $owner->id])->save();
+            }
             $parent = $found;
         }
         if ($board->folder_id !== $parent->id) {

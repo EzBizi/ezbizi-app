@@ -259,7 +259,7 @@ class ProfileController extends Controller
             + $this->present($user)
             + [
                 'work_schedule' => $user->work_schedule,
-                'can_edit_schedule' => (bool) $this->settings->get('time_clock.self_schedule', $user->organization),
+                'can_edit_schedule' => $this->mayEditOwnSchedule($user),
             ];
     }
 
@@ -271,8 +271,8 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        if (! $this->settings->get('time_clock.self_schedule', $user->organization)) {
-            abort(403, 'Your organization sets work schedules from Human Resources. Ask them to change yours.');
+        if (! $this->mayEditOwnSchedule($user)) {
+            abort(403, 'Your manager sets your work schedule. Ask them to change it.');
         }
 
         $days = WorkSchedule::validate($request->input('days'));
@@ -283,6 +283,13 @@ class ProfileController extends Controller
         $user->save();
 
         return ['work_schedule' => $user->work_schedule];
+    }
+
+    /** The organization's switch, and work_hours.own_schedule (Administrator only; Jose, 2026-11-25). */
+    private function mayEditOwnSchedule(User $user): bool
+    {
+        return (bool) $this->settings->get('time_clock.self_schedule', $user->organization)
+            && $user->hasPermission('work_hours.own_schedule');
     }
 
     /**

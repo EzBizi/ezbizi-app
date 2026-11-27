@@ -12,10 +12,7 @@ import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
-import 'financial_cells.dart';
-
-String _money(int cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+import 'invoice_common.dart';
 
 /// Financials → Bills: a place's bills for a period, read from a photo and
 /// saved once the lines add up to the photo's total, to the cent.
@@ -251,7 +248,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
             subtitle: Text(
               '${(b['lines'] as List).length} lines${b['source'] == 'whatsapp' ? ' · from WhatsApp' : ''}',
             ),
-            trailing: Text(_money(b['total_cents'] as int)),
+            trailing: Text(invoiceMoney(b['total_cents'] as int)),
             onTap: () => _show(b),
           ),
       ],
@@ -454,7 +451,7 @@ class _BillPanelState extends State<_BillPanel> {
           Text(
             addsUp
                 ? 'The lines add up to the total.'
-                : 'Lines add up to ${_money(_sum)}; they must equal the total.',
+                : 'Lines add up to ${invoiceMoney(_sum)}; they must equal the total.',
             style: TextStyle(
               color: addsUp
                   ? theme.colorScheme.primary
@@ -532,7 +529,7 @@ class _BillViewState extends State<_BillView> {
               child: Row(
                 children: [
                   Expanded(child: Text('${l['name']}')),
-                  Text(_money(l['cents'] as int)),
+                  Text(invoiceMoney(l['cents'] as int)),
                 ],
               ),
             ),
@@ -540,7 +537,7 @@ class _BillViewState extends State<_BillView> {
           Row(
             children: [
               const Expanded(child: Text('Total')),
-              Text(_money(b['total_cents'] as int)),
+              Text(invoiceMoney(b['total_cents'] as int)),
             ],
           ),
           if (_image != null)

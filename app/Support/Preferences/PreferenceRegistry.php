@@ -193,6 +193,21 @@ class PreferenceRegistry
              * 2026-11-17: per-type toggles for Task Board). Unlike a muted
              * module, a muted kind writes no bell row. Empty = all on.
              */
+            // Monday parity (Jose, 2026-11-25): the Email column, opt-in per
+            // kind, and the "Received directly on your device" master switch.
+            'notifications.email_kinds' => [
+                'label' => 'Email me about',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types also sent to you by email.',
+            ],
+            'notifications.push' => [
+                'label' => 'Phone notifications',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Received directly on your device.',
+            ],
+
             'notifications.muted_kinds' => [
                 'label' => 'Muted notification types',
                 'type' => 'kinds',
@@ -220,6 +235,24 @@ class PreferenceRegistry
                 'min' => 180,
                 'max' => 420,
                 'help' => 'Drag the edge of the sidebar to change it.',
+            ],
+
+            /*
+             * Zoom on the desktop apps (Kimberly 01a213cf, approved by Jose
+             * 2026-11-25). A percentage of the whole window, text and layout
+             * together, the way a browser zooms. The web keeps the browser's
+             * own zoom and phones the system text size, so only the Windows
+             * and macOS apps read it. Set with Ctrl/Cmd + and -, Ctrl/Cmd 0,
+             * or Ctrl and the mouse wheel; bounded so a typed value cannot make
+             * the app unusable.
+             */
+            'appearance.zoom' => [
+                'label' => 'Zoom',
+                'type' => 'int',
+                'default' => 100,
+                'min' => 50,
+                'max' => 200,
+                'help' => 'Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel. Desktop apps only.',
             ],
 
             /*
@@ -378,6 +411,16 @@ class PreferenceRegistry
              * is his "default should be 30 - 70". The client still keeps both
              * panes above their pixel floors whatever share is stored.
              */
+            // Chat's list pane (Communication > Chat), in pixels.
+            'chat.list_width' => [
+                'label' => 'Chat list width',
+                'type' => 'int',
+                'default' => 400,
+                'min' => 300,
+                'max' => 640,
+                'help' => 'Drag the line beside the chat list to change it.',
+            ],
+
             'leads.list_percent' => [
                 'label' => 'Leads list width',
                 'type' => 'int',

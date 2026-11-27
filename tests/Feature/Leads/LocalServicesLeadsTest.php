@@ -291,14 +291,14 @@ class LocalServicesLeadsTest extends TestCase
 
         $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
         $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail()->forceFill([
-            'contact_name' => 'Mary Ciccolini', 'phone' => '+13306063475', 'phone_digits' => '13306063475',
+            'contact_name' => 'Mary Coldbrook', 'phone' => '+13305550101', 'phone_digits' => '13305550101',
         ])->save());
 
         $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
 
         $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
-        $this->assertSame('Mary Ciccolini', $lead->contact_name);
-        $this->assertSame('+13306063475', $lead->phone);
+        $this->assertSame('Mary Coldbrook', $lead->contact_name);
+        $this->assertSame('+13305550101', $lead->phone);
     }
 
     /**

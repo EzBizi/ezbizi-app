@@ -61,10 +61,10 @@ class TechAssistantWhatsAppTest extends TestCase
             'id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'phone_number_id' => self::BOT,
             'waba_id' => '1090541950244647', 'display_number' => '+19545162455', 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => '(786) 555-0102', 'is_active' => true])->save());
         DB::table('whatsapp_contacts')->insert([
             'id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'phone_number_id' => self::BOT,
-            'counterparty' => '17867762666', 'kind' => 'lead', 'created_at' => now(), 'updated_at' => now(),
+            'counterparty' => '17865550102', 'kind' => 'lead', 'created_at' => now(), 'updated_at' => now(),
         ]);
         // The one-time parts tip is already spent, so each test reads its own reply first.
         Cache::put('whatsapp.parts_tip.'.$this->t['admin']->getKey(), true);
@@ -74,7 +74,7 @@ class TechAssistantWhatsAppTest extends TestCase
     {
         $json = (string) json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => self::BOT],
-            'messages' => [['id' => $wamid, 'from' => '17867762666', ...$message]],
+            'messages' => [['id' => $wamid, 'from' => '17865550102', ...$message]],
         ]]]]]]);
 
         $this->call('POST', '/api/v1/social/whatsapp/webhook', [], [], [], [
@@ -120,7 +120,7 @@ class TechAssistantWhatsAppTest extends TestCase
         $commands = [];
         $this->grok("MODEL: 6000C\nORDER CHECK: DO NOT ORDER YET", $commands);
         $this->inTenant($this->t['org'], fn () => app(WhatsAppStaffBot::class)->techReply(
-            WhatsAppNumber::query()->sole(), '17867762666', $this->t['admin'], '', 'MEDIA1',
+            WhatsAppNumber::query()->sole(), '17865550102', $this->t['admin'], '', 'MEDIA1',
         ));
 
         $this->assertContains('read_file', $commands[0]);
@@ -183,7 +183,7 @@ class TechAssistantWhatsAppTest extends TestCase
         $this->grok('CONFIDENCE: POSSIBLE');
         $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => null])->save());
         $dispatcher = $this->userWithRole($this->t, 'Dispatcher', ['customers.view']);
-        $this->inTenant($this->t['org'], fn () => $dispatcher->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+        $this->inTenant($this->t['org'], fn () => $dispatcher->forceFill(['phone' => '(786) 555-0102', 'is_active' => true])->save());
 
         $this->inbound(['type' => 'text', 'text' => ['body' => 'valve for majestic insert, LP i think']]);
 

@@ -71,6 +71,8 @@ void main() {
             },
           });
         }
+        // Every report sent (2026-11-25): none here.
+        if (path.endsWith('/reports/sent')) return json({'data': []});
         if (path.endsWith('/reports')) {
           return json({
             'data': [

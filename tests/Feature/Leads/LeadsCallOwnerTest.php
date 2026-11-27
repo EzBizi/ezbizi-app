@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/** Jose, 2026-10-16: John Catalano's message lead held another woman's call. */
+/** Jose, 2026-10-16: John Carraway's message lead held another woman's call. */
 class LeadsCallOwnerTest extends TestCase
 {
     use BuildsTenants;
@@ -24,9 +24,9 @@ class LeadsCallOwnerTest extends TestCase
 
         [$lead, $call] = $this->inTenant($t['org'], function () use ($t) {
             $lead = Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'source' => Lead::SOURCE_LOCAL_SERVICES,
-                'remote_id' => '344772988', 'lead_type' => 'MESSAGE', 'contact_name' => 'John Catalano', 'status' => Lead::STATUS_NEW, 'received_at' => now()->subDays(8)]);
+                'remote_id' => '344772988', 'lead_type' => 'MESSAGE', 'contact_name' => 'John Carraway', 'status' => Lead::STATUS_NEW, 'received_at' => now()->subDays(8)]);
             LeadConversation::create(['organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => '3402471103',
-                'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'text' => 'Chimney sweep at 2473 Lakeside Dr, Aurora', 'occurred_at' => now()->subDays(8)]);
+                'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'text' => 'Chimney sweep at 2473 Sampleside Dr, Aurora', 'occurred_at' => now()->subDays(8)]);
             $call = LeadConversation::create(['organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => '3405794171',
                 'channel' => 'PHONE_CALL', 'participant' => 'CONSUMER', 'duration_ms' => 348000, 'occurred_at' => now()->subHour(),
                 'transcript' => 'Your technician missed the appliance repair at my tenant\'s place in Berwyn.']);

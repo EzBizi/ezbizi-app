@@ -69,6 +69,7 @@ use App\Http\Controllers\Api\BeforeAfterController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SentReportsController;
 use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
 use App\Http\Controllers\Api\IntegrationsOverviewController;
@@ -93,6 +94,7 @@ use App\Http\Controllers\Api\JobNotesController;
 use App\Http\Controllers\Api\JobPhotosController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadDashboardController;
+use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
@@ -227,6 +229,7 @@ use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffHelpVideosController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
@@ -900,6 +903,15 @@ Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
 | Flutter build and never serves Laravel's public/ — see SnippetController for
 | why that is not worked around with an nginx location.
 */
+/*
+| Chat's call page (Twilio Video). Public, as the snippet above and for the same
+| nginx reason: it holds no data, the token arrives in the URL fragment, which
+| no browser sends to a server.
+*/
+Route::get('v1/chat/call', [ChatController::class, 'callPage'])
+    ->middleware('throttle:120,1')
+    ->name('chat.call-page');
+
 Route::get('v1/web/ezbizi.js', [WebSnippetController::class, 'show'])
     ->middleware('throttle:120,1')
     ->name('web.snippet');
@@ -1132,10 +1144,18 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/groups', [TaskBoardSettingsController::class, 'storeGroup']);
         Route::patch('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'updateGroup']);
         Route::delete('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'destroyGroup']);
+        // Monday's group menu (row 69).
+        Route::post('task-boards/{taskBoard}/groups/{group}/duplicate', [TaskBoardSettingsController::class, 'duplicateGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/move', [TaskBoardSettingsController::class, 'moveGroupToBoard']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/archive', [TaskBoardSettingsController::class, 'archiveGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/restore', [TaskBoardSettingsController::class, 'restoreGroup']);
         Route::post('task-boards/{taskBoard}/views', [TaskBoardViewsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);
         Route::post('tasks/bulk', [TasksController::class, 'bulk']);
+        // Monday's Archive item and the board's Archive (row 69).
+        Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
+        Route::get('task-boards/{taskBoard}/archived', [TasksController::class, 'archived']);
         // Sensitive tasks: an authenticator code opens them on this session for 5 minutes.
         Route::delete('tasks/unlock', [TasksController::class, 'lock']);
         Route::post('tasks/{task}/unlock', [TasksController::class, 'unlock']);
@@ -1815,6 +1835,13 @@ Route::prefix('v1')
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
+        // Leaderboard (Trey, approved by Jose 2026-11-25): Scoring's top three
+        // marked New, week by week (Sunday to Friday), and the reader's own
+        // Performance and Scoring.
+        Route::get('leaderboard', [LeaderboardController::class, 'board'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/weeks', [LeaderboardController::class, 'weeks'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/mine', [LeaderboardController::class, 'mine'])->middleware('permission:leaderboard.mine.view');
+        Route::get('leaderboard/mine/calls', [LeaderboardController::class, 'calls'])->middleware('permission:leaderboard.mine.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
@@ -1877,6 +1904,9 @@ Route::prefix('v1')
 
         Route::middleware('permission:reports.library.view')->group(function () {
             Route::get('reports', [ReportsController::class, 'index']);
+            // Every report EzBizi sends, and what each sent (Jose, 2026-11-25). Before reports/{id}.
+            Route::get('reports/sent', [SentReportsController::class, 'index']);
+            Route::get('reports/sent/history', [SentReportsController::class, 'history']);
             Route::post('reports/{id}/run', [ReportsController::class, 'run']);
             Route::get('reports/{id}/csv', [ReportsController::class, 'csv']);
             Route::get('reports/{id}', [ReportsController::class, 'show']);
@@ -2852,6 +2882,41 @@ Route::prefix('v1')
         Route::get('staff-messages/unread', [StaffMessagesController::class, 'unread']);
         Route::post('staff-messages', [StaffMessagesController::class, 'store']);
 
+        // Chat: EzBizi's own WhatsApp between EzBizi accounts (Jose, 2026-11-25).
+        // The tab's key gates every route; inside, ChatController answers 404
+        // for any chat the caller is not a member of.
+        Route::middleware('permission:phone.chat.view')->group(function () {
+            Route::get('chat/pulse', [ChatController::class, 'pulse']);
+            Route::get('chat/contacts', [ChatController::class, 'contacts']);
+            Route::get('chat/starred', [ChatController::class, 'starred']);
+            Route::get('chat/search', [ChatController::class, 'search']);
+            Route::get('chat/chats', [ChatController::class, 'index']);
+            Route::post('chat/chats', [ChatController::class, 'store']);
+            Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
+            Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
+            Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::patch('chat/chats/{chat}/job', [ChatController::class, 'setJob']);
+            Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
+            Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
+            Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
+            Route::get('chat/chats/{chat}/media', [ChatController::class, 'media']);
+            Route::post('chat/chats/{chat}/members', [ChatController::class, 'addMembers']);
+            Route::patch('chat/chats/{chat}/members/{user}', [ChatController::class, 'updateMember']);
+            Route::delete('chat/chats/{chat}/members/{user}', [ChatController::class, 'removeMember']);
+            Route::patch('chat/messages/{chatMessage}', [ChatController::class, 'edit']);
+            Route::delete('chat/messages/{chatMessage}', [ChatController::class, 'destroy']);
+            Route::post('chat/messages/{chatMessage}/react', [ChatController::class, 'react']);
+            Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
+            Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
+            Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls', [ChatController::class, 'recentCalls']);
+            Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
+            Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
+            Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);
+            Route::post('chat/calls/{chatMessage}/decline', [ChatController::class, 'declineCall']);
+            Route::post('chat/calls/{chatMessage}/leave', [ChatController::class, 'leaveCall']);
+        });
+
         // Short numbers that reach one person. Twilio has no concept of an
         // extension; the digits are ours to resolve before we dial.
         Route::get('phone/extensions', [PhoneExtensionsController::class, 'index']);
@@ -3752,6 +3817,7 @@ Route::prefix('v1')
         Route::get('notifications', [NotificationsController::class, 'index']);
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
+        Route::get('notifications/kinds', [NotificationsController::class, 'kinds']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
         Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
         Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);
@@ -3839,12 +3905,12 @@ Route::prefix('v1')
         // so the fast polls (input, files, live, lighting) used up the
         // heartbeat's allowance and offices read offline (2026-10-29).
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
-            ->middleware('throttle:120,1,mon-heartbeat');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-heartbeat']);
 
         // A device's own periodic screen capture — same idle-less reasoning
         // as the heartbeat above (see ScreenshotsController's docblock).
         Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
-            ->middleware('throttle:60,1,mon-screenshots');
+            ->middleware(['retry-deadlock', 'throttle:60,1,mon-screenshots']);
 
         // Live View's agent half — "is anyone watching me" and "here is my
         // latest frame", polled/sent every ~1-2s for as long as the agent
@@ -3855,27 +3921,27 @@ Route::prefix('v1')
         // controller already assumes, the same margin ScreenshotsController
         // and HeartbeatController leave themselves.
         Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
-            ->middleware('throttle:120,1,mon-live-wanted');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-live-wanted']);
         Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
-            ->middleware('throttle:120,1,mon-live-frame');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-live-frame']);
 
         // Remote Control's agent half — "what should I apply, and is
         // anyone still driving me" — same idle-less and throttle reasoning
         // as `live-wanted` just above. See RemoteControlController's
         // docblock.
         Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
-            ->middleware('throttle:120,1,mon-input');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-input']);
 
         // Remote file access's agent half — "what should I read" and "here is
         // the answer" — same idle-less and throttle reasoning as
         // `input-pending` just above. See FilesController.
         Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
-            ->middleware('throttle:120,1,mon-files-pending');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-files-pending']);
         Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
-            ->middleware('throttle:120,1,mon-files-answer');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-files-answer']);
         // The PC's agent asking which lighting to show (LightingController).
         Route::get('monitoring/lighting', [MonitoringLightingController::class, 'pending'])
-            ->middleware('throttle:120,1,mon-lighting');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-lighting']);
     });
 
 /*

@@ -272,7 +272,7 @@ class SchedulingAvailabilityTest extends TestCase
 
     /**
      * An address a customer wrote is searched by the zip Google gives it
-     * (Mia, 2026-10-02: "86 Jerusalem hill Trumbull"), and the answer says
+     * (Mia, 2026-10-02: "86 Sample hill Trumbull"), and the answer says
      * which address the zip came from.
      */
     public function test_an_address_is_searched_by_its_zip(): void
@@ -832,7 +832,7 @@ class SchedulingAvailabilityTest extends TestCase
             'service_area' => 'Dallas',
             'postal_code' => '75201',
             'city' => 'Dallas',
-            'address' => '1430 Red Oaks Dr',
+            'address' => '1430 Sample Oaks Dr',
             'status' => 'Submitted',
             'scheduled_for' => '2026-10-05 08:00:00',
             'payload' => [
@@ -858,7 +858,7 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([
             'number' => '600012', 'status' => 'Submitted', 'time' => '08:00', 'end_time' => '11:00',
             'service' => 'Chimney Inspection', 'technicians' => ['Ivan Sharkov'], 'notes' => 'Gate code 4411',
-            'customer' => ['name' => 'John Lynch', 'phone' => '2145550100', 'email' => 'john@example.com', 'address' => '1430 Red Oaks Dr, Dallas 75201'],
+            'customer' => ['name' => 'John Lynch', 'phone' => '2145550100', 'email' => 'john@example.com', 'address' => '1430 Sample Oaks Dr, Dallas 75201'],
         ], array_intersect_key($jobs[1], array_flip(['number', 'status', 'time', 'end_time', 'service', 'technicians', 'notes', 'customer'])));
 
         // A franchise row lists the franchise's jobs that day.

@@ -502,32 +502,29 @@ void main() {
       find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
       findsOneWidget,
     );
+    // Design 211 (Jose 11-25): a company of one board is that board, drawn
+    // as the company, so Everdoors' Main reads "Everdoors Garage".
     expect(
       find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Main'), findsNWidgets(2));
+    final everdoors = find.descendant(
+      of: find.byKey(const ValueKey('tasks-board-b-m2')),
+      matching: find.text('Everdoors Garage'),
+    );
+    expect(everdoors, findsOneWidget);
+    expect(find.text('Main'), findsOneWidget);
     // No "N open" (Jose 11-20, design 200: Monday shows none).
     expect(find.text('2 open'), findsNothing);
-    // Companies in alphabetical order, each Main under its own.
-    final everdoors = tester
-        .getTopLeft(
-          find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
-        )
-        .dy;
+    // The company with more boards first; Northside's Main under it.
     final northside = tester
         .getTopLeft(
           find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
         )
         .dy;
-    final mains = [
-      for (final e in find.text('Main').evaluate())
-        tester.getTopLeft(find.byWidget(e.widget)).dy,
-    ]..sort();
-    expect(everdoors, lessThan(northside));
-    expect(mains.first, greaterThan(everdoors));
-    expect(mains.first, lessThan(northside));
-    expect(mains.last, greaterThan(northside));
+    final main = tester.getTopLeft(find.text('Main')).dy;
+    expect(northside, lessThan(main));
+    expect(main, lessThan(tester.getTopLeft(everdoors).dy));
   });
 
   testWidgets('a board I may only read says so and offers no add', (

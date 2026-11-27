@@ -49,6 +49,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
   /// The first tap arms SOS for a few seconds; the second sends it. Inline,
   /// because the app has no dialogs, and two taps stop the accidental one.
   bool _armed = false;
+  bool _sending = false;
   Timer? _disarm;
 
   @override
@@ -125,35 +126,34 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
 
   Future<void> _sos() async {
     _disarm?.cancel();
-    setState(() => _armed = false);
+    setState(() {
+      _armed = false;
+      _sending = true;
+    });
 
-    final here = FieldTracker.onPhone
-        ? await FieldTracker.currentPosition()
-        : null;
+    // Sent with or without a fix: an SOS without a place still reaches the
+    // manager (audit 11-27). The server takes one without coordinates.
+    final here = FieldTracker.onPhone ? await FieldTracker.locate() : null;
     if (!mounted) return;
-    if (FieldTracker.onPhone && here == null) {
-      setState(
-        () => _actionError =
-            'Could not read your location. Allow location for EzBizi and try '
-            'again, or phone your manager.',
-      );
-      return;
-    }
-
     final response = await widget.api.post('/field/sos', {
       'lat': ?here?.latitude,
       'lng': ?here?.longitude,
     });
     if (!mounted) return;
-    setState(
-      () => _actionError = response.ok
-          ? null
-          : 'SOS not sent: ${response.message}',
-    );
+    setState(() {
+      _sending = false;
+      _actionError = response.ok ? null : 'SOS not sent: ${response.message}';
+    });
     if (response.ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('SOS sent.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            here == null && FieldTracker.onPhone
+                ? 'SOS sent, without your location. Phone your manager too.'
+                : 'SOS sent.',
+          ),
+        ),
+      );
       _load();
     }
   }
@@ -220,9 +220,23 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                           backgroundColor: theme.colorScheme.error,
                           foregroundColor: theme.colorScheme.onError,
                         ),
-                        onPressed: _armed ? _sos : _arm,
-                        icon: const Icon(Icons.warning_amber_rounded),
-                        label: Text(_armed ? 'Tap again to send SOS' : 'SOS'),
+                        key: const ValueKey('field-sos'),
+                        onPressed: _sending ? null : (_armed ? _sos : _arm),
+                        icon: _sending
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.warning_amber_rounded),
+                        label: Text(
+                          _sending
+                              ? 'Sending SOS…'
+                              : _armed
+                              ? 'Tap again to send SOS'
+                              : 'SOS',
+                        ),
                       ),
                     ],
                   ),

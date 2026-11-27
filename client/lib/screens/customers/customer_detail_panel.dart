@@ -9,6 +9,7 @@ import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/address_fields.dart';
 import '../../widgets/copy_button.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
@@ -72,7 +73,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _postal = TextEditingController();
-  final _notes = TextEditingController();
+  var _notes = FormattedNotesController();
   final _reason = TextEditingController();
 
   Map<String, dynamic>? _row;
@@ -100,10 +101,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _city,
     _state,
     _postal,
-    _notes,
   ];
 
-  String get _typed => _fields.map((c) => c.text).join('\u0000');
+  // Notes count by their markup, so bolding a word is an edit too.
+  String get _typed =>
+      [..._fields.map((c) => c.text), _notes.markup].join('\u0000');
 
   void _markDirty() {
     widget.dirty?.value = !_loading && _typed != _loaded;
@@ -114,7 +116,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
   @override
   void initState() {
     super.initState();
-    for (final c in _fields) {
+    for (final c in [..._fields, _notes]) {
       c.addListener(_markDirty);
     }
     _load();
@@ -220,7 +222,12 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     // the stored form and never sends the pretty one.
     _phone.text = formatPhoneNumber(row['phone'] as String?);
     _email.text = row['email'] as String? ?? '';
-    _notes.text = row['notes'] as String? ?? '';
+    // A new controller: formatting loads only through the constructor.
+    _notes
+      ..removeListener(_markDirty)
+      ..dispose();
+    _notes = FormattedNotesController(markup: row['notes'] as String?)
+      ..addListener(_markDirty);
 
     final address = row['address'] as Map<String, dynamic>? ?? const {};
     _line1.text = address['line1'] as String? ?? '';
@@ -246,7 +253,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       'city': _city.text.trim().isEmpty ? null : _city.text.trim(),
       'state': _state.text.trim().isEmpty ? null : _state.text.trim().toUpperCase(),
       'postal_code': _postal.text.trim().isEmpty ? null : _postal.text.trim(),
-      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
       'is_active': ?active,
     });
 
@@ -631,13 +638,13 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                     ),
                   ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _notes,
-                  decoration: const InputDecoration(labelText: 'Notes'),
-                  minLines: 2,
-                  maxLines: 5,
-                  enabled: editable,
-                ),
+                if (editable)
+                  FormattedNotesField(controller: _notes, minLines: 2)
+                else
+                  InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Notes'),
+                    child: FormattedNotesText(_notes.markup),
+                  ),
                 const SizedBox(height: 20),
                 if (row != null && _me.can('jobs.view')) ...[
                   _CustomerJobs(

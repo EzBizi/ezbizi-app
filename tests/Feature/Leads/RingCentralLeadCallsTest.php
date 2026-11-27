@@ -241,21 +241,21 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
-    /** Jose, 2026-10-16 (James Blanke, C-06974): a known customer's hang-up is Existing client, never spam. */
+    /** Jose, 2026-10-16 (James Barrow, C-06974): a known customer's hang-up is Existing client, never spam. */
     public function test_a_customers_hang_up_is_existing_client_not_spam(): void
     {
         $t = $this->setUpTenant();
 
         $this->inTenant($t['org'], function () use ($t) {
-            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Blanke', 'phone' => '(314) 409-1888']);
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Barrow', 'phone' => '(314) 555-0100']);
             app(RingCentralLeadCalls::class)->file([
-                self::rc('50', '+13144091888', now()->subMinutes(30)->toIso8601String(), queue: null,
+                self::rc('50', '+13145550100', now()->subMinutes(30)->toIso8601String(), queue: null,
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted']),
-                self::rc('51', '+13144091999', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
+                self::rc('51', '+13145550101', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
             ], self::LINES, $t['company']->id);
 
             $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
-            $this->assertSame(['+13144091888' => RingCentralLeadCalls::EXISTING_CLIENT, '+13144091999' => null], $tags);
+            $this->assertSame(['+13145550100' => RingCentralLeadCalls::EXISTING_CLIENT, '+13145550101' => null], $tags);
         });
     }
 
@@ -342,7 +342,7 @@ class RingCentralLeadCallsTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($t, $asLogged) {
             app(RingCentralLeadCalls::class)->file([
-                self::rc('97', '+17322757027', now()->subMinutes(3)->toIso8601String(), extra: $asLogged + ['live' => true]),
+                self::rc('97', '+17325550102', now()->subMinutes(3)->toIso8601String(), extra: $asLogged + ['live' => true]),
             ], self::LINES, $t['company']->id);
 
             $this->assertSame(RingCentralLeadCalls::IN_PROGRESS, Lead::query()->value('source_status'));
@@ -483,9 +483,9 @@ class RingCentralLeadCallsTest extends TestCase
         $t = $this->setUpTenant();
         $this->inTenant($t['org'], function () use ($t) {
             app(RingCentralLeadCalls::class)->file([
-                self::rc('98', '+16313106166', now()->subMinutes(30)->toIso8601String(), queue: null,
+                self::rc('98', '+16315550100', now()->subMinutes(30)->toIso8601String(), queue: null,
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted', 'duration' => 1]),
-                self::rc('99', '+16313106199', now()->subMinutes(30)->toIso8601String(),
+                self::rc('99', '+16315550101', now()->subMinutes(30)->toIso8601String(),
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'result' => 'Missed', 'duration' => 75]),
             ], self::LINES, $t['company']->id);
 
@@ -700,13 +700,13 @@ class RingCentralLeadCallsTest extends TestCase
         $ed = $this->inTenant($t['org'], fn () => Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']));
         $as = $this->signedInAs($t['admin']->fresh());
 
-        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855201', 'place' => 'company:'.$ed->id])->assertOk();
-        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855202', 'place' => 'company:01a0a0b8-5383-7315-9884-1524f0f2b81c'])
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => 'company:'.$ed->id])->assertOk();
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550101', 'place' => 'company:01a0a0b8-5383-7315-9884-1524f0f2b81c'])
             ->assertUnprocessable();
         $read = fn () => $this->inTenant($t['org'], fn () => (array) app(\App\Support\Settings\SettingsResolver::class)->get('leads.line_numbers', $t['org']));
-        $this->assertSame(['+17813855201' => 'company:'.$ed->id], $read());
+        $this->assertSame(['+17815550100' => 'company:'.$ed->id], $read());
 
-        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855201', 'place' => null])->assertOk();
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => null])->assertOk();
         $this->assertSame([], $read());
     }
 

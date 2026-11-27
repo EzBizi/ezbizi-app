@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leaderboard module</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-width:1080px}
+.opt{margin-bottom:40px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 10px;color:var(--mut);font-size:12.5px;max-width:1080px}
+.rec{color:var(--pri)}
+.pair{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.l{--cv:#f3f6f9;--sf:#ffffff;--tx:#16191c;--mt:#5b6670;--ln:#dde2e7;--sel:#d6eef5;--pr:#00708f;--good:#0a8a4a;--warn:#a86500;--trk:#e6ebef}
+.d{--cv:#0b0f14;--sf:#1a2027;--tx:#e8ecef;--mt:#9aa6b0;--ln:#2c343d;--sel:#123a47;--pr:#00aeef;--good:#4fd18b;--warn:#f0b357;--trk:#2c343d}
+.pane.wide{max-width:none;flex-basis:100%}
+.pane{flex:1 1 560px;min-width:0;max-width:760px;border-radius:12px;border:1px solid var(--ln);background:var(--cv);color:var(--tx);overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--ln);background:var(--sf)}
+.bar .t{font-weight:800;font-size:16px}
+.tabs{display:flex;gap:2px;margin-left:12px}
+.tab{padding:6px 12px;border-radius:16px;color:var(--mt);font-weight:600;font-size:12.5px}
+.tab.on{background:var(--sel);color:var(--tx)}
+.range{margin-left:auto;border:1px solid var(--ln);border-radius:8px;padding:5px 10px;font-size:12px;background:var(--sf);white-space:nowrap}
+.body{padding:14px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mt)}
+.rowp{display:flex;align-items:center;gap:12px;padding:9px 4px;border-top:1px solid var(--ln)}
+.rowp:first-of-type{border-top:0}
+.medal{width:30px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#16191c;flex:none}
+.m1{background:#f2c94c}.m2{background:#c9d1d8}.m3{background:#e0a46e}
+.av{width:32px;height:32px;border-radius:16px;background:#579bfc;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
+.nm{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{color:var(--mt);font-size:11.5px}
+.sc{margin-left:auto;text-align:right;flex:none}
+.sc b{font-size:18px}.sc span{color:var(--mt);font-size:11.5px}
+.me{background:var(--sel);border-color:var(--pr)}
+.me .big{font-size:26px;font-weight:800}
+.hint{color:var(--mt);font-size:12px;margin-top:4px}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}
+.tile{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:8px 10px;min-width:0}
+.tile .v{font-size:18px;font-weight:800}.tile .k{font-size:11px;color:var(--mt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chk{display:grid;grid-template-columns:minmax(0,1fr) 110px 34px;gap:8px;align-items:center;font-size:12px;margin:4px 0}
+.trk{height:6px;border-radius:3px;background:var(--trk);overflow:hidden}.trk i{display:block;height:100%;background:var(--pr)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.li{margin:2px 0;font-size:12.5px}
+.good{color:var(--good)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--mt);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--ln)}
+td{padding:6px;border-bottom:1px solid var(--ln);white-space:nowrap}
+.srch{display:flex;align-items:center;gap:6px;border:1px solid var(--ln);background:var(--sf);border-radius:8px;padding:6px 8px;color:var(--mt);margin-bottom:8px;font-size:12.5px}
+.chip{display:inline-block;border:1px solid var(--ln);border-radius:12px;padding:2px 8px;font-size:11px;margin-right:4px;color:var(--mt)}
+.chip.on{background:var(--sel);border-color:var(--pr);color:var(--tx)}
+.call{border-top:1px solid var(--ln);padding:8px 2px;font-size:12px}
+.call .tr{background:var(--cv);border-radius:8px;padding:8px;margin-top:6px;color:var(--mt);font-size:11.5px}
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:6px 0 0}
+.pc{flex:1;max-width:170px;text-align:center}
+.pc .av{margin:0 auto 6px;width:44px;height:44px;border-radius:22px;font-size:15px}
+.step{border-radius:10px 10px 0 0;margin-top:8px;display:flex;align-items:flex-start;justify-content:center;padding-top:8px;font-weight:800;font-size:20px;color:#16191c}
+.emp{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.emp .card{margin:0;font-size:12.5px}
+.emp b{display:block;margin-bottom:4px}
+.tag{font-size:11px;color:var(--mt);margin:0 0 6px;font-weight:600}
+.lbl{font-size:12px;color:var(--mut);margin:12px 0 6px;font-weight:600}
+/* phone */
+.phones{display:flex;gap:14px;flex-wrap:wrap}
+.phone{width:290px;height:600px;border:6px solid #2a2f35;border-radius:30px;overflow:hidden;display:flex;flex-direction:column;flex:none;background:var(--cv);color:var(--tx)}
+.phone .ab{padding:12px 12px 6px;font-weight:800;font-size:16px;background:var(--sf);display:flex;align-items:center}
+.phone .ab .range{font-size:11px;padding:3px 8px;font-weight:400}
+.phone .tabs{margin:0;padding:6px 10px 8px;background:var(--sf);border-bottom:1px solid var(--ln)}
+.phone .scr{flex:1;overflow:hidden;padding:10px}
+.phone .tiles{grid-template-columns:repeat(3,1fr)}
+.phone .rowp .av{display:none}.phone .sc b{font-size:16px}.phone .chk{grid-template-columns:minmax(0,1fr) 64px 30px;font-size:11.5px}.phone .rowp{gap:9px}
+.phone .nav{display:flex;justify-content:space-around;border-top:1px solid var(--ln);padding:8px 0 10px;font-size:10px;color:var(--mt);background:var(--sf)}
+.phone .nav b{color:var(--pr)}
+.theme-btn{position:fixed;top:12px;right:16px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:5px 12px;font:inherit;cursor:pointer;z-index:2}
+@media (max-width:700px){.theme-btn{position:static;margin-bottom:10px}.tiles{grid-template-columns:repeat(3,1fr)}.emp{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
+</style></head>
+<body>
+<button class="theme-btn" onclick="flip()">Page light / dark</button>
+<h1>212 · Leaderboard: a new main module with two tabs</h1>
+<p class="lead">Trey, approved by Jose (01a213ec, 01a213ed): <i>"a new Leaderboard Tab where it will only the top 3 performers, and the person who is entering the tab should also see their own rank … only the people who are marked for New Client Calls"</i> and <i>"another sub tab for their own Performance … only for that person's stuff, like their calls"</i>. Seen mostly by dispatchers. <b>Leaderboard</b> shows the top 3 by Reports › Scoring's score, among people marked New with enough scored calls, then <b>your own rank</b>; nothing else about anyone (no checks, strengths or conversion). <b>My performance</b> is your own Performance row, Scoring card, Grok reviews and calls. Both use the shared date bar (This month). Options 1–3 are desktop, each with its own empty states; 4–6 the same on a phone. The names are invented.</p>
+<div id="out"></div>
+<script>
+const TOP=[['Natalie Cruz','NC',9.1,42,'#579bfc'],['Adeline Ruiz','AR',8.7,37,'#00c875'],['Jennine Park','JP',8.4,51,'#fdab3d']];
+const ME={rank:6,of:11,score:7.6,calls:22};
+const E=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const bar=(tab,t='This month')=>`<div class="bar"><span class="t">Leaderboard</span><div class="tabs"><span class="tab ${tab==0?'on':''}">Leaderboard</span><span class="tab ${tab==1?'on':''}">My performance</span></div><span class="range">📅 ${t} ▾</span></div>`;
+/* Trey (3rd, approved): "from Sunday to Friday each week … start over on sunday, and you can check previous weeks winners". */
+const week=`<span class="range" style="display:flex;gap:10px;align-items:center"><b style="color:var(--mt)">‹</b><span><b>This week</b> · Sun Nov 22 – Fri Nov 27</span><b style="color:var(--mt);opacity:.4">›</b></span>`;
+const wbar=()=>`<div class="bar"><span class="t">Leaderboard</span><div class="tabs"><span class="tab on">Leaderboard</span><span class="tab">My performance</span></div><span style="margin-left:auto">${week}</span></div>`;
+const PAST=[['Nov 15 – 20','Adeline Ruiz',8.9,'Natalie Cruz','Jennine Park'],['Nov 8 – 13','Natalie Cruz',9.3,'Jennine Park','Adeline Ruiz'],['Nov 1 – 6','Natalie Cruz',8.8,'Marco Diaz','Adeline Ruiz']];
+const past=()=>`<div class="card"><h3>Past weeks</h3>${PAST.map(w=>`<div class="rowp"><span class="sub" style="width:84px;flex:none">${w[0]}</span><span class="medal m1" style="width:22px;height:22px;font-size:11px">1</span><div style="min-width:0"><div class="nm">${E(w[1])} <span class="sub">${w[2]}</span></div><div class="sub">2 ${E(w[3])} · 3 ${E(w[4])}</div></div><span class="sub" style="margin-left:auto">›</span></div>`).join('')}<div class="hint">A week opens with ‹ above, or by tapping it here. Sunday starts a new board.</div></div>`;
+const avatar=(p,size)=>`<span class="av" style="background:${p[4]}${size?';width:'+size+'px;height:'+size+'px;border-radius:'+size/2+'px':''}">${p[1]}</span>`;
+const rows=()=>TOP.map((p,i)=>`<div class="rowp"><span class="medal m${i+1}">${i+1}</span>${avatar(p)}<div style="min-width:0"><div class="nm">${E(p[0])}</div><div class="sub">${p[3]} calls scored</div></div><div class="sc"><b>${p[2]}</b><span> / 10</span></div></div>`).join('');
+const meCard=()=>`<div class="card me"><h3>You</h3><div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap"><span class="big">#${ME.rank}</span><span class="sub">of ${ME.of} ranked</span><span style="margin-left:auto"><b style="font-size:18px">${ME.score}</b><span class="sub"> / 10 · ${ME.calls} calls scored</span></span></div><div class="hint">Your calls and how they were scored are in My performance.</div></div>`;
+/* The four states a viewer can be in, in the option's own card. */
+const EMPTY=[
+ ['Not on New Client Calls','You are not ranked: only people who take New Client Calls are. Your manager marks that in Reports › Performance › People.','not_new'],
+ ['2 of 3 scored calls','One more scored call this month and you are on the board.','too_few_calls'],
+ ['Your calls are not linked yet','No phone-system name matches you, so your calls cannot be counted. Your manager links it in Reports › Performance › People.','not_matched'],
+ ['Nobody is ranked yet','No one has 3 scored calls this month. Try Last month.','nobody'],
+];
+const empties=(t)=>`<div class="pane ${t}" style="max-width:none;flex-basis:100%"><div class="body"><div class="tag">Empty states, where "You" would be (the top 3 stay when there are any)</div><div class="emp">${EMPTY.map(e=>`<div class="card"><b>${E(e[0])}</b><span class="sub">${E(e[1])}</span><div class="sub" style="margin-top:6px;opacity:.7">${e[2]}</div></div>`).join('')}</div></div></div>`;
+
+/* My performance, three arrangements */
+const TILES=[['Answered',128],['Outbound',64],['New client',41],['Booked new',23],['Booking rate','56%'],['Avg talk','3:42']];
+const tiles=()=>`<div class="tiles">${TILES.map(t=>`<div class="tile"><div class="v">${t[1]}</div><div class="k">${t[0]}</div></div>`).join('')}</div>`;
+const CHK=[['Greeted with the company name',96],['Asked for the address',88],['Offered a time',74],['Confirmed the booking',69],['Asked for a review',41]];
+const scoreCard=()=>`<div class="card"><h3>Score</h3><div style="display:flex;gap:18px;align-items:baseline;margin-bottom:6px"><span><b style="font-size:26px">${ME.score}</b><span class="sub"> / 10</span></span><span class="sub">AI call score 82 avg · ${ME.calls} calls</span></div>${CHK.map(c=>`<div class="chk"><span>${c[0]}</span><span class="trk"><i style="width:${c[1]}%"></i></span><span>${c[1]}%</span></div>`).join('')}<div class="two" style="margin-top:8px"><div><div class="sub">Strengths</div><div class="li good">✓ Warm, clear greeting</div><div class="li good">✓ Gets the address early</div></div><div><div class="sub">To improve</div><div class="li warn">• Offer two times, not "when works?"</div><div class="li warn">• Ask for the review at the end</div></div></div></div>`;
+const reviews=()=>`<div class="card"><h3>Grok reviews</h3><div class="li"><b>Today</b> <span class="sub">· 9 calls</span></div><div class="sub" style="margin-bottom:8px">Strong openings. Two callers asked for a price before booking; you held the price well and booked one.</div><div class="li"><b>This week</b> <span class="sub">· 47 calls</span></div><div class="sub">Booking rate up from 49% to 56%. Most missed bookings ended without a time offered.</div></div>`;
+const CALLS=[['Nov 25 2:14 PM','In','(860) 555-0142','New client','Booked','4:10'],['Nov 25 1:02 PM','In','(203) 555-0188','Existing','—','2:31'],['Nov 25 11:47 AM','Out','(475) 555-0119','New client','—','1:12'],['Nov 24 4:55 PM','In','(860) 555-0170','New client','Booked','5:02']];
+const calls=(n=4)=>`<div class="card"><h3>My calls</h3><div class="srch">🔍 Search by number or words</div><table><tr><th>Time</th><th>Dir</th><th>Caller</th><th>Outcome</th><th>Booked</th><th>Talk</th></tr>${CALLS.slice(0,n).map(c=>`<tr>${c.map((v,i)=>`<td${i==4&&v=='Booked'?' class="good"':''}>${v}</td>`).join('')}</tr>`).join('')}</table></div>`;
+const scored=()=>`<div class="card"><h3>My scored calls</h3><div style="margin-bottom:6px"><span class="chip on">Latest 3</span><span class="chip">Best</span><span class="chip">Worst</span></div><div class="call"><b>Nov 25 2:14 PM · (860) 555-0142 · 9/10</b> <span class="sub">▾ transcript</span><div class="tr">"Thank you for calling A-1 Chimney, this is … — I have Thursday at 10 or 2, which works better?"</div></div><div class="call"><b>Nov 25 11:47 AM · (475) 555-0119 · 6/10</b> <span class="sub">▸ transcript</span></div></div>`;
+
+const D1=[
+ t=>`${wbar()}<div class="body"><div class="card"><h3>Top 3 · New Client Calls · this week</h3>${rows()}</div>${meCard()}${past()}</div>`,
+ t=>`${bar(1)}<div class="body">${tiles()}<div class="two"><div>${scoreCard()}${reviews()}</div><div>${scored()}${calls(3)}</div></div></div>`,
+];
+const D2=[
+ t=>`${bar(0)}<div class="body"><div class="card"><h3>Top 3 · New Client Calls · this month</h3><div class="pod">${[1,0,2].map(i=>{const p=TOP[i];const h=[96,70,52][i];const c=['#f2c94c','#c9d1d8','#e0a46e'][i];return `<div class="pc">${avatar(p,44).replace('class="av"','class="av" ')}<div class="nm">${E(p[0])}</div><div class="sub">${p[2]} / 10 · ${p[3]} calls</div><div class="step" style="height:${h}px;background:${c}">${i+1}</div></div>`}).join('')}</div></div>${meCard()}</div>`,
+ t=>`${bar(1)}<div class="body">${tiles()}${scoreCard()}${reviews()}${calls(4)}${scored()}</div>`,
+];
+const D3=[
+ t=>`${bar(0)}<div class="body"><div class="card"><h3>New Client Calls · this month</h3>${rows()}<div class="rowp" style="justify-content:center;color:var(--mt)">⋯</div><div class="rowp" style="background:var(--sel);border-radius:8px"><span class="medal" style="background:transparent;color:var(--tx)">#6</span><span class="av" style="background:#0b6e8a">ME</span><div><div class="nm">You</div><div class="sub">${ME.calls} calls scored · of ${ME.of}</div></div><div class="sc"><b>${ME.score}</b><span> / 10</span></div></div></div></div>`,
+ t=>`${bar(1)}<div class="body"><div style="margin-bottom:10px"><span class="chip on">Overview</span><span class="chip">Calls</span><span class="chip">Reviews</span></div>${tiles()}${scoreCard()}</div>`,
+];
+const desk=(D)=>['l','d'].map(t=>`<div class="pane ${t}">${D[0](t)}</div>`).join('')+['l','d'].map(t=>`<div class="pane ${t} wide">${D[1](t)}</div>`).join('')+empties('l');
+
+/* phones */
+const pbar=(tab,k)=>`<div class="ab">Leaderboard${k==0&&tab==0?'':'<span class="range" style="margin-left:auto">This month ▾</span>'}</div><div class="tabs"><span class="tab ${tab==0?'on':''}">Leaderboard</span><span class="tab ${tab==1?'on':''}">My performance</span></div>`;
+const nav=`<div class="nav"><span>Home</span><b>Leaderboard</b><span>Jobs</span><span>Leads</span><span>More</span></div>`;
+const phone=(t,inner,tab,k)=>`<div class="phone ${t}">${pbar(tab,k)}<div class="scr">${inner}</div>${nav}</div>`;
+const P=[
+ [`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px"><b style="color:var(--mt)">‹</b><span><b>This week</b> <span class="sub">Nov 22 – 27</span></span><b style="color:var(--mt);opacity:.4">›</b></div><div class="card"><h3>Top 3</h3>${rows()}</div>${meCard()}${past()}`, `${tiles()}${scoreCard()}`],
+ [`<div class="card"><div class="pod">${[1,0,2].map(i=>{const p=TOP[i];const h=[70,52,40][i];const c=['#f2c94c','#c9d1d8','#e0a46e'][i];return `<div class="pc">${avatar(p,36)}<div class="nm" style="font-size:11.5px">${E(p[0].split(' ')[0])}</div><div class="sub">${p[2]}</div><div class="step" style="height:${h}px;background:${c};font-size:16px">${i+1}</div></div>`}).join('')}</div></div>${meCard()}`, `${tiles()}${reviews()}`],
+ [`<div class="card">${rows()}<div class="rowp" style="justify-content:center;color:var(--mt)">⋯</div><div class="rowp" style="background:var(--sel);border-radius:8px"><span class="medal" style="background:transparent;color:var(--tx)">#6</span><div><div class="nm">You</div><div class="sub">${ME.calls} calls</div></div><div class="sc"><b>${ME.score}</b></div></div></div>`, `<div style="margin-bottom:8px"><span class="chip on">Overview</span><span class="chip">Calls</span><span class="chip">Reviews</span></div>${tiles()}${scoreCard()}`],
+];
+const phones=(k)=>`<div class="phones">${phone('l',P[k][0],0,k)}${phone('l',P[k][1],1,k)}${phone('d',P[k][0],0,k)}${phone('d',P[k][1],1,k)}</div>`;
+const OPTS=[
+ ['1 · Ranked card, then You; My performance in two columns',' (recommended)','Leaderboard runs <b>Sunday to Friday</b> and starts over every Sunday (Trey, 3rd item): a week stepper ‹ This week · Sun Nov 22 – Fri Nov 27 › replaces the date bar on this tab, and <b>Past weeks</b> lists each earlier week\'s winner with 2nd and 3rd; tapping one opens that week\'s board. One card with the top 3 as rows (medal, avatar, name, score out of 10, calls scored), then a <b>You</b> card in the selected tint with your rank of how many and your score. My performance: the six Performance numbers as equal tiles across the top, then Score (checks, strengths, to improve) and Grok reviews on the left, your scored calls (Latest 3 · Best · Worst, transcript in place) and your calls (searchable) on the right. Everything on one page, nothing behind a click but a transcript.',desk(D1)],
+ ['2 · A podium, and My performance as one column','','The top 3 on a podium (2 · 1 · 3), then You. More of a "board" feel; the podium needs 3 people, so with 1 or 2 ranked it has gaps. My performance stacks tiles, Score, reviews, calls, scored calls in one column: simple, but long on a wide screen.',desk(D2)],
+ ['3 · One list with You as its last row; My performance in inner tabs','','The top 3, a "⋯", then your own row in the same list, so the gap between you and 3rd is the picture. My performance splits into Overview · Calls · Reviews chips: shorter pages, but the calls and the reviews are a click away from the score they explain.',desk(D3)],
+ ['4 · Phone: option 1',' (recommended)','The same cards full width; the tiles three to a row; My performance scrolls Score, reviews, scored calls, calls. Shown light and dark, both tabs.',phones(0)],
+ ['5 · Phone: option 2','','Podium with first names; then You.',phones(1)],
+ ['6 · Phone: option 3','','One list with You at the end; My performance in chips.',phones(2)],
+];
+document.getElementById('out').innerHTML=OPTS.map(([h,r,p,b])=>`<section class="opt"><h2>${h}<span class="rec">${r}</span></h2><p>${p}</p><div class="pair">${b}</div></section>`).join('');
+function flip(){const d=document.documentElement;const dark=d.dataset.theme?d.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'}
+</script>
+</body></html>

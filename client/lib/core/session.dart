@@ -1026,6 +1026,15 @@ class Me {
   /// How wide the expanded sidebar is. Clamped on read as well as on write:
   /// a stored value from an older build, or one the server has since tightened
   /// the bounds on, must not be able to render an unusable shell.
+  /// The desktop apps' zoom as a factor (1.0 = 100%); the server bounds it
+  /// to 50–200% and this clamps again, for a value from an older build.
+  double get zoom {
+    final stored = preferences['appearance.zoom'];
+    final value = stored is num ? stored.toDouble() : 100.0;
+
+    return value.clamp(50.0, 200.0) / 100;
+  }
+
   double get navigationWidth {
     final stored = preferences['navigation.width'];
     final value = stored is num ? stored.toDouble() : 220.0;
@@ -1071,6 +1080,9 @@ class Me {
   /// "default should be 30 - 70"), and the people list's width on HR →
   /// Records. Preferences, so leaving the tab does not reset them.
   double get leadsListShare => _width('leads.list_percent', 30, 15, 70) / 100;
+
+  /// Chat's list pane, dragged on its divider (Chat, 2026-11-25).
+  double get chatListWidth => _width('chat.list_width', 400, 300, 640);
 
   double get hrRecordsListWidth =>
       _width('hr.records.list_width', 300, 240, 900);

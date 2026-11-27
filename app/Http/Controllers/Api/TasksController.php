@@ -288,6 +288,25 @@ class TasksController extends Controller
         return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
     }
 
+    /** POST tasks/{task}/archive: Monday's Archive item. */
+    public function archive(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('delete', $task);
+        $this->writer->archive($task, $request->user());
+
+        return response()->json(['data' => ['archived' => true]]);
+    }
+
+    /** GET task-boards/{board}/archived: the board's Archive, newest first, each restorable. */
+    public function archived(Request $request, \App\Models\TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+
+        return response()->json(['data' => Task::onlyTrashed()->where('board_id', $taskBoard->id)->whereNotNull('archived_at')->whereNull('parent_task_id')
+            ->orderByDesc('archived_at')->limit(500)->get(['id', 'title', 'archived_at', 'group_id'])
+            ->map(fn (Task $t) => ['id' => $t->id, 'title' => $t->title, 'archived_at' => $t->archived_at?->toIso8601String(), 'group_id' => $t->group_id])->all()]);
+    }
+
     /**
      * POST tasks/bulk {ids, op: move|copy|delete|status|assign, group_id?, status?, assignee_user_id?}.
      * Each task is checked on its own; one refused does not stop the rest.
@@ -297,7 +316,9 @@ class TasksController extends Controller
         $input = $request->validate([
             'ids' => ['required', 'array', 'min:1', 'max:200'],
             'ids.*' => ['uuid'],
-            'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign'])],
+            'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign', 'archive', 'values'])],
+            // Row 69: Monday's bulk "Set column value": {column id: value}.
+            'values' => [Rule::requiredIf($request->input('op') === 'values'), 'array'],
             'group_id' => [Rule::requiredIf(in_array($request->input('op'), ['move', 'copy'], true)), 'nullable', 'uuid'],
             // A board's own statuses go by id, as one task's PATCH does; a
             // status key still works (bulk Status sent the id as a key and every
@@ -313,7 +334,7 @@ class TasksController extends Controller
 
         foreach (array_values(array_unique($input['ids'])) as $id) {
             $task = Task::query()->find($id);
-            $ability = $input['op'] === 'copy' ? 'view' : ($input['op'] === 'delete' ? 'delete' : 'update');
+            $ability = $input['op'] === 'copy' ? 'view' : (in_array($input['op'], ['delete', 'archive'], true) ? 'delete' : 'update');
             if ($task === null || ! $user->can($ability, $task)) {
                 $refused[] = ['id' => $id, 'reason' => 'You cannot change that task.'];
 
@@ -324,6 +345,8 @@ class TasksController extends Controller
                     'move' => $this->writer->move($task, $group, null, $user),
                     'copy' => $this->writer->copy($task, $group, $user),
                     'delete' => $this->writer->delete($task, $user),
+                    'archive' => $this->writer->archive($task, $user),
+                    'values' => $this->writer->update($task->load('board'), ['values' => $input['values']], $user),
                     'status' => $this->writer->update($task, isset($input['status_id'])
                         ? ['status_id' => $input['status_id']] : ['status' => $input['status']], $user),
                     'assign' => $this->writer->update($task, ['assignee_user_id' => $input['assignee_user_id'] ?? null], $user),
@@ -546,6 +569,9 @@ class TasksController extends Controller
         $likes = array_values((array) ($update->likes ?? []));
         $likes = in_array($me, $likes, true) ? array_values(array_diff($likes, [$me])) : [...$likes, $me];
         $update->forceFill(['likes' => $likes ?: null])->saveQuietly();
+        if (in_array($me, $likes, true)) {
+            \App\Support\Tasks\TaskWriter::tellReaction($update, $request->user());
+        }
 
         return response()->json(['data' => ['likes' => count($likes), 'liked' => in_array($me, $likes, true)]]);
     }

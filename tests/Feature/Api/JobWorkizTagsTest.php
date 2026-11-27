@@ -41,6 +41,7 @@ class JobWorkizTagsTest extends TestCase
             ->assertJsonPath('data.workiz_tags', [
                 ['name' => 'DEPOSIT RECEIVED', 'colour' => '#D574E4'],
                 ['name' => 'FOLLOW UP', 'colour' => '#E18A2B'],
+                ['name' => 'PROJECT', 'colour' => '#3D1C8B'], // always offered (Jose 2026-11-25)
             ])
             ->assertJsonPath('data.tag_colours', ['Deposit Received' => '#D574E4'])
             // The Notes tab shows Workiz's notes, read only (Jose, 2026-11-10).

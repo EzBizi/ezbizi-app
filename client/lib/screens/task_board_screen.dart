@@ -38,6 +38,7 @@ import 'task_board_gallery.dart';
 import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/mention_field.dart';
 import '../widgets/open_destination.dart';
 import 'task_board_move.dart';
@@ -1016,9 +1017,140 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (mounted) await _load();
       case 'delete':
         await _delete([id]);
+      case 'archive':
+        // Monday's Archive item (row 69): off the board into its Archive, restorable.
+        final res = await widget.api.post('/tasks/$id/archive', const {});
+        if (!mounted) return;
+        if (!res.ok) return _say(res.reason);
+        _say('Archived; restore it from the board menu › Archived items');
+        await _load();
+      case 'top':
+        await widget.api.patch('/tasks/$id/move', {
+          'group_id': t['group_id'],
+          'position': 0,
+        });
+        if (mounted) await _load();
       case 'sensitive':
         await _toggleSensitive(t);
     }
+  }
+
+  /// The board's Archive (row 69): archived tasks, newest first, each restorable.
+  Future<void> _archivedItems() async {
+    final res = await widget.api.get('/task-boards/${_board!['id']}/archived');
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final rows = (res.data as List? ?? const []).whereType<Map>().toList();
+    await showSidePanel<void>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Archived items',
+        child: rows.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Nothing archived on this board.'),
+              )
+            : ListView(
+                key: const Key('tasks-archived-list'),
+                shrinkWrap: true,
+                children: [
+                  for (final r in rows)
+                    ListTile(
+                      dense: true,
+                      title: Text('${r['title']}'),
+                      subtitle: Text(
+                        formatStamp(
+                          '${r['archived_at']}',
+                          '',
+                          formats: _formats,
+                        ),
+                      ),
+                      trailing: TextButton(
+                        key: ValueKey('task-restore-${r['id']}'),
+                        onPressed: () async {
+                          final ok = await widget.api.post(
+                            '/tasks/${r['id']}/restore',
+                            const {},
+                          );
+                          if (!panel.mounted) return;
+                          Navigator.of(panel).pop();
+                          if (!ok.ok) return _say(ok.reason);
+                          _say('${r['title']} restored');
+                          await _load();
+                        },
+                        child: const Text('Restore'),
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Monday's bulk "Set column value" (row 69): one column, one value, every picked task.
+  Future<Map<String, Object?>?> _pickColumnValue() async {
+    final columns = boardColumns(_board)
+        .where(
+          (c) => !const {
+            'formula',
+            'mirror',
+            'files',
+            'last_updated',
+            'creation_log',
+          }.contains(c.type),
+        )
+        .toList();
+    if (columns.isEmpty) return null;
+    BoardColumn column = columns.first;
+    Object? value;
+    return showSidePanel<Map<String, Object?>>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (context, set) => SidePanel(
+          title: 'Set column value',
+          actions: [
+            FilledButton(
+              key: const Key('bulk-values-go'),
+              onPressed: () => Navigator.of(panel).pop({column.id: value}),
+              child: const Text('Set'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownMenu<String>(
+                key: const Key('bulk-values-column'),
+                initialSelection: column.id,
+                enableFilter: true,
+                requestFocusOnTap: true,
+                label: const Text('Column'),
+                expandedInsets: EdgeInsets.zero,
+                dropdownMenuEntries: [
+                  for (final c in columns)
+                    DropdownMenuEntry(value: c.id, label: c.name),
+                ],
+                onSelected: (id) => set(() {
+                  column = columns.firstWhere((c) => c.id == id);
+                  value = null;
+                }),
+              ),
+              const SizedBox(height: 12),
+              ColumnEditor(
+                key: ValueKey('bulk-values-editor-${column.id}'),
+                api: widget.api,
+                column: column,
+                value: value,
+                people: _people,
+                formats: _formats,
+                framed: true,
+                onChanged: (v) => value = v,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Mark: anyone who can edit it. Unmark opens everything, so the server
@@ -1079,6 +1211,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 item('duplicate', 'Duplicate', Icons.copy_all_outlined),
                 item('status', 'Set status…', Icons.flag_outlined),
                 item('assign', 'Assign…', Icons.person_add_alt),
+                item('values', 'Set column value…', Icons.edit_note),
+                item('archive', 'Archive', Icons.archive_outlined),
                 item('delete', 'Delete', Icons.delete_outline),
               ],
               item('clear', 'Clear selection', Icons.close),
@@ -1093,7 +1227,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 item('duplicate', 'Duplicate', Icons.copy_all_outlined),
                 item('below', 'Create new task below', Icons.add),
                 item('subtask', 'Add subtask', Icons.subdirectory_arrow_right),
+                item('top', 'Move to top', Icons.vertical_align_top),
                 const PopupMenuDivider(),
+                item('archive', 'Archive', Icons.archive_outlined),
                 item('delete', 'Delete', Icons.delete_outline),
               ],
             ],
@@ -1175,7 +1311,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             taskIsSensitive(t) ? 'Unmark sensitive' : 'Mark sensitive',
           ),
         ),
-      if (_canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      if (_canEdit) ...[
+        const PopupMenuItem(value: 'top', child: Text('Move to top')),
+        const PopupMenuItem(value: 'archive', child: Text('Archive')),
+        const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ],
     ],
   );
 
@@ -1205,6 +1345,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     switch (op) {
       case 'delete':
         return _delete(ids);
+      case 'archive':
+        break;
+      case 'values':
+        final values = await _pickColumnValue();
+        if (values == null) return;
+        extra = {'values': values};
       case 'duplicate':
         for (final id in ids) {
           await widget.api.post('/tasks/$id/copy', const {});
@@ -1293,7 +1439,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               ('duplicate', 'Duplicate'),
               ('status', 'Status'),
               ('assign', 'Assign'),
+              ('values', 'Set value'),
               ('export', 'Export'),
+              ('archive', 'Archive'),
               ('delete', 'Delete'),
             ])
               TextButton(
@@ -1645,69 +1793,280 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     await _load();
   }
 
+  /// Monday's group colours, the same 20 (Jose 11-25: change a group's colour).
+  static const mondayGroupColours = [
+    '#037f4c',
+    '#00c875',
+    '#9cd326',
+    '#cab641',
+    '#ffcb00',
+    '#784bd1',
+    '#a25ddc',
+    '#0086c0',
+    '#579bfc',
+    '#66ccff',
+    '#bb3354',
+    '#df2f4a',
+    '#ff007f',
+    '#ff5ac4',
+    '#ff642e',
+    '#fdab3d',
+    '#7f5347',
+    '#c4c4c4',
+    '#757575',
+    '#333333',
+  ];
+
+  Future<void> _groupCall(Future<ApiResponse> call, {String? done}) async {
+    final res = await call;
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    if (done != null) _say(done);
+    await _load();
+  }
+
+  /// A new group just above or below [id], named "New Group" and open to rename.
+  Future<void> _groupBeside(String id, {required bool below}) async {
+    final at = _groupIndex(id) + (below ? 1 : 0);
+    final res = await widget.api.post(_groupsPath, {
+      'name': 'New Group',
+      'position': at < 0 ? 0 : at,
+    });
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    await _load();
+    if (!mounted) return;
+    setState(() {
+      _naming = (res.data as Map?)?['id'] as String?;
+      _groupName.text = 'New Group';
+    });
+  }
+
   Widget _groupMenu(_Json group, int tasks) {
     final id = group['id'] as String;
     final others = [
       for (final g in _groups(_board!))
         if (g['id'] != null && g['id'] != id) g,
     ];
+    final shownIds = [
+      for (final g in _groups(_board!))
+        if (g['id'] != null) g['id'] as String?,
+    ];
+    final mine = [
+      for (final t in _tasks)
+        if (t['group_id'] == id) t['id'] as String,
+    ];
+    final elsewhere = [
+      for (final b in _boards)
+        if (b['id'] != _board?['id'] && b['can_edit'] == true) b,
+    ];
+    final controller = MenuController();
     return MenuAnchor(
+      controller: controller,
       menuChildren: [
+        // Monday's group menu, in its order (Jose 11-25: every setting).
         MenuItemButton(
-          key: ValueKey('group-rename-$id'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => setState(() {
-            _naming = id;
-            _groupName.text = '${group['name']}';
-          }),
-          child: const Text('Rename'),
+          key: ValueKey('group-collapse-$id'),
+          leadingIcon: const Icon(Icons.unfold_less, size: 18),
+          onPressed: () => setState(
+            () => _folded.contains(id) ? _folded.remove(id) : _folded.add(id),
+          ),
+          child: Text(
+            _folded.contains(id) ? 'Expand this group' : 'Collapse this group',
+          ),
         ),
+        MenuItemButton(
+          key: ValueKey('group-collapse-all-$id'),
+          leadingIcon: const Icon(Icons.unfold_less_double, size: 18),
+          onPressed: () => setState(() => _folded.addAll(shownIds)),
+          child: const Text('Collapse all groups'),
+        ),
+        MenuItemButton(
+          key: ValueKey('group-expand-all-$id'),
+          leadingIcon: const Icon(Icons.unfold_more_double, size: 18),
+          onPressed: () => setState(_folded.clear),
+          child: const Text('Expand all groups'),
+        ),
+        const Divider(height: 1),
+        MenuItemButton(
+          key: ValueKey('group-select-all-$id'),
+          leadingIcon: const Icon(Icons.check_box_outlined, size: 18),
+          onPressed: mine.isEmpty
+              ? null
+              : () => setState(() => _picked.addAll(mine)),
+          child: const Text('Select all items'),
+        ),
+        if (_canEdit) ...[
+          MenuItemButton(
+            key: ValueKey('group-add-above-$id'),
+            leadingIcon: const Icon(Icons.vertical_align_top, size: 18),
+            onPressed: () => _groupBeside(id, below: false),
+            child: const Text('Add group above'),
+          ),
+          MenuItemButton(
+            key: ValueKey('group-add-below-$id'),
+            leadingIcon: const Icon(Icons.vertical_align_bottom, size: 18),
+            onPressed: () => _groupBeside(id, below: true),
+            child: const Text('Add group below'),
+          ),
+          SubmenuButton(
+            key: ValueKey('group-duplicate-$id'),
+            leadingIcon: const Icon(Icons.copy_outlined, size: 18),
+            menuChildren: [
+              for (final (items, label) in const [
+                (true, 'With items'),
+                (false, 'Without items'),
+              ])
+                MenuItemButton(
+                  key: ValueKey('group-duplicate-$id-$items'),
+                  onPressed: () => _groupCall(
+                    widget.api.post('$_groupsPath/$id/duplicate', {
+                      'with_items': items,
+                    }),
+                  ),
+                  child: Text(label),
+                ),
+            ],
+            child: const Text('Duplicate this group'),
+          ),
+          if (elsewhere.isNotEmpty)
+            SubmenuButton(
+              key: ValueKey('group-move-board-$id'),
+              leadingIcon: const Icon(Icons.drive_file_move_outline, size: 18),
+              menuChildren: [
+                for (final b in elsewhere)
+                  MenuItemButton(
+                    key: ValueKey('group-move-board-$id-${b['id']}'),
+                    onPressed: () => _groupCall(
+                      widget.api.post('$_groupsPath/$id/move', {
+                        'board_id': b['id'],
+                      }),
+                      done: 'Moved to ${b['name']}',
+                    ),
+                    child: Text('${b['name']}'),
+                  ),
+              ],
+              child: const Text('Move to board'),
+            ),
+          const Divider(height: 1),
+          MenuItemButton(
+            key: ValueKey('group-rename-$id'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => setState(() {
+              _naming = id;
+              _groupName.text = '${group['name']}';
+            }),
+            child: const Text('Rename group'),
+          ),
+          SubmenuButton(
+            key: ValueKey('group-colour-$id'),
+            leadingIcon: const Icon(Icons.palette_outlined, size: 18),
+            menuChildren: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: SizedBox(
+                  width: 5 * 30,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final hex in mondayGroupColours)
+                        InkWell(
+                          key: ValueKey('group-colour-$id-$hex'),
+                          onTap: () {
+                            controller.close();
+                            _groupCall(
+                              widget.api.patch('$_groupsPath/$id', {
+                                'colour': hex,
+                              }),
+                            );
+                          },
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: ColourField.parse(hex),
+                              shape: BoxShape.circle,
+                              border: group['colour'] == hex
+                                  ? Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                                      width: 2,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            child: const Text('Change group color'),
+          ),
+        ],
         MenuItemButton(
           key: ValueKey('group-export-$id'),
           leadingIcon: const Icon(Icons.download_outlined, size: 18),
           onPressed: () => _export(groupId: id),
           child: const Text('Export to Excel'),
         ),
-        // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
-        MenuItemButton(
-          key: ValueKey('group-up-$id'),
-          leadingIcon: const Icon(Icons.arrow_upward, size: 18),
-          onPressed: _groupIndex(id) <= 0 ? null : () => _moveGroup(id, -1),
-          child: const Text('Move up'),
-        ),
-        MenuItemButton(
-          key: ValueKey('group-down-$id'),
-          leadingIcon: const Icon(Icons.arrow_downward, size: 18),
-          onPressed:
-              _groupIndex(id) >=
-                  _groups(_board!).where((g) => g['id'] != null).length - 1
-              ? null
-              : () => _moveGroup(id, 1),
-          child: const Text('Move down'),
-        ),
-        if (tasks == 0)
+        if (_canEdit) ...[
+          // Order (Jose 11-19: groups could not be reordered); saved for the board, and on Monday.
           MenuItemButton(
-            key: ValueKey('group-delete-$id'),
-            leadingIcon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: () => _deleteGroup(id),
-            child: const Text('Delete group'),
-          )
-        else if (others.isNotEmpty)
-          SubmenuButton(
-            key: ValueKey('group-delete-$id'),
-            leadingIcon: const Icon(Icons.delete_outline, size: 18),
-            menuChildren: [
-              for (final g in others)
-                MenuItemButton(
-                  key: ValueKey('group-delete-$id-to-${g['id']}'),
-                  onPressed: () => _deleteGroup(id, moveTo: g['id'] as String),
-                  child: Text('${g['name']}'),
-                ),
-            ],
-            child: Text(
-              'Delete, moving its ${tasks == 1 ? 'task' : '$tasks tasks'} to',
-            ),
+            key: ValueKey('group-up-$id'),
+            leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+            onPressed: _groupIndex(id) <= 0 ? null : () => _moveGroup(id, -1),
+            child: const Text('Move up'),
           ),
+          MenuItemButton(
+            key: ValueKey('group-down-$id'),
+            leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+            onPressed:
+                _groupIndex(id) >=
+                    _groups(_board!).where((g) => g['id'] != null).length - 1
+                ? null
+                : () => _moveGroup(id, 1),
+            child: const Text('Move down'),
+          ),
+          const Divider(height: 1),
+          if (others.isNotEmpty)
+            MenuItemButton(
+              key: ValueKey('group-archive-$id'),
+              leadingIcon: const Icon(Icons.archive_outlined, size: 18),
+              onPressed: () => _groupCall(
+                widget.api.post('$_groupsPath/$id/archive', const {}),
+                done:
+                    '${group['name']} archived; restore it from the board menu',
+              ),
+              child: const Text('Archive group'),
+            ),
+          if (tasks == 0)
+            MenuItemButton(
+              key: ValueKey('group-delete-$id'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: () => _deleteGroup(id),
+              child: const Text('Delete group'),
+            )
+          else if (others.isNotEmpty)
+            SubmenuButton(
+              key: ValueKey('group-delete-$id'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              menuChildren: [
+                for (final g in others)
+                  MenuItemButton(
+                    key: ValueKey('group-delete-$id-to-${g['id']}'),
+                    onPressed: () =>
+                        _deleteGroup(id, moveTo: g['id'] as String),
+                    child: Text('${g['name']}'),
+                  ),
+              ],
+              child: Text(
+                'Delete, moving its ${tasks == 1 ? 'task' : '$tasks tasks'} to',
+              ),
+            ),
+        ],
       ],
       builder: (context, menu, _) => IconButton(
         key: ValueKey('group-menu-$id'),
@@ -1854,6 +2213,104 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           },
         ),
       ],
+    ),
+  );
+
+  /// The values a rule on [field] holds now (a list for labels and people).
+  Set<String> _ruleValues(String field) {
+    final r = _filter.filters.where((r) => r.field == field).firstOrNull;
+    final v = r?.value;
+    return v is List ? {for (final x in v) '$x'} : (v == null ? {} : {'$v'});
+  }
+
+  /// A chip toggled: labels and people keep several values ("is any of"); a text one value.
+  void _toggleQuick(String field, String value) {
+    final kind = _filterFields[field]?.kind;
+    final multi = kind == 'options' || kind == 'people';
+    final now = _ruleValues(field);
+    final next = now.contains(value)
+        ? (now..remove(value))
+        : (multi ? (now..add(value)) : {value});
+    setState(
+      () => _filter = _filter.copyWith(
+        filters: [
+          for (final r in _filter.filters)
+            if (r.field != field) r,
+          if (next.isNotEmpty)
+            (
+              field: field,
+              op: 'is',
+              value: multi
+                  ? next.toList()
+                  : (kind == 'checkbox' ? next.first == 'true' : next.first),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quickFilters() => showSidePanel<void>(
+    context,
+    builder: (panel) => StatefulBuilder(
+      builder: (context, set) {
+        final all = _tasks.where((t) => t['parent_task_id'] == null).length;
+        final shown = _shownTasks
+            .where((t) => t['parent_task_id'] == null)
+            .length;
+        final theme = Theme.of(context);
+        return SidePanel(
+          title: 'Quick filters',
+          subtitle: 'Showing $shown of $all',
+          actions: [
+            TextButton(
+              key: const Key('quick-clear'),
+              onPressed: _filter.filters.isEmpty
+                  ? null
+                  : () {
+                      setState(
+                        () => _filter = _filter.copyWith(filters: const []),
+                      );
+                      set(() {});
+                    },
+              child: const Text('Clear all'),
+            ),
+          ],
+          child: ListView(
+            key: const Key('quick-filters'),
+            shrinkWrap: true,
+            children: [
+              for (final f in _filterFields.entries)
+                if (_valuesIn(f.key).isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                    child: Text(
+                      f.value.label,
+                      style: theme.textTheme.labelLarge,
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final (v, label) in _valuesIn(f.key))
+                        FilterChip(
+                          key: ValueKey('quick-${f.key}-$v'),
+                          selected: _ruleValues(f.key).contains(v),
+                          label: Text(
+                            '$label · ${_tasks.where((t) => t['parent_task_id'] == null && _valueOf(f.key, t) == v).length}',
+                          ),
+                          onSelected: (_) {
+                            _toggleQuick(f.key, v);
+                            set(() {});
+                          },
+                        ),
+                    ],
+                  ),
+                ],
+            ],
+          ),
+        );
+      },
     ),
   );
 
@@ -2511,29 +2968,71 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             unawaited(_closeDock()),
       },
       child: Focus(
-        child: SizedBox(
-          key: const Key('task-dock'),
-          width: 440,
-          child: _TaskPanel(
-            key: ValueKey('task-dock-${task['id']}-$_dockUpdatesOnly'),
-            api: widget.api,
-            formats: _formats,
-            taskId: task['id'] as String,
-            board: _board!,
-            where: '${group['name']}',
-            people: _people,
-            unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
-            subtasks: _subtasksOf(task),
-            saves: _dockSaves,
-            updatesOnly: _dockUpdatesOnly,
-            focusUpdate: _dockFocusUpdate,
-            docked: true,
-            onClose: () => unawaited(_closeDock()),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Kimberly 11-25 (Monday's): drag the edge; the width is kept per person.
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                key: const Key('task-dock-edge'),
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) => setState(
+                  () => _dockDrag = (_dockWidth - d.delta.dx).clamp(
+                    dockMinWidth,
+                    _dockMaxWidth,
+                  ),
+                ),
+                onHorizontalDragEnd: (_) {
+                  final w = _dockDrag;
+                  if (w == null) return;
+                  widget.session.setPreference(
+                    'task_board.panel_width',
+                    w.roundToDouble(),
+                  );
+                  setState(() => _dockDrag = null);
+                },
+                child: const SizedBox(width: 6, height: double.infinity),
+              ),
+            ),
+            SizedBox(
+              key: const Key('task-dock'),
+              width: _dockWidth,
+              child: _TaskPanel(
+                key: ValueKey('task-dock-${task['id']}-$_dockUpdatesOnly'),
+                api: widget.api,
+                formats: _formats,
+                taskId: task['id'] as String,
+                board: _board!,
+                where: '${group['name']}',
+                people: _people,
+                unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
+                subtasks: _subtasksOf(task),
+                saves: _dockSaves,
+                updatesOnly: _dockUpdatesOnly,
+                focusUpdate: _dockFocusUpdate,
+                docked: true,
+                narrow: _dockWidth < 420,
+                onClose: () => unawaited(_closeDock()),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  /// The docked panel's width: while dragged, the drag; else the saved one; else 380.
+  static const dockMinWidth = 320.0;
+  double? _dockDrag;
+  double get _dockMaxWidth =>
+      (MediaQuery.sizeOf(context).width * 0.6).clamp(dockMinWidth, 900.0);
+  double get _dockWidth =>
+      (_dockDrag ??
+              (widget.session.me?.preferences['task_board.panel_width'] as num?)
+                  ?.toDouble() ??
+              380.0)
+          .clamp(dockMinWidth, _dockMaxWidth);
 
   @override
   Widget build(BuildContext context) =>
@@ -2962,7 +3461,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Widget _toolbar(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
     final toolbar = _board == null ? null : _listToolbar();
-    final actions = toolbar?.actions(context) ?? const <ListToolbarAction>[];
+    final actions = [
+      ...?toolbar?.actions(context),
+      // Monday's quick filters (row 69): each column's values as chips with counts.
+      if (_board != null)
+        (
+          key: 'quick',
+          icon: Icons.bolt_outlined,
+          label: 'Quick filters',
+          count: 0,
+          onTap: _quickFilters,
+        ),
+    ];
     MenuItemButton actionItem(ListToolbarAction a) => MenuItemButton(
       key: ValueKey('tasks-more-${a.key}'),
       leadingIcon: Icon(a.icon, size: 18),
@@ -3509,6 +4019,32 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onPressed: _export,
         child: const Text('Export to Excel'),
       ),
+      MenuItemButton(
+        key: const Key('tasks-archived-items'),
+        leadingIcon: const Icon(Icons.archive_outlined, size: 18),
+        onPressed: _archivedItems,
+        child: const Text('Archived items'),
+      ),
+      // Row 69: Monday's archived groups, each restorable with its tasks.
+      if (_canEdit &&
+          (board['archived_groups'] as List? ?? const []).isNotEmpty)
+        SubmenuButton(
+          key: const Key('tasks-archived-groups'),
+          leadingIcon: const Icon(Icons.inventory_2_outlined, size: 18),
+          menuChildren: [
+            for (final g in (board['archived_groups'] as List).whereType<Map>())
+              MenuItemButton(
+                key: ValueKey('group-restore-${g['id']}'),
+                trailingIcon: const Icon(Icons.restore, size: 18),
+                onPressed: () => _groupCall(
+                  widget.api.post('$_groupsPath/${g['id']}/restore', const {}),
+                  done: '${g['name']} restored',
+                ),
+                child: Text('${g['name']}'),
+              ),
+          ],
+          child: const Text('Archived groups'),
+        ),
       if (_canEdit &&
           (board['statuses'] as List? ?? const []).any(
             (s) => s is Map && s.containsKey('id'),
@@ -5236,7 +5772,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// Ctrl+C copies the range's first value; Ctrl+V writes the clipboard to
   /// every cell in it; Esc lets go.
   KeyEventResult _rangeKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent || _range.isEmpty) return KeyEventResult.ignored;
+    // A box open inside the range keeps its own Ctrl+C/V (Adeline 11-25).
+    if (e is! KeyDownEvent || _range.isEmpty || !_rangeFocus.hasPrimaryFocus) {
+      return KeyEventResult.ignored;
+    }
     final keys = HardwareKeyboard.instance;
     final mod = keys.isControlPressed || keys.isMetaPressed;
     if (e.logicalKey == LogicalKeyboardKey.escape) {
@@ -6392,6 +6931,7 @@ class _TaskPanel extends StatefulWidget {
   const _TaskPanel({
     super.key,
     this.docked = false,
+    this.narrow = false,
     this.onClose,
     required this.api,
     required this.formats,
@@ -6417,6 +6957,9 @@ class _TaskPanel extends StatefulWidget {
 
   /// Beside the board rather than over it; [onClose] then closes it.
   final bool docked;
+
+  /// Docked narrower than 420: labels sit above their boxes, as on a phone.
+  final bool narrow;
   final VoidCallback? onClose;
 
   /// Its subtasks as the board has them, for the panel's checklist.
@@ -6495,7 +7038,8 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// Set while the panel is torn down: no setState from a flush.
   bool _disposing = false;
-  final _update = TextEditingController();
+  // Bold, italic, underline as on Monday's updates (Jose 11-25), saved as <b>/<i>/<u>.
+  final _update = FormattedNotesController();
   final _mentions = MentionController();
 
   /// Locks an unlocked sensitive task again when its 5 minutes are up.
@@ -6586,7 +7130,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   /// Row 43 (Sheryl): an update's author corrects it, as on Monday.
   Future<void> _editUpdate(Map u) async {
-    final text = TextEditingController(text: '${u['body'] ?? ''}');
+    final text = FormattedNotesController(markup: '${u['body'] ?? ''}');
     final body = await showSidePanel<String>(
       context,
       builder: (panel) => SidePanel(
@@ -6598,17 +7142,14 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
           FilledButton(
             key: const Key('task-update-edit-save'),
-            onPressed: () => Navigator.of(panel).pop(text.text.trim()),
+            onPressed: () => Navigator.of(panel).pop(text.markup.trim()),
             child: const Text('Save'),
           ),
         ],
-        child: TextField(
-          key: const Key('task-update-edit-field'),
+        child: FormattedNotesField(
           controller: text,
-          minLines: 3,
-          maxLines: 12,
-          autofocus: true,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          fieldKey: const Key('task-update-edit-field'),
+          label: 'Update',
         ),
       ),
     );
@@ -7227,8 +7768,8 @@ class _TaskPanelState extends State<_TaskPanel> {
     );
     if (time == null || !mounted) return;
     final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
-    final body = _update.text.trim();
-    final mentions = _mentions.ids(body);
+    final body = _update.markup.trim();
+    final mentions = _mentions.ids(_update.text);
     final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
       'body': body,
       'post_at': at.toUtc().toIso8601String(),
@@ -7290,8 +7831,8 @@ class _TaskPanelState extends State<_TaskPanel> {
     '📞',
   ];
 
-  Widget _composerTools() => Row(
-    mainAxisSize: MainAxisSize.min,
+  // A Wrap: a narrow panel takes the tools on two lines (Kimberly 11-25).
+  Widget _composerTools() => Wrap(
     children: [
       IconButton(
         key: const Key('task-update-tool-mention'),
@@ -7307,12 +7848,26 @@ class _TaskPanelState extends State<_TaskPanel> {
           _update.text.isEmpty || _update.text.endsWith('\n') ? '☐ ' : '\n☐ ',
         ),
       ),
-      IconButton(
-        key: const Key('task-update-tool-bold'),
-        tooltip: 'Bold',
-        icon: const Icon(Icons.format_bold, size: 18),
-        onPressed: () => _insert('**', '**'),
-      ),
+      for (final (bit, icon, tip, name) in const [
+        (NotesMarkup.bold, Icons.format_bold, 'Bold', 'bold'),
+        (NotesMarkup.italic, Icons.format_italic, 'Italic', 'italic'),
+        (
+          NotesMarkup.underline,
+          Icons.format_underlined,
+          'Underline',
+          'underline',
+        ),
+      ])
+        ListenableBuilder(
+          listenable: _update,
+          builder: (context, _) => IconButton(
+            key: Key('task-update-tool-$name'),
+            tooltip: tip,
+            isSelected: _update.has(bit),
+            icon: Icon(icon, size: 18),
+            onPressed: () => _update.toggle(bit),
+          ),
+        ),
       MenuAnchor(
         menuChildren: [
           Wrap(
@@ -7337,14 +7892,14 @@ class _TaskPanelState extends State<_TaskPanel> {
   );
 
   Future<void> _post() async {
-    final body = _update.text.trim();
-    if (body.isEmpty && _files.isEmpty) return;
+    final body = _update.markup.trim();
+    if (_update.text.trim().isEmpty && _files.isEmpty) return;
     setState(() {
       _posting = true;
       _postError = null;
     });
     final path = '/tasks/${widget.taskId}/updates';
-    final mentions = _mentions.ids(body);
+    final mentions = _mentions.ids(_update.text);
     final res = _files.isEmpty
         ? await widget.api.post(path, {
             'body': body,
@@ -7590,7 +8145,7 @@ class _TaskPanelState extends State<_TaskPanel> {
 
     // One form (Jose, 2026-11-16): labels in one column, on top on a phone;
     // every box the full width and one height.
-    final phone = MediaQuery.sizeOf(context).width < 600;
+    final phone = MediaQuery.sizeOf(context).width < 600 || widget.narrow;
     Widget field(String label, Widget box, {Key? key}) => Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 8),
@@ -7920,14 +8475,17 @@ class _TaskPanelState extends State<_TaskPanel> {
                 id: widget.taskId,
                 controller: _update,
                 mentions: _mentions,
-                child: TextField(
-                  key: const Key('task-update-body'),
-                  controller: _update,
-                  minLines: 2,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    hintText: 'Write an update… (@ to mention)',
-                    border: OutlineInputBorder(),
+                child: _formatShortcuts(
+                  _update,
+                  TextField(
+                    key: const Key('task-update-body'),
+                    controller: _update,
+                    minLines: 2,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Write an update… (@ to mention)',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ),
@@ -8252,6 +8810,11 @@ class _RowShadeState extends State<_RowShade> {
 /// a bare https:// link shows itself (row 38, Merav: "I can't open the links").
 @visibleForTesting
 Widget linkedText(BuildContext context, String body, {Key? key}) {
+  // <b>/<i>/<u> (Jose 11-25): plain text plus a style per character.
+  final (plain, masks) = NotesMarkup.parse(body);
+  body = plain;
+  List<InlineSpan> styled(int from, int to) =>
+      NotesMarkup.spans(body.substring(from, to), masks.sublist(from, to));
   // Links, bare addresses, and **bold** (the composer's Bold, Chaim 11-24).
   final link = RegExp(
     r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s]+)|\*\*([^*\n]+)\*\*',
@@ -8263,7 +8826,7 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
   final spans = <InlineSpan>[];
   var at = 0;
   for (final m in link.allMatches(body)) {
-    spans.add(TextSpan(text: body.substring(at, m.start)));
+    spans.addAll(styled(at, m.start));
     if (m.group(4) case final bold?) {
       spans.add(
         TextSpan(
@@ -8286,7 +8849,7 @@ Widget linkedText(BuildContext context, String body, {Key? key}) {
     );
     at = m.end;
   }
-  spans.add(TextSpan(text: body.substring(at)));
+  spans.addAll(styled(at, body.length));
   return SelectableText.rich(TextSpan(children: spans), key: key);
 }
 
@@ -8305,3 +8868,20 @@ Widget withBoardFont(BuildContext context, Widget child) {
     ),
   );
 }
+
+/// Ctrl/Cmd+B, I, U on a formatted box that keeps its own field (the
+/// update composer, whose @mentions wrap the TextField).
+Widget _formatShortcuts(FormattedNotesController c, Widget child) =>
+    CallbackShortcuts(
+      bindings: {
+        for (final (key, bit) in [
+          (LogicalKeyboardKey.keyB, NotesMarkup.bold),
+          (LogicalKeyboardKey.keyI, NotesMarkup.italic),
+          (LogicalKeyboardKey.keyU, NotesMarkup.underline),
+        ]) ...{
+          SingleActivator(key, control: true): () => c.toggle(bit),
+          SingleActivator(key, meta: true): () => c.toggle(bit),
+        },
+      },
+      child: child,
+    );

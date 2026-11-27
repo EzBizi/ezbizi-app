@@ -121,13 +121,13 @@ class WebChatPeopleTest extends TestCase
         [$site, $t] = $this->site();
 
         $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Sweep please', 'name' => 'Joseph',
-            'phone' => '(305) 724-2199', 'email' => 'joseph@example.com', 'zip' => '07102'])->assertCreated();
+            'phone' => '(305) 555-0107', 'email' => 'joseph@example.com', 'zip' => '07102'])->assertCreated();
 
         [$lead, $event] = $this->inTenant($t['org'], fn () => [
             Lead::query()->firstOrFail(),
             AutomationEvent::query()->where('event_key', 'lead.received')->firstOrFail(),
         ]);
-        $this->assertSame('13057242199', $lead->phone_digits);
+        $this->assertSame('13055550107', $lead->phone_digits);
         $this->assertSame('joseph@example.com', $lead->email);
         $this->assertSame('07102', $event->payload['after']['zip']);
         $this->assertSame('07102', $lead->postal_code);

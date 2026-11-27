@@ -86,7 +86,7 @@ class BookingBotTest extends TestCase
             return Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
                 'connection_id' => $google->id,
                 'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'MESSAGE', 'remote_id' => uniqid(),
-                'contact_name' => 'Jose', 'phone' => '+13057242199', 'status' => $status, 'received_at' => now()]);
+                'contact_name' => 'Jose', 'phone' => '+13055550107', 'status' => $status, 'received_at' => now()]);
         });
     }
 

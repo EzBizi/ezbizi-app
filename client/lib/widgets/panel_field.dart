@@ -227,31 +227,13 @@ class _PanelPopoverState extends State<PanelPopover> {
   );
 }
 
-String _isoDay(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-const _monthsShort = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
 /// "Nov 10 – Nov 16", with the year only when it is not this one.
 String rangeLabel(String? from, String? to, {DateTime? now}) {
   final a = from == null ? null : DateTime.tryParse(from);
   if (a == null) return '';
   final b = (to == null ? null : DateTime.tryParse(to)) ?? a;
   final year = (now ?? DateTime.now()).year;
-  String short(DateTime d) => '${_monthsShort[d.month - 1]} ${d.day}';
+  String short(DateTime d) => '${shortMonths[d.month - 1]} ${d.day}';
   final tail = a.year == year && b.year == year ? '' : ', ${b.year}';
   if (DateUtils.isSameDay(a, b)) return '${short(a)}$tail';
   return '${short(a)} – ${short(b)}$tail';
@@ -302,7 +284,7 @@ class DayPopoverField extends StatelessWidget {
               lastDate: DateTime(2100, 12, 31),
               onDateChanged: (d) {
                 close();
-                final iso = _isoDay(d);
+                final iso = formatCalendarDay(d);
                 if (iso != value) onChanged?.call(iso);
               },
             ),

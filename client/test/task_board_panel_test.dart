@@ -8,6 +8,9 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:ezbizi_client/widgets/range_calendar.dart';
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -450,18 +453,19 @@ void main() {
       ];
       expect(rects, hasLength(9));
       expect({for (final r in rects) r.width}, hasLength(1));
-      expect({for (final r in rects) r.height}, {44.0});
+      expect(
+        {for (final r in rects) r.height},
+        {44.0},
+        reason: [for (final r in rects) r.height].toString(),
+      );
       expect({for (final r in rects) r.left}, hasLength(1));
-      // On a phone the label sits above its box; on a desktop beside it.
+      // The label sits above its box on a phone, and in the docked panel at
+      // its narrower default (Kimberly 11-25); beside it once dragged wide.
       final label = tester.getRect(find.text('Timeline').last);
       final box = tester.getRect(
         find.byKey(const ValueKey('column-editor-c-time')),
       );
-      if (width < 600) {
-        expect(label.bottom, lessThanOrEqualTo(box.top));
-      } else {
-        expect(label.right, lessThanOrEqualTo(box.left));
-      }
+      expect(label.bottom, lessThanOrEqualTo(box.top));
       expect(tester.takeException(), isNull);
     });
   }
@@ -539,6 +543,99 @@ void main() {
     await settle(tester);
     expect(find.byKey(const Key('task-dock')), findsNothing);
     expect(shadeBorder(tester), isNull);
+  });
+
+  testWidgets('Kimberly 11-25: the docked panel opens narrower, its edge '
+      'drags within limits, and the width is kept as a preference', (
+    tester,
+  ) async {
+    await pump(tester);
+    final dock = find.byKey(const Key('task-dock'));
+    expect(tester.getSize(dock).width, 380);
+
+    await tester.drag(
+      find.byKey(const Key('task-dock-edge')),
+      const Offset(-200, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(dock).width, 580, reason: 'dragged left: wider');
+    expect(
+      log.any(
+        (e) =>
+            e.$1 == 'PATCH' &&
+            e.$2 == '/me/preferences' &&
+            '${e.$3}'.contains('task_board.panel_width'),
+      ),
+      isTrue,
+    );
+
+    await tester.drag(
+      find.byKey(const Key('task-dock-edge')),
+      const Offset(2000, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(dock).width, 320, reason: 'never narrower than 320');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('Adeline 11-25: Ctrl+A, Ctrl+C and Ctrl+V work in a cell '
+      'editor on the board', (tester) async {
+    textValue = '400596049';
+    addTearDown(() => textValue = null);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': '123'};
+        if (call.method == 'Clipboard.hasStrings') return {'value': true};
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await pump(tester);
+    await tester.tap(find.byTooltip('Close Lakeview'));
+    await settle(tester);
+    final cell = find.byKey(const ValueKey('column-cell-edit-c-text')).first;
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byKey(const Key('cell-card')),
+      matching: find.byType(EditableText),
+    );
+    expect(field, findsOneWidget);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+    await tester.pump();
+    expect(copied, '400596049');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+    await tester.pumpAndSettle();
+    expect(tester.widget<EditableText>(field).controller.text, '123');
+
+    // The right-click menu inside the box is the text's own: Cut, Copy, Paste
+    // (as on Windows, Adeline's).
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.tapAt(
+      tester.getCenter(field),
+      buttons: kSecondaryButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Filter by this value'), findsNothing);
+    expect(find.text('Paste'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('the Updates cell opens the thread alone; the row opens the '
@@ -891,6 +988,17 @@ void main() {
           .text,
       '☐ ',
     );
+
+    // Jose 11-25: Bold, Italic, Underline as on Monday; saved as <b>.
+    final field = find.byKey(const Key('task-update-body'));
+    await tester.enterText(field, '');
+    await tester.tap(find.byKey(const Key('task-update-tool-bold')));
+    await tester.pump();
+    await tester.enterText(field, 'Call now');
+    await tester.pump();
+    final composer =
+        tester.widget<TextField>(field).controller! as FormattedNotesController;
+    expect(composer.markup, '<b>Call now</b>');
     await tester.pump(const Duration(seconds: 3));
   });
 

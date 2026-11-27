@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/jobs/job_detail_panel.dart';
+import 'package:ezbizi_client/screens/jobs/job_workiz.dart' show isPicture;
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
@@ -193,16 +194,21 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('job-photo-0')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('job-photo-viewer')), findsOneWidget);
+      expect(find.byKey(const Key('image-gallery')), findsOneWidget);
       expect(find.text('1 of 2'), findsOneWidget);
       await tester.tap(find.byTooltip('Next photo'));
       await tester.pumpAndSettle();
       expect(find.text('2 of 2'), findsOneWidget);
-      await tester.tap(find.text('All photos'));
+      await tester.tap(find.byType(CloseButton));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('job-workiz-files')), findsOneWidget);
     },
   );
+
+  test('a WhatsApp photo named without an extension is still a photo', () {
+    expect(isPicture('whatsapp image 2026-11-25 at 10.32.11', 'https://w.io/f/a.jpeg'), isTrue);
+    expect(isPicture('Inspection Report.pdf', 'https://w.io/f/b.pdf'), isFalse);
+  });
 
   testWidgets('without Financials there is no Money tab, and nothing of it', (
     tester,

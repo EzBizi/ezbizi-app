@@ -244,7 +244,7 @@ class SchedulingAvailabilityController extends Controller
             'franchise_id' => ['nullable', 'uuid'],
             // "All areas" (Jose, 2026-09-28): every area in view.
             'all' => ['nullable', 'boolean'],
-            // A street address a customer wrote ("86 Jerusalem hill
+            // A street address a customer wrote ("86 Sample hill
             // Trumbull"): its zip is looked up and searched (Mia, 2026-10-02).
             'address' => ['nullable', 'string', 'max:300'],
         ]);

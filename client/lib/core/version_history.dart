@@ -13,11 +13,91 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
+      'Training: tests can now be published from their editor, so learners can take them',
+      'Security: resetting someone else 2FA or password now requires being allowed to assign their role',
+      'Field: the SOS button always sends, even without a GPS fix, and shows that it is sending',
+    ]),
+    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
+      'Customer notes take bold, italic and underline, and exports always send notes as plain text',
+      'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',
+    ]),
+    VersionRelease(version: '0.0.0656', date: '27 Nov 2026', deployed: '2026-11-27 14:03', items: [
+      'Leaderboard: the top three are ranked by booking rate; answer rate and call score show beside each name, not ranked by',
+    ]),
+    VersionRelease(version: '0.0.0655', date: '26 Nov 2026', deployed: '2026-11-26 14:16', items: [
+      'Review auto-replies: a review Google removed is marked removed and skipped, and a listing Google calls unclaimed is parked with that reason, instead of failing every day',
+      'Desktop monitoring: a heartbeat that hit a brief database clash is retried instead of failing',
+    ]),
+    VersionRelease(version: '0.0.0654', date: '26 Nov 2026', deployed: '2026-11-26 07:36', items: [
+      'Monday is switched off: EzBizi no longer syncs with Monday, and the Monday tile is gone from Integrations',
+      'Automations brought over from Monday now say so',
+    ]),
+    VersionRelease(version: '0.0.0653', date: '26 Nov 2026', deployed: '2026-11-26 02:42', items: [
+      'Weekly time report: someone at exactly 40:00 is no longer listed under Overtime',
+    ]),
+    VersionRelease(version: '0.0.0652', date: '26 Nov 2026', deployed: '2026-11-26 01:29', items: [
+      'Task Board: quick filters like Monday, with every column value as a chip with its count, tap to filter, and Clear all',
+    ]),
+    VersionRelease(version: '0.0.0651', date: '25 Nov 2026', deployed: '2026-11-26 00:15',
+      items: [
+      'Task Board: archive a task (and restore it from the board menu), move a task to the top of its group, and set one column value on many selected tasks at once',
+      'Work Hours weekly time report (screen, email and PDF): Overtime over 40 hours in red at the top, then Full time, then Part time, each A to Z',
+      'HR: each person can be marked Full time or Part time (or follow their schedule), and you always find yourself in HR Records',
+    ]),
+    VersionRelease(version: '0.0.0650', date: '25 Nov 2026', deployed: '2026-11-25 23:07',
+      items: [
+      'Leaderboard: past weeks winners open for people who can see many branches (it showed an error for them)',
+      'Jobs on the web: Workiz photos open full screen instead of showing "Could not load"',
+      'Task Board: the group menu matches Monday: change the group colour, collapse or expand all, select all, add a group above or below, duplicate, move to another board, archive (restorable) and more',
+      'People search keeps the nicknames people used on Monday (for example Chris for Kristopher)',
+      'Desktop app: zoom in and out with Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel; it remembers your level',
+    ]),
+    VersionRelease(version: '0.0.0649', date: '25 Nov 2026', deployed: '2026-11-25 21:50',
+      items: [
+      'This build carries everything listed under 0.0.0648 and 0.0.0647 (those releases were folded into this one)',
+      'Jobs: the Project tag is always offered when tagging a job, and you always find yourself in the technician picker',
+      'Chat on phones: one-tap replies (On my way, Running late, Done, Need parts), a camera beside the message box, and hold-to-talk voice notes',
+      'Chat: link a chat to a job, and it shows the job number and city at the top',
+      'EzChat: Chats, Calls and You tabs; recent calls with missed ones in red, call back or join',
+    ]),
+    VersionRelease(version: '0.0.0648', date: '25 Nov 2026', items: [
+      'Customer Experience: a branch task about a complaint links to that complaint, so its status, owner and updates show on Reviews and Complaints too, and the duplicate copies in A1 - Operation stop',
+      'Task Board: you always find yourself in owner and assignee pickers, the person filter and @mentions, whatever company is picked',
+      'Sign in: "Forgot password" now confirms the reset link in a normal note instead of a red error, and closing that panel no longer blanks the screen',
+      'Task Board board list: Triplex Group and each company show their own colour, folders always look like folders, and dragging shows a line where the board will land (a highlight only when dropping into a folder)',
+      'Work Hours: you always find yourself in the people list and search, whichever company or branch is picked',
+      'Task Board: the board list shows every board you can reach by your own permissions, whatever the Company and Branch picker is set to',
+      'New: Leaderboard tab. The week top 3 (Sunday to Friday) among New Client Calls people, your own rank, and past weeks winners; My performance shows only your own numbers and calls',
+    ]),
+    VersionRelease(version: '0.0.0647', date: '25 Nov 2026', items: [
+      'Chat: voice and video calls, one to one and in groups, right from a chat (nothing is recorded)',
+      'Notifications: new settings like Monday (bell, then the gear): a phone notifications switch, and In-app and Email switches for every kind, grouped as Communication, Collaboration, Automations, Sign-ups, Security and Admin',
+      'Task Board: you now get notified when someone writes an update on a task you own or follow, replies to your update or to a thread you took part in, reacts to your update, invites you, or deletes an update',
+      'Task Board: drag the left edge of the task panel to make it narrower or wider; it opens narrower and remembers your width',
+      'Task Board: copy and paste work inside a cell while a range of cells is selected',
+      'Jobs: photos on a job (from Workiz and added in EzBizi) show as pictures; tap one to open it full screen and swipe through them',
+      'Jobs: job notes can be bold, italic or underlined',
+    ]),
+    VersionRelease(version: '0.0.0646', date: '25 Nov 2026', deployed: '2026-11-25 18:57',
+      items: [
+      'This build carries everything listed under 0.0.0645 (that release was folded into this one), including the work schedule lock',
+      'Phones and foldables: Payroll shows cards where its table cannot fit, and Paid Time Off and HR Records no longer squeeze on a narrow or sideways screen',
+      'Task Board: updates and replies can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U); mentions still work, and alerts and emails show plain text',
+      'Desktop Monitoring: swipe the large screenshot to step through captures; past days no longer show a false "capture stopped"; the people list stays in name order',
+    ]),
     VersionRelease(version: '0.0.0645', date: '25 Nov 2026', items: [
+      'Work schedule: only Administrators can change their own work schedule; everyone else sees "Your manager sets your work schedule" (managers and HR still set other people schedules)',
+      'Task Board: the board list is one tree. Triplex Group on top with its own boards, then each company with its company board first (A1 - Operation for A-1 Chimney), its branches in one row, then its folders; templates and the boards of everyone else sit below',
+      'Notes can be bold, italic or underlined (toolbar or Ctrl/Cmd+B, I, U) in Guidelines, Leads, Financials (invoice notes), Fleet (vehicle and service notes), Customer Experience (review and complaint notes) HR (people, work hours and recruiting notes) Scheduling (location, helper and wrong-ZIP notes) and the Task Board (long-text and notes columns); Copy and anything sent out stay plain text',
+      'Reports > Reports: every report EzBizi sends, on WhatsApp, email or a group, with who gets it and when; open one to see each send, to whom, delivered or read, and what it said',
+      'New: Communication > Chat, our own WhatsApp between EzBizi accounts: direct and group chats, photos, files, voice notes, replies, reactions, read ticks, typing and online status, search, pin, mute and archive',
       'Task Board, Jobs and Leads: the unread updates count sits next to the chat icon (in red while unread), like the read ones, instead of on top of it',
+      'Automations: Task Board rule cards are easier to read in light and dark, coloured tags across the app pick dark or light text for contrast, and rules copied from Monday explain in plain words why they are off',
       'Monitoring: Activity (who changed what) and API activity moved here from Settings, between Desktop Monitoring and Lighting; everyone who could see them before still can',
     ]),
-    VersionRelease(version: '0.0.0644', date: '25 Nov 2026', items: [
+    VersionRelease(version: '0.0.0644', date: '25 Nov 2026', deployed: '2026-11-25 16:42',
+      items: [
       'Inspection and Customer Experience: Review QR sits in the middle of the page like New Inspection (at the top on phones, so the keyboard never covers it)',
       'Desktop Monitoring: browse every stored screenshot, a day at a time (scroll back for more, use the arrows for other days); the strip shows how many exist today and in the last 30 days, and the arrow keys step through them',
       'Automations: the "When ... then ..." line on Task Board rule cards is easier to read in dark mode',
@@ -264,7 +344,7 @@ class VersionHistory {
       'Task Board: Monday no longer gets a second copy of a column EzBizi just created',
     ]),
     VersionRelease(version: '0.0.0613', date: '20 Nov 2026', deployed: '2026-11-20 13:27', items: [
-      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 877-6377',
+      'Task Board: a call task fills the caller details from the number in its title in any format, like (346) 555-0100',
       'Task Board: flag tasks (address to fix, overbooked) keep a short title; the full detail is in Notes',
     ]),
     VersionRelease(version: '0.0.0612', date: '19 Nov 2026', deployed: '2026-11-20 00:54', items: [
@@ -1613,7 +1693,7 @@ class VersionHistory {
         'Workiz: each Workiz estimate on a job carries its customer link to view and pay, and {{estimate_link}} works in rules. The signed-in Workiz login files its accounts to branches by itself, and a login sent before logins were per company can be moved to its company in one click.',
         'Jobs: a job opened from Project Management or a customer shows its type, sub-status and tags in the pickers.',
         'Project Management has its own place in the sidebar, with a search across job numbers, customers, addresses, phones and technicians. Who could see it in Jobs still can.',
-        'Phone notifications say whose they are ("EzBizi - A-1 Chimney - Connecticut"), then what happened, then the details. Phone numbers read (219) 670-6463 and empty brackets are gone; a missed call names the line and the caller when known.',
+        'Phone notifications say whose they are ("EzBizi - A-1 Chimney - Connecticut"), then what happened, then the details. Phone numbers read (219) 555-0101 and empty brackets are gone; a missed call names the line and the caller when known.',
         'Branch pickers read company first: "A-1 Chimney · Texas".',
         'Automations: a notification can also go to the job\'s technicians.',
       ],
@@ -2487,7 +2567,7 @@ class VersionHistory {
       version: '0.0.0380',
       date: '7 Oct 2026',
       items: [
-        'A1 Leads GBP: phone numbers in the Contact column and on the card now read (513) 390-5722.',
+        'A1 Leads GBP: phone numbers in the Contact column and on the card now read (513) 555-0101.',
       ],
     ),
     VersionRelease(
@@ -3737,7 +3817,7 @@ class VersionHistory {
       version: '0.0.0252',
       date: '23 Sep 2026',
       items: [
-        'Customer phone numbers read as phone numbers again. Everything imported from Workiz was stored as ten bare digits, so a customer showed 4242095909 rather than +1 (424) 209-5909 - and because the whole app keys on the full form, those numbers were also the wrong thing to call or text. The 617 already in the book have been corrected.',
+        'Customer phone numbers read as phone numbers again. Everything imported from Workiz was stored as ten bare digits, so a customer showed 4245550100 rather than +1 (424) 555-0100 - and because the whole app keys on the full form, those numbers were also the wrong thing to call or text. The 617 already in the book have been corrected.',
         'Settings has an Extensions tab, so an extension can be assigned to a person, a ring group or an IVR menu. A caller can now type the extension they want, which the prompt had been promising for weeks.',
         'A1Leads GBP has A1 Tools Board and Table toggle, and the table carries the columns that can be filled honestly: the matched customer with the city under it, the review at three lines, date, rating and reply.',
       ],
@@ -4970,7 +5050,7 @@ class VersionHistory {
         'Business profile: a revoked Google permission says it was revoked, '
             'instead of telling you to wait for a quota approval that was '
             'never coming.',
-        'Phone numbers read the same way everywhere - +1 (305) 724-2199 - on '
+        'Phone numbers read the same way everywhere - +1 (305) 555-0107 - on '
             'every screen and in every module, instead of the stored form. '
             'Typing ten digits into any phone field formats it as you go.',
       ],
@@ -5358,7 +5438,7 @@ class VersionHistory {
             'phone, such as an email arriving.',
         'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
             '2199 - were losing their country code and being dialled as '
-            '+3057242199, which is not a phone number, so no outgoing call '
+            '+3055550107, which is not a phone number, so no outgoing call '
             'has ever connected. The same applied to text messages.',
         'Phone: the Call tab is now called Dial, and you ring a colleague from '
             'their own row in the Team list rather than from an Internal '

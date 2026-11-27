@@ -144,6 +144,15 @@ class UserPolicy
             return $this->outOfBounds($user);
         }
 
+        // Clearing someone's authenticator and handing out their reset link is
+        // taking over their account, so only somebody who could give them their
+        // role may do it - never a non-administrator on an administrator
+        // (full-code audit, 2026-11-27).
+        if ($person->role !== null
+            && ! app(PermissionCatalogue::class)->mayAssignRole($user, $person->role)) {
+            return Response::deny('Only somebody who could give them their role can reset their sign-in. An administrator can.');
+        }
+
         return Response::allow();
     }
 

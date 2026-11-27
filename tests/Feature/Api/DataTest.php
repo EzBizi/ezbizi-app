@@ -134,6 +134,16 @@ class DataTest extends TestCase
         $this->assertSame($company, $row[array_search('owning_company', $header, true)]);
     }
 
+    public function test_a_formatted_note_is_exported_as_plain_text(): void
+    {
+        $this->makeCustomer($this->alpha, ['name' => 'Alpha Person', 'notes' => 'Gate code <b>4417</b>, <i>dog</i> <u>inside</u>']);
+
+        $body = $this->as($this->alpha)->get('/api/v1/exports/customers')->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('Gate code 4417, dog inside', $body);
+        $this->assertStringNotContainsString('<b>', $body);
+    }
+
     public function test_a_formula_in_a_name_is_defused(): void
     {
         $this->makeCustomer($this->alpha, ['name' => '=HYPERLINK("http://evil","Click")']);

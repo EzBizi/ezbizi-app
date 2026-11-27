@@ -56,7 +56,8 @@ class ReviewBacklogReplies extends Command
             }
 
             $done = 0;
-            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)->where($connected)
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)->where($connected)->whereNull('removed_at')
+                ->whereDoesntHave('reply', fn ($q) => $q->where('failure_reason', 'like', '%unclaimed%'))
                 ->where(fn ($q) => collect($listings)->each(fn ($l) => $q->orWhere('location_name', 'like', '%'.addcslashes($l, '%_'))))
                 ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED)
                     ->orWhere('drafted_by', '!=', ReviewReply::BY_AUTOMATION))
@@ -81,13 +82,26 @@ class ReviewBacklogReplies extends Command
                         $said[self::norm($body)] = true;
                         $done++;
                     } catch (Throwable $e) {
+                        // Expected refusals are recorded, not reported (health sweep 11-26: 22 removed, 6 unclaimed a day).
+                        if (str_contains($e->getMessage(), 'HTTP 404') && $google->reviewIsGone($review)) {
+                            $review->forceFill(['removed_at' => $review->removed_at ?? now()])->save();
+                            $this->line("Review {$review->id}: removed from Google, skipped");
+
+                            return;
+                        }
+                        if (str_contains($e->getMessage(), 'unclaimed')) {
+                            $review->reply()->update(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => 'Google: this listing is unclaimed; claim it before replying.']);
+                            $this->line("Review {$review->id}: listing unclaimed, skipped");
+
+                            return;
+                        }
                         report($e);
                         $this->error("Review {$review->id}: {$e->getMessage()}");
                     }
                 });
             // 3 stars or less stay with the dispatchers: AI only leaves a draft for them to read (Jose, 2026-11-02).
             $drafted = 0;
-            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '<=', 3)->whereDoesntHave('reply')
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '<=', 3)->whereNull('removed_at')->whereDoesntHave('reply')
                 ->orderByDesc('reviewed_at')->limit($limit)->get()
                 ->each(function (Review $review) use (&$drafted) {
                     try {

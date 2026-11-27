@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardFolder;
 use App\Models\TaskBoardMember;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -388,7 +389,11 @@ class TaskBoards
     }
 
     /** @return Builder<TaskBoard> */
-    public function visibleTo(User $user): Builder
+    /**
+     * @param  bool  $byReach  the board LIST (Jose 11-25: "It should follow your own permissions and
+     *                         hierarchy"): every place the person reaches, not the Company·Branch picker's view.
+     */
+    public function visibleTo(User $user, bool $byReach = false): Builder
     {
         // My personal board, and any board I have been added to (of any kind,
         // even a place my reach does not cover).
@@ -405,7 +410,7 @@ class TaskBoards
             return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
         }
 
-        [$companyIds, $franchiseIds] = $this->placesInView($user);
+        [$companyIds, $franchiseIds] = $this->placesInView($user, $byReach);
         $all = $user->hasPermission('tasks.view_all');
 
         return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
@@ -429,7 +434,8 @@ class TaskBoards
     public function canView(User $user, TaskBoard $board): bool
     {
         return $board->organization_id === $user->organization_id
-            && $this->visibleTo($user)->whereKey($board->getKey())->exists();
+            // A listed board opens: the list follows reach, not the picker (Jose 11-25).
+            && $this->visibleTo($user, byReach: true)->whereKey($board->getKey())->exists();
     }
 
     /**
@@ -492,8 +498,16 @@ class TaskBoards
     }
 
     /** @return array{0: string[], 1: string[]} company ids, franchise ids */
-    private function placesInView(User $user): array
+    private function placesInView(User $user, bool $byReach = false): array
     {
+        if ($byReach) {
+            $franchises = $user->reachableFranchises();
+
+            return [
+                $user->reachableCompanies()->pluck('id')->merge($franchises->pluck('company_id'))->unique()->values()->all(),
+                $franchises->pluck('id')->values()->all(),
+            ];
+        }
         $view = ViewScope::forUser($user);
         $franchiseIds = $view->franchiseIds();
 
@@ -506,6 +520,45 @@ class TaskBoards
         };
 
         return [array_values($companyIds), $franchiseIds];
+    }
+
+    /**
+     * Row 66 (Jose 11-25): which company each root folder belongs to (its name, "A1 Chimney" =
+     * "A-1 Chimney"), sub-folders inheriting, and which board is each company's working board:
+     * Monday's "… - Operation" board in that company's folder, else its kind=company board.
+     *
+     * @return array{folders: array<string, string>, boards: array<string, string>} folder id => company id; board id => company id
+     */
+    public function companyMap(): array
+    {
+        $norm = fn (?string $s) => preg_replace('/[^a-z0-9]/', '', mb_strtolower((string) $s));
+        $companies = Company::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$norm($c->name) => (string) $c->id])->all();
+        $folders = TaskBoardFolder::query()->get(['id', 'parent_id', 'name']);
+        $parent = $folders->pluck('parent_id', 'id')->all();
+        $own = $folders->mapWithKeys(fn ($f) => [(string) $f->id => $companies[$norm($f->name)] ?? null])->all();
+        $folderCompany = [];
+        foreach ($folders as $f) {
+            for ($at = (string) $f->id, $hops = 0; $at !== '' && $hops < 20; $at = (string) ($parent[$at] ?? ''), $hops++) {
+                if (($own[$at] ?? null) !== null) {
+                    $folderCompany[(string) $f->id] = $own[$at];
+                    break;
+                }
+            }
+        }
+        $boards = [];
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_CUSTOM)->whereNotNull('folder_id')->where('name', 'like', '% - Operation')->get(['id', 'folder_id']) as $b) {
+            $company = $folderCompany[(string) $b->folder_id] ?? null;
+            if ($company !== null && ! in_array($company, $boards, true)) {
+                $boards[(string) $b->id] = $company;
+            }
+        }
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_COMPANY)->whereNotNull('company_id')->get(['id', 'company_id']) as $b) {
+            if (! in_array((string) $b->company_id, $boards, true)) {
+                $boards[(string) $b->id] = (string) $b->company_id;
+            }
+        }
+
+        return ['folders' => $folderCompany, 'boards' => $boards];
     }
 
     /** The company a franchise board's tasks are filed under. */

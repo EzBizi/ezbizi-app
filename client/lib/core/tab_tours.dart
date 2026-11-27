@@ -885,6 +885,18 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   // Company (design 175): each tab has its own short walkthrough.
+  'leaderboard/My performance': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'leaderboard-mine',
+        title: 'My performance',
+        body:
+            'Your own score, numbers and calls for the dates above. Nobody '
+            "else sees them here, and you see nobody else's.",
+      ),
+    ],
+  ),
   'company/Ownership': Tour(
     version: 1,
     steps: [
@@ -948,6 +960,19 @@ const Map<String, Tour> tabTours = {
         anchor: 'learn-library',
         title: 'The library',
         body: 'Everything you can read. Click one to open it.',
+      ),
+    ],
+  ),
+  'leaderboard': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-leaderboard-tabs',
+        title: 'Leaderboard',
+        body:
+            'The top three by booking rate on new-client calls, with answer '
+            'rate and score beside it, and your own rank; then your '
+            'own calls and scores in My performance.',
       ),
     ],
   ),

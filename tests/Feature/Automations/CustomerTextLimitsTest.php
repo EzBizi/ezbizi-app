@@ -53,7 +53,7 @@ class CustomerTextLimitsTest extends TestCase
         $this->inTenant($t['org'], function () use ($t) {
             $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'source' => \App\Models\Lead::SOURCE_LOCAL_SERVICES,
                 'remote_id' => 'n1', 'contact_name' => 'Pat', 'lead_type' => 'PHONE_CALL', 'status' => \App\Models\Lead::STATUS_NEW,
-                'received_at' => now(), 'phone' => '+15108279735']);
+                'received_at' => now(), 'phone' => '+15105550100']);
             $notBooked = new AutomationEvent(['event_key' => 'lead.call_not_booked']);
             $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip($notBooked, $lead), 'a plain caller still gets it');
             $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip(new AutomationEvent(['event_key' => 'lead.missed_call']), $lead));
@@ -75,7 +75,7 @@ class CustomerTextLimitsTest extends TestCase
             $run->forceFill(['action_results' => [['type' => 'reply', 'ok' => true]]])->save();
             $this->assertStringContainsString('already had a text', (string) \App\Support\Automations\ActionRunner::notBookedSkip($later, $lead));
 
-            $customer = \App\Models\Customer::factory()->create(['phone' => '(510) 827-9735', 'owning_franchise_id' => $t['franchise']->id]);
+            $customer = \App\Models\Customer::factory()->create(['phone' => '(510) 555-0100', 'owning_franchise_id' => $t['franchise']->id]);
             \App\Models\Job::factory()->create(['customer_id' => $customer->id, 'franchise_id' => $t['franchise']->id]);
             $this->assertStringContainsString('customer', (string) \App\Support\Automations\ActionRunner::notBookedSkip(
                 new AutomationEvent(['event_key' => 'lead.follow_up_due']), $lead));

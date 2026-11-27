@@ -51,7 +51,9 @@
 	<key>NSLocationUsageDescription</key>
 	<string>Location sharing is available in the EzBizi iPhone and Android apps. The Mac app does not use your location.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
+	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job, and during voice and video calls with colleagues in Chat. It is used only while you are on a call.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>EzBizi uses the camera only during a video call with colleagues in Chat, after you start or answer one.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

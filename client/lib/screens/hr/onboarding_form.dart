@@ -88,18 +88,8 @@ const _addressParts = {
   'country': 'country',
 };
 
-const _weekDays = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
-
 String _dayName(int i) =>
-    _weekDays[i][0].toUpperCase() + _weekDays[i].substring(1);
+    weekdayKeys[i][0].toUpperCase() + weekdayKeys[i].substring(1);
 
 /// "14:00" as "2:00 PM".
 String _clock(String hhmm) {
@@ -114,7 +104,7 @@ String _clock(String hhmm) {
 /// `Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM`.
 /// Consecutive days share a range; for the hours they must share the times too.
 (String days, String hours) scheduleText(Map<String, dynamic> week) {
-  Map? at(int i) => week[_weekDays[i]] as Map?;
+  Map? at(int i) => week[weekdayKeys[i]] as Map?;
 
   List<(int, int)> runs(bool Function(int a, int b) same) {
     final out = <(int, int)>[];
@@ -160,7 +150,7 @@ Map<String, dynamic>? scheduleFrom(String hours) {
     return '${h24.toString().padLeft(2, '0')}:$minute';
   }
 
-  final week = <String, dynamic>{for (final day in _weekDays) day: null};
+  final week = <String, dynamic>{for (final day in weekdayKeys) day: null};
   final group = RegExp(
     r'^([a-z]+)(?: to ([a-z]+))? (\d{1,2}):(\d{2}) ([AP]M) to (\d{1,2}):(\d{2}) ([AP]M)$',
     caseSensitive: false,
@@ -169,13 +159,13 @@ Map<String, dynamic>? scheduleFrom(String hours) {
   for (final part in hours.split(';')) {
     final m = group.firstMatch(part.trim());
     if (m == null) return null;
-    final from = _weekDays.indexOf(m[1]!.toLowerCase());
-    final to = m[2] == null ? from : _weekDays.indexOf(m[2]!.toLowerCase());
+    final from = weekdayKeys.indexOf(m[1]!.toLowerCase());
+    final to = m[2] == null ? from : weekdayKeys.indexOf(m[2]!.toLowerCase());
     final start = hhmm(m[3]!, m[4]!, m[5]!);
     final end = hhmm(m[6]!, m[7]!, m[8]!);
     if (from < 0 || to < from || start == null || end == null) return null;
     for (var i = from; i <= to; i++) {
-      week[_weekDays[i]] = {'start': start, 'end': end};
+      week[weekdayKeys[i]] = {'start': start, 'end': end};
     }
   }
 

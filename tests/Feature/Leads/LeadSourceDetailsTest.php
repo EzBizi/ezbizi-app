@@ -73,11 +73,11 @@ class LeadSourceDetailsTest extends TestCase
     {
         $t = $this->provisionTenant();
         $lead = $this->inTenant($t['org'], function () use ($t) {
-            Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Pat Lee', 'phone' => '(314) 409-1888']);
+            Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Pat Lee', 'phone' => '(314) 555-0100']);
 
             return Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'source' => Lead::SOURCE_RINGCENTRAL,
-                'lead_type' => 'PHONE_CALL', 'remote_id' => 'rc_1', 'category' => 'NY - GMB', 'phone' => '+13144091888',
-                'phone_digits' => '13144091888', 'status' => 'new', 'received_at' => now()]);
+                'lead_type' => 'PHONE_CALL', 'remote_id' => 'rc_1', 'category' => 'NY - GMB', 'phone' => '+13145550100',
+                'phone_digits' => '13145550100', 'status' => 'new', 'received_at' => now()]);
         });
 
         $this->artisan('ezbizi:leads-fill-details')->assertSuccessful();

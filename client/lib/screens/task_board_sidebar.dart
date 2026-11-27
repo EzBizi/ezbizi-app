@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/soft_keyboard.dart';
 import '../core/theme.dart';
 
 import '../core/device_key_store_io.dart'
@@ -233,8 +234,61 @@ class _BoardTreeState extends State<BoardTree> {
     widget.onArranged?.call();
   }
 
+  /// On a phone a finger drag is a scroll: a row that dragged on first move
+  /// picked boards up instead (Mobile, 11-25: six swipes never scrolled the
+  /// tree, and a drop is a write). There a long press opens the row's menu
+  /// (Move up, Move down, Move to folder), so touch gets no drag at all.
+  static bool get _dragByMouse => !hasSoftKeyboard();
+
+  /// What a row looks like with something held over it (Jose 11-25, row
+  /// 68): a 2px line along its top where a reorder will land, or a tinted
+  /// fill when the drop goes INTO it (a board into a folder, a task into a
+  /// board). Never a box around the row.
+  Widget _dropLook(
+    BuildContext context,
+    List<Object?> hovering, {
+    required bool Function(Object? data) into,
+    required Widget child,
+    double inset = 0,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    if (hovering.isEmpty) return child;
+    if (into(hovering.first)) {
+      return ColoredBox(
+        key: const ValueKey('tasks-drop-into'),
+        color: scheme.primaryContainer,
+        child: child,
+      );
+    }
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          key: const ValueKey('tasks-drop-line'),
+          left: inset,
+          right: 8,
+          top: 0,
+          height: 2,
+          child: ColoredBox(color: scheme.primary),
+        ),
+      ],
+    );
+  }
+
+  /// A company's dot when the organization has not picked one: a colour of
+  /// the board palette chosen by its name, the same on every device and run
+  /// (Jose 11-25, row 68: not grey).
+  static Color dotFor(String name) {
+    final palette = BoardTree.palette.sublist(1); // not the grey
+    final sum = name.codeUnits.fold<int>(
+      0,
+      (a, c) => (a * 31 + c) & 0x7fffffff,
+    );
+    return palette[sum % palette.length];
+  }
+
   Widget _folderDraggable(String id, String name, Widget child) =>
-      widget.canArrange && widget.api != null
+      widget.canArrange && widget.api != null && _dragByMouse
       ? Draggable<String>(
           key: ValueKey('folder-drag-$id'),
           data: 'folder:$id',
@@ -432,19 +486,27 @@ class _BoardTreeState extends State<BoardTree> {
     BuildContext context,
     String? parent,
     double indent,
-    Widget Function(int i, double indent) board,
+    Widget Function(int i, double indent, {String? note}) board,
     bool Function(int i) matches, {
     bool Function(Map<String, dynamic> folder)? keep,
+    bool Function(Map<String, dynamic> folder)? hide,
+    String? label,
   }) {
     final theme = Theme.of(context);
     final mine = [
       for (final f in _folders)
-        if (f['parent_id'] == parent && (keep == null || keep(f))) f,
+        if (f['parent_id'] == parent &&
+            (keep == null || keep(f)) &&
+            (hide == null || !hide(f)))
+          f,
     ]..sort(_byPlace);
     final out = <Widget>[];
     for (final f in mine) {
       final id = '${f['id']}';
-      final colour = _colour(f['colour']) ?? theme.colorScheme.onSurfaceVariant;
+      final name = label ?? '${f['name']}';
+      // Folders are plain (design 211: one look per level; colour is the
+      // company's and the board's, never the folder's).
+      final colour = theme.colorScheme.onSurfaceVariant;
       final boards = [
         for (final (i, b) in widget.boards.indexed)
           if (b['folder_id'] == id &&
@@ -452,12 +514,22 @@ class _BoardTreeState extends State<BoardTree> {
               !(b['kind'] == 'user' && b['section'] == 'mine'))
             i,
       ]..sort((a, b) => _byPlace(widget.boards[a], widget.boards[b]));
-      final inner = [
-        ..._folderRows(context, id, indent + 14, board, matches),
-        for (final i in boards) board(i, indent + 14),
-      ];
+      final sub = _folderRows(
+        context,
+        id,
+        indent + 14,
+        board,
+        matches,
+        hide: hide,
+      );
+      final inner = [...sub, for (final i in boards) board(i, indent + 14)];
       final searching = _search.text.trim().isNotEmpty;
-      if (searching && inner.isEmpty) continue;
+      // An empty folder is not drawn (Monday's empty "New Folder"s, design
+      // 211); one just made shows while it is named, and boards reach it by
+      // "Move to folder".
+      if (inner.isEmpty && _renamingFolder != id) continue;
+      // A folder is always drawn as a folder, even of one board (Jose 11-25,
+      // row 68: "Rodrigo Mena · Marketing" read as random).
       final open = searching || !_folded.contains('folder:$id');
       final head = _renamingFolder == id
           ? Padding(
@@ -475,7 +547,7 @@ class _BoardTreeState extends State<BoardTree> {
             )
           : _folderDraggable(
               id,
-              '${f['name']}',
+              name,
               InkWell(
                 key: ValueKey('tasks-fold-folder:$id'),
                 onTap: searching ? null : () => _fold('folder:$id'),
@@ -488,20 +560,14 @@ class _BoardTreeState extends State<BoardTree> {
                         size: 20,
                         color: colour,
                       ),
-                      Icon(
-                        open ? Icons.folder_open : Icons.folder,
-                        size: 18,
-                        color: colour,
-                      ),
-                      const SizedBox(width: 6),
+                      Icon(Icons.folder, size: 18, color: colour),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '${f['name']}',
+                          name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: _colour(f['colour']),
-                          ),
+                          style: theme.textTheme.labelLarge,
                         ),
                       ),
                     ],
@@ -519,12 +585,11 @@ class _BoardTreeState extends State<BoardTree> {
           onAcceptWithDetails: (d) => d.data.startsWith('folder:')
               ? _reorderFolder(d.data.substring(7), f)
               : _patchBoard(d.data.substring(6), {'folder_id': id}),
-          builder: (context, hovering, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              border: hovering.isEmpty
-                  ? null
-                  : Border.all(color: theme.colorScheme.primary, width: 2),
-            ),
+          builder: (context, hovering, _) => _dropLook(
+            context,
+            hovering,
+            into: (d) => '$d'.startsWith('board:'),
+            inset: 26 + indent,
             child: _contextMenu([
               MenuItemButton(
                 key: ValueKey('folder-rename-$id'),
@@ -534,16 +599,6 @@ class _BoardTreeState extends State<BoardTree> {
                   _folderName.text = '${f['name']}';
                 }),
                 child: const Text('Rename'),
-              ),
-              SubmenuButton(
-                key: ValueKey('folder-colour-$id'),
-                leadingIcon: const Icon(Icons.palette_outlined, size: 18),
-                menuChildren: _colourItems(
-                  'folder-colour-$id',
-                  f['colour'],
-                  (c) => _patchFolder(id, {'colour': c}),
-                ),
-                child: const Text('Change colour'),
               ),
               MenuItemButton(
                 key: ValueKey('folder-sub-$id'),
@@ -714,6 +769,16 @@ class _BoardTreeState extends State<BoardTree> {
     final query = _search.text.trim().toLowerCase();
     final searching = query.isNotEmpty;
     final boards = widget.boards;
+    // Brand colours from the board rows (Task Board: company_colour,
+    // organization_colour).
+    final brand = <String, Color>{
+      for (final b in boards)
+        '${b['company_name']}': ?_colour(b['company_colour']),
+    };
+    final orgColour = boards
+        .map((b) => _colour(b['organization_colour']))
+        .whereType<Color>()
+        .firstOrNull;
 
     bool matches(int i, [String? within]) {
       if (!searching) return true;
@@ -732,8 +797,10 @@ class _BoardTreeState extends State<BoardTree> {
       bool on,
       String text,
       double indent,
-      String? from,
-    ) {
+      String? from, [
+      String? note,
+      String? company,
+    ]) {
       // A branch's automatic board falls back to its branch's colour.
       final branch = b['kind'] == 'franchise' && b['franchise_id'] != null
           ? 'branch:${b['franchise_id']}'
@@ -793,31 +860,57 @@ class _BoardTreeState extends State<BoardTree> {
             key: ValueKey('tasks-board-${b['id']}'),
             onTap: () => widget.onOpen(i),
             child: Padding(
-              padding: EdgeInsets.fromLTRB(12 + indent, 7, 10, 7),
+              // Past the chevron slot a group row has (20), so names line up.
+              padding: EdgeInsets.fromLTRB(26 + indent, 7, 10, 7),
               child: Row(
                 children: [
-                  Icon(
-                    switch (b['kind']) {
-                      'user'
-                          when b['section'] == 'mine' || b['section'] == null =>
-                        Icons.star_outline,
-                      'user' => Icons.person_outline,
-                      'franchise' => Icons.storefront_outlined,
-                      'custom' when b['visibility'] == 'private' =>
-                        Icons.lock_outline,
-                      'custom' => Icons.dashboard_customize_outlined,
-                      _ => Icons.business_outlined,
-                    },
-                    size: 18,
-                    color: colour,
-                  ),
+                  // A company of one board is drawn as the company (design
+                  // 211): its dot and its name, bold.
+                  if (company != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(
+                        Icons.circle,
+                        size: 10,
+                        color:
+                            _colour(_groupColours['company:$company']) ??
+                            brand[company] ??
+                            dotFor(company),
+                      ),
+                    )
+                  else
+                    Icon(
+                      switch (b['kind']) {
+                        'user'
+                            when b['section'] == 'mine' ||
+                                b['section'] == null =>
+                          Icons.star_outline,
+                        'user' => Icons.person_outline,
+                        'franchise' => Icons.storefront_outlined,
+                        'custom' when b['visibility'] == 'private' =>
+                          Icons.lock_outline,
+                        'custom' => Icons.dashboard_customize_outlined,
+                        _ => Icons.business_outlined,
+                      },
+                      size: 18,
+                      color: colour,
+                    ),
                   const SizedBox(width: 8),
                   Expanded(
                     // The owner is a tooltip, never part of the name (desk 11-18).
                     child: Tooltip(
                       message: from == null ? '' : 'Owner: $from',
-                      child: Text(
-                        text,
+                      // The folder a lone board stands for follows its name
+                      // in one line, so in a narrow sidebar the folder is
+                      // what gets cut, never the board (design 211).
+                      child: Text.rich(
+                        TextSpan(
+                          text: text,
+                          children: [
+                            if (note != null)
+                              TextSpan(text: '   $note', style: muted),
+                          ],
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: on
@@ -825,6 +918,8 @@ class _BoardTreeState extends State<BoardTree> {
                                 fontWeight: FontWeight.w700,
                                 color: theme.colorScheme.onPrimaryContainer,
                               )
+                            : company != null
+                            ? const TextStyle(fontWeight: FontWeight.w800)
                             : null,
                       ),
                     ),
@@ -869,6 +964,8 @@ class _BoardTreeState extends State<BoardTree> {
       String? from,
       String? label,
       bool favorite = false,
+      String? note,
+      String? company,
     }) {
       final b = boards[i];
       final on = i == widget.selected;
@@ -876,7 +973,8 @@ class _BoardTreeState extends State<BoardTree> {
       final drop = widget.onDropTask;
       // Favorites are one's own: anybody arranges them.
       final arrange = favorite || widget.canArrange && widget.api != null;
-      Widget draggable(Widget w) => arrange && b['deleted'] != true
+      Widget draggable(Widget w) =>
+          arrange && b['deleted'] != true && _dragByMouse
           ? Draggable<String>(
               key: ValueKey('tasks-board-drag-${b['id']}'),
               data: 'board:${b['id']}',
@@ -903,17 +1001,18 @@ class _BoardTreeState extends State<BoardTree> {
                     ? _moveFavorite(d.data.substring(6), '${b['id']}')
                     : _reorder(d.data.substring(6), b)
               : drop!(i, d.data),
-          builder: (context, hovering, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              border: hovering.isEmpty
-                  ? null
-                  : Border.all(color: theme.colorScheme.primary, width: 2),
-            ),
-            child: draggable(tile(b, i, on, text, indent, from)),
+          builder: (context, hovering, _) => _dropLook(
+            context,
+            hovering,
+            // A task dropped on a board goes into it; a board dragged onto
+            // a board takes its place.
+            into: (d) => !'$d'.startsWith('board:'),
+            inset: 26 + indent,
+            child: draggable(tile(b, i, on, text, indent, from, note, company)),
           ),
         );
       }
-      return draggable(tile(b, i, on, text, indent, from));
+      return draggable(tile(b, i, on, text, indent, from, note, company));
     }
 
     Widget header(String text) => Padding(
@@ -932,13 +1031,19 @@ class _BoardTreeState extends State<BoardTree> {
       double indent = 0,
       bool asHeader = false,
       String? colourKey,
+      IconData? icon,
+      bool strong = false,
+      Color? dot,
+      bool startFolded = false,
     }) {
       if (children.isEmpty) return const [];
-      final open = searching || !_folded.contains(key);
+      // A group that starts folded remembers being opened instead.
+      final mark = startFolded ? '$key:open' : key;
+      final open = searching || _folded.contains(mark) == startFolded;
       final tint = colourKey == null ? null : _colour(_groupColours[colourKey]);
       final row = InkWell(
         key: ValueKey('tasks-fold-$key'),
-        onTap: searching ? null : () => _fold(key),
+        onTap: searching ? null : () => _fold(mark),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             6 + indent,
@@ -953,15 +1058,26 @@ class _BoardTreeState extends State<BoardTree> {
                 size: 20,
                 color: tint ?? theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 2),
-              if (tint != null) ...[
-                Icon(
-                  Icons.circle,
-                  key: ValueKey('group-tint-$colourKey'),
-                  size: 10,
-                  color: tint,
+              // One slot model for every row: indent, a 20 chevron, an 18
+              // icon, 8, the name; so a row's depth is its name's x (design
+              // 211: "the same indent step at every level").
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+              ],
+              if (tint != null || strong) ...[
+                // Every company has its dot, coloured or not: one look per
+                // level (design 211).
+                SizedBox(
+                  width: 18,
+                  child: Icon(
+                    Icons.circle,
+                    key: ValueKey('group-tint-$colourKey'),
+                    size: 10,
+                    color: tint ?? dot ?? theme.colorScheme.outline,
+                  ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
               ],
               Expanded(
                 child: Text(
@@ -973,7 +1089,9 @@ class _BoardTreeState extends State<BoardTree> {
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.6,
                         )
-                      : theme.textTheme.labelLarge,
+                      : theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: strong ? FontWeight.w800 : null,
+                        ),
                 ),
               ),
             ],
@@ -1001,7 +1119,7 @@ class _BoardTreeState extends State<BoardTree> {
     }
 
     final sectioned = boards.any((b) => b['section'] != null);
-    final folderIds = {for (final f in _folders) '${f['id']}'};
+    final folderById = {for (final f in _folders) '${f['id']}': f};
     // My own board is the first entry, above every section, even when it was
     // filed in a folder (Jose, 2026-11-16).
     final personal = boards.indexWhere(
@@ -1009,164 +1127,301 @@ class _BoardTreeState extends State<BoardTree> {
           b['kind'] == 'user' &&
           (sectioned ? b['section'] == 'mine' : b['archived'] != true),
     );
-    bool loose(Map<String, dynamic> b) =>
-        !folderIds.contains(b['folder_id']) &&
-        (personal < 0 || !identical(b, boards[personal]));
-    List<int> inSection(String key) => [
-      for (final (i, b) in boards.indexed)
-        if (b['section'] == key && loose(b)) i,
-    ]..sort((a, b) => _byPlace(boards[a], boards[b]));
-    // An older server without sections: the personal board I own is mine,
-    // everything else is a place board.
-    final mine = sectioned
-        ? inSection('mine')
-        : [
-            for (final (i, b) in boards.indexed)
-              if (b['kind'] == 'user' && loose(b)) i,
-          ];
-    // Jose 11-25: the company is the top level. A board shared with me that
-    // belongs to a company sits under that company with the rest of its
-    // boards (New York was alone under All markets while the other branches
-    // were under Franchise boards); only shared boards of no company stay
-    // in their own section.
-    bool ofCompany(int i) => '${boards[i]['company_name'] ?? ''}'.isNotEmpty;
-    final sharedAll = sectioned ? inSection('shared') : const <int>[];
-    final shared = [
-      for (final i in sharedAll)
-        if (!ofCompany(i)) i,
-    ];
-    final places = [
-      ...(sectioned
-          ? inSection('place')
-          : [
-              for (final (i, b) in boards.indexed)
-                if (b['kind'] != 'user' && loose(b)) i,
-            ]),
-      for (final i in sharedAll)
-        if (ofCompany(i)) i,
-    ];
-    // A folder named for a company (Monday's "A1 Chimney", "Everdoors") is
-    // that company's: its boards sit under the company, its sub-folders too.
+
+    // Design 211 (Jose 11-25 on 0.0.0644: "it's a mess and you can't tell
+    // what is what"). Every board has one place:
+    //   a company: its company board first, then Branches, then its folders;
+    //   Organization: boards of no company; Templates; Shared with me;
+    //   Everyone's boards: one row per board.
+    // A folder belongs to the company it, or a folder above it, is named
+    // for (Monday's "A1 Chimney", "Everdoors"): there is no FOLDERS section.
     String norm(String s) =>
         s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-    final companyNames = {
-      for (final i in places) '${boards[i]['company_name'] ?? ''}',
+    final companyNames = <String>{
+      for (final b in boards) '${b['company_name'] ?? ''}',
+      for (final c in widget.session?.me?.companies ?? const []) c.name,
     }..remove('');
-    String? companyOfFolder(Map<String, dynamic> f) =>
-        companyNames.where((c) => norm(c) == norm('${f['name']}')).firstOrNull;
-    final companyFolders = <String, List<String>>{};
-    for (final f in _folders) {
-      if (f['parent_id'] != null) continue;
-      if (companyOfFolder(f) case final c?) {
-        companyFolders.putIfAbsent(c, () => []).add('${f['id']}');
+    // The organization is the root, never one company among others (Jose
+    // 11-25: "you put Triplex Group at the bottom, when it's actually the
+    // highest one"); a folder named for it holds its own boards.
+    final me = widget.session?.me;
+    final org = me?.organization.name ?? 'Organization';
+    companyNames.removeWhere((c) => norm(c) == norm(org));
+    final orgFolder = _folders
+        .where(
+          (f) => f['parent_id'] == null && norm('${f['name']}') == norm(org),
+        )
+        .firstOrNull;
+    String? companyNamed(Object? name) =>
+        companyNames.where((c) => norm(c) == norm('$name')).firstOrNull;
+    // A folder's company_id, from the server, wins; a folder without one is
+    // matched by its name (Everdoors under New Locations).
+    final companyById = <String, String>{
+      for (final c in me?.companies ?? const []) c.id: c.name,
+      for (final b in boards)
+        if (b['company_id'] != null && b['company_name'] != null)
+          '${b['company_id']}': '${b['company_name']}',
+    };
+    String? personalOwner(Object? id) {
+      for (
+        var f = folderById['$id'];
+        f != null;
+        f = folderById['${f['parent_id']}']
+      ) {
+        if ((f['owner'] as Map?)?['name'] case final String name) return name;
+      }
+      return null;
+    }
+
+    String? companyOfFolder(Object? id) {
+      for (
+        var f = folderById['$id'];
+        f != null;
+        f = folderById['${f['parent_id']}']
+      ) {
+        if (companyById['${f['company_id']}'] case final c?
+            when companyNames.contains(c)) {
+          return c;
+        }
+        if (companyNamed(f['name']) case final c?) return c;
+      }
+      return null;
+    }
+
+    // ponytail: a template is a board named "... Template" (Monday's three);
+    // a server flag if templates ever get other names.
+    bool template(int i) => _name(boards[i]).toLowerCase().endsWith('template');
+    final byCompany = <String, List<int>>{};
+    final ownerOf = <int, String>{};
+    final organization = <int>[];
+    final templates = <int>[];
+    final shared = <int>[];
+    final everyone = <int>[];
+    final mine = <int>[];
+    for (final (i, b) in boards.indexed) {
+      if (i == personal) continue;
+      // An empty company board whose company works on its Operation board is
+      // not listed (server: company_board false on it).
+      if (b['kind'] == 'company' && b['company_board'] == false) continue;
+      final company = '${b['company_name'] ?? ''}';
+      if (personalOwner(b['folder_id']) case final who?) {
+        ownerOf[i] = who;
+        everyone.add(i);
+      } else if (companyOfFolder(b['folder_id']) != null) {
+        continue; // Drawn inside that company's folder.
+      } else if (template(i)) {
+        templates.add(i);
+      } else if (b['kind'] == 'user') {
+        (b['section'] == 'mine' || !sectioned ? mine : everyone).add(i);
+      } else if (company.isNotEmpty) {
+        byCompany.putIfAbsent(company, () => []).add(i);
+      } else if (folderById.containsKey('${b['folder_id']}')) {
+        continue; // Drawn in its folder, under Organization.
+      } else if (b['section'] == 'shared') {
+        shared.add(i);
+      } else {
+        organization.add(i);
       }
     }
-    final everyone = sectioned ? inSection('everyone') : const <int>[];
-
-    // Companies, each with its own board and custom boards first, then its
-    // branches' boards.
-    final byCompany = <String, List<int>>{};
-    for (final i in places) {
-      byCompany
-          .putIfAbsent('${boards[i]['company_name'] ?? ''}', () => [])
-          .add(i);
+    // A company folder makes its company even with no board of its own.
+    for (final f in _folders) {
+      if (companyOfFolder(f['id']) case final c?) {
+        byCompany.putIfAbsent(c, () => []);
+      }
     }
+    for (final list in [organization, templates, shared, everyone, mine]) {
+      list.sort((a, b) => _byPlace(boards[a], boards[b]));
+    }
+
+    // The company's working board first (server: company_board).
+    int rank(int i) => boards[i]['company_board'] == true
+        ? 0
+        : switch (boards[i]['kind']) {
+            'organization' || 'company' => 0,
+            'custom' => 1,
+            _ => 2,
+          };
+    // The order the companies were arranged in (their folders' places), then
+    // the ones with more boards, then A–Z.
+    double placeOf(String c) =>
+        _folders
+            .where(
+              (f) => f['parent_id'] == null && companyNamed(f['name']) == c,
+            )
+            .map((f) => (f['position'] as num?)?.toDouble() ?? 1e6)
+            .firstOrNull ??
+        1e6;
     final companies = byCompany.keys.toList()
-      ..sort((a, b) => a.isEmpty ? -1 : (b.isEmpty ? 1 : a.compareTo(b)));
-    int rank(int i) => switch (boards[i]['kind']) {
-      'organization' || 'company' => 0,
-      'custom' => 1,
-      _ => 2,
+      ..sort((a, b) {
+        final p = placeOf(a).compareTo(placeOf(b));
+        if (p != 0) return p;
+        final n = byCompany[b]!.length - byCompany[a]!.length;
+        return n != 0 ? n : a.compareTo(b);
+      });
+
+    // Jose 11-25: "It should follow your own permissions and hierarchy":
+    // a sub-company sits under its parent company, one step in.
+    final byId = {for (final c in me?.companies ?? const []) c.id: c};
+    // Parentage from the board rows (Task Board: /me lists only companies
+    // behind reachable branches, so a holding company is missing there).
+    final parentIdOf = <String, String>{
+      for (final b in boards)
+        if (b['company_name'] != null && b['parent_company_id'] != null)
+          '${b['company_name']}': '${b['parent_company_id']}',
     };
+    String? parentOf(String company) {
+      final c = (me?.companies ?? const []).where((x) => x.name == company);
+      final id =
+          parentIdOf[company] ?? (c.isEmpty ? null : c.first.parentCompanyId);
+      final parent = byId[id]?.name ?? companyById[id];
+      return parent != null && byCompany.containsKey(parent) ? parent : null;
+    }
+
+    List<Widget> companyTree(String company, double base) {
+      final all = byCompany[company]!;
+      // A custom board with a franchise_id sits under that branch's
+      // board; without one, or when that branch is not listed, it is one
+      // of the company's own boards.
+      final branchIds = {
+        for (final i in all)
+          if (rank(i) == 2 && boards[i]['franchise_id'] != null)
+            '${boards[i]['franchise_id']}',
+      };
+      String? branchOf(int i) {
+        final f = boards[i]['franchise_id'];
+        return rank(i) == 1 && f != null && branchIds.contains('$f')
+            ? '$f'
+            : null;
+      }
+
+      // The company's folders: the one named for it at the top (its
+      // boards are the company's own: "A1 - Operation"), and any named
+      // for it under another folder (Everdoors under New Locations, drawn
+      // as "New Locations").
+      // Its folders that begin here: the one named for it at the top is
+      // the company itself (its boards are the company's own); others
+      // are drawn as folders.
+      final roots = [
+        for (final f in _folders)
+          if (companyOfFolder(f['id']) == company &&
+              companyOfFolder(f['parent_id']) != company)
+            f,
+      ]..sort(_byPlace);
+      bool itself(Map<String, dynamic> f) =>
+          f['parent_id'] == null && companyNamed(f['name']) == company;
+      final own = <int>[
+        for (final i in all)
+          if (rank(i) < 2 && branchOf(i) == null) i,
+        for (final f in roots)
+          if (itself(f))
+            for (final (i, b) in boards.indexed)
+              if (b['folder_id'] == f['id'] && i != personal) i,
+      ];
+      own.sort((a, b) {
+        final r = rank(a) - rank(b);
+        return r != 0 ? r : _byPlace(boards[a], boards[b]);
+      });
+      final branches = [
+        for (final i in all)
+          if (rank(i) == 2) i,
+      ]..sort((a, b) => _name(boards[a]).compareTo(_name(boards[b])));
+
+      final children = <Widget>[
+        for (final i in own)
+          if (matches(i, company)) board(i, indent: base + 14),
+      ];
+      final deep = branches.length > 1 ? 14.0 : 0.0;
+      final branchRows = <Widget>[];
+      for (final i in branches) {
+        final under = [
+          for (final c in all)
+            if (branchOf(c) == '${boards[i]['franchise_id']}') c,
+        ];
+        final shownUnder = matches(i, company)
+            ? under
+            : under.where((c) => matches(c, company)).toList();
+        if (!matches(i, company) && shownUnder.isEmpty) continue;
+        branchRows.add(
+          board(
+            i,
+            indent: base + 14 + deep,
+            // Found by a search, a branch says its company.
+            label: searching ? '$company · ${_name(boards[i])}' : null,
+          ),
+        );
+        for (final c in shownUnder) {
+          branchRows.add(board(c, indent: base + 28 + deep));
+        }
+      }
+      // Several branches fold into one Branches row; one shows itself.
+      children.addAll(
+        branches.length > 1
+            ? group(
+                'branches:$company',
+                'Branches',
+                branchRows,
+                indent: base + 14,
+                icon: Icons.folder,
+              )
+            : branchRows,
+      );
+      for (final f in roots) {
+        final top = itself(f);
+        final parent = f['parent_id'] == null ? null : '${f['parent_id']}';
+        children.addAll(
+          _folderRows(
+            context,
+            top ? '${f['id']}' : parent,
+            base + 14,
+            (i, x, {note}) => board(i, indent: x, note: note),
+            (i) => matches(i, company),
+            keep: top ? null : (x) => x['id'] == f['id'],
+            // Named for the company under another folder (Everdoors
+            // under New Locations): drawn as that folder.
+            label: !top && companyNamed(f['name']) == company
+                ? '${folderById[parent]?['name'] ?? f['name']}'
+                : null,
+          ),
+        );
+      }
+      for (final sub in companies) {
+        if (parentOf(sub) == company) {
+          children.addAll(companyTree(sub, base + 14));
+        }
+      }
+      if (children.isEmpty) return const <Widget>[];
+      // A company with one board is that board: no row repeating it.
+      final lone = [...own, ...branches];
+      if (lone.length == 1 && children.length == 1) {
+        return [
+          board(lone.single, indent: base, label: company, company: company),
+        ];
+      }
+      return group(
+        'company:$company',
+        company,
+        children,
+        colourKey: 'company:$company',
+        dot: brand[company] ?? dotFor(company),
+        strong: true,
+        indent: base,
+      );
+    }
 
     final companyRows = <Widget>[
       for (final company in companies)
-        ...() {
-          int byName(int a, int b) =>
-              _name(boards[a]).compareTo(_name(boards[b]));
-          final all = byCompany[company]!;
-          // A custom board with a franchise_id sits under that branch's
-          // board; without one, or when that branch is not listed, under
-          // its company.
-          final branchIds = {
-            for (final i in all)
-              if (rank(i) == 2 && boards[i]['franchise_id'] != null)
-                '${boards[i]['franchise_id']}',
-          };
-          String? branchOf(int i) {
-            final f = boards[i]['franchise_id'];
-            return rank(i) == 1 && f != null && branchIds.contains('$f')
-                ? '$f'
-                : null;
-          }
-
-          final top = all.where((i) => branchOf(i) == null).toList()
-            ..sort((a, b) => _byPlace(boards[a], boards[b]));
-          final folderIds = companyFolders[company] ?? const <String>[];
-          final children = <Widget>[];
-          for (final i in top) {
-            final under = rank(i) == 2 && boards[i]['franchise_id'] != null
-                ? (all
-                      .where(
-                        (c) => branchOf(c) == '${boards[i]['franchise_id']}',
-                      )
-                      .toList()
-                    ..sort(byName))
-                : const <int>[];
-            final shownUnder = matches(i)
-                ? under
-                : under.where((c) => matches(c)).toList();
-            if (!matches(i) && shownUnder.isEmpty) continue;
-            children.add(
-              board(
-                i,
-                indent: 14,
-                // Found by a search, a branch says its company.
-                label: searching && company.isNotEmpty && rank(i) == 2
-                    ? '$company · ${_name(boards[i])}'
-                    : null,
-              ),
-            );
-            for (final c in shownUnder) {
-              children.add(board(c, indent: 30));
-            }
-          }
-          // The company's folder: its boards straight under the company (the
-          // company board, "A1 - Operation"), then its sub-folders.
-          for (final fid in folderIds) {
-            children.addAll(
-              [
-                for (final (i, b) in boards.indexed)
-                  if (b['folder_id'] == fid &&
-                      matches(i) &&
-                      !(b['kind'] == 'user' && b['section'] == 'mine'))
-                    i,
-              ].map((i) => board(i, indent: 14)),
-            );
-            children.addAll(
-              _folderRows(
-                context,
-                fid,
-                14,
-                (i, x) => board(i, indent: x),
-                matches,
-              ),
-            );
-          }
-          if (children.isEmpty) return const <Widget>[];
-          return group(
-            'company:$company',
-            company.isEmpty ? 'Organization' : company,
-            children,
-            colourKey: 'company:$company',
-          );
-        }(),
+        if (parentOf(company) == null) ...companyTree(company, 14),
     ];
 
+    // A person is a group only with two boards or more (Jose 11-25 on
+    // "Adnan Alvi · 1 board ▸ Adnan Alvi": "what is the point").
     final people = <String, List<int>>{};
     for (final i in everyone) {
-      final who = _owner(boards[i]) ?? 'Someone';
-      if (matches(i)) people.putIfAbsent(who, () => []).add(i);
+      if (matches(i)) {
+        people
+            .putIfAbsent(ownerOf[i] ?? _owner(boards[i]) ?? 'Someone', () => [])
+            .add(i);
+      }
     }
     final names = people.keys.toList()..sort();
 
@@ -1176,6 +1431,19 @@ class _BoardTreeState extends State<BoardTree> {
             when i >= 0 && matches(i))
           i,
     ];
+    final nothingFound =
+        !mine.any(matches) &&
+        companyRows.isEmpty &&
+        !organization.any(matches) &&
+        !boards.indexed.any(
+          (e) =>
+              matches(e.$1) &&
+              folderById.containsKey('${e.$2['folder_id']}') &&
+              companyOfFolder(e.$2['folder_id']) == null,
+        ) &&
+        !templates.any(matches) &&
+        !shared.any(matches) &&
+        names.isEmpty;
     final rows = <Widget>[
       ...group('favorites', 'Favorites', asHeader: true, [
         // Its own subtree: the same board is listed again below, with the
@@ -1186,44 +1454,76 @@ class _BoardTreeState extends State<BoardTree> {
             child: board(i, favorite: true),
           ),
       ]),
+      // Under its own heading, so it never reads as a favorite (design 211).
+      if (personal >= 0 && matches(personal) || mine.any(matches))
+        header('My boards'),
       if (personal >= 0 && matches(personal))
         board(personal, label: 'Personal Task Board'),
-      if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('companies', 'Companies', asHeader: true, companyRows),
+      // The organization, then under it its own boards and folders, then
+      // its companies: org > company > branch or folder > board, one indent
+      // step a level (design 211, Jose 11-25).
+      ...group(
+        'org',
+        org,
+        strong: true,
+        dot: orgColour ?? theme.colorScheme.primary,
+        [
+          if (orgFolder != null)
+            for (final (i, b) in boards.indexed)
+              if (b['folder_id'] == orgFolder['id'] &&
+                  i != personal &&
+                  !template(i) &&
+                  matches(i))
+                board(i, indent: 14),
+          for (final i in organization)
+            if (matches(i)) board(i, indent: 14),
+          // Its folders: those in its own folder, then those named for no
+          // company. A board of a company is under its company, wherever filed.
+          for (final parent in [?orgFolder?['id'], null])
+            ..._folderRows(
+              context,
+              parent == null ? null : '$parent',
+              14,
+              (i, x, {note}) => board(i, indent: x, note: note),
+              (i) =>
+                  matches(i) &&
+                  !template(i) &&
+                  '${boards[i]['company_name'] ?? ''}'.isEmpty,
+              hide: (f) =>
+                  companyOfFolder(f['id']) != null ||
+                  identical(f, orgFolder) ||
+                  f['owner'] != null,
+            ),
+          ...companyRows,
+        ],
+      ),
+      ...group('templates', 'Templates', asHeader: true, [
+        for (final i in templates)
+          if (matches(i)) board(i),
+      ]),
       ...group('shared', 'Shared with me', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),
+      // Folded until opened: 130-odd people's boards (design 211).
       ...group(
-        'folders',
-        'Folders',
+        'everyone',
+        "Everyone's boards",
         asHeader: true,
-        _folderRows(
-          context,
-          null,
-          0,
-          (i, x) => board(i, indent: x),
-          matches,
-          keep: (f) => companyOfFolder(f) == null,
-        ),
+        startFolded: true,
+        [
+          for (final person in names)
+            if (people[person]!.length == 1)
+              board(people[person]!.single, from: person)
+            else
+              ...group('person:$person', person, indent: 8, [
+                for (final i in people[person]!) board(i, indent: 22),
+              ]),
+        ],
       ),
-      ...group('everyone', "Everyone's boards", asHeader: true, [
-        for (final person in names)
-          ...group(
-            'person:$person',
-            '$person · ${people[person]!.length} '
-                '${people[person]!.length == 1 ? 'board' : 'boards'}',
-            indent: 8,
-            [for (final i in people[person]!) board(i, indent: 22)],
-          ),
-      ]),
-      if (searching &&
-          !mine.any(matches) &&
-          shared.every((i) => !matches(i)) &&
-          companyRows.isEmpty &&
-          names.isEmpty)
+      if (searching && nothingFound)
         Padding(
           padding: const EdgeInsets.all(14),
           child: Text(

@@ -884,7 +884,10 @@ class ModuleServiceProvider extends ServiceProvider
                 // off. Every role was given it by the migration of that day.
                 // `payroll` (Merav via Jose, 2026-11-19): see pay, set bonus and
                 // deductions, approve a week. Money, so its own grant.
-                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll'],
+                // `own_schedule` (Jose, 2026-11-25: "Disable people changing their own
+                // Work Schedule for all roles except Administrator"): Administrator
+                // holds it by holding every permission; nobody else is given it.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll', 'own_schedule'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
@@ -898,6 +901,7 @@ class ModuleServiceProvider extends ServiceProvider
                     'pto.edit' => 'Edit used paid time off',
                     'approve' => 'Approve daily hours',
                     'payroll' => 'Weekly payroll: pay, bonus, deductions, approve',
+                    'own_schedule' => 'Change your own work schedule',
                     'pto.request' => 'Ask for paid time off',
                 ],
                 tabs: [
@@ -2334,6 +2338,10 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('phone', 'Phone'),
+                    // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi
+                    // accounts. Messages never touch Twilio; calls ring the
+                    // colleague's Twilio identity like the Team roster.
+                    new TabDefinition('chat', 'Chat'),
                     new TabDefinition('users', 'Users'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('reports', 'Reports'),
@@ -2345,6 +2353,7 @@ class ModuleServiceProvider extends ServiceProvider
                 actionLabels: ['edit' => 'Change lines, flows and settings'],
                 actionDescriptions: [
                     'phone.view' => 'Dial, Messages, Team and Voicemail.',
+                    'chat.view' => 'Chat with colleagues: messages, groups, photos, files, voice notes and calls.',
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -2752,6 +2761,24 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationExemptBecause: 'Company only reads what HR and Reports already record; '
                     .'there is no event here that another module does not raise first.',
+            ),
+
+            // Trey, approved by Jose 2026-11-25: "a new Leaderboard Tab where it
+            // will only the top 3 performers, and the person who is entering the
+            // tab should also see their own rank ... a separate new main tab",
+            // and "another sub tab for their own Performance". Scoring's numbers,
+            // narrowed to three names and the reader's own rows, so it asks for
+            // no Reports grant: dispatchers hold it, Scoring stays managers'.
+            new ModuleDefinition(
+                key: 'leaderboard',
+                label: 'Leaderboard',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('board', 'Leaderboard', action: 'view'),
+                    new TabDefinition('mine', 'My performance'),
+                ],
+                automationExemptBecause: 'The Leaderboard only reads the scores and calls Reports keeps; '
+                    .'it records nothing a rule could act on.',
             ),
 
             new ModuleDefinition(

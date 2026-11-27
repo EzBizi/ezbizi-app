@@ -218,9 +218,9 @@ const head=()=>`<div class="hdr"><h2>Leads</h2><p>People who asked about you, be
 const toolbar=()=>`<div class="toolbar"><div class="search">&#9906; Search a name or phone number</div>
   <div class="sel">All &#8645;</div><button class="btn ghost">&#8635; Fetch new</button></div>`;
 
-const LEADS=[['+1 (513) 226-7716','service area business home inspector · 22h ago'],
-             ['+1 (586) 202-0812','service area business home inspector · 23h ago'],
-             ['+1 (734) 934-4772','service area business home inspector · 23h ago'],
+const LEADS=[['+1 (513) 555-0100','service area business home inspector · 22h ago'],
+             ['+1 (586) 555-0100','service area business home inspector · 23h ago'],
+             ['+1 (734) 555-0100','service area business home inspector · 23h ago'],
              ['Unnamed enquiry','1d ago']];
 const leads=()=>`<div class="leads">${LEADS.map(l=>`<div class="lead"><div class="g"><b>${l[0]}</b><span>${l[1]}</span></div>
   <span class="pill new">New</span></div>`).join('')}</div>`;
@@ -230,8 +230,8 @@ const band=(action)=>`<div class="band"><span class="gmark">G</span><div class="
 
 // [number, placement, leads, label-or-null]
 const ACCTS=[['405-172-9356','Company level',142,'Main line'],['118-904-2210','Connecticut',88,'Connecticut'],
-  ['772-410-3388','DMV',31,null],['905-221-7740','Company level',0,'Ohio'],['441-092-5512','Company level',0,null],
-  ['330-887-1204','Company level',0,null]];
+  ['772-555-0100','DMV',31,null],['905-555-0100','Company level',0,'Ohio'],['441-092-5512','Company level',0,null],
+  ['330-555-0103','Company level',0,null]];
 const acct=(a,showCount)=>`<div class="acct ${a[2]===0?'quiet':''}"><div class="g">
   <div class="num">${a[3]
     ? a[3]+' <span style="font-weight:400;color:var(--muted);font-size:12.5px">'+a[0]+'</span>'
@@ -270,7 +270,7 @@ const D2=()=>win('<b>Layout 2</b> &middot; expanded in place, above the leads',
    <div style="margin:0 20px 10px;border:1px solid var(--line);border-radius:10px;overflow:hidden">
      ${ACCTS.map(a=>acct(a,true)).join('')}
      <div style="padding:10px 12px;color:var(--muted);font-size:12px">…16 more</div></div>
-   ${toolbar()}<div class="leads"><div class="lead"><div class="g"><b>+1 (513) 226-7716</b>
+   ${toolbar()}<div class="leads"><div class="lead"><div class="g"><b>+1 (513) 555-0100</b>
      <span>the first lead, now well below the fold</span></div><span class="pill new">New</span></div></div>
    </div></div>`,
  'Cheapest to build: a bool, no panel, no route. And expanded, the first lead is <b>below the fold</b> — so editing a placement scrolls you away from the list that is supposed to change.');
@@ -303,9 +303,9 @@ const M4=()=>`<div class="phones">
       <div class="tabs" style="padding:10px 16px"><span class="on">Google</span><span>Thumbtack</span></div>
       <div class="row"><span class="gmark">G</span><div class="g"><b>Google Ads</b></div>
         <span class="v">22 accounts<br>2 placed</span><span class="chev">&#8250;</span></div>
-      <div class="row"><div class="g"><b>+1 (513) 226-7716</b><span style="color:var(--muted);font-size:12px">22h ago</span></div>
+      <div class="row"><div class="g"><b>+1 (513) 555-0100</b><span style="color:var(--muted);font-size:12px">22h ago</span></div>
         <span class="pill new">New</span></div>
-      <div class="row"><div class="g"><b>+1 (586) 202-0812</b><span style="color:var(--muted);font-size:12px">23h ago</span></div>
+      <div class="row"><div class="g"><b>+1 (586) 555-0100</b><span style="color:var(--muted);font-size:12px">23h ago</span></div>
         <span class="pill new">New</span></div></div>`)}
   ${P('<b>What the row opens</b>',`
     <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>

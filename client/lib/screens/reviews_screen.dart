@@ -18,6 +18,7 @@ import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/open_destination.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/formatted_notes.dart';
 import 'customer_experience/review_stats_band.dart';
 
 /// Reviews — what the public said, the answer, and the work behind it.
@@ -153,7 +154,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   Map<String, dynamic>? _open;
   bool _confirmingPublish = false;
   final _draft = TextEditingController();
-  final _note = TextEditingController();
+  final _note = FormattedNotesController();
   final _reason = TextEditingController();
   final _match = TextEditingController();
   List<Map<String, dynamic>>? _suggestions;
@@ -167,6 +168,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void initState() {
+    _note.addListener(() => setState(() {}));
     super.initState();
     _load();
     _loadSummary();
@@ -2164,23 +2166,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             for (final n in notes)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
+                child: FormattedNotesText(
                   '${_date({'reviewed_at': n['at']})}'
                   '${n['by'] == null ? '' : ' · ${n['by']}'}: ${n['text']}',
                   style: small,
                 ),
               ),
           if (manage) ...[
-            TextField(
-              key: const ValueKey('review-note'),
+            FormattedNotesField(
+              fieldKey: const ValueKey('review-note'),
               controller: _note,
+              label: 'Add a note',
               minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: 'Add a note',
-              ),
-              onChanged: (_) => setState(() {}),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -2189,7 +2186,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 onPressed: _busy || _note.text.trim().isEmpty
                     ? null
                     : () {
-                        final text = _note.text.trim();
+                        final text = _note.markup.trim();
                         _note.clear();
                         _write(
                           widget.api.post('/reviews/${review['id']}/notes', {

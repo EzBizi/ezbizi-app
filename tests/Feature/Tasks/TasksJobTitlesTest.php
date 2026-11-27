@@ -23,7 +23,7 @@ class TasksJobTitlesTest extends TestCase
         $t = $this->provisionTenant('Alpha');
         [$a, $b, $c] = $this->inTenant($t['org'], function () use ($t) {
             $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
-            $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Debby Bloom']);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Debby Brook']);
             foreach (['600025660', '400595628'] as $i => $serial) {
                 $job = Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id]);
                 WorkizJob::create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'R'.$i, 'serial_id' => $serial, 'status' => 'x', 'payload' => [], 'synced_at' => now(), 'job_id' => $job->id]);
@@ -38,9 +38,9 @@ class TasksJobTitlesTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($a, $b, $c) {
             $a = Task::query()->find($a->id);
-            $this->assertSame(['Debby Bloom · Albert', 'job'], [$a->title, $a->about_type]);
+            $this->assertSame(['Debby Brook · Albert', 'job'], [$a->title, $a->about_type]);
             $this->assertContains('600025660', $a->values()->pluck('value_text')->all());
-            $this->assertSame('Debby Bloom · Jade', Task::query()->find($b->id)->title);
+            $this->assertSame('Debby Brook · Jade', Task::query()->find($b->id)->title);
             $this->assertSame('999999999 Bob', Task::query()->find($c->id)->title, 'no such job: left');
         });
     }

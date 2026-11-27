@@ -296,7 +296,7 @@ class ProjectBoardTest extends TestCase
         $options = $view->getJson('/api/v1/project-board/options')->assertOk()->json('data');
         $this->assertNotContains('🔴 Manual Follow-Up 🔴', $options['tags']);
 
-        $this->assertSame(['REPAIR TEAM: KENNI'],
+        $this->assertSame(['PROJECT', 'REPAIR TEAM: KENNI'],
             array_column($view->getJson("/api/v1/jobs/{$a1}")->assertOk()->json('data.workiz_tags'), 'name'));
         $this->assertNotContains($door, array_column($view->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=D-1')->json('data'), 'id'));
     }

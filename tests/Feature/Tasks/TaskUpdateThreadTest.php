@@ -50,14 +50,14 @@ class TaskUpdateThreadTest extends TestCase
         $task = $this->signedInAs($tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Liner'])->assertCreated()->json('data.id');
         $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Parts came'])->assertCreated();
         $this->travel(1)->minutes();
-        $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@you look', 'mentions' => [$tenant['admin']->id]])->assertCreated();
+        $this->signedInAs($other)->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@you <b>look</b>', 'mentions' => [$tenant['admin']->id]])->assertCreated();
 
         $feed = fn (string $q = '') => $this->signedInAs($tenant['admin'])->getJson('/api/v1/task-updates'.$q)->assertOk();
         $all = $feed()->json();
-        $this->assertSame(['@you look', 'Parts came'], collect($all['data'])->pluck('body')->all());
+        $this->assertSame(['@you <b>look</b>', 'Parts came'], collect($all['data'])->pluck('body')->all());
         $this->assertSame('Liner', $all['data'][0]['task']);
         $this->assertSame(2, collect($all['meta']['boards'])->firstWhere('id', $board->id)['count']);
-        $this->assertSame(['@you look'], collect($feed('?filter=mentions')->json('data'))->pluck('body')->all());
+        $this->assertSame(['@you <b>look</b>'], collect($feed('?filter=mentions')->json('data'))->pluck('body')->all());
         $this->assertCount(2, $feed('?unread=1')->json('data'));
 
         $this->travel(1)->minutes();
@@ -78,11 +78,40 @@ class TaskUpdateThreadTest extends TestCase
 
         $this->assertTrue($api($watcher)->postJson("/api/v1/tasks/{$task}/updates/{$top}/follow")->assertOk()->json('data.following'));
         $api($tech)->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Ordered', 'parent_id' => $top])->assertCreated();
-        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, Notification::query()->where('user_id', $watcher->id)->where('kind', 'task.reply')->count()));
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, Notification::query()->where('user_id', $watcher->id)->where('kind', 'task.reply.thread')->count()));
+        // Row 67: the update's author hears it as a reply to their own update.
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, Notification::query()->where('user_id', $tenant['admin']->id)->where('kind', 'task.reply.mine')->count()));
 
         $body = $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 1])->assertOk()->json('data.body');
         $this->assertSame("Steps\n☑ Order the liner\n☐ Book the crew", $body);
         $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$top}/check", ['line' => 0])->assertStatus(422);
+    }
+
+    /** Row 67 (Monday's notification settings): each reason rings as its own kind. */
+    public function test_owner_reaction_invitation_and_deleted_update_ring_their_own_kinds(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
+        $tech = $this->userWithRole($tenant, 'Tech', ['tasks.view', 'tasks.edit']);
+        $api = fn ($u) => $this->signedInAs($u);
+        $kinds = fn ($u) => $this->inTenant($tenant['org'], fn () => Notification::query()->where('user_id', $u->id)->pluck('kind')->all());
+        $task = $api($tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $board->id, 'title' => 'Liner', 'assignee_user_ids' => [$tech->id]])->assertCreated()->json('data.id');
+
+        $mine = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => 'Booked'])->assertCreated()->json('data.id');
+        $this->assertContains('task.update.owner', $kinds($tech), 'an update on an item I own');
+
+        $api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$mine}/like")->assertOk();
+        $this->assertContains('task.reaction', $kinds($tenant['admin']));
+        $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates/{$mine}/like")->assertOk();
+        $this->assertSame(1, collect($kinds($tenant['admin']))->filter(fn ($k) => $k === 'task.reaction')->count(), 'never my own like');
+
+        $api($tenant['admin'])->deleteJson("/api/v1/tasks/{$task}/updates/{$mine}")->assertSuccessful();
+        $this->assertContains('task.update_deleted', $kinds($tech));
+        $this->assertNotContains('task.update_deleted', $kinds($tenant['admin']), 'not who deleted it');
+
+        $new = $this->userWithRole($tenant, 'Helper', ['tasks.view', 'tasks.edit']);
+        $api($tenant['admin'])->postJson("/api/v1/task-boards/{$board->id}/members", ['user_id' => $new->id, 'role' => 'member'])->assertCreated();
+        $this->assertContains('task.invited', $kinds($new), "Monday's board invitation");
     }
 
     /** Monday's feed tabs (gap review): Bookmarked, and a Scheduled update unseen until its time. */
@@ -98,7 +127,7 @@ class TaskUpdateThreadTest extends TestCase
         $this->assertTrue($api($tech)->postJson("/api/v1/tasks/{$task}/updates/{$now}/bookmark")->assertOk()->json('data.bookmarked'));
         $this->assertSame([$now], collect($api($tech)->getJson('/api/v1/task-updates?filter=bookmarked')->json('data'))->pluck('id')->all());
 
-        $later = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@crew tomorrow at 8', 'mentions' => [$tech->id], 'post_at' => now()->addHour()->toIso8601String()])
+        $later = $api($tenant['admin'])->postJson("/api/v1/tasks/{$task}/updates", ['body' => '@crew <b>tomorrow</b> at 8', 'mentions' => [$tech->id], 'post_at' => now()->addHour()->toIso8601String()])
             ->assertCreated()->json('data');
         $this->assertNotNull($later['scheduled_for']);
         $this->assertSame([$later['id']], collect($api($tenant['admin'])->getJson('/api/v1/task-updates?filter=scheduled')->json('data'))->pluck('id')->all());
@@ -110,6 +139,8 @@ class TaskUpdateThreadTest extends TestCase
         $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 1')->assertSuccessful();
         $this->assertContains($later['id'], collect($api($tech)->getJson("/api/v1/tasks/{$task}")->json('data.updates'))->pluck('id')->all());
         $this->assertSame(1, $mentioned());
+        // Jose 11-25: the bell, push and email read the words, never the tags.
+        $this->assertSame('@crew tomorrow at 8', $this->inTenant($tenant['org'], fn () => Notification::query()->where('user_id', $tech->id)->where('kind', 'task.mentioned')->value('body')));
         $this->artisan('ezbizi:tasks-post-scheduled-updates')->expectsOutputToContain('posted: 0')->assertSuccessful();
     }
 }

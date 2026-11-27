@@ -465,7 +465,7 @@ class MicrosoftMailOAuthTest extends TestCase
         $mailbox = $this->inbox($t);
         $state   = $this->beginSignIn($t, $mailbox);
 
-        $this->fakeMicrosoft(signedInAs: 'jenny.smith.personal@outlook.com');
+        $this->fakeMicrosoft(signedInAs: 'jane.sample.personal@outlook.com');
 
         $body = $this->get(self::CALLBACK.'?code=an-auth-code&state='.$state)
             ->assertStatus(409)->getContent();
@@ -476,7 +476,7 @@ class MicrosoftMailOAuthTest extends TestCase
             .'to that inbox can now read one person\'s private mail.',
         );
 
-        $this->assertStringContainsString('jenny.smith.personal@outlook.com', $body);
+        $this->assertStringContainsString('jane.sample.personal@outlook.com', $body);
         $this->assertStringContainsString(self::ADDRESS, $body);
 
         Http::assertSent(fn ($request) => $request->url() === 'https://login.microsoftonline.com/common/oauth2/v2.0/logout'
@@ -557,7 +557,7 @@ class MicrosoftMailOAuthTest extends TestCase
             'login.microsoftonline.com/common/oauth2/v2.0/token'  => Http::response($this->tokenBody()),
             'login.microsoftonline.com/common/oauth2/v2.0/logout' => Http::response([]),
             'graph.microsoft.com/v1.0/me' => Http::sequence()
-                ->push(['mail' => 'jenny.smith.personal@outlook.com', 'userPrincipalName' => 'jenny.smith.personal@outlook.com'])
+                ->push(['mail' => 'jane.sample.personal@outlook.com', 'userPrincipalName' => 'jane.sample.personal@outlook.com'])
                 ->push(['mail' => self::ADDRESS, 'userPrincipalName' => self::ADDRESS]),
         ]);
 
@@ -570,7 +570,7 @@ class MicrosoftMailOAuthTest extends TestCase
         $entries = AuditEvent::withoutGlobalScopes()->get();
 
         $this->assertStringNotContainsString(
-            'jenny.smith.personal@outlook.com',
+            'jane.sample.personal@outlook.com',
             $entries->toJson(),
         );
 
@@ -618,7 +618,7 @@ class MicrosoftMailOAuthTest extends TestCase
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
             ->assertOk()->json('data');
 
-        $this->fakeMicrosoft(signedInAs: 'jenny.smith.personal@outlook.com');
+        $this->fakeMicrosoft(signedInAs: 'jane.sample.personal@outlook.com');
 
         $this->get(self::CALLBACK.'?code=an-auth-code&state='
             .$this->queryOf($started['authorization_url'])['state'])->assertStatus(409);
@@ -628,7 +628,7 @@ class MicrosoftMailOAuthTest extends TestCase
         )->assertOk()->json('data');
 
         $this->assertSame('refused', $answer['state']);
-        $this->assertStringContainsString('jenny.smith.personal@outlook.com', $answer['message']);
+        $this->assertStringContainsString('jane.sample.personal@outlook.com', $answer['message']);
         $this->assertStringContainsString(self::ADDRESS, $answer['message']);
     }
 
@@ -644,7 +644,7 @@ class MicrosoftMailOAuthTest extends TestCase
             ->postJson("/api/v1/email/mailboxes/{$ours->getKey()}/oauth/start")
             ->assertOk()->json('data');
 
-        $this->fakeMicrosoft(signedInAs: 'jenny.smith.personal@outlook.com');
+        $this->fakeMicrosoft(signedInAs: 'jane.sample.personal@outlook.com');
 
         $this->get(self::CALLBACK.'?code=an-auth-code&state='
             .$this->queryOf($started['authorization_url'])['state'])->assertStatus(409);

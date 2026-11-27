@@ -83,7 +83,8 @@ void main() {
     expect(f.city, isNull);
     expect(f.handle, isNull);
     expect(f.jobLine, 'Dryer vent');
-    expect(f.referralLine, 'via ad: Autumn sweep');
+    expect(f.adName, 'Autumn sweep');
+    expect(f.campaignName, isNull);
   });
 
   group('the header', () {

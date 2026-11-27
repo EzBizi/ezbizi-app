@@ -3721,7 +3721,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             spacing: 8,
             runSpacing: 4,
             children: [
-              for (final day in _weekdays)
+              for (final day in weekdayKeys)
                 FilterChip(
                   label: Text(_dayLabel(day)),
                   selected: _scheduleDays.contains(day),
@@ -3803,9 +3803,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  static const _weekdays = [
-    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-  ];
 
   String _dayLabel(String day) =>
       day.substring(0, 1).toUpperCase() + day.substring(1, 3);

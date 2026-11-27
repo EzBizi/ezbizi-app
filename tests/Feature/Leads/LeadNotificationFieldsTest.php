@@ -37,7 +37,7 @@ class LeadNotificationFieldsTest extends TestCase
             'source' => Lead::SOURCE_LOCAL_SERVICES,
             'remote_id' => uniqid(),
             'lead_type' => $type,
-            'phone' => '+13192102005',
+            'phone' => '+13195550100',
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
@@ -106,7 +106,7 @@ class LeadNotificationFieldsTest extends TestCase
         $call = $call->fresh();
 
         $this->assertSame('New "Local Services Call" lead', $call->lead_headline);
-        $this->assertSame('(319) 210-2005 - 1:10 min - '.$this->t['company']->name, $call->lead_details);
+        $this->assertSame('(319) 555-0100 - 1:10 min - '.$this->t['company']->name, $call->lead_details);
         $this->assertSame('', $call->reply_headline);
 
         $text = $this->lead('MESSAGE');
@@ -115,6 +115,6 @@ class LeadNotificationFieldsTest extends TestCase
 
         $this->assertSame('New reply on "Local Services Text"', $text->reply_headline);
         $this->assertSame(55, mb_strlen($text->reply_preview));
-        $this->assertSame('(319) 210-2005 - '.$this->t['company']->name, $text->lead_details, 'a text has no duration');
+        $this->assertSame('(319) 555-0100 - '.$this->t['company']->name, $text->lead_details, 'a text has no duration');
     }
 }

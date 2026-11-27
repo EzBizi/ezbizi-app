@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/work_schedule_card.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
@@ -423,8 +424,12 @@ class _RecordsTabState extends State<RecordsTab> {
   Widget _sidebar(BuildContext context) {
     final shown = _shown;
 
-    return Column(
+    // The filters scroll with the list where the window is short (Android on
+    // its side: they left the list -2 px) and are capped elsewhere.
+    return HeaderAboveList(
+      header: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           key: const ValueKey('tour-hr-records-search'),
@@ -514,8 +519,9 @@ class _RecordsTabState extends State<RecordsTab> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
+      ],
+      ),
+      list: AsyncBody(
             key: const ValueKey('tour-hr-records-list'),
             loading: _loading,
             error: _error,
@@ -550,8 +556,6 @@ class _RecordsTabState extends State<RecordsTab> {
                         : _row(context, shown[i]),
                   ),
           ),
-        ),
-      ],
     );
   }
 
@@ -1731,7 +1735,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
     return noParts ? widget.person['address']?.toString() ?? '' : value;
   }
 
-  /// What a box shows for what is stored: a phone as `+1 (214) 968-9819`,
+  /// What a box shows for what is stored: a phone as `+1 (214) 555-0102`,
   /// even one saved as bare digits before this was formatted.
   String _shown(String key) {
     final value = _stored(key);
@@ -2003,6 +2007,9 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   late String? _role = _savedRole;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
+  // Full or part time; '' is "from their schedule" (Eric, 2026-11-25).
+  String get _savedHours => widget.person['hours_type']?.toString() ?? '';
+  late String _hours = _savedHours;
   late final _startDay = TextEditingController(text: _savedStart ?? '');
 
   @override
@@ -2015,6 +2022,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
     if (_role != _savedRole && _role != null) 'role_id': _role,
     if (_active != _savedActive) 'is_active': _active,
     if (_start != _savedStart && _start != null) 'started_on': _start,
+    if (_hours != _savedHours) 'hours_type': _hours.isEmpty ? null : _hours,
   };
 
   @override
@@ -2077,6 +2085,26 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
               : null,
         ),
         const SizedBox(height: 16),
+        Text('Hours', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          key: const ValueKey('hr-record-hours-type'),
+          segments: const [
+            ButtonSegment(value: 'full_time', label: Text('Full time')),
+            ButtonSegment(value: 'part_time', label: Text('Part time')),
+            ButtonSegment(value: '', label: Text('From schedule')),
+          ],
+          selected: {_hours},
+          onSelectionChanged: editable
+              ? (value) => setState(() => _hours = value.first)
+              : null,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'From schedule: 30 hours a week or more counts as full time.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
         _Pair(
           CalendarDayField(
             key: const ValueKey('hr-start-date'),
@@ -2114,6 +2142,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
             onDiscard: () => setState(() {
               _role = _savedRole;
               _active = _savedActive;
+              _hours = _savedHours;
               _start = _savedStart;
               _startDay.text = _savedStart ?? '';
             }),
@@ -2758,7 +2787,7 @@ class _DetailKind {
       row['_when']?.toString(),
       row['basis'] == 'salary' ? 'Salary' : 'Hourly',
       'from ${_date(row['effective_on'], formats)}',
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -2858,7 +2887,7 @@ class _DetailKind {
     },
     subtitle: (row, formats) => _join([
       row['used_on'] == null ? 'before EzBizi' : _date(row['used_on'], formats),
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -3020,6 +3049,10 @@ class _DetailListState extends State<_DetailList> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [Text(widget.kind.title(row, widget.formats)), tag],
                 ),
+                // A note keeps its bold, italic and underline (Jose, 2026-11-25).
+                _ when widget.kind == _DetailKind.notes => FormattedNotesText(
+                  row['body']?.toString(),
+                ),
                 _ => Text(widget.kind.title(row, widget.formats)),
               },
               subtitle: Text(widget.kind.subtitle(row, widget.formats)),
@@ -3089,9 +3122,15 @@ class _DetailFormState extends State<_DetailForm> {
       if (f.type == _FieldType.text ||
           f.type == _FieldType.multiline ||
           f.type == _FieldType.number)
-        f.key: TextEditingController(
-          text: widget.initial?[f.key]?.toString() ?? '',
-        )..addListener(() => setState(() {})),
+        f.key:
+            (f.type == _FieldType.multiline
+                  ? FormattedNotesController(
+                      markup: widget.initial?[f.key]?.toString(),
+                    )
+                  : TextEditingController(
+                      text: widget.initial?[f.key]?.toString() ?? '',
+                    ))
+              ..addListener(() => setState(() {})),
   };
 
   late final Map<String, String?> _picked = {
@@ -3119,8 +3158,11 @@ class _DetailFormState extends State<_DetailForm> {
 
   Object? _value(_FieldSpec f) {
     if (_text.containsKey(f.key)) {
-      final text = _text[f.key]!.text.trim();
+      final box = _text[f.key]!;
+      final text = box.text.trim();
       if (text.isEmpty) return null;
+      // Notes keep their <b>/<i>/<u> (Jose, 2026-11-25).
+      if (box is FormattedNotesController) return box.markup.trim();
       return f.key == 'quantity' ? int.tryParse(text) : text;
     }
     return _picked[f.key];
@@ -3159,12 +3201,16 @@ class _DetailFormState extends State<_DetailForm> {
           onChanged: (v) =>
               setState(() => _picked[f.key] = v.isEmpty ? null : v),
         );
-      case _FieldType.text:
       case _FieldType.multiline:
+        return FormattedNotesField(
+          controller: _text[f.key]! as FormattedNotesController,
+          label: f.label,
+        );
+      case _FieldType.text:
       case _FieldType.number:
         return TextField(
           controller: _text[f.key],
-          maxLines: f.type == _FieldType.multiline ? 4 : 1,
+          maxLines: 1,
           keyboardType: f.type == _FieldType.number
               ? const TextInputType.numberWithOptions(decimal: true)
               : null,

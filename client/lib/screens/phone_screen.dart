@@ -5,6 +5,7 @@ import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'phone/chat/chat_tab.dart';
 import 'phone/alerts_tab.dart';
 import 'phone/phone_tab.dart';
 import 'phone/records_tab.dart';
@@ -74,6 +75,14 @@ class _PhoneScreenState extends State<PhoneScreen> {
         session: widget.session,
         onOpenSettings: () => setState(() => _tab = 'settings'),
       ),
+    ),
+    (
+      // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi accounts.
+      // Same order as the TabDefinition list in ModuleServiceProvider.
+      'chat',
+      'Chat',
+      Icons.forum_outlined,
+      () => ChatTab(api: widget.api, session: widget.session),
     ),
     (
       // Users, not Team. This tab assigns extensions and outbound lines to

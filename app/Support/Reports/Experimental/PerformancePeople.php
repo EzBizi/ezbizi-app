@@ -8,6 +8,7 @@ use App\Models\CallReportDispatcherTag;
 use App\Models\User;
 use App\Support\Reports\ReportJobs;
 use App\Support\Reports\ReportView;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 
 /**
@@ -32,20 +33,35 @@ class PerformancePeople
      */
     public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end, ?string $connection = null, ?array $branches = null): array
     {
+        return array_column($this->report($start, $end, $connection, $branches)['people'], null, 'person');
+    }
+
+    /**
+     * The whole reconciliation, its people and its calls (Leaderboard › My
+     * performance lists one person's calls, 2026-11-25). Kept per tenant, reader
+     * and dates, so Scoring and My performance read one request's dates once.
+     *
+     * @param  list<string>|null  $branches
+     * @return array{people: list<array<string, mixed>>, calls: list<array<string, mixed>>}
+     */
+    public function report(CarbonImmutable $start, CarbonImmutable $end, ?string $connection = null, ?array $branches = null): array
+    {
         $this->calls->only($connection);
         try {
-            return $this->people($start, $end, $branches);
+            return $this->read[serialize([app(TenantContext::class)->id(), auth()->id(), $start->toIso8601String(), $end->toIso8601String(), $connection, $branches])] ??= $this->reconciled($start, $end, $branches);
         } finally {
             $this->calls->only(null);
         }
     }
 
-    /** @return array<string, array<string, mixed>> */
+    /** @var array<string, array{people: list<array<string, mixed>>, calls: list<array<string, mixed>>}> */
+    private array $read = [];
+
     /** @param  list<string>|null  $branches */
-    private function people(CarbonImmutable $start, CarbonImmutable $end, ?array $branches): array
+    private function reconciled(CarbonImmutable $start, CarbonImmutable $end, ?array $branches): array
     {
         if (! $this->calls->configured()) {
-            return [];
+            return ['people' => [], 'calls' => []];
         }
 
         // Jobs created as every report counts them, less the tags left out (2026-11-10).
@@ -62,6 +78,6 @@ class PerformancePeople
             CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
         );
 
-        return array_column($report['people'], null, 'person');
+        return ['people' => $report['people'], 'calls' => $report['calls']];
     }
 }
