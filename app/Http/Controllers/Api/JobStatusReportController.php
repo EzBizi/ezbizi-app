@@ -52,7 +52,7 @@ class JobStatusReportController extends Controller
             $lists->rows(self::LISTS[$kind]))));
         $zone = ReportView::zone();
         $base = DB::table('jobs as j')->where('j.organization_id', app(TenantContext::class)->idOrFail())->whereNull('j.deleted_at')
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('j.franchise_id', $ids))
+            ->where(fn ($w) => ReportView::whereInView($w, 'j.franchise_id'))
             ->leftJoin('workiz_jobs as w', 'w.job_id', '=', 'j.id');
         if ($cancelled) {
             // A day either side in SQL, the exact day in PHP: the two clocks differ by hours.

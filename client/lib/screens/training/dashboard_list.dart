@@ -120,7 +120,8 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
   @override
   Widget build(BuildContext context) {
     return InventorySplitScaffold(
-      hasPane: _selectedId != null,
+      // The row, not the id: a row that vanished on reload leaves no blank pane.
+      hasPane: _selectedRow != null,
       loading: _loading,
       error: _error,
       onRetry: _load,
@@ -165,6 +166,8 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
         if (row == null) return const SizedBox.shrink();
 
         return DashboardPane(
+          // One state per item: the assign form never carries to the next one.
+          key: ValueKey('training-dashboard-pane-${row['id']}'),
           api: widget.api,
           session: widget.session,
           itemId: row['id'] as String,

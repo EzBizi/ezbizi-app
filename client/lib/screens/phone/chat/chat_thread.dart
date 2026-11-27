@@ -195,6 +195,30 @@ class _ChatThreadState extends State<ChatThread> {
     });
     if (around != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(around));
+      // The window around a jumped-to message stops short of the newest; page
+      // forward so no newer messages are silently missing (audit 11-27).
+      if (r.ok) await _fillForward();
+    }
+  }
+
+  Future<void> _fillForward() async {
+    for (var page = 0; page < 20 && _messages.isNotEmpty; page++) {
+      final r = await store.api.get('/chat/chats/${widget.chatId}/messages', {
+        'limit': '60',
+        'after': _messages.last['sent_at'] as String,
+      });
+      if (!mounted || !r.ok) return;
+      final next = _rows(r.data);
+      if (next.isEmpty) return;
+      final have = {for (final m in _messages) m['id']};
+      setState(
+        () => _messages = [
+          ..._messages,
+          for (final m in next)
+            if (!have.contains(m['id'])) m,
+        ],
+      );
+      if (next.length < 60) return;
     }
   }
 
@@ -211,11 +235,17 @@ class _ChatThreadState extends State<ChatThread> {
     final oldestFresh = fresh.isEmpty
         ? null
         : fresh.first['sent_at'] as String?;
+    bool isPending(Json m) => '${m['id']}'.startsWith('pending-');
+    final pending = [
+      for (final m in _messages)
+        if (isPending(m)) m,
+    ];
     setState(() {
       _messages = [
         for (final m in _messages)
-          if (oldestFresh == null ||
-              (m['sent_at'] as String).compareTo(oldestFresh) < 0)
+          if (!isPending(m) &&
+              (oldestFresh == null ||
+                  (m['sent_at'] as String).compareTo(oldestFresh) < 0))
             m,
         ...fresh,
       ];
@@ -226,6 +256,8 @@ class _ChatThreadState extends State<ChatThread> {
               oldestFresh == null ||
               (m['sent_at'] as String).compareTo(oldestFresh) < 0)
             byId[m['id']] ?? m,
+        // Still sending, or failed: mine to keep until it lands or I act.
+        ...pending,
       ];
     });
   }
@@ -300,7 +332,15 @@ class _ChatThreadState extends State<ChatThread> {
       final r = await store.api.patch('/chat/messages/${editing['id']}', {
         'body': body,
       });
-      if (!r.ok) _snack(r.reason);
+      if (!r.ok) {
+        // Refused: back into the composer, still editing, nothing lost.
+        if (mounted && _text.text.isEmpty) {
+          setState(() => _editing = editing);
+          _text.text = body;
+        }
+        _snack(r.reason);
+        return;
+      }
       await _refresh();
       return;
     }
@@ -339,6 +379,13 @@ class _ChatThreadState extends State<ChatThread> {
       final i = _messages.indexOf(temp);
       if (r.ok && r.data is Map) {
         if (i >= 0) _messages[i] = Json.from(r.data as Map);
+      } else if (_text.text.isEmpty) {
+        // Not sent: the words go back into the composer to send again
+        // (audit 11-27), with the reply they were for.
+        _messages.remove(temp);
+        _text.text = body;
+        _replyTo ??= reply;
+        _snack(r.reason);
       } else {
         temp['status'] = 'failed';
         _snack(r.reason);
@@ -860,7 +907,13 @@ class _ChatThreadState extends State<ChatThread> {
   bool get _iAmAdmin => _infoData?['i_am_admin'] == true;
   Json? _infoData;
 
+  int? _infoAskedAt;
+
+  /// Once per change of the chat list, not on every rebuild (audit 11-27): a
+  /// failed read is asked again on the next change, not every frame.
   Future<void> _loadInfo() async {
+    if (_infoAskedAt == store.tick) return;
+    _infoAskedAt = store.tick;
     final r = await store.api.get('/chat/chats/${widget.chatId}');
     if (!mounted || !r.ok || r.data is! Map) return;
     setState(() => _infoData = Json.from(r.data as Map));

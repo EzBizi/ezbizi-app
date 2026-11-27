@@ -182,24 +182,6 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     });
   }
 
-  /// InvoicesController@index does not read `q` yet (it returns the newest
-  /// 500), so the loaded rows are also narrowed here. Once the server honours
-  /// `q` this is a no-op.
-  List<Map<String, dynamic>> _searchedRows(List<Map<String, dynamic>> rows) {
-    final q = _q.toLowerCase();
-    if (q.isEmpty) return rows;
-    return [
-      for (final r in rows)
-        if ([
-          r['number'],
-          (r['bill_to'] as Map?)?['name'],
-          (r['bill_to'] as Map?)?['email'],
-          r['status'],
-        ].whereType<Object>().join(' ').toLowerCase().contains(q))
-          r,
-    ];
-  }
-
   /// [quiet]: a live re-read; a failure keeps the rows on screen.
   Future<void> _load({bool quiet = false}) async {
     final query = <String, Object>{
@@ -291,7 +273,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
                 ],
               ),
             ),
-            Expanded(child: _body(context, _searchedRows(rows), phone: phone)),
+            Expanded(child: _body(context, rows, phone: phone)),
           ],
         );
       },

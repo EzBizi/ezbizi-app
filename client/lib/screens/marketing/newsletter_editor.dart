@@ -640,9 +640,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     if (text.isEmpty) return 'Pick the day and time it should go out.';
     final at = DateTime.tryParse(text.replaceFirst(' ', 'T'));
     if (at == null) return 'That is not a time this can read. Pick it again.';
-    if (at.isBefore(DateTime.now())) {
-      return 'That time has already passed. Pick a time in the future.';
-    }
+    // Whether it has passed is the server's call: the time is a wall time in
+    // the view's clock, not this device's.
     return null;
   }
 
@@ -4062,6 +4061,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           ),
           for (var i = 0; i < inner.length; i++)
             Padding(
+              key: ObjectKey(inner[i]),
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
@@ -4085,7 +4085,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             child: Wrap(
               spacing: 4,
               children: [
-                for (final kind in [BlockKind.heading, BlockKind.text, BlockKind.image, BlockKind.button])
+                for (final kind in [BlockKind.heading, BlockKind.text])
                   TextButton(
                     onPressed: () {
                       setState(() {

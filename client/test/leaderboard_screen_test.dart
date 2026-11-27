@@ -17,6 +17,7 @@ void main() {
     double width, {
     Map<String, dynamic>? me,
     bool nobody = false,
+    bool searchDown = false,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -156,6 +157,13 @@ void main() {
           });
         }
         if (path.endsWith('/leaderboard/mine/calls')) {
+          if (searchDown && request.url.queryParameters.containsKey('q')) {
+            return http.Response(
+              '{"message": "Search is down"}',
+              500,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
           return json({
             'data': [
               {
@@ -335,6 +343,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // Audit 2026-11-27: a failed search read as "No scored calls match".
+  testWidgets('a failed call search says so, not that nothing matched', (
+    tester,
+  ) async {
+    await pump(tester, 1280, searchDown: true);
+    await tester.tap(find.text('My performance'));
+    await tester.pumpAndSettle();
+    final box = find.descendant(
+      of: find.byKey(const ValueKey('leaderboard-mine-search')),
+      matching: find.byType(TextField),
+    );
+    await tester.scrollUntilVisible(
+      box,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('leaderboard-mine')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.enterText(box, 'boiler');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Search is down'), findsOneWidget);
+    expect(find.textContaining('No scored calls'), findsNothing);
+  });
 
   // Design 212's empty states, in the You card.
   for (final (why, says) in [

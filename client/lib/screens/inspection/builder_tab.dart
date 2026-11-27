@@ -245,8 +245,9 @@ class _BuilderTabState extends State<BuilderTab> {
 
   Future<void> _select(String? id) async {
     if (id == null || id == _selectedId) return;
-    await _flush();
-    if (!mounted) return;
+    // Stay put when this one did not save: switching dropped its edits and
+    // "Try again" then saved the other inspection (audit 11-27).
+    if (!await _flush() || !mounted) return;
     setState(() {
       _selectedId = id;
       _resetPlace();
@@ -284,7 +285,7 @@ class _BuilderTabState extends State<BuilderTab> {
   }
 
   Future<void> _create() async {
-    await _flush();
+    if (!await _flush() || !mounted) return;
     setState(() => _busy = 'create');
     final response = await widget.api.post('/inspections', {});
     if (!mounted) return;

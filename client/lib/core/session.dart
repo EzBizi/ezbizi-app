@@ -5,6 +5,7 @@ import 'api_client.dart';
 import 'issue_reporter.dart';
 import 'password_policy.dart';
 import 'permissions.dart';
+import 'push_registration.dart';
 import 'timestamps.dart';
 import 'token_store.dart';
 import 'ui_strings.dart';
@@ -358,6 +359,17 @@ class Session extends ChangeNotifier {
         _switchingScope = false;
       }
     }
+  }
+
+  /// Sign out on the server too: revoke this token and forget this device's
+  /// push registration, then sign out here (audit 11-27). A server that cannot
+  /// be reached does not keep anybody signed in on this device.
+  Future<void> logOut() async {
+    await PushRegistration.unregister(_api);
+    try {
+      await _api.post('/auth/logout', {});
+    } catch (_) {}
+    signOut();
   }
 
   void signOut() {
@@ -1016,7 +1028,9 @@ class Me {
   /// covers its sub companies and branches (Bar, 2026-10-22).
   /// Modules whose notifications collect in the bell without alerting.
   List<String> get notificationMutedModules =>
-      (preferences['notifications.muted_modules'] as List? ?? const []).whereType<String>().toList();
+      (preferences['notifications.muted_modules'] as List? ?? const [])
+          .whereType<String>()
+          .toList();
 
   List<String> get notificationCompanies =>
       (preferences['notifications.companies'] as List? ?? const [])

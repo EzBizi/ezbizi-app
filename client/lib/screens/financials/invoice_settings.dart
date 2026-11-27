@@ -159,16 +159,31 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
   }
 
   /// Another place: its own settings, read again.
+  ///
+  /// The old place's values are cleared first, and nothing saves until the
+  /// new place's settings have loaded, so one company's settings are never
+  /// written to another. An answer for a place no longer chosen is dropped.
   Future<void> _choosePlace(String? company) async {
-    setState(() => _company = company);
+    final ticket = ++_placeTicket;
+    setState(() {
+      _company = company;
+      _placeReady = false;
+      _settings = {};
+      for (final c in [_summaryTo, _prefix, _whatsappFrom, _whatsappTemplate]) {
+        c.clear();
+      }
+    });
     final results = await Future.wait([
       widget.api.get('/settings', _scope),
       _getExtras(),
     ]);
-    if (!mounted) return;
+    if (!mounted || ticket != _placeTicket) return;
     final [settings, extras] = results;
     setState(() {
+      _placeReady = settings.ok && settings.data is List;
+      if (!_placeReady) _error = settings.reason;
       if (settings.ok && settings.data is List) {
+        _error = null;
         _settings = {
           for (final s in (settings.data as List).cast<Map>())
             if (_keys.contains(s['key'])) '${s['key']}': s,
@@ -233,7 +248,23 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
     });
   }
 
+  /// Bumped per place chosen.
+  int _placeTicket = 0;
+
+  /// False while the chosen place's settings are not loaded; nothing saves.
+  bool _placeReady = true;
+
   Future<void> _set(String key, Object? value) async {
+    if (!_placeReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "This place's settings have not loaded; pick it again.",
+          ),
+        ),
+      );
+      return;
+    }
     final r = await widget.api.patch('/settings/$key', {
       'value': value,
     }, _scope);

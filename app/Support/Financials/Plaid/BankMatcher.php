@@ -42,8 +42,6 @@ final class BankMatcher
         $bank ??= SocialConnection::query()->find($t->social_connection_id);
         $cents = -$t->amount_cents;
         $date = CarbonImmutable::parse($t->date);
-        $taken = $this->taken($t);
-
         $inPlace = Invoice::query()->where(fn ($q) => $this->inPlace($q, $bank))->select('id');
         $payments = InvoicePayment::query()
             ->where('kind', 'charge')
@@ -52,7 +50,7 @@ final class BankMatcher
                 ->orWhereRaw('amount_cents + tip_cents = ?', [$cents])
                 ->orWhereRaw('amount_cents + tip_cents - fee_cents = ?', [$cents]))
             ->whereIn('invoice_id', $inPlace)
-            ->whereNotIn('id', $taken['invoice_payment'])
+            ->whereNotIn('id', $this->taken($t, 'invoice_payment'))
             ->orderByRaw('abs(datediff(paid_on, ?))', [$date->toDateString()])
             ->limit(10)->get();
         $owners = Invoice::query()->whereIn('id', $payments->pluck('invoice_id'))->get(['id', 'number', 'bill_to_name'])->keyBy('id');
@@ -60,7 +58,7 @@ final class BankMatcher
         $invoices = Invoice::query()->whereIn('status', ['approved', 'sent'])->where('total_cents', $cents)
             ->whereBetween('issued_on', [$date->subDays(self::INVOICE_DAYS)->toDateString(), $date->toDateString()])
             ->where(fn ($q) => $this->inPlace($q, $bank))
-            ->whereNotIn('id', $taken['invoice'])
+            ->whereNotIn('id', $this->taken($t, 'invoice'))
             ->orderByDesc('issued_on')->limit(10)->get();
 
         return [
@@ -126,15 +124,10 @@ final class BankMatcher
         return $out;
     }
 
-    /** @return array{invoice_payment: list<string>, invoice: list<string>} ids other deposits already hold */
-    private function taken(BankTransaction $t): array
+    /** Ids of this type other deposits already hold, as a subquery the database checks (no rows loaded per deposit). */
+    private function taken(BankTransaction $t, string $type): Builder
     {
-        $rows = BankTransaction::query()->whereNotNull('matched_type')->whereKeyNot($t->getKey())->get(['matched_type', 'matched_id']);
-
-        return [
-            'invoice_payment' => $rows->where('matched_type', 'invoice_payment')->pluck('matched_id')->all(),
-            'invoice' => $rows->where('matched_type', 'invoice')->pluck('matched_id')->all(),
-        ];
+        return BankTransaction::query()->where('matched_type', $type)->whereKeyNot($t->getKey())->select('matched_id');
     }
 
     /** An invoice in the bank's own place (see the class comment). */

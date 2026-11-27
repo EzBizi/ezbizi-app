@@ -105,7 +105,7 @@ apply_one() {
     safe=\$(echo \"\$dir\" | sed 's|/var/www/vhosts/||; s|/|__|g')
     sudo -n mkdir -p '$BACKUP_ROOT'
     sudo -n tar -czf '$BACKUP_ROOT'/\"\$safe\".tgz -C \"\$dir\" .
-    sudo -n cp -a /tmp/ezbizi-new/. \"\$dir\"/
+    sudo -n rsync -a --delete /tmp/ezbizi-new/ \"\$dir\"/   # --delete: files removed from the plugin leave the installs too (audit 2026-11-27)
     sudo -n chown -R \"\$own\" \"\$dir\"
     sudo -n find \"\$dir\" -type f -exec chmod 644 {} \;
     sudo -n find \"\$dir\" -type d -exec chmod 755 {} \;

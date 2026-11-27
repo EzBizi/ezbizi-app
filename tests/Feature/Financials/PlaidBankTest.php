@@ -246,18 +246,19 @@ class PlaidBankTest extends TestCase
             $there = $this->invoice($miami->id, 'INV-2', 50000);
             \App\Models\InvoicePayment::create(['invoice_id' => $there->id, 'paid_on' => '2026-11-20', 'amount_cents' => 50000, 'method' => 'card']);
         });
-        $this->plaid['pages'][''] = $this->page('c1', [$this->txn('t1', 'a1', -500, 'Deposit'), $this->txn('t2', 'a1', -77, 'Unknown deposit')]);
+        $this->plaid['pages'][''] = $this->page('c1', [$this->txn('t1', 'a1', -500, 'Deposit'), $this->txn('t2', 'a1', -77, 'Unknown deposit'), $this->txn('t3', 'a1', -500, 'Same amount again')]);
 
         $this->inTenant($t['org'], fn () => app(PlaidSync::class)->run($c->fresh()));
 
         $matched = $this->inTenant($t['org'], fn () => BankTransaction::query()->where('plaid_transaction_id', 't1')->sole());
         $this->assertSame(['invoice_payment', 'auto'], [$matched->matched_type, $matched->matched_by], 'charge plus tip equals the deposit, and it is the only one in this branch');
         $this->assertNull($this->inTenant($t['org'], fn () => BankTransaction::query()->where('plaid_transaction_id', 't2')->value('matched_type')));
+        $this->assertNull($this->inTenant($t['org'], fn () => BankTransaction::query()->where('plaid_transaction_id', 't3')->value('matched_type')), 'the payment t1 holds is not offered to a second deposit');
 
         $view = 'franchise:'.$t['franchise']->id;
         $rows = $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', $view)
             ->getJson('/api/v1/financials/bank/transactions?unmatched=1')->assertOk()->json('data');
-        $this->assertSame(['Unknown deposit'], array_column($rows, 'name'), 'unmatched shows the money in nothing accounts for');
+        $this->assertEqualsCanonicalizing(['Unknown deposit', 'Same amount again'], array_column($rows, 'name'), 'unmatched shows the money in nothing accounts for');
         $all = collect($this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', $view)
             ->getJson('/api/v1/financials/bank/transactions')->json('data'))->keyBy('name');
         $this->assertSame('Invoice INV-1 · Ann', $all['Deposit']['match']['label']);

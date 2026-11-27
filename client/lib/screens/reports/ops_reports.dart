@@ -154,14 +154,24 @@ class _OpsReportState extends State<OpsReport> {
     if (_query.isNotEmpty) 'q': _query,
   };
 
+  bool _paging = false;
+  int _loads = 0;
+
   Future<void> _load({bool more = false}) async {
+    // One page at a time, and only the newest load lands: a second "Show
+    // more" added its page twice, and an older filter's answer replaced a
+    // newer one (audit 2026-11-27).
+    if (more && _paging) return;
+    final ticket = more ? _loads : ++_loads;
+    if (more) setState(() => _paging = true);
     final response = await widget.api.get(_spec.path, {
       ..._filters,
       if (_spec.paged) 'offset': '${more ? _rows.length : 0}',
       if (_spec.paged) 'limit': '$_page',
     });
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
     setState(() {
+      _paging = false;
       if (!response.ok) {
         _error = response.message;
         return;
@@ -245,9 +255,11 @@ class _OpsReportState extends State<OpsReport> {
 
   Future<void> _drill(OpsRow row) async {
     final tech = row['tech'] == null ? 'none' : '${row['tech']}';
+    final open = OpenDestination.of(context);
     await showSidePanel<void>(
       context,
       builder: (_) => _TechChecksPanel(
+        open: open,
         api: widget.api,
         span: widget.span,
         formats: widget.formats,
@@ -330,7 +342,7 @@ class _OpsReportState extends State<OpsReport> {
               Center(
                 child: OutlinedButton(
                   key: ValueKey('${_spec.key}-more'),
-                  onPressed: () => _load(more: true),
+                  onPressed: _paging ? null : () => _load(more: true),
                   child: Text(
                     'Show ${formatCount((count - _rows.length).clamp(0, _page))} more '
                     'of ${formatCount(count - _rows.length)}',
@@ -404,11 +416,18 @@ Map<String, dynamic> _fig(OpsRow data, String key) =>
     ((data['figures'] as Map?)?[key] as Map?)?.cast<String, dynamic>() ??
     const {};
 
-void _openJob(BuildContext context, OpsRow row) {
+/// [open] is the shell's, read before a panel opened: a panel's route sits
+/// outside the shell, where OpenDestination is not (audit 2026-11-27: a job
+/// tapped there closed the panel and opened nothing).
+void _openJob(
+  BuildContext context,
+  OpsRow row, {
+  void Function(String id)? open,
+}) {
   final id = row['job_id'];
   if (id == null) return;
   DeepLinks.open(DeepLink(module: 'jobs', type: 'job', id: '$id'));
-  OpenDestination.of(context)?.call('jobs');
+  (open ?? OpenDestination.of(context))?.call('jobs');
 }
 
 // ── The eight ───────────────────────────────────────────────────────
@@ -993,6 +1012,7 @@ final techsSpec = OpsSpec(
 
 class _TechChecksPanel extends StatefulWidget {
   const _TechChecksPanel({
+    required this.open,
     required this.api,
     required this.span,
     required this.formats,
@@ -1002,6 +1022,7 @@ class _TechChecksPanel extends StatefulWidget {
     required this.rules,
   });
 
+  final void Function(String id)? open;
   final ApiClient api;
   final DateSpan span;
   final DisplayFormats formats;
@@ -1114,7 +1135,7 @@ class _TechChecksPanelState extends State<_TechChecksPanel> {
                       ? null
                       : () {
                           Navigator.of(context).maybePop();
-                          _openJob(context, j);
+                          _openJob(context, j, open: widget.open);
                         },
                 ),
               ),

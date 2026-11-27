@@ -147,7 +147,11 @@ class _LearnShelvesState extends State<LearnShelves> {
     final today = _today();
     final overdue = _assigned.where((entry) {
       final due = parseCalendarDay(entry['due_on'] as String?);
-      return due != null && due.isBefore(today);
+      // Finished is not overdue: a completed guide, or a test passed and not due again.
+      final done = entry['type'] == 'guide'
+          ? entry['completed_at'] != null
+          : entry['last_passed'] == true && entry['due_for_retaking'] != true;
+      return !done && due != null && due.isBefore(today);
     }).length;
 
     final base = _assigned.length == 1

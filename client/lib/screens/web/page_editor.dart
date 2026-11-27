@@ -148,6 +148,11 @@ class _PageEditorState extends State<PageEditor> {
           ((data['pages'] as Map<String, dynamic>?) ?? const {})[widget.path]
                   as Map<String, dynamic>? ??
               const {};
+      // Boxes made while loading hold ''; give them the stored value now
+      // (audit 2026-11-27). Boxes somebody already typed in keep their text.
+      for (final e in _boxes.entries) {
+        if (e.value.text.isEmpty) e.value.text = _current(e.key);
+      }
     });
 
     _loadOptions();

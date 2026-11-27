@@ -73,6 +73,15 @@ class MembershipsController extends Controller
         $customer = Customer::findOrFail($input['customer_id']);
         $this->need($request->user(), 'memberships.create', 'add a member');
         $this->reach($request->user(), $customer->owning_franchise_id, 'add this member');
+        $money = $request->user()->hasPermission('jobs.financials');
+
+        if (array_key_exists('paid_minor', $input) && $input['paid_minor'] !== null && ! $money) {
+            abort(Response::HTTP_FORBIDDEN, 'Money is hidden for your role.');
+        }
+        // A plan closed to new members is not joinable here either (audit 11-27).
+        if (! MembershipPlan::query()->whereKey($input['membership_plan_id'])->where('is_active', true)->exists()) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'That plan is closed to new members.');
+        }
 
         $starts = CarbonImmutable::parse($input['starts_on'] ?? 'today');
         $previous = Membership::query()->where('customer_id', $customer->getKey())->exists();
@@ -91,7 +100,8 @@ class MembershipsController extends Controller
         $this->audit->log('membership.created', $membership);
         $this->events->emitAfterCommit('membership.created', $membership, ['after' => $this->payload($membership)]);
 
-        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), true, [])], Response::HTTP_CREATED);
+        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), $money,
+            $money ? $this->averageJobs([$membership->customer_id]) : [])], Response::HTTP_CREATED);
     }
 
     public function update(Request $request, Membership $membership): JsonResponse
@@ -105,8 +115,13 @@ class MembershipsController extends Controller
         $this->need($request->user(), 'memberships.edit', 'change a membership');
         $this->reach($request->user(), $membership->franchise_id, 'change this membership');
 
-        if (array_key_exists('paid_minor', $input) && ! $request->user()->hasPermission('jobs.financials')) {
+        $money = $request->user()->hasPermission('jobs.financials');
+        if (array_key_exists('paid_minor', $input) && ! $money) {
             abort(Response::HTTP_FORBIDDEN, 'Money is hidden for your role.');
+        }
+        if (isset($input['membership_plan_id']) && $input['membership_plan_id'] !== $membership->membership_plan_id
+            && ! MembershipPlan::query()->whereKey($input['membership_plan_id'])->where('is_active', true)->exists()) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'That plan is closed to new members.');
         }
 
         $membership->fill(collect($input)->except('cancelled')->all());
@@ -116,7 +131,8 @@ class MembershipsController extends Controller
         $this->audit->logChange('membership.updated', $membership);
         $membership->save();
 
-        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), $request->user()->hasPermission('jobs.financials'), [])]);
+        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), $money,
+            $money ? $this->averageJobs([$membership->customer_id]) : [])]);
     }
 
     public function destroy(Request $request, Membership $membership): JsonResponse

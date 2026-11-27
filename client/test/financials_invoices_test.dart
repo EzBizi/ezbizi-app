@@ -84,6 +84,38 @@ void main() {
     expect(_textOf(tester, 'sheet-saved'), startsWith('Saved '));
   });
 
+  testWidgets('an edit waiting for the autosave is sent when the sheet '
+      'goes away', (tester) async {
+    final api = await _pump(tester);
+    await _openInvoices(tester);
+    await tester.enterText(find.byKey(const ValueKey('cell-r1-m')), '25');
+    await tester.pump();
+    expect(api.sent('PATCH', '/invoices/sheets/sh1/rows'), isEmpty);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(api.sent('PATCH', '/invoices/sheets/sh1/rows').single['rows'], [
+      {
+        'id': 'r1',
+        'cells': {'m': 2500},
+      },
+    ]);
+  });
+
+  testWidgets('Make invoices stops when the last edits fail to save', (
+    tester,
+  ) async {
+    final api = await _pump(tester, refuseRows: 'Already invoiced.');
+    await _openInvoices(tester);
+    await tester.enterText(find.byKey(const ValueKey('cell-r1-c')), '10');
+    await tester.pump();
+    await tester.tap(find.textContaining('Make invoices ·'));
+    await tester.pumpAndSettle();
+    expect(api.sent('PATCH', '/invoices/sheets/sh1/rows'), hasLength(1));
+    expect(api.sent('POST', '/invoices/sheets/sh1/invoice'), isEmpty);
+    expect(_textOf(tester, 'sheet-note'), 'Already invoiced.');
+  });
+
   testWidgets('a refused edit shows the server sentence', (tester) async {
     await _pump(
       tester,

@@ -128,6 +128,37 @@ class MembershipsApiTest extends TestCase
             ->assertOk()->assertJsonPath('data.job_type', 'Inspection');
     }
 
+    public function test_adding_a_member_without_financials_cannot_set_money_or_see_it(): void
+    {
+        $plan = $this->plan();
+        $clerk = $this->userWithRole($this->alpha, 'Clerk', ['customers.view', 'memberships.view', 'memberships.create', 'memberships.members.view']);
+        $post = fn (array $extra) => $this->signedInAs($clerk)->postJson('/api/v1/memberships', ['customer_id' => $this->customer, 'membership_plan_id' => $plan, ...$extra]);
+
+        $post(['paid_minor' => 5000])->assertForbidden();
+        $this->assertNull($post([])->assertCreated()->json('data.due_minor'));
+    }
+
+    public function test_a_closed_plan_cannot_be_joined_or_switched_to(): void
+    {
+        $open = $this->plan();
+        $closed = $this->plan('monthly', 100);
+        $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/plans/{$closed}", ['is_active' => false])->assertOk();
+
+        $this->signedInAs($this->alpha['admin'])->postJson('/api/v1/memberships', ['customer_id' => $this->customer, 'membership_plan_id' => $closed])->assertStatus(422);
+        $id = $this->join($open)['id'];
+        $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/{$id}", ['membership_plan_id' => $closed])->assertStatus(422);
+    }
+
+    public function test_an_edit_keeps_the_average_job_in_estimated_gross(): void
+    {
+        $this->inTenant($this->alpha['org'], fn () => \App\Models\Job::factory()->create([
+            'franchise_id' => $this->alpha['franchise']->id, 'customer_id' => $this->customer, 'amount_minor' => 30000]));
+        $id = $this->join($this->plan('yearly', 10000))['id'];
+
+        $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/{$id}", ['paid_minor' => 100])
+            ->assertOk()->assertJsonPath('data.estimated_gross_minor', 40000);
+    }
+
     private function aCustomer(string $franchiseId): string
     {
         return $this->inTenant($this->alpha['org'], fn () => Customer::create([
