@@ -83,6 +83,12 @@ class AuthenticateUser
              */
             $staff = PlatformStaffLink::staffFor($account->getKey());
 
+            // A deactivated staff account closes its linked CRM login too
+            // (Jose, 11-27: "if an account is deactivated they should not be
+            // able to log in to ezbizi"). Treated exactly like an inactive user,
+            // and never a fall back to the old CRM password.
+            $deactivated = $staff === null && PlatformStaffLink::deactivatedFor($account->getKey());
+
             $passwordOk = $staff !== null
                 ? Hash::check($password, $staff->password)
                 // Hash::check is constant-time internally, but skipping it for
@@ -90,7 +96,7 @@ class AuthenticateUser
                 // "wrong password" — so verify first, filter after.
                 : Hash::check($password, $account->password);
 
-            if (! $passwordOk || ! $account->is_active || $account->organization === null) {
+            if (! $passwordOk || $deactivated || ! $account->is_active || $account->organization === null) {
                 continue;
             }
 
@@ -209,7 +215,8 @@ class AuthenticateUser
         // Case-insensitive, as the first step's lookup is (MySQL's collation):
         // typing Jose@… there offered the picker, and an exact compare here
         // then refused every choice it had just offered.
-        if ($user === null || strcasecmp((string) $user->email, trim($email)) !== 0 || ! $user->is_active) {
+        if ($user === null || strcasecmp((string) $user->email, trim($email)) !== 0 || ! $user->is_active
+            || PlatformStaffLink::deactivatedFor($user->getKey())) {
             return AuthenticationResult::failed();
         }
 

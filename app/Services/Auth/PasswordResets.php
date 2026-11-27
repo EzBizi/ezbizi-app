@@ -72,6 +72,12 @@ class PasswordResets
                 continue;
             }
 
+            // A reset must not reopen what deactivating the staff account
+            // closed (Jose, 11-27).
+            if (PlatformStaffLink::deactivatedFor($user->getKey())) {
+                continue;
+            }
+
             $linked = PlatformStaffLink::staffFor($user->getKey());
 
             // Already covered by the staff record above; adding it again would
