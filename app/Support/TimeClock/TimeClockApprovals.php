@@ -121,6 +121,7 @@ class TimeClockApprovals
     public function approve(User $actor, User $person, string $date): TimeClockDayApproval
     {
         $this->clock->assertReaches($actor, $person);
+        abort_if($actor->is($person) && ! $actor->isAdministrator(), 403, 'Your own day is approved by somebody else.');
         $day = $this->resolveDay($date, $this->clock->viewTimezone($actor))->toDateString();
 
         $row = TimeClockDayApproval::query()->firstOrNew(['user_id' => $person->id, 'date' => $day], [
