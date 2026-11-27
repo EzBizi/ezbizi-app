@@ -89,7 +89,16 @@ class Engine {
     _recorder = recorder;
     _authFailed.clear();
     await _kill();
-    if (key.isNotEmpty) await _launch();
+    if (key.isNotEmpty) {
+      try {
+        await _launch();
+      } catch (_) {
+        // A failed launch must not latch the key, or the same cameras are
+        // never tried again (audit 11-27).
+        _key = '';
+        rethrow;
+      }
+    }
   }
 
   Future<void> _launch() async {
@@ -99,6 +108,11 @@ class Engine {
       flush: true,
     );
     final p = await _start(exe, ['-config', configFile.path]);
+    // Stopped while it was starting: nobody would ever kill it (audit 11-27).
+    if (_disposed) {
+      p.kill();
+      return;
+    }
     _proc = p;
     // go2rtc logs a refused login per stream; that is how auth_failed is known.
     for (final s in [p.stdout, p.stderr]) {

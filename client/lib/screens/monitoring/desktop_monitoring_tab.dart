@@ -437,7 +437,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   /// The chosen local day as the server's [from, to).
   Map<String, String> _dayRange() => {
     'from': _day.toUtc().toIso8601String(),
-    'to': _day.add(const Duration(days: 1)).toUtc().toIso8601String(),
+    'to': DateTime(_day.year, _day.month, _day.day + 1).toUtc().toIso8601String(),
   };
 
   /// The next page back through the day, from the oldest capture held.
@@ -1974,7 +1974,7 @@ class _DayBar extends StatelessWidget {
           key: const Key('desktop-monitoring-day-back'),
           tooltip: 'Previous day',
           icon: const Icon(Icons.chevron_left),
-          onPressed: () => onDay(day.subtract(const Duration(days: 1))),
+          onPressed: () => onDay(DateTime(day.year, day.month, day.day - 1)),
         ),
         Text(label, style: Theme.of(context).textTheme.titleSmall),
         IconButton(
@@ -1983,7 +1983,7 @@ class _DayBar extends StatelessWidget {
           icon: const Icon(Icons.chevron_right),
           onPressed: isToday
               ? null
-              : () => onDay(day.add(const Duration(days: 1))),
+              : () => onDay(DateTime(day.year, day.month, day.day + 1)),
         ),
         if (count.isNotEmpty)
           Padding(
