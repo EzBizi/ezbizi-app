@@ -312,6 +312,29 @@ void main() {
     expect(find.byKey(const ValueKey('training.screen-card-0')), findsOneWidget);
   });
 
+  testWidgets('a draft test can be published from its editor', (tester) async {
+    Map<String, dynamic>? sent;
+    await _pumpTestBuilder(
+      tester,
+      test: _test(id: 't1', title: 'Ladder Safety Quiz'),
+      onRequest: (request) {
+        if (request.method == 'PATCH') {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': _test(id: 't1', title: 'Ladder Safety Quiz', status: 'published')});
+        }
+        return null;
+      },
+    );
+
+    expect(find.text('Draft — nobody sees it yet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('training.publish-test')));
+    await tester.pumpAndSettle();
+
+    expect(sent, {'status': 'published'});
+    expect(find.text('Published'), findsOneWidget);
+    expect(find.text('Unpublish'), findsOneWidget);
+  });
+
   testWidgets('adding a question never opens a dialog either', (tester) async {
     await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
 

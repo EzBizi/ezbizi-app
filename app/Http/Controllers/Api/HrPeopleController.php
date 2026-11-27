@@ -454,13 +454,14 @@ class HrPeopleController extends Controller
             fputcsv($out, ['Employee', 'Type', 'Company', 'Branch', 'Role', 'Contract', 'Start date', 'Termination date', 'W-4 signed']
                 + ($seesPay ? [9 => 'Salary', 10 => 'Per'] : []));
             foreach ($rows as $r) {
-                fputcsv($out, [
+                // Names are typed by employees: defused like every export (full-code audit, 2026-11-27).
+                fputcsv($out, array_map([\App\Support\Data\Exporter::class, 'cell'], [
                     $r['name'], $r['employment_type'] ?? '',
                     implode('; ', array_unique(array_filter(array_column($r['assigned'], 'company')))),
                     implode('; ', array_unique(array_filter(array_column($r['assigned'], 'branch')))),
                     $r['role']['name'] ?? '', $r['contract']['name'] ?? '', $r['started_on'] ?? '', $r['terminated_on'] ?? '',
                     $r['w2']['signed'] ? 'Yes' : 'No',
-                ] + ($seesPay ? [9 => $r['salary']['amount'] ?? '', 10 => $r['salary']['period'] ?? ''] : []));
+                ] + ($seesPay ? [9 => $r['salary']['amount'] ?? '', 10 => $r['salary']['period'] ?? ''] : [])));
             }
             rewind($out);
             $csv = stream_get_contents($out);
@@ -495,14 +496,16 @@ class HrPeopleController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
         $dates = array_column($input['days'], 'date');
-        $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
-            ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
-        if ($taken !== []) {
-            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
-                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
-        }
 
-        DB::transaction(function () use ($user, $request, $input) {
+        // Checked under a lock on the person, so a double submit cannot add
+        // the same days twice (full-code audit, 2026-11-27).
+        $taken = DB::transaction(function () use ($user, $request, $input, $dates) {
+            User::query()->whereKey($user->getKey())->lockForUpdate()->first();
+            $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+                ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
+            if ($taken !== []) {
+                return $taken;
+            }
             foreach ($input['days'] as $day) {
                 PtoUsed::create([
                     'organization_id' => $user->organization_id, 'user_id' => $user->getKey(),
@@ -514,7 +517,13 @@ class HrPeopleController extends Controller
             $after = app(PtoPolicy::class)->for($user);
             $this->events->emit('user.pto_used_changed', $user, ['person' => ['id' => $user->getKey(), 'name' => $user->name],
                 'total' => $after['total'], 'used' => $after['used'], 'left' => $after['left'], 'reason' => $input['reason'] ?? null]);
+
+            return [];
         });
+        if ($taken !== []) {
+            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
+                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
+        }
 
         return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
             ->only(['total', 'used', 'left', 'would_expire'])->all()], 201);
@@ -553,7 +562,15 @@ class HrPeopleController extends Controller
 
         $change = null;
         if ($to !== $from) {
-            DB::transaction(function () use ($user, $request, $input, $from, $to, $before, $policy, &$change) {
+            DB::transaction(function () use ($user, $request, $input, &$from, $to, &$before, $policy, &$change) {
+                // Re-read under a lock on the person: two saves must not both
+                // add the same difference (full-code audit, 2026-11-27).
+                User::query()->whereKey($user->getKey())->lockForUpdate()->first();
+                $before = $policy->for($user);
+                $from = (float) $before['used'];
+                if ($to === $from) {
+                    return;
+                }
                 $change = PtoUsed::create([
                     'organization_id' => $user->organization_id,
                     'user_id' => $user->getKey(),
@@ -736,6 +753,18 @@ class HrPeopleController extends Controller
         }
 
         $input = $request->validate($rules);
+
+        // Switching someone off or changing their role needs a role you could
+        // give them yourself: a lower HR editor must not deactivate or demote
+        // an Administrator (full-code audit, 2026-11-27). Other edits keep the
+        // policy's rule; your own role stays yours to lower.
+        foreach (['is_active', 'role_id'] as $field) {
+            if (array_key_exists($field, $input) && ! $actor->is($user) && $user->role !== null
+                && ! $this->catalogue->mayAssignRole($actor, $user->role)) {
+                throw ValidationException::withMessages([$field => 'Only somebody who could give them their role '
+                    .'can switch them off or change their role. An administrator can.']);
+            }
+        }
 
         $startedOn = $input['started_on'] ?? null;
         unset($input['started_on']);

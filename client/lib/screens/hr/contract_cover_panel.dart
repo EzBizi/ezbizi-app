@@ -285,9 +285,9 @@ class _ContractCoverPanelState extends State<ContractCoverPanel> {
       note: !_logoKnown
           ? 'Looking for your organization’s mark…'
           : hasLogo
-          ? 'Your organization’s mark, on a page of its own. It is not copied '
-                'here — change the logo under branding and every contract using '
-                'it follows.'
+          ? 'Your organization’s mark, on a page of its own. Each version keeps '
+                'the logo as it was when published; after changing the logo, '
+                'publish a new version for it to appear.'
           // R8: a sentence saying what to do, not a disabled control that
           // explains nothing.
           : 'Nobody has uploaded a logo for your organization yet. Add one on '

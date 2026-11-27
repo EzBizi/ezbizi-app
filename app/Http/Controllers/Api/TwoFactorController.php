@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\PlatformStaffLink;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\TotpEnrolment;
 use App\Support\Auth\TwoFactorPolicy;
@@ -244,11 +243,6 @@ class TwoFactorController extends Controller
             || $subject->consumeRecoveryCode($input['code']);
 
         return $verified ? null : 'That code did not verify.';
-    }
-
-    private function managedElsewhere($user): bool
-    {
-        return PlatformStaffLink::staffFor($user->getKey()) !== null;
     }
 
     private function refuse(string $message): JsonResponse

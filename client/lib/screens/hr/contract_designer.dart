@@ -1766,8 +1766,9 @@ class _ContractDesignerState extends State<ContractDesigner> {
       'The document starts on the first page of the agreement. Most contracts '
           'do, and nothing about one is missing.',
     CoverSource.logo =>
-      'The mark uploaded under branding, on a page of its own. It is not copied '
-          'here — change the logo there and every contract using it follows.',
+      'The mark uploaded under branding, on a page of its own. Each version '
+          'keeps the logo as it was when published; publish again after '
+          'changing it.',
     CoverSource.file =>
       _cover.filename ?? 'An image uploaded for this contract.',
   };
@@ -2039,6 +2040,7 @@ class _PublishFlow extends StatefulWidget {
 class _PublishFlowState extends State<_PublishFlow> {
   ContractDiff? _diff;
   int? _version;
+  Map<String, dynamic>? _cover;
   bool _busy = false;
   String? _error;
 
@@ -2097,6 +2099,7 @@ class _PublishFlowState extends State<_PublishFlow> {
         if (cover is Map && cover['changed'] == true) 'is_empty': false,
       });
       _version = (body['version'] as num?)?.toInt();
+      _cover = cover is Map ? Map<String, dynamic>.from(cover) : null;
     });
   }
 
@@ -2140,6 +2143,7 @@ class _PublishFlowState extends State<_PublishFlow> {
       busy: _busy,
       error: _error,
       onConfirm: diff == null || nothingToDo ? null : _confirm,
+      cover: _cover,
     );
   }
 }

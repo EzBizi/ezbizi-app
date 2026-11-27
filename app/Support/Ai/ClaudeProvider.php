@@ -9,9 +9,9 @@ use Throwable;
 /**
  * Claude through the official Anthropic PHP SDK, the second AiProvider
  * (Jose, 2026-10-27: no single point of failure). Structured output pins the
- * answer to the caller's schema, as ClaudeTagger does for call labels.
- * AI_CLAUDE_MODEL (default claude-opus-5-5) and AI_CLAUDE_EFFORT (default low:
- * these are short, structured answers).
+ * answer to the caller's schema. AI_CLAUDE_KEY (or ANTHROPIC_API_KEY),
+ * AI_CLAUDE_MODEL (default claude-opus-5-5); effort is low: these are short,
+ * structured answers.
  */
 final class ClaudeProvider implements AiProvider
 {
@@ -75,6 +75,6 @@ final class ClaudeProvider implements AiProvider
 
     private function key(): ?string
     {
-        return config('services.ai.claude.key') ?: config('experimental_reports.tagging.claude.key');
+        return config('services.ai.claude.key');
     }
 }

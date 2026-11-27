@@ -2,8 +2,10 @@
 
 namespace App\Support\Dashboard\Widgets;
 
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\User;
+use App\Support\Scoping\ViewScope;
 
 /**
  * How much work is in each state.
@@ -14,13 +16,21 @@ use App\Models\User;
  */
 class JobsByStatus
 {
-    use ScopesToReach;
-
     public function resolve(User $user, array $options): array
     {
-        $statuses = $this->statusesFor($user);
+        // The VIEW, not merely the reach: ViewScope has already intersected the
+        // chosen scope with what §4 allows. `whereIn` on an empty list matches
+        // nothing, which is the right answer for somebody with no assignments.
+        $ids = ViewScope::forUser($user)->franchiseIds();
 
-        $counts = $this->reachable(Job::query(), $user)
+        // Statuses are tenant configuration and resolve through whichever
+        // franchise the view covers.
+        $franchise = $user->reachableFranchises()->whereIn('id', $ids)->first()
+            ?? $user->reachableFranchises()->first();
+        $statuses = $franchise instanceof Franchise ? Job::allowedStatuses($franchise) : [];
+
+        $counts = Job::query()
+            ->whereIn('franchise_id', $ids)
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
@@ -31,7 +41,7 @@ class JobsByStatus
             // moves, which is exactly when somebody is looking at it.
             'rows' => array_map(fn (string $status) => [
                 'status' => $status,
-                'total'  => (int) ($counts[$status] ?? 0),
+                'total' => (int) ($counts[$status] ?? 0),
             ], $statuses),
 
             'total' => (int) $counts->sum(),

@@ -231,6 +231,34 @@ class PhoneConnectionTest extends TestCase
         $this->assertNotContains('createSubaccount', $called);
     }
 
+    /** Audit 11-27: a same-named account another org's connection holds is never offered or adopted. */
+    public function test_an_account_another_org_holds_is_not_listed_or_adoptable_by_name(): void
+    {
+        $this->withPlatformTwilio();
+
+        $other = $this->provisionTenant();
+        $t = $this->provisionTenant();
+        $sid = 'ACheldheldheldheldheldheldheldheld';
+        $this->inTenant($other['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => 'organization', 'scope_id' => $other['org']->id, 'account_sid' => $sid,
+        ]));
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $gateway->subaccounts = [['account_sid' => $sid, 'friendly_name' => $t['company']->name, 'status' => 'active']];
+        $this->grantPhoneService($t);
+
+        $listed = $this->signedInAs($editor)->getJson('/api/v1/phone/connections/subaccounts')->assertOk();
+        $this->assertNotContains($sid, array_column((array) $listed->json('data'), 'account_sid'));
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
+            'scope_type' => 'company', 'scope_id' => $t['company']->id, 'kind' => 'subaccount',
+            'account_sid' => $sid, 'auth_token' => $gateway->adoptableAuthToken,
+        ])->assertStatus(422)->assertJsonValidationErrors('account_sid');
+        $this->assertNotContains('adoptSubaccount', array_column($gateway->calls, 'method'));
+    }
+
     public function test_adopting_without_the_auth_token_says_why_it_is_needed(): void
     {
         $this->withPlatformTwilio();

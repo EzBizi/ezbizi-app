@@ -48,6 +48,9 @@ class WindowsVoiceDevice implements VoiceDevice, SendsDigits {
   bool _registered = false;
   bool _starting = false;
 
+  @visibleForTesting
+  bool get starting => _starting;
+
   final _ready = Completer<void>();
 
   /// Completed when the hosted page reports back whether it registered.
@@ -163,6 +166,15 @@ class WindowsVoiceDevice implements VoiceDevice, SendsDigits {
     _starting = true;
 
     try {
+      // A renewal (audit 11-27): the page and device are up, so hand over
+      // the new token only. Reloading would drop a call in progress.
+      final live = _controller;
+      if (live != null && _ready.isCompleted && _settled != null) {
+        _post({'type': 'token', 'token': token});
+
+        return;
+      }
+
       // Idempotent, and the fallback for any caller that skips phase one.
       await prepare();
       final controller = _controller;
@@ -194,6 +206,10 @@ class WindowsVoiceDevice implements VoiceDevice, SendsDigits {
       // A WebView2 runtime that is missing or refused to start. The desk has
       // a state for a phone that cannot take a call, and this is it.
       _registered = false;
+    } finally {
+      // Never reset before (audit 11-27): every renewal returned early and
+      // the desk stopped ringing about an hour after launch.
+      _starting = false;
     }
   }
 

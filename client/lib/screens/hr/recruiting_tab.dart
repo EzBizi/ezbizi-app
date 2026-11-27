@@ -205,11 +205,16 @@ class _ApplicantsState extends State<_Applicants> {
     };
   }
 
+  /// Which load owns the list: a slow "Show more" must not land under a
+  /// newer filter (full-code audit, 2026-11-27).
+  int _request = 0;
+
   Future<void> _load({bool more = false}) async {
+    final request = ++_request;
     setState(() => _loading = true);
     final page = more ? ((_meta['page'] as num?)?.toInt() ?? 1) + 1 : 1;
     final r = await widget.api.get('/hr/applicants', _filters(page: page));
-    if (!mounted) return;
+    if (!mounted || request != _request) return;
     setState(() {
       _loading = false;
       if (!r.ok) {
@@ -1433,14 +1438,31 @@ class _SpendState extends State<_Spend> {
         'position': position,
         'amount': amount,
       });
-    } else if (amount == null || amount == 0) {
+    } else if (existing.length == 1 && (amount == null || amount == 0)) {
       r = await widget.api.delete(
         '/hr/recruiting-spend/${existing.first['id']}',
       );
     } else {
+      // The cell shows the SUM of its rows (one per source), so the change
+      // goes onto the first row by the difference, never replacing it with
+      // the whole total (full-code audit, 2026-11-27).
+      final total = existing.fold<num>(
+        0,
+        (a, e) => a + ((e['amount'] as num?) ?? 0),
+      );
+      final first = (existing.first['amount'] as num?) ?? 0;
+      final next = first + ((amount ?? 0) - total);
+      if (next < 0) {
+        setState(
+          () => _error =
+              'This cell adds up several sources. Lower it no further than '
+              '${_money(total - first)}, or change the rows one by one.',
+        );
+        return;
+      }
       r = await widget.api.patch(
         '/hr/recruiting-spend/${existing.first['id']}',
-        {'amount': amount},
+        {'amount': next},
       );
     }
     if (!mounted) return;

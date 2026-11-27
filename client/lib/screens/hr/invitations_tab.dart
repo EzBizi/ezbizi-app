@@ -186,7 +186,12 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
     final invitations = answers[0];
     if (quiet && !invitations.ok) {
-      setState(() => _fetching = false);
+      // And the spinner off: a failed quiet re-read on an empty list left it
+      // turning forever (full-code audit, 2026-11-27).
+      setState(() {
+        _fetching = false;
+        _loading = false;
+      });
       return;
     }
     final options = answers[1];

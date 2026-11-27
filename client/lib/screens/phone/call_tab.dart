@@ -470,7 +470,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _releaseLine(number),
       'state': _dnd ? 'dnd' : 'registered',
     });
   }
@@ -486,7 +486,7 @@ class _CallTabState extends State<CallTab> {
 
     await _service.connect(to: parked.pickUp, callerId: number.e164);
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
 
@@ -679,7 +679,7 @@ class _CallTabState extends State<CallTab> {
     }
 
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
   }
@@ -742,6 +742,19 @@ class _CallTabState extends State<CallTab> {
     return 'client:${id.replaceAll('-', '')}';
   }
 
+  /// The line `on_call` was written to, so the release goes to the same one
+  /// even if the picker moved during the call (audit 11-27).
+  String? _onCallLine;
+
+  String _markOnCall(_Number number) =>
+      _onCallLine = _service.callConnectionId ?? number.connectionId;
+
+  String _releaseLine(_Number number) {
+    final line = _onCallLine ?? number.connectionId;
+    _onCallLine = null;
+    return line;
+  }
+
   Future<void> _hangUp() async {
     _service.hangUp();
 
@@ -750,7 +763,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _releaseLine(number),
       'state': _dnd ? 'dnd' : 'registered',
     });
 
@@ -825,7 +838,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
   }

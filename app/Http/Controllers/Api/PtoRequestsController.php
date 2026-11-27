@@ -138,6 +138,9 @@ class PtoRequestsController extends Controller
         $input = $request->validate(['reason' => [$status === PtoRequest::DENIED ? 'required' : 'nullable', 'string', 'max:1000']]);
 
         DB::transaction(function () use ($ptoRequest, $person, $actor, $status, $input) {
+            // Two approvals must not both deduct (full-code audit, 2026-11-27).
+            $locked = PtoRequest::query()->whereKey($ptoRequest->getKey())->lockForUpdate()->first();
+            abort_unless($locked?->status === PtoRequest::PENDING, 422, 'This request has already been decided.');
             if ($status === PtoRequest::APPROVED) {
                 $this->refuseTakenDates($person, array_column($ptoRequest->days, 'date'), $ptoRequest->getKey());
                 foreach ($ptoRequest->days as $day) {

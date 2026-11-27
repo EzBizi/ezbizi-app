@@ -42,6 +42,12 @@ final class HttpTwilioGateway implements TwilioGateway
                 continue;
             }
 
+            // Never by name alone (audit 11-27): an account any connection
+            // already holds belongs to that tenant, not to whoever shares its name.
+            if (PhoneConnection::query()->withoutGlobalScopes()->where('account_sid', $existing['account_sid'])->exists()) {
+                continue;
+            }
+
             $account = $client->api->v2010->accounts($existing['account_sid'])->fetch();
 
             return [

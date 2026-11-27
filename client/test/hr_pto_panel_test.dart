@@ -631,6 +631,10 @@ void main() {
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
 
+    // Two taps: the first only arms it (full-code audit, 2026-11-27).
+    await tester.tap(find.byKey(const Key('pto-remove-d-1')));
+    await tester.pumpAndSettle();
+    expect(requests.where((r) => r.method == 'DELETE'), isEmpty);
     await tester.tap(find.byKey(const Key('pto-remove-d-1')));
     await tester.pumpAndSettle();
 

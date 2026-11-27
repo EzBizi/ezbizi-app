@@ -384,12 +384,6 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
         return $this->documents()->first();
     }
 
-    /** What was SIGNED, which an amendment never replaces. */
-    public function signedDocument(): ?OnboardingDocument
-    {
-        return $this->documents()->where('revision', 1)->first();
-    }
-
     // ── shape ────────────────────────────────────────────────────
 
     /**

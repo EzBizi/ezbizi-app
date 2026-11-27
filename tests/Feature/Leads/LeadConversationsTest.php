@@ -875,6 +875,12 @@ class LeadConversationsTest extends TestCase
         $this->assertFalse($data['customer_created']);
         $this->assertSame($existing->id, $data['customer']['id']);
         $this->assertSame(1, $this->inTenant($t['org'], fn () => \App\Models\Customer::query()->count()), 'no second Jane Doe');
+
+        // Audit 11-27: a second Book (double tap) makes no second job.
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/book", [
+            'franchise_id' => $t['franchise']->id, 'customer_id' => $existing->id, 'title' => 'Sweep', 'status' => $status,
+        ])->assertStatus(409);
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => \App\Models\Job::query()->count()));
     }
 
     public function test_a_company_level_lead_needs_a_franchise_picked_and_a_status_the_tenant_has(): void

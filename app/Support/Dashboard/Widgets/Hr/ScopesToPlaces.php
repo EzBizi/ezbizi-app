@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * ── Why HR cannot use the other widgets' franchise filter ────────
  *
- * `ScopesToReach::reachable()` narrows a query with `where franchise_id in (…)`,
+ * `JobsByStatus` narrows its query with `where franchise_id in (…)`,
  * which is right for jobs and customers: those rows carry a franchise column,
  * because work happens in exactly one place.
  *

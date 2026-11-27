@@ -50,6 +50,14 @@ class BookingApprovedTest extends TestCase
         $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
             ->assertJsonPath('data.booking.fit.verdict', 'alone');
 
+        // Audit 11-27: a tap while another answer is still running is refused,
+        // and raises nothing.
+        $other = \Illuminate\Support\Facades\Cache::lock('lead-booking-decision:'.$lead->id, 120);
+        $this->assertTrue($other->get());
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertStatus(409);
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.booking_approved')->count());
+        $other->release();
+
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk()
             ->assertJsonPath('data.fit', null);
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk();

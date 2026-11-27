@@ -223,15 +223,23 @@ final class HrOverview
                 }
             })->get();
 
+        // Every expiry answer in one query rather than one per onboarding
+        // (full-code audit, 2026-11-27).
+        $expiryKeys = $onboardings->mapWithKeys(fn ($o) => [$o->getKey() => collect($o->contractVersion?->fieldSet()->fields ?? [])
+            ->filter(fn ($f) => $f instanceof FieldDefinition && $f->isExpiry)->keyBy('key')]);
+        $allAnswers = OnboardingAnswer::query()
+            ->whereIn('onboarding_id', $expiryKeys->filter(fn ($e) => $e->isNotEmpty())->keys())
+            ->whereIn('field_key', $expiryKeys->flatMap(fn ($e) => $e->keys())->unique()->values())
+            ->get()->groupBy('onboarding_id');
+
         foreach ($onboardings as $onboarding) {
-            $expiries = collect($onboarding->contractVersion?->fieldSet()->fields ?? [])
-                ->filter(fn ($f) => $f instanceof FieldDefinition && $f->isExpiry)->keyBy('key');
+            $expiries = $expiryKeys[$onboarding->getKey()];
             if ($expiries->isEmpty()) {
                 continue;
             }
 
-            $answers = OnboardingAnswer::query()->where('onboarding_id', $onboarding->getKey())
-                ->whereIn('field_key', $expiries->keys())->get();
+            $answers = ($allAnswers[$onboarding->getKey()] ?? collect())
+                ->filter(fn ($a) => $expiries->has($a->field_key));
 
             foreach ($answers as $answer) {
                 try {
