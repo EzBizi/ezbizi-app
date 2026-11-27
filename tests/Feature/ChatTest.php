@@ -266,10 +266,12 @@ class ChatTest extends TestCase
         $remote = $this->userWithRole($this->t, 'Remote Dispatcher', ['phone.chat.view'], 'remote@alpha.test');
         $tech = $this->userWithRole($this->t, 'Technician', ['phone.chat.view'], 'tech@alpha.test');
         $lead = $this->userWithRole($this->t, 'Lead Manager', ['phone.chat.view'], 'lead@alpha.test');
+        // Assigned to a branch only, as most technicians are: still their company's group.
+        $branchTech = $this->userWithRole($this->t, 'Branch Technician', ['phone.chat.view'], 'branch@alpha.test', $this->t['franchise']);
         $settings = app(\App\Support\Settings\SettingsResolver::class);
-        $this->inTenant($this->t['org'], function () use ($settings, $disp, $remote, $tech, $lead) {
+        $this->inTenant($this->t['org'], function () use ($settings, $disp, $remote, $tech, $lead, $branchTech) {
             $settings->set('phone.chat_groups_dispatchers', $this->t['org'], [$disp->role_id, $remote->role_id, $lead->role_id]);
-            $settings->set('phone.chat_groups_technicians', $this->t['org'], [$tech->role_id, $lead->role_id]);
+            $settings->set('phone.chat_groups_technicians', $this->t['org'], [$tech->role_id, $lead->role_id, $branchTech->role_id]);
             $settings->set('phone.chat_groups_leadership', $this->t['org'], [$lead->role_id]);
         });
         $this->artisan('chat:auto-groups')->assertSuccessful();
@@ -281,6 +283,7 @@ class ChatTest extends TestCase
         $this->assertSame(["{$c} Dispatchers"], $groups($remote));
         $this->assertSame(["{$c} Technicians"], $groups($tech));
         $this->assertSame(["{$c} Dispatchers", "{$c} Leadership", "{$c} Technicians"], $groups($lead));
+        $this->assertSame(["{$c} Technicians"], $groups($branchTech), 'a branch is reach in its company');
         $this->assertSame([], $groups($this->bar), 'a role in no list is in no group');
 
         // Members cannot leave, nor remove each other.
