@@ -26,6 +26,16 @@ void main() {
   /// Jose, 2026-09-29: Call did nothing. The page reported the failure and
   /// the device dropped it. The error text is Chromium's own, measured on his
   /// PC with no microphone connected.
+  // Audit 11-27: `_starting` was never reset, so every token renewal returned
+  // early and the Windows desk stopped ringing about an hour after launch.
+  test('a second Windows setup (token renewal) is not swallowed', () async {
+    final device = WindowsVoiceDevice();
+    await device.setup('first');
+    expect(device.starting, isFalse);
+    await device.setup('renewed');
+    expect(device.starting, isFalse);
+  });
+
   test('a call the Windows page could not start is reported with a reason', () async {
     final device = WindowsVoiceDevice();
     final reasons = <String>[];
