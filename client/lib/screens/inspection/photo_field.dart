@@ -1,3 +1,4 @@
+import 'package:image/image.dart' as img;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -75,11 +76,26 @@ class _InspectionPhotoFieldState extends State<InspectionPhotoField> {
       _error = null;
     });
 
+    // Big picks shrunk to the phone camera's 2560px (audit 11-27: desktop and
+    // web picks uploaded full-size). Re-encoded as JPEG, which also drops EXIF.
+    var bytes = picked.bytes;
+    var name = picked.name;
+    if (bytes.length > 1500000) {
+      final decoded = img.decodeImage(Uint8List.fromList(bytes));
+      if (decoded != null) {
+        final fit = decoded.width > 2560
+            ? img.copyResize(decoded, width: 2560)
+            : decoded;
+        bytes = img.encodeJpg(fit, quality: 85);
+        name = '${name.replaceAll(RegExp(r'\.[^.]*$'), '')}.jpg';
+      }
+    }
+
     final response = await widget.api.postFile(
       '/attachments',
       'file',
-      picked.name,
-      picked.bytes,
+      name,
+      bytes,
       fields: {
         'attachable_type': 'inspection_runs',
         'attachable_id': widget.runId,
