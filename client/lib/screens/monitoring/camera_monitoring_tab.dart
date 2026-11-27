@@ -20,7 +20,6 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'camera_view.dart';
-import 'dashcam_events_panel.dart';
 import 'note_card.dart';
 import '../../core/soft_keyboard.dart';
 
@@ -294,7 +293,6 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
                 );
               },
             ),
-          DashcamEventsPanel(api: widget.api),
         ],
       ),
     );
