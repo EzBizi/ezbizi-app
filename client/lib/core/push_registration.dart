@@ -208,7 +208,8 @@ class PushRegistration {
     if (defaultTargetPlatform == TargetPlatform.android) {
       try {
         await _nativeSession.invokeMethod('clear');
-      } on PlatformException catch (_) {}
+      } on PlatformException catch (_) {
+      } on MissingPluginException catch (_) {}
     }
   }
 
@@ -228,7 +229,9 @@ class PushRegistration {
           'token': api.bearer,
           'api_base': ApiClient.baseUrl,
         });
-      } on PlatformException catch (_) {}
+        // A runner without the channel (tests, an older build) is not a failure.
+      } on PlatformException catch (_) {
+      } on MissingPluginException catch (_) {}
     }
 
     if (!response.ok) {

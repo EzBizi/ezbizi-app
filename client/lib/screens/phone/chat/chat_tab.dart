@@ -16,6 +16,7 @@ import '../../../widgets/side_panel.dart';
 import '../../../widgets/user_avatar.dart';
 import '../../../core/client_platform.dart';
 import '../../../core/os_notifications.dart';
+import 'chat_calls.dart';
 import 'chat_store.dart';
 import 'chat_thread.dart';
 
@@ -40,11 +41,30 @@ class ChatTab extends StatefulWidget {
     null,
   );
 
-  /// `chat:{id}` → the chat id; anything else → null.
+  /// `chat:{id}` (or `chat:{id}?call={call}`) → the chat id; anything else → null.
   static String? chatOf(String? payload) =>
       payload != null && payload.startsWith('chat:') && payload.length > 5
-      ? payload.substring(5)
+      ? payload.substring(5).split('?').first
       : null;
+
+  /// `chat:{id}?call={call}`: Answer on the phone's call screen → the call id.
+  static String? callOf(String? payload) {
+    if (chatOf(payload) == null) return null;
+    final q = payload!.indexOf('?');
+    if (q < 0) return null;
+    final call = Uri.splitQueryString(payload.substring(q + 1))['call'];
+    return call == null || call.isEmpty ? null : call;
+  }
+
+  /// A tapped chat notification: that chat open, and its call joined when
+  /// Answer was what was tapped.
+  static void openFromNotification(String? payload) {
+    final chat = chatOf(payload);
+    if (chat == null) return;
+    openRequest.value = chat;
+    final call = callOf(payload);
+    if (call != null) unawaited(ChatCalls.instance.answerById(call));
+  }
 
   @override
   State<ChatTab> createState() => _ChatTabState();

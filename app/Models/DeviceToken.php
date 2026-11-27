@@ -32,7 +32,7 @@ class DeviceToken extends Model implements HoldsPersonalData
     public const APPS = ['ezbizi', 'ezchat'];
 
     protected $fillable = [
-        'organization_id', 'user_id', 'platform', 'app', 'token', 'last_registered_at', 'created_at',
+        'organization_id', 'user_id', 'platform', 'app', 'capabilities', 'token', 'last_registered_at', 'created_at',
     ];
 
     /**
@@ -88,7 +88,7 @@ class DeviceToken extends Model implements HoldsPersonalData
 
     protected function casts(): array
     {
-        return [
+        return ['capabilities' => 'array', 
             'last_registered_at' => 'datetime',
             'created_at' => 'datetime',
         ];
@@ -97,5 +97,11 @@ class DeviceToken extends Model implements HoldsPersonalData
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** This handset draws Chat's notifications itself (data-only pushes). */
+    public function drawsChat(): bool
+    {
+        return $this->platform === 'android' && in_array('chat_native', (array) $this->capabilities, true);
     }
 }

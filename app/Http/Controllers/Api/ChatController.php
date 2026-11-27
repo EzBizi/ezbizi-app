@@ -413,6 +413,7 @@ class ChatController extends Controller
         if ($latest !== null && ($member->read_at === null || $member->read_at->lt(Carbon::parse($latest)))) {
             $member->forceFill(['delivered_at' => $latest, 'read_at' => $latest]);
             $this->pulse->bump($chat);
+            $this->nativeNote([$member->user_id], ['type' => 'chat_read', 'chat_id' => $chat->id]);
         }
     }
 
@@ -482,12 +483,16 @@ class ChatController extends Controller
 
         $latest = $chat->messages()->max('created_at');
         if ($latest !== null) {
+            $wasUnread = $member->read_at === null || $member->read_at->lt(Carbon::parse($latest));
             $member->forceFill([
                 'delivered_at' => $latest,
                 'read_at' => $latest,
                 'marked_unread' => false,
             ])->save();
             $this->pulse->bump($chat);
+            if ($wasUnread) {
+                $this->nativeNote([$me->id], ['type' => 'chat_read', 'chat_id' => $chat->id]);
+            }
         }
 
         $receipts = $this->receipts($chat, $me);
@@ -875,6 +880,7 @@ class ChatController extends Controller
             $row->forceFill(['meta' => $meta])->save();
         });
         $this->calls->silence($chatMessage, $chat->type === 'direct' ? null : [$me->id]);
+        $this->nativeNote([$me->id], ['type' => 'chat_call_end', 'chat_id' => $chat->id, 'call_id' => $chatMessage->id, 'reason' => 'answered_elsewhere']);
         $this->pulse->bump($chat);
 
         return $this->callAnswer($connection, $me, $chatMessage->fresh(), $chat);
@@ -929,6 +935,11 @@ class ChatController extends Controller
             $row->forceFill(['meta' => $meta])->save();
         });
         $this->calls->silence($call);
+        // Stop the ring on every handset, the caller's other ones too.
+        $this->nativeNote($call->chat->members()->pluck('user_id')->all(), [
+            'type' => 'chat_call_end', 'chat_id' => $call->chat_id, 'call_id' => $call->id,
+            'reason' => match ($status) { 'missed' => 'missed', 'answered' => 'answered_elsewhere', default => 'cancelled' },
+        ]);
 
         // Nobody answered: "Missed voice call" on everyone else's phone.
         $call->refresh();
@@ -938,7 +949,9 @@ class ChatController extends Controller
             if ($others !== []) {
                 $from = $call->sender?->name ?? 'Someone';
                 $this->push($others, $chat->type === 'group' ? (string) $chat->name : $from,
-                    ($chat->type === 'group' ? $from.': ' : '').$this->callLine($call), $chat->organization_id, $chat->id, hidden: null);
+                    ($chat->type === 'group' ? $from.': ' : '').$this->callLine($call), $chat->organization_id, $chat->id, hidden: null,
+                    native: ['type' => 'chat_message', 'message_id' => $call->id, 'sender' => $from, 'body' => $this->callLine($call),
+                        'is_group' => $chat->type === 'group' ? '1' : '0', 'sent_at' => (string) $call->created_at->getTimestampMs()]);
             }
         }
     }
@@ -1082,7 +1095,10 @@ class ChatController extends Controller
         if ($message->kind === 'call' && ($message->meta['status'] ?? null) === 'ringing') {
             $everyone = $chat->activeMembers()->where('user_id', '!=', $message->sender_id)->pluck('user_id')->all();
             if ($everyone !== []) {
-                $this->push($everyone, $title, $line, $chat->organization_id, $chat->id, urgent: true, hidden: null);
+                $this->push($everyone, $title, $line, $chat->organization_id, $chat->id, urgent: true, hidden: null,
+                    native: ['type' => 'chat_call', 'call_id' => $message->id, 'sender' => $sender,
+                        'video' => ($message->meta['video'] ?? false) ? '1' : '0', 'is_group' => $chat->type === 'group' ? '1' : '0'],
+                    ttl: 30);
             }
 
             return;
@@ -1098,7 +1114,11 @@ class ChatController extends Controller
             return;
         }
 
-        $this->push($recipients, $title, $line, $chat->organization_id, $chat->id);
+        $this->push($recipients, $title, $line, $chat->organization_id, $chat->id, native: [
+            'type' => 'chat_message', 'message_id' => $message->id, 'sender' => $sender,
+            'body' => $this->preview($message), 'is_group' => $chat->type === 'group' ? '1' : '0',
+            'sent_at' => (string) $message->created_at->getTimestampMs(),
+        ]);
     }
 
     /** @param string[] $userIds push to these people's devices, after the response is sent */
@@ -1108,10 +1128,10 @@ class ChatController extends Controller
      * badge is everything they have not read (WhatsApp, Jose 11-27). `urgent`
      * uses Android's urgent channel: an incoming call.
      */
-    private function push(array $userIds, string $title, string $line, string $organization, string $chatId, bool $urgent = false, ?string $hidden = 'New message'): void
+    private function push(array $userIds, string $title, string $line, string $organization, string $chatId, bool $urgent = false, ?string $hidden = 'New message', array $native = [], ?int $ttl = null): void
     {
         $userIds = array_values($userIds);
-        dispatch(function () use ($userIds, $title, $line, $organization, $chatId, $urgent, $hidden) {
+        dispatch(function () use ($userIds, $title, $line, $organization, $chatId, $urgent, $hidden, $native, $ttl) {
             $push = app(PushSender::class);
             $org = \App\Models\Organization::query()->find($organization);
             if (! $push->configured() || $org === null || ! app(SettingsResolver::class)->get('notifications.push_enabled', $org)) {
@@ -1124,13 +1144,44 @@ class ChatController extends Controller
                 // Not the handset with this very chat open.
                 ->reject(fn (DeviceToken $d) => ! $urgent && $pulse->isViewing($d->token, $chatId))
                 ->groupBy('user_id')
-                ->each(function (Collection $devices, string $userId) use ($push, $title, $line, $chatId, $urgent, $hidden, $prefs) {
+                ->each(function (Collection $devices, string $userId) use ($push, $title, $line, $chatId, $urgent, $hidden, $prefs, $native, $ttl) {
                     $chats = ChatMember::query()->withoutGlobalScopes()->where('user_id', $userId)->whereNull('left_at')->pluck('chat_id')->all();
                     // "Show preview" off: who wrote, never what (a call line is not private).
                     $private = $hidden !== null && (($prefs[$userId] ?? [])['chat.show_preview'] ?? true) === false;
-                    $push->send($devices, $title, $private ? $hidden : $line, urgent: $urgent, notificationId: 'chat:'.$chatId,
-                        thread: 'chat-'.$chatId, badge: ChatMessage::unreadFor($userId, $chats)->count());
+                    $badge = ChatMessage::unreadFor($userId, $chats)->count();
+                    // A handset that draws Chat itself (Android, 11-27) gets the data;
+                    // the rest get a ready notification.
+                    [$draws, $plain] = $devices->partition(fn (DeviceToken $d) => $native !== [] && $d->drawsChat());
+                    if ($draws->isNotEmpty()) {
+                        $push->sendData($draws, [...$native, 'chat_id' => $chatId, 'title' => $title,
+                            'body' => $private ? $hidden : ($native['body'] ?? $line), 'badge' => $badge], $ttl);
+                    }
+                    if ($plain->isNotEmpty()) {
+                        $push->send($plain, $title, $private ? $hidden : $line, urgent: $urgent, notificationId: 'chat:'.$chatId,
+                            thread: 'chat-'.$chatId, badge: $badge);
+                    }
                 });
+        })->afterResponse();
+    }
+
+    /**
+     * A quiet note to the handsets that draw Chat themselves: `chat_call_end`
+     * stops a ring everywhere, `chat_read` clears a chat's notification once
+     * it was read on another device (Android, 11-27).
+     */
+    private function nativeNote(array $userIds, array $data): void
+    {
+        $userIds = array_values(array_unique($userIds));
+        if ($userIds === []) {
+            return;
+        }
+        dispatch(function () use ($userIds, $data) {
+            $push = app(PushSender::class);
+            $devices = DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get()
+                ->filter(fn (DeviceToken $d) => $d->drawsChat());
+            if ($push->configured() && $devices->isNotEmpty()) {
+                $push->sendData($devices, $data);
+            }
         })->afterResponse();
     }
 

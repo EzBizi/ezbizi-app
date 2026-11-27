@@ -136,5 +136,9 @@ void main() {
     expect(ChatTab.chatOf('chat:c-1'), 'c-1');
     expect(ChatTab.chatOf('0199-row-id'), isNull);
     expect(ChatTab.chatOf(null), isNull);
+    // Answer on Android's call screen (11-27): the chat, and the call to join.
+    expect(ChatTab.chatOf('chat:c-1?call=k-9'), 'c-1');
+    expect(ChatTab.callOf('chat:c-1?call=k-9'), 'k-9');
+    expect(ChatTab.callOf('chat:c-1'), isNull);
   });
 }

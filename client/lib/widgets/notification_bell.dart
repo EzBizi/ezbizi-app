@@ -8,6 +8,7 @@ import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
+import '../screens/phone/chat/chat_calls.dart';
 import '../screens/phone/chat/chat_tab.dart';
 import 'alert_popup.dart';
 import 'list_search.dart';
@@ -408,6 +409,10 @@ class _NotificationBellState extends State<NotificationBell>
         record: null,
         link: DeepLink(module: 'phone', type: 'chat', id: chat),
       ));
+      // Answer on the phone's call screen: join it too.
+      if (ChatTab.callOf(payload) case final call?) {
+        unawaited(ChatCalls.instance.answerById(call));
+      }
       return;
     }
 

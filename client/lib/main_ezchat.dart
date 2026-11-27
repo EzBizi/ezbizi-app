@@ -129,7 +129,7 @@ class _EzChatHomeState extends State<EzChatHome> {
     final chat = ChatTab.chatOf(payload);
     if (chat == null || !mounted) return;
     setState(() => _tab = 0);
-    ChatTab.openRequest.value = chat;
+    ChatTab.openFromNotification(payload);
   }
 
   @override
