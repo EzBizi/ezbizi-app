@@ -240,7 +240,16 @@ final class MicrosoftMailboxReader implements MailboxReader
 
                 $id = (string) ($row['id'] ?? '');
 
-                if ($id !== '') {
+                // Graph's delta also returns mail that was only read, flagged
+                // or moved; announced as new, an auto-reply rule answered the
+                // customer again (audit 11-27). Mail older than a day is an
+                // update, and an id is announced once per mailbox.
+                $received = strtotime((string) ($row['receivedDateTime'] ?? ''));
+                if ($id === '' || ($received !== false && $received < now()->subDay()->getTimestamp())) {
+                    continue;
+                }
+
+                if (Cache::add('email.announced.'.$mailbox->getKey().'.'.sha1($id), true, now()->addDays(30))) {
                     $ids[$id] = $row;
                 }
             }
