@@ -91,12 +91,20 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
         _error = null;
       });
     }
+    final seq = ++_seq;
+    final day = _day;
     final response = await widget.api.get('/field/recordings', {
       'user_id': ?_person,
-      if (_day != null) 'date': formatCalendarDay(_day!),
+      // The viewer's day, as UTC bounds: an evening recording is that
+      // evening's, not tomorrow's in UTC (audit 11-27).
+      if (day != null) ...{
+        'from': day.toUtc().toIso8601String(),
+        'to': day.add(const Duration(days: 1)).toUtc().toIso8601String(),
+      },
       if (_query.trim().isNotEmpty) 'q': _query.trim(),
     });
-    if (!mounted || (quiet && !response.ok)) return;
+    // An answer for a filter since changed is dropped (audit 11-27).
+    if (!mounted || seq != _seq || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (!response.ok) {
@@ -106,12 +114,21 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
       _rows = List<Map<String, dynamic>>.from(
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+      for (final r in _rows) {
+        final u = r['user'] as Map?;
+        if (u?['id'] != null) _seenPeople['${u!['id']}'] = '${u['name'] ?? ''}';
+      }
       final open = _open;
       if (open != null) {
         final fresh = _rows.where((r) => r['id'] == open['id']);
         if (fresh.isNotEmpty) _open = fresh.first;
       }
     });
+    // Still being written up: the open transcript follows (audit 11-27).
+    final open = _open, t = _transcript;
+    if (open != null && t != null && ((t['pending'] as num?) ?? 0) > 0) {
+      _loadTranscript(open['id'] as String);
+    }
   }
 
   // ----------------------------------------------------------- transcript
@@ -184,14 +201,14 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
         )
       : StatusPill('Deletes ${row['delete_on'] ?? ''}', tone: Tone.neutral);
 
-  List<({String id, String name})> get _people {
-    final seen = <String, String>{};
-    for (final r in _rows) {
-      final u = r['user'] as Map?;
-      if (u?['id'] != null) seen['${u!['id']}'] = '${u['name'] ?? ''}';
-    }
-    return [for (final e in seen.entries) (id: e.key, name: e.value)];
-  }
+  /// Everyone any list has shown, so picking one person keeps the others
+  /// offered (audit 11-27). ponytail: not people with no recording yet.
+  final _seenPeople = <String, String>{};
+  int _seq = 0;
+
+  List<({String id, String name})> get _people => [
+    for (final e in _seenPeople.entries) (id: e.key, name: e.value),
+  ];
 
   void _search(String value) {
     setState(() => _query = value);
