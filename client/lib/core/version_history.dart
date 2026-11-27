@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'EzChat: sign in with email and password, no authenticator code; the EzChat sign-in only works for chat, and the main EzBizi app still asks for the code',
       'Task Board on phones: tapping the board title opens a home with your favourite boards, recently visited boards and the workspace tree, like Monday',
       'Task Board notifications show who did it, with their picture',
       'Notifications on phones look like Monday: an Unread tab, the person who did it as an avatar with a badge for what they did, and a board and item line',
