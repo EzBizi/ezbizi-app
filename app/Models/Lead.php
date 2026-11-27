@@ -868,7 +868,9 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     private function bookableOnline(): bool
     {
-        $companies = array_values(array_filter([$this->company_id, $this->company?->parent_company_id]));
+        // A branch-filed lead (Local Services, Thumbtack) has no company_id; its branch's company (audit 11-27).
+        $company = $this->company ?? $this->franchise?->company;
+        $companies = array_values(array_filter([$company?->getKey(), $company?->parent_company_id]));
         $zips = ServiceAreaZip::query()->whereIn('franchise_id', Franchise::query()->whereIn('company_id', $companies)->select('id'));
         if (preg_match('/^[0-9]{5}/', (string) $this->postal_code, $m) === 1) {
             $zips->where('zip', $m[0]);

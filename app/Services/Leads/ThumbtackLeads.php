@@ -395,6 +395,14 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
             } else {
                 // `status` is deliberately absent from $fromSource. A replayed
                 // webhook must not drag a lead somebody archived back to NEW.
+                // Audit 11-27: a message event carries a thin customer block;
+                // it must not blank the lead, nor undo a dispatcher's correction.
+                $fromSource = array_filter($fromSource, fn ($v) => $v !== null);
+                foreach (['contact_name', 'phone', 'phone_digits'] as $key) {
+                    if (filled($lead->getAttribute($key))) {
+                        unset($fromSource[$key]);
+                    }
+                }
                 $lead->fill($fromSource);
 
                 /*

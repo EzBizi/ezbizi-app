@@ -159,7 +159,10 @@ class ImportWorkizLeads extends Command
         $result = $reader->raw(
             $connection,
             (int) $this->option('limit'),
-            $since->toDateString(),
+            // A day early (audit 11-27): Workiz reads the date in the branch's
+            // zone, and after ~8 PM Eastern the UTC date is already tomorrow.
+            // The exact check below drops what we already passed.
+            ($watermark !== null ? $since->copy()->subDay() : $since)->toDateString(),
         );
 
         if ($result['failed'] !== null) {
