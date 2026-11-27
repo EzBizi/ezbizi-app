@@ -67,7 +67,7 @@ class _AddPurchaseOrderPaneState extends State<AddPurchaseOrderPane> {
 
   Future<void> _load() async {
     final vendors = await widget.api.get('/inventory/vendors');
-    final items = await widget.api.get('/inventory/items', {'per_page': '200'});
+    final items = await inventoryAllPages(widget.api, '/inventory/items');
     if (!mounted) return;
 
     if (!vendors.ok) {
