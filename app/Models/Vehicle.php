@@ -121,10 +121,19 @@ class Vehicle extends Model implements StatesRetention
         );
     }
 
-    /** True when there is no ledger history and no photos — safe to hard-delete. */
+    /**
+     * True when there is no ledger history and no photos — safe to hard-delete.
+     *
+     * The one open ownership period every create makes is not history: it
+     * goes with the vehicle (cascade). A second period, or an ended one,
+     * means it was sold, returned or bought back, and that is history. Before
+     * this, a vehicle added in the app could never be removed (audit
+     * 2026-11-27).
+     */
     public function isEmpty(): bool
     {
-        return ! $this->ownershipPeriods()->exists()
+        return $this->ownershipPeriods()->count() <= 1
+            && ! $this->ownershipPeriods()->whereNotNull('ended_on')->exists()
             && ! $this->insurancePolicies()->exists()
             && ! $this->assignments()->exists()
             && ! $this->serviceVisits()->exists()

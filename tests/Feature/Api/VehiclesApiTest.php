@@ -460,4 +460,35 @@ class VehiclesApiTest extends TestCase
             ])
             ->assertForbidden();
     }
+
+    /**
+     * Through POST /vehicles, as the app creates one: the creation period is
+     * not history, so a vehicle added by mistake can be removed. Control: an
+     * ended period (sold) is history and refuses.
+     */
+    public function test_a_vehicle_added_in_the_app_can_be_removed_until_it_has_history(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $add = fn (string $vin) => $this->signedInAs($admin)->postJson('/api/v1/vehicles', [
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+            'year' => 2024, 'make' => 'Ford', 'model' => 'Transit', 'vin' => $vin,
+            'body_type' => 'van', 'fuel_type' => 'gas',
+            'ownership' => ['kind' => 'owned'],
+        ])->assertCreated()->json('data.id');
+
+        $fresh = $add('1FTBW2CM5NKA00011');
+        $this->signedInAs($admin)->deleteJson('/api/v1/vehicles/'.$fresh)->assertNoContent();
+
+        $sold = $add('1FTBW2CM5NKA00012');
+        $this->inTenant($tenant['org'], fn () => VehicleOwnershipPeriod::query()
+            ->where('vehicle_id', $sold)->update(['ended_on' => now()->toDateString()]));
+        $this->signedInAs($admin)->deleteJson('/api/v1/vehicles/'.$sold)->assertStatus(422);
+
+        $this->inTenant($tenant['org'], function () use ($fresh, $sold) {
+            $this->assertFalse(Vehicle::query()->whereKey($fresh)->exists());
+            $this->assertTrue(Vehicle::query()->whereKey($sold)->exists());
+        });
+    }
 }
