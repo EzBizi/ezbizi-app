@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Jobs and Project Management: the rest of the audit fixes, and project reminders are sent once per day and retried when they fail',
       'Task Board on phones: boards are now a dense table like Monday, with the name column pinned, the other columns sliding underneath, and the group colour down the left edge; long-press a row for its menu',
       'Scoring: jobs tagged Training, and the calls to or from their numbers, no longer count in Performance, Scoring, the Leaderboard or My performance',
       'Meta and WhatsApp: access tokens never travel in URLs, customer erasure covers WhatsApp messages, and the staff bot Daily conversion uses your own day',
