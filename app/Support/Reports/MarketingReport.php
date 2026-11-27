@@ -8,6 +8,7 @@ use App\Services\Ads\AdsCost;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Settings\Lists\BusinessLists;
+use App\Support\Settings\OrgTimezone;
 use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -312,7 +313,11 @@ final class MarketingReport
             ->whereRaw(SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])
             ->where('leads.is_test', false)
             ->where('leads.source', 'local_services')
-            ->whereBetween('leads.received_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            // received_at is UTC; the days are the branch's (audit 2026-11-27).
+            ->whereBetween('leads.received_at', [
+                CarbonImmutable::parse($from, $zone = $branch->timezone ?: OrgTimezone::of())->startOfDay()->utc(),
+                CarbonImmutable::parse($to, $zone)->endOfDay()->utc(),
+            ])
             ->groupBy('leads.source')
             ->selectRaw('leads.source, count(*) leads, sum(leads.job_id is not null) jobs')
             ->get();

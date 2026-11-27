@@ -62,6 +62,30 @@ class AirtableSnapshotTest extends TestCase
         $this->assertSame(120, AirtableRecordVersion::withoutGlobalScopes()->sole()->fields['Refund Amount'], 'the earlier state is kept');
     }
 
+    /** Audit 2026-11-27: a network error on one table aborted the snapshot for every organization after it. */
+    public function test_a_table_the_network_drops_leaves_the_others_copied(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $t['company']->id,
+                'provider' => SocialProvider::Airtable->value, 'remote_id' => 'appBase', 'display_name' => 'P&L']);
+            $c->connect(['api_token' => 'pat']);
+            $c->save();
+            FinancialSource::query()->create(['base_id' => 'appBase', 'table_id' => 'tblDropped', 'role' => 'refunds']);
+            FinancialSource::query()->create(['base_id' => 'appBase', 'table_id' => 'tblFine', 'role' => 'expenses']);
+        });
+        Http::fake([
+            '*/meta/bases/*' => Http::failedConnection(),
+            '*/tblDropped*' => Http::failedConnection(),
+            '*/tblFine*' => Http::response(['records' => [['id' => 'rec1', 'fields' => ['Amount' => 5]]]]),
+        ]);
+
+        $this->artisan('ezbizi:airtable-snapshot')->assertFailed();
+
+        $this->assertSame(['tblFine'], AirtableRecord::withoutGlobalScopes()->pluck('table_id')->all());
+    }
+
     public function test_nothing_is_copied_for_a_tenant_with_nothing_mapped(): void
     {
         $this->provisionTenant('Alpha');

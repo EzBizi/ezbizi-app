@@ -52,6 +52,23 @@ class ReportChangesTest extends TestCase
         Queue::assertPushed(SendWhatsAppPeriodReports::class, 2);
     }
 
+    /** Audit 2026-11-27: a correction made from an older copy wrote over one made meanwhile. */
+    public function test_a_correction_made_meanwhile_is_kept(): void
+    {
+        Queue::fake();
+        $t = $this->provisionTenant('Alpha');
+        $corrector = $this->userWithRole($t, 'Bookkeeper', ['reports.view', 'reports.correct']);
+
+        $this->inTenant($t['org'], function () use ($corrector) {
+            $batch = WhatsAppReportBatch::query()->create(['period' => 'week', 'starts_on' => '2026-09-21', 'ends_on' => '2026-09-27']);
+            $older = $batch->fresh();
+            app(ReportChanges::class)->apply($batch, 'report.exclude_jobs', ['jobs' => ['A1']], $corrector);
+            app(ReportChanges::class)->apply($older, 'report.exclude_jobs', ['jobs' => ['B2']], $corrector);
+
+            $this->assertSame(['A1', 'B2'], $batch->fresh()->settings['exclude_jobs']);
+        });
+    }
+
     public function test_an_unknown_change_a_non_corrector_and_an_approved_report_are_refused(): void
     {
         Queue::fake();

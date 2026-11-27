@@ -229,6 +229,9 @@ class ScoringReportController extends Controller
                 'conversion' => $conversion,
                 'new_client' => $newClient,
                 'jobs' => $jobs,
+                // The rate's own counts, for the sentence beside it (audit 2026-11-27).
+                'booked' => (int) ($perf[$person]['booked_new'] ?? 0),
+                'decided' => max(0, $decided),
                 'checks' => $checks,
                 'strengths' => $notes('strength'),
                 'improve' => $notes('improve'),

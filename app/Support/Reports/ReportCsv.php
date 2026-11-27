@@ -2,6 +2,8 @@
 
 namespace App\Support\Reports;
 
+use App\Support\Data\Exporter;
+
 /**
  * A report run as CSV.
  *
@@ -53,6 +55,7 @@ final class ReportCsv
             return $value ? 'Yes' : 'No';
         }
 
-        return (string) $value;
+        // Every export's formula rule (audit 2026-11-27: a name typed by an outsider ran as a formula).
+        return Exporter::cell((string) $value);
     }
 }
