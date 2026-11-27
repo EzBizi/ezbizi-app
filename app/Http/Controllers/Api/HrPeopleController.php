@@ -828,16 +828,19 @@ class HrPeopleController extends Controller
             // §4: an organization must never be left with no administrator.
             // Moving the last one onto a different role is one of the two ways
             // to do that, and it is the way nobody thinks of.
-            if (! $newRole->isAdministrator()) {
+        }
+        $demoting = $newRole !== null && ! $newRole->is($user->role) && ! $newRole->isAdministrator();
+
+        DB::transaction(function () use ($user, $input, $actor, $startedOn, $place, $demoting, $deactivating) {
+            // Inside the write's transaction: the floor locks the
+            // administrator rows, so two concurrent demotions cannot both pass.
+            if ($demoting) {
                 $this->administrators->assertNotTheLast($user, 'role_id');
             }
-        }
+            if ($deactivating) {
+                $this->administrators->assertNotTheLast($user, 'is_active');
+            }
 
-        if ($deactivating) {
-            $this->administrators->assertNotTheLast($user, 'is_active');
-        }
-
-        DB::transaction(function () use ($user, $input, $actor, $startedOn, $place) {
             if ($startedOn !== null) {
                 $this->recordStartDate($user, $startedOn, $actor);
             }
