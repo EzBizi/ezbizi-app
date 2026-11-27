@@ -269,6 +269,23 @@ class WebsiteEnquiriesTest extends TestCase
             ->assertUnauthorized();
     }
 
+    /** Audit 2026-11-27 HIGH: a second chat with the same phone joins the lead but must not read the first one's messages. */
+    public function test_a_chat_joining_a_recent_lead_by_phone_cannot_read_the_earlier_chat(): void
+    {
+        ['site' => $site] = $this->siteWithKey();
+
+        $first = $this->startChat($site->public_key, 'My gate code is 4411.', ['phone' => '3055550123'])->assertCreated();
+        $second = $this->startChat($site->public_key, 'Hi.', ['phone' => '3055550123'])->assertCreated();
+
+        $texts = collect($this->withToken($second->json('token'))
+            ->getJson('/api/v1/web/chat/'.$second->json('chat').'/messages')
+            ->assertOk()->json('messages'))->pluck('text')->implode('|');
+
+        $this->assertStringContainsString('Hi.', $texts);
+        $this->assertStringNotContainsString('4411', $texts);
+        $this->assertStringNotContainsString('4411', implode('|', array_column($second->json('messages'), 'text')));
+    }
+
     public function test_an_unknown_key_creates_nothing(): void
     {
         $this->siteWithKey();
