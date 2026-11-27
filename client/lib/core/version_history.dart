@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0661', date: '27 Nov 2026', items: [
       'Task Board on phones: a one-line header and a floating bar for search, filter, sort, hide and quick filters, like Monday',
+      'Scheduling: same-day overbookings are flagged in local time, each company can own its own ZIP codes, slot offers use the lead company, and clearing a map drawing asks first',
       'Task Board: tasks on deleted boards stop sending reminders, and only an update author or an Administrator can change its files',
     ]),
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
