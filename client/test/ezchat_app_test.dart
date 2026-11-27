@@ -139,6 +139,22 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  /// Audit 11-27: EzChat's sign-out revokes the server token, not only the
+  /// local copy (the push withdrawal is PushRegistration.unregister's, tested
+  /// with it).
+  test('sign-out tells the server', () async {
+    final posts = <String>[];
+    final api = ApiClient(
+      client: MockClient((r) async {
+        if (r.method == 'POST') posts.add(r.url.path);
+        return _json({'message': 'ok'});
+      }),
+    );
+    addTearDown(TokenStore.clear);
+    await Session(api).logOut();
+    expect(posts.where((p) => p.endsWith('/auth/logout')), hasLength(1));
+  });
+
   /// The Android pass of EzChat (2026-11-25): "a reset link is on its way"
   /// showed in the red error box. It is good news and reads as a note.
   testWidgets('a sent reset link is a note, not an error', (tester) async {

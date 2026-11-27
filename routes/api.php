@@ -2887,6 +2887,7 @@ Route::prefix('v1')
         // for any chat the caller is not a member of.
         Route::middleware('permission:phone.chat.view')->group(function () {
             Route::get('chat/pulse', [ChatController::class, 'pulse']);
+            Route::post('chat/read-all', [ChatController::class, 'readAll']);
             Route::get('chat/contacts', [ChatController::class, 'contacts']);
             Route::get('chat/starred', [ChatController::class, 'starred']);
             Route::get('chat/search', [ChatController::class, 'search']);
