@@ -17,6 +17,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../core/numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
@@ -596,12 +597,8 @@ class InspectionReportBody extends StatelessWidget {
 
   /// Minor units as 1,250.00, no symbol — as the PDF prints it.
   static String _amount(int minor) {
-    final whole = (minor.abs() ~/ 100).toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+$)'),
-      (_) => ',',
-    );
     final cents = (minor.abs() % 100).toString().padLeft(2, '0');
-    return '${minor < 0 ? '-' : ''}$whole.$cents';
+    return '${minor < 0 ? '-' : ''}${formatCount(minor.abs() ~/ 100)}.$cents';
   }
 
   /// The photographs on one answer, read-only: a submitted report is frozen.

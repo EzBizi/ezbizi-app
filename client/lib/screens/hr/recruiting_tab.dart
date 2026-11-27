@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -1412,23 +1413,11 @@ class _SpendState extends State<_Spend> {
     '${r['month'] ?? ''}'.length.clamp(0, 7),
   );
 
-  static String _money(num v) {
-    final whole = v.round();
-    final s = whole.toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
-    return '\$$s';
-  }
-
-  static const _monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
+  static String _money(num v) => '\$${formatCount(v.round())}';
 
   String _monthLabel(String ym) {
     final m = int.tryParse(ym.length >= 7 ? ym.substring(5, 7) : '') ?? 1;
-    return _monthNames[(m - 1).clamp(0, 11)];
+    return shortMonths[(m - 1).clamp(0, 11)];
   }
 
   Future<void> _setCell(String position, String month, String raw) async {

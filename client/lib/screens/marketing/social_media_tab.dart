@@ -4833,18 +4833,6 @@ String _stamp(_SentPost post, DisplayFormats formats) {
       '${formats.formatTime(when.hour, when.minute)} · ${_postWord(post)}';
 }
 
-/// A failure for the post list: the network's sentence when it reads as one,
-/// otherwise one plain line, because the raw text lives in the post's pane
-/// (deep dive 2026-11-02 #3: "unaudited_client_can_only_post_to_private_accounts").
-@visibleForTesting
-String plainFailure(String failure) {
-  final raw =
-      failure.contains('http') ||
-      RegExp(r'\b[a-z]+(_[a-z]+){2,}\b').hasMatch(failure) ||
-      failure.length > 90;
-  return raw ? "Didn't post. Open it for the details." : failure;
-}
-
 // ── The planner (UI queue 199; Rodrigo 01a1ef71 + 01a1ef57, approved) ──────
 //
 // Social opens on a calendar. A post sits on the day of its saved send time,
@@ -4937,14 +4925,8 @@ DateTime _day(DateTime t) => DateTime(t.year, t.month, t.day);
 DateTime _plus(DateTime t, int n) => DateTime(t.year, t.month, t.day + n);
 DateTime _mondayOf(DateTime t) => _plus(t, 1 - t.weekday);
 
-const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June', 'July', //
-  'August', 'September', 'October', 'November', 'December',
-];
-const _weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 String _dayHeading(DateTime d) =>
-    '${_weekdayShort[d.weekday - 1]}, ${_monthNames[d.month - 1].substring(0, 3)} ${d.day}';
+    '${shortWeekdays[d.weekday - 1]}, ${longMonths[d.month - 1].substring(0, 3)} ${d.day}';
 
 class _Planner extends StatefulWidget {
   const _Planner({
@@ -5265,7 +5247,7 @@ class _PlannerState extends State<_Planner> {
     final (from, _) = _span;
     final title = _view == _PlanView.week
         ? 'Week of ${_dayHeading(from)}'
-        : '${_monthNames[_anchor.month - 1]} ${_anchor.year}';
+        : '${longMonths[_anchor.month - 1]} ${_anchor.year}';
 
     final controls = Wrap(
       spacing: 8,
@@ -5501,8 +5483,8 @@ class _PlannerState extends State<_Planner> {
             ),
             Expanded(
               child: Text(
-                '${_monthNames[monday.month - 1].substring(0, 3)} ${monday.day} – '
-                '${_monthNames[sunday.month - 1].substring(0, 3)} ${sunday.day}',
+                '${longMonths[monday.month - 1].substring(0, 3)} ${monday.day} – '
+                '${longMonths[sunday.month - 1].substring(0, 3)} ${sunday.day}',
                 key: const Key('plan-title'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleMedium,
@@ -6015,7 +5997,7 @@ class _MonthGrid extends StatelessWidget {
         children: [
           Row(
             children: [
-              for (final d in _weekdayShort)
+              for (final d in shortWeekdays)
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -6238,7 +6220,7 @@ class _PhoneDay extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                _weekdayShort[day.weekday - 1].substring(0, 1),
+                shortWeekdays[day.weekday - 1].substring(0, 1),
                 style: TextStyle(
                   color: ink,
                   fontWeight: FontWeight.w700,

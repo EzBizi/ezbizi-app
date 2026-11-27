@@ -1734,10 +1734,8 @@ class _DateEditorState extends State<_DateEditor> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime.tryParse(widget.value ?? '');
-    String iso(DateTime d) =>
-        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
     void pick(DateTime? d) {
-      final v = d == null ? null : iso(d);
+      final v = d == null ? null : formatCalendarDay(d);
       if (v != widget.value) widget.onChanged?.call(v);
     }
 

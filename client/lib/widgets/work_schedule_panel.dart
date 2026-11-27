@@ -5,15 +5,6 @@ import '../core/ui_strings.dart';
 import 'setting_editors.dart' show TimeField;
 import 'side_panel.dart';
 
-const _weekdays = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
 
 String _title(String day) => day[0].toUpperCase() + day.substring(1, 3);
 
@@ -32,7 +23,7 @@ Future<Map<String, dynamic>?> showWorkSchedulePanel(
   required DisplayFormats formats,
 }) {
   final week = <String, dynamic>{
-    for (final day in _weekdays)
+    for (final day in weekdayKeys)
       day: days?[day] is Map
           ? Map<String, dynamic>.from(days![day] as Map)
           : null,
@@ -57,7 +48,7 @@ Future<Map<String, dynamic>?> showWorkSchedulePanel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final day in _weekdays)
+            for (final day in weekdayKeys)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(

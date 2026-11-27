@@ -10,15 +10,12 @@ import '../../widgets/list_search.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../email/consent_window.dart';
-import 'financial_cells.dart';
-
-String _money(num cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+import 'invoice_common.dart';
 
 /// A transaction amount as people read a statement: Plaid's positive is money
 /// out, so it shows with a minus; money in shows with a plus.
 String bankAmount(num cents) =>
-    cents > 0 ? '−${_money(cents)}' : '+${_money(-cents)}';
+    cents > 0 ? '−${invoiceMoney(cents)}' : '+${invoiceMoney(-cents)}';
 
 /// Financials → Bank (Jose, 2026-11-24): the banks this view connected through
 /// Plaid, each account with its balances, and every transaction, searchable by
@@ -440,12 +437,12 @@ class _BankCard extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(_accountLabel(a), overflow: TextOverflow.ellipsis),
                 subtitle: Text(
-                  [a['subtype'] ?? a['type'], if (a['available_cents'] != null) 'available ${_money(a['available_cents'] as num)}']
+                  [a['subtype'] ?? a['type'], if (a['available_cents'] != null) 'available ${invoiceMoney(a['available_cents'] as num)}']
                       .whereType<Object>()
                       .join(' · '),
                 ),
                 trailing: Text(
-                  a['current_cents'] == null ? '—' : _money(a['current_cents'] as num),
+                  a['current_cents'] == null ? '—' : invoiceMoney(a['current_cents'] as num),
                   style: theme.textTheme.titleSmall,
                 ),
               ),

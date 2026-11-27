@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
 import 'side_panel.dart';
 import '../core/soft_keyboard.dart';
+import '../core/timestamps.dart';
 
 /// One place a quick-search result can take you.
 typedef QuickSearchHit = ({
@@ -164,15 +165,10 @@ class _QuickSearchState extends State<QuickSearch> {
         ),
       if (module == 'leads') ...[
         ?text((row['franchise'] as Map?)?['name']),
-        if (at != null) '${_months[at.month - 1]} ${at.day}, ${at.year}',
+        if (at != null) '${shortMonths[at.month - 1]} ${at.day}, ${at.year}',
       ],
     ].join(' · ');
   }
-
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
 
   /// The heading a hit sits under.
   String _sectionOf(QuickSearchHit hit) =>

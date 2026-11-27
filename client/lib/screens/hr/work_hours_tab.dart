@@ -257,17 +257,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// hours for that weekday when they have them, 9 to 5 when not.
   _Shift _blankShift(String personId, String date) {
     final person = _week?.people.where((p) => p.id == personId).firstOrNull;
-    const names = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
     final day = DateTime.tryParse(date);
-    final hours = day == null ? null : person?.schedule[names[day.weekday - 1]];
+    final hours = day == null
+        ? null
+        : person?.schedule[weekdayKeys[day.weekday - 1]];
     final start = hours is Map ? '${hours['start'] ?? '09:00'}' : '09:00';
     final end = hours is Map ? '${hours['end'] ?? '17:00'}' : '17:00';
 

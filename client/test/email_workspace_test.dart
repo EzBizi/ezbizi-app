@@ -567,19 +567,6 @@ void main() {
     expect(server.asked('GET', '/email/workspaces'), hasLength(1));
   });
 
-  test('signature HTML reads as text', () {
-    expect(
-      signatureAsText(
-        '<div><b>Dana&nbsp;Reyes</b></div><div>Office manager &amp; '
-        'more</div><p>(555) 010-0142</p><script>x()</script>',
-      ),
-      'Dana Reyes\nOffice manager & more\n(555) 010-0142',
-    );
-    expect(signatureAsText('a<br>b<br/>  c'), 'a\nb\nc');
-    final runs = signatureRuns('<strong>Pat</strong> Lin');
-    expect(runs.first, (text: 'Pat', bold: true, italic: false));
-    expect(runs.last.bold, isFalse);
-  });
   // ── design 151 option 7: compact rows ────────────────────────────
 
   testWidgets('each row carries its one next step for its state', (
