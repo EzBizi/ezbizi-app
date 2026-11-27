@@ -118,7 +118,10 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
   }
 
   void _shift(int months) {
-    setState(() => _month = DateTime(_month.year, _month.month + months));
+    setState(() {
+      _month = DateTime(_month.year, _month.month + months);
+      _data = null; // Audit 11-27: never the old month under the new title.
+    });
     _load();
   }
 

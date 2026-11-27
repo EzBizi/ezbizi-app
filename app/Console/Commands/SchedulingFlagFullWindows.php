@@ -37,7 +37,8 @@ class SchedulingFlagFullWindows extends Command
     {
         $rows = $tenant->runWithoutTenant(fn () => WorkizJob::query()
             ->where('updated_at', '>=', now()->subMinutes(max(1, (int) $this->option('minutes'))))
-            ->whereNotNull('job_id')->where('scheduled_for', '>', now()->format('Y-m-d H:i:s'))->get());
+            // Wall time per branch (audit 11-27): a day's slack here, the branch's own clock below.
+            ->whereNotNull('job_id')->where('scheduled_for', '>', now()->subDay()->format('Y-m-d H:i:s'))->get());
         $flagged = 0;
 
         foreach ($rows->groupBy('organization_id') as $orgId => $jobs) {
@@ -50,7 +51,7 @@ class SchedulingFlagFullWindows extends Command
                     // One ledger row per slot the job has held: a new slot is a new booking
                     // or a move (desk, 2026-11-17: moves alert too, once per move).
                     $job = Job::query()->find($w->job_id);
-                    if ($job === null || $job->scheduled_for === null) {
+                    if ($job === null || $job->scheduled_for === null || $job->scheduled_for->isPast()) {
                         continue;
                     }
                     $slot = 'slot:'.substr((string) $job->scheduled_for, 0, 16);

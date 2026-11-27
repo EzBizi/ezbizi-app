@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -557,7 +558,15 @@ class SchedulingAreasController extends Controller
         $this->authorize('update', $row);
 
         $data = $request->validate([
-            'zips' => ['present', 'array'],
+            // Audit 11-27: `add`/`remove` change only those zips, so a screen
+            // holding a stale list cannot wipe zips added elsewhere.
+            'add' => ['sometimes', 'array'],
+            'add.*' => ['required'],
+            'add.*.zip' => ['sometimes', 'string', 'max:16'],
+            'add.*.city' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'remove' => ['sometimes', 'array'],
+            'remove.*' => ['string', 'max:16'],
+            'zips' => [$request->has('add') || $request->has('remove') ? 'sometimes' : 'present', 'array'],
             // Two accepted shapes on purpose. An entry is either a bare zip
             // string or `{zip, city}` — the desktop build already shipped
             // sending strings, and a client older than this deploy must not
@@ -567,7 +576,12 @@ class SchedulingAreasController extends Controller
             'zips.*.city' => ['sometimes', 'nullable', 'string', 'max:120'],
         ]);
 
-        $wanted = $this->readZips($data['zips']);
+        $wanted = array_key_exists('zips', $data)
+            ? $this->readZips($data['zips'])
+            : ServiceAreaZip::where('service_area_id', $row->id)->pluck('city', 'zip')
+                ->except(array_map('strval', $data['remove'] ?? []))
+                // union, not merge: zips are numeric keys and merge renumbers them.
+                ->union($this->readZips($data['add'] ?? []));
 
         $company = Franchise::query()->whereKey($row->franchise_id)->value('company_id');
         $clash = ServiceAreaZip::query()
@@ -588,9 +602,18 @@ class SchedulingAreasController extends Controller
             $before = ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip');
             ServiceAreaZipRelease::release($before->diff($wanted->keys()), $company);
             ServiceAreaZipRelease::claim($wanted->keys(), $company);
-            ServiceAreaZip::where('service_area_id', $row->id)->delete();
+            // Rows that stay are kept, with their `source` (audit 11-27).
+            ServiceAreaZip::where('service_area_id', $row->id)->whereNotIn('zip', $wanted->keys()->map(fn ($z) => (string) $z))->delete();
+            $kept = ServiceAreaZip::where('service_area_id', $row->id)->get()->keyBy('zip');
 
             foreach ($wanted as $zip => $city) {
+                if ($had = $kept->get((string) $zip)) {
+                    if ($city !== null && $had->city !== $city) {
+                        $had->update(['city' => $city]);
+                    }
+
+                    continue;
+                }
                 ServiceAreaZip::create([
                     'franchise_id' => $row->franchise_id,
                     'service_area_id' => $row->id,

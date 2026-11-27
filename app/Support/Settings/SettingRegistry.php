@@ -1596,6 +1596,8 @@ class SettingRegistry
                     ['value' => 'done pending approval', 'label' => 'Done pending approval'],
                 ],
                 help: 'A job in one of these statuses holds no spot in its window. Every other status does.',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
@@ -1604,11 +1606,15 @@ class SettingRegistry
                     ['value' => 'deposit received', 'label' => 'DEPOSIT RECEIVED'],
                 ],
                 help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.full_days', label: 'Fully booked means no spot for',
                 type: SettingDefinition::TYPE_INT, default: 10,
                 help: 'Days in a row with no spot before an area counts as fully booked (the morning email, Overbooking and the dashboard).',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.offer_horizon_days', label: 'Earlier-opening text: look at jobs booked up to',

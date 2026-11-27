@@ -142,7 +142,8 @@ final class SchedulingHelpersController extends Controller
         DB::transaction(function () use ($request, $row, $helper, $technician, $date, $slot, $data) {
             $this->refuseCollision($helper->id, $date, $slot, except: $row->id);
             $row->update([
-                'helper_id' => $helper->id, 'date' => $date, 'slot' => $slot, 'technician_id' => $technician,
+                // Audit 11-27: the booking follows its helper's branch.
+                'helper_id' => $helper->id, 'franchise_id' => $helper->franchise_id, 'date' => $date, 'slot' => $slot, 'technician_id' => $technician,
                 'job_number' => array_key_exists('job_number', $data) ? $data['job_number'] : $row->job_number,
                 'note' => array_key_exists('note', $data) ? $data['note'] : $row->note,
                 'updated_by' => $request->user()->id,

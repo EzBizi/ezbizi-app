@@ -107,6 +107,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   /// zip in the search, or the server had nothing to say.
   Map<String, dynamic>? _suggestion;
   String? _suggestionZip;
+  String? _pickedDate;
 
   List<Map<String, dynamic>> _suggestions = [];
   int _request = 0;
@@ -305,6 +306,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       setState(() {
         _error = _notAZip;
         _areas = null;
+        // Audit 11-27: a refresh must not bring back the answer before.
+        _lastQuery = null;
+        _etag = null;
+        _suggestion = null;
+        _suggestionZip = null;
       });
       return;
     }
@@ -337,10 +343,12 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     if (!quiet || !mapEquals(query, _lastQuery)) _etag = null;
     _lastQuery = query;
     if (!quiet) {
+      _pickedDate = null;
       setState(() {
         _loading = true;
         _error = null;
         _suggestion = null;
+        _suggestionZip = null;
       });
     }
 
@@ -369,12 +377,16 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     });
 
     final zip = query['zip'] ?? (_resolved?['zip'] as String?);
-    if (response.ok && zip != null) await _askSuggestion(zip, ticket);
+    // A refresh keeps the day the dispatcher picked (audit 11-27).
+    if (response.ok && zip != null) {
+      await _askSuggestion(zip, ticket, date: quiet ? _pickedDate : null);
+    }
   }
 
   /// Asked beside the availability, not instead of it: a failure here only
   /// means no cards and no map, never a broken answer.
   Future<void> _askSuggestion(String zip, int ticket, {String? date}) async {
+    _pickedDate = date;
     final response = await widget.api.get(
       '/scheduling/availability/suggestion',
       {'zip': zip, 'date': ?date},
@@ -670,7 +682,8 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                     ),
                   ),
                 ),
-                if (zipIn(_suggestionZip ?? _search.text) case final zip?)
+                if (zipIn(_lastQuery?['zip'] ?? _resolved?['zip']?.toString())
+                    case final zip?)
                   ReportWrongZipButton(
                     api: widget.api,
                     zip: zip,
