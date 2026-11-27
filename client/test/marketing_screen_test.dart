@@ -403,6 +403,7 @@ void main() {
       await _pumpScreen(
         tester,
         _handler(
+          canEdit: true,
           connections: const [_facebookPage, _pinterestBoard, _xAccount],
         ),
       );
@@ -456,7 +457,7 @@ void main() {
     testWidgets('Pinterest Connect stays off until the installation is ready', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler());
+      await _pumpScreen(tester, _handler(canEdit: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
@@ -477,7 +478,7 @@ void main() {
     testWidgets('Pinterest Connect is enabled when the catalogue says it is usable', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler(pinterestUsable: true));
+      await _pumpScreen(tester, _handler(canEdit: true, pinterestUsable: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
@@ -504,7 +505,7 @@ void main() {
         'form again', (tester) async {
       await _pumpScreen(
         tester,
-        _handler(bluesky: true, connections: const [_blueskyAccount]),
+        _handler(canEdit: true, bluesky: true, connections: const [_blueskyAccount]),
       );
 
       await _openConnectPanel(tester);
@@ -527,7 +528,7 @@ void main() {
         'puts it away', (tester) async {
       await _pumpScreen(
         tester,
-        _handler(bluesky: true, connections: const [_blueskyAccount]),
+        _handler(canEdit: true, bluesky: true, connections: const [_blueskyAccount]),
       );
 
       await _openConnectPanel(tester);
@@ -553,7 +554,7 @@ void main() {
     testWidgets('an unconnected Bluesky is still the form on its own', (
       tester,
     ) async {
-      await _pumpScreen(tester, _handler(bluesky: true));
+      await _pumpScreen(tester, _handler(canEdit: true, bluesky: true));
 
       await _openConnectPanel(tester);
 
@@ -898,6 +899,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Healthy'), findsOneWidget);
     expect(find.byKey(const ValueKey('social-reconnect-conn-2')), findsNothing);
+  });
+
+  testWidgets('without Marketing edit, Connect and Disconnect are refused', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _handler(connections: const [_pinterestBoard]),
+    );
+    await tester.tap(
+      find.widgetWithText(ChoiceChip, 'Social Media Management'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('social-connections')));
+    await tester.pumpAndSettle();
+
+    for (final control in [
+      find.widgetWithText(TextButton, 'Disconnect'),
+      find.widgetWithText(FilledButton, 'Connect a page to Everdoors'),
+    ]) {
+      final button = tester.widget<ButtonStyleButton>(control);
+      expect(button.onPressed, isNull);
+      expect(
+        find.ancestor(of: control, matching: find.byType(Refused)),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Tooltip &&
+            (w.message ?? '').contains('cannot connect or disconnect'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('disconnect confirms in a panel, never a dialog', (tester) async {
@@ -1426,6 +1462,38 @@ void main() {
             .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Later'))
             .selected,
         isTrue,
+      );
+    });
+
+    testWidgets('a second tap on the same day opens Compose at 9:00 again', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final now = DateTime.now();
+      final add = find.byKey(Key('plan-add-${now.month}-${now.day}'));
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      // The time is cleared, the composer closed, and the same + tapped again.
+      tester
+          .widget<CalendarDayField>(find.byType(CalendarDayField))
+          .controller
+          .clear();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      String two(int n) => n.toString().padLeft(2, '0');
+      expect(
+        tester
+            .widget<CalendarDayField>(find.byType(CalendarDayField))
+            .controller
+            .text,
+        '${now.year}-${two(now.month)}-${two(now.day)} 09:00',
       );
     });
 
