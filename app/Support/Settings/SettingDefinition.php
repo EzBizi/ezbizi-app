@@ -592,6 +592,11 @@ final class SettingDefinition
                 throw new InvalidArgumentException("Setting '{$this->key}' expects valid JSON.");
             }
 
+            // "5" or "true" decode to scalars; a 422, not a 500 (audit 2026-11-27).
+            if (! is_array($decoded)) {
+                throw new InvalidArgumentException("Setting '{$this->key}' expects a JSON object or list.");
+            }
+
             return $decoded;
         }
 

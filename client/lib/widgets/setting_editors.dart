@@ -131,7 +131,14 @@ class HoursButton extends StatelessWidget {
   Map<String, dynamic> get _week {
     final raw = value is Map ? Map<String, dynamic>.from(value as Map) : {};
 
-    return {for (final day in weekdayKeys) day: raw[day]};
+    // A copy of each day too (audit 2026-11-27): the editor writes into these
+    // maps, and a shared one changed the screen's value on Cancel.
+    return {
+      for (final day in weekdayKeys)
+        day: raw[day] is Map
+            ? Map<String, dynamic>.from(raw[day] as Map)
+            : raw[day],
+    };
   }
 
   @override

@@ -36,6 +36,8 @@ class AuditEventsController
             'window' => ['nullable', 'in:'.implode(',', array_keys(self::WINDOWS))],
             'source' => ['nullable', 'in:user,staff,system'],
             'before' => ['nullable', 'date'],
+            // The last row's id: rows sharing its second come next (audit 2026-11-27).
+            'before_id' => ['nullable', 'string', 'max:64'],
             // The redesigned Activity tab's Who / module / search filters (UI
             // queue 111). `module` is the action's PREFIX as AuditLogger
             // writes it (`lead.`, `job.`, `time_clock.`), which is not the
@@ -52,7 +54,15 @@ class AuditEventsController
 
         $rows = (clone $window)
             ->select(['id', 'occurred_at', 'actor_type', 'actor_id', 'actor_label', 'action', 'target_label', 'scope_type', 'scope_id'])
-            ->when($validated['before'] ?? null, fn (Builder $q, $before) => $q->where('occurred_at', '<', $before))
+            ->when($validated['before'] ?? null, function (Builder $q, $before) use ($validated) {
+                $at = \Illuminate\Support\Carbon::parse($before)->utc();
+                $id = $validated['before_id'] ?? null;
+
+                $id === null
+                    ? $q->where('occurred_at', '<', $at)
+                    : $q->where(fn (Builder $w) => $w->where('occurred_at', '<', $at)
+                        ->orWhere(fn (Builder $same) => $same->where('occurred_at', $at)->where('id', '<', $id)));
+            })
             ->when($validated['source'] ?? null, fn (Builder $q, $source) => $q->where('actor_type', $source))
             ->when($validated['actor_id'] ?? null, fn (Builder $q, $actor) => $q->where('actor_id', $actor))
             ->when($validated['module'] ?? null, fn (Builder $q, $module) => $q->where('action', 'like', addcslashes($module, '%_\\').'.%'))
@@ -60,6 +70,7 @@ class AuditEventsController
             // means the characters, not "50 followed by anything".
             ->when($validated['q'] ?? null, fn (Builder $q, $text) => $q->where('target_label', 'like', '%'.addcslashes($text, '%_\\').'%'))
             ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
             ->limit(self::PAGE + 1)
             ->get();
 
