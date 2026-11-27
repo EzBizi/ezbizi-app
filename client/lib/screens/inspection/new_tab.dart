@@ -516,7 +516,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     if (rule is Map) {
       final other = '${rule['field'] ?? ''}';
       final equals = '${rule['equals'] ?? rule['value'] ?? ''}';
-      needs = needs || answers[other] == equals;
+      // As strings: a checkbox answer is a bool and the rule's value a
+      // string, and `true == 'true'` never fired (audit 11-27).
+      needs = needs || '${answers[other]}' == equals;
     }
 
     if (!needs) return null;
