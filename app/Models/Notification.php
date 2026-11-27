@@ -79,7 +79,8 @@ class Notification extends Model implements HoldsPersonalData
                     .'read or delete.')),
             new PersonalDataEntry('actor_user_id', PersonalDataEntry::ACTIVITY,
                 'Who caused it, for the avatar on the row (Monday parity, 2026-11-27).',
-                Erasure::erase()),
+                Erasure::drop('It goes with the row above. An erased actor is a '
+                    .'deleted user, and the foreign key nulls the column on delete.')),
             new PersonalDataEntry('title, body', PersonalDataEntry::CONTENT,
                 'The message. Composed by whatever raised it, so it can contain the name '
                 .'or details of a third party rather than of the person it was sent to.',
