@@ -615,7 +615,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Future<void> _open(int index) async {
     final id = _boards[index]['id'];
-    if (id is String) store.writeItem(_lastKey, id, persist: true);
+    if (id is String) {
+      store.writeItem(_lastKey, id, persist: true);
+      // The phone home's "Recently visited" (row 70); a phone is where it shows.
+      if (mounted && MediaQuery.sizeOf(context).width < TaskBoardScreen.phoneTableBelow) _visited(id);
+    }
     setState(() {
       _selected = index;
       _error = null;
@@ -3224,7 +3228,171 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   );
 
   /// The phone's boards tree in place of the board, with its own way back.
-  Widget _choosingPane(BuildContext context) => Column(
+  static const _recentKey = 'task_board.recent';
+
+  /// [{id, at}] newest first, at most 8: the boards this person opened.
+  List<Map<String, dynamic>> get _recent => [
+    for (final r in (widget.session.me?.preferences[_recentKey] as List?) ?? const [])
+      if (r is Map && r['id'] is String) Map<String, dynamic>.from(r),
+  ];
+
+  void _visited(String id) {
+    final next = [
+      {'id': id, 'at': DateTime.now().toUtc().toIso8601String()},
+      for (final r in _recent)
+        if (r['id'] != id) r,
+    ].take(8).toList();
+    widget.session.setPreference(_recentKey, next);
+  }
+
+  List<String> get _favoriteIds => [
+    for (final f in (widget.session.me?.preferences['task_board.favorites'] as List?) ?? const [])
+      '$f',
+  ];
+
+  void _toggleFavorite(String id) {
+    final now = _favoriteIds;
+    now.contains(id) ? now.remove(id) : now.add(id);
+    widget.session.setPreference('task_board.favorites', now);
+    setState(() {});
+  }
+
+  static String _ago(String? iso) {
+    final at = iso == null ? null : DateTime.tryParse(iso);
+    if (at == null) return '';
+    final d = DateTime.now().toUtc().difference(at.toUtc());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  String _boardTitle(_Json b) => b['kind'] == 'user' &&
+          b['section'] != 'shared' &&
+          b['section'] != 'everyone'
+      ? 'My board'
+      : '${b['name'] ?? 'Board'}';
+
+  /// Row 70: the Task Board's phone landing, Monday's Home: a greeting,
+  /// favorites as cards, recently visited, then every board (workspaces).
+  Widget _phoneHome(BuildContext context) {
+    final theme = Theme.of(context);
+    final byId = {for (final (i, b) in _boards.indexed) '${b['id']}': (i, b)};
+    final favs = [for (final id in _favoriteIds) ?byId[id]];
+    final recent = [
+      for (final r in _recent)
+        if (byId[r['id']] case final hit?) (hit.$1, hit.$2, '${r['at']}'),
+    ].take(4).toList();
+    final hour = DateTime.now().hour;
+    final first = (widget.session.me?.name ?? '').split(' ').first;
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    void go(int i) {
+      setState(() => _choosing = false);
+      _open(i);
+    }
+
+    return Column(
+      key: const Key('tasks-phone-home'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            '${hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}${first.isEmpty ? '' : ', $first'}',
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (favs.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Text('My favorites', style: theme.textTheme.titleSmall),
+          ),
+          SizedBox(
+            height: 84,
+            child: ListView(
+              key: const Key('tasks-home-favorites'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                for (final (i, b) in favs)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: SizedBox(
+                      width: 150,
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
+                          key: ValueKey('tasks-home-fav-${b['id']}'),
+                          onTap: () => go(i),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.table_chart_outlined, size: 18),
+                                const Spacer(),
+                                Text(_boardTitle(b), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (recent.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Text('Recently visited', style: theme.textTheme.titleSmall),
+          ),
+          for (final (i, b, at) in recent)
+            ListTile(
+              key: ValueKey('tasks-home-recent-${b['id']}'),
+              dense: true,
+              leading: const Icon(Icons.table_chart_outlined),
+              title: Text(_boardTitle(b), maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('Visited ${_ago(at)}', style: muted),
+              trailing: IconButton(
+                key: ValueKey('tasks-home-star-${b['id']}'),
+                tooltip: 'Favorite',
+                icon: Icon(
+                  _favoriteIds.contains('${b['id']}') ? Icons.star : Icons.star_border,
+                  color: _favoriteIds.contains('${b['id']}') ? EzBiziTheme.boardPalette[3] : null,
+                ),
+                onPressed: () => _toggleFavorite('${b['id']}'),
+              ),
+              onTap: () => go(i),
+            ),
+        ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+          child: Text('Workspaces', style: theme.textTheme.titleSmall),
+        ),
+        Expanded(child: _tree(docked: false)),
+      ],
+    );
+  }
+
+  Widget _choosingPane(BuildContext context) => _phoneTable
+      ? Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                key: const Key('tasks-boards-back'),
+                tooltip: 'Back to the board',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _choosing = false),
+              ),
+            ),
+            Expanded(child: _phoneHome(context)),
+          ],
+        )
+      : Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Padding(

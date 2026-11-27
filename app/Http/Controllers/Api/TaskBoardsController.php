@@ -797,7 +797,7 @@ class TaskBoardsController extends Controller
         if ((string) $input['user_id'] !== (string) $request->user()->id) {
             app(\App\Support\Notifications\NotificationDispatcher::class)->dispatch(
                 title: $request->user()->name.' added you to '.$taskBoard->name, body: null,
-                subject: $taskBoard, onlyTo: \App\Models\User::query()->find($input['user_id']), kind: 'task.invited', source: 'tasks',
+                subject: $taskBoard, onlyTo: \App\Models\User::query()->find($input['user_id']), kind: 'task.invited', source: 'tasks', actor: $request->user(),
             );
         }
 
