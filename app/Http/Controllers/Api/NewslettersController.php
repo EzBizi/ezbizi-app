@@ -136,6 +136,26 @@ class NewslettersController extends Controller
     }
 
     /**
+     * GET /newsletters/{id}: one row, shaped as index shapes it. Reload after a
+     * conflict reads the open newsletter here, since it can be older than the
+     * fifty index returns.
+     */
+    public function show(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $this->mayView($request);
+        abort_unless(
+            $user->hasPermission('newsletter.dashboard.view')
+                || $user->hasPermission('newsletter.composer.view'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('open this tab')->message(),
+        );
+        $row = $this->findInView($user, $newsletter);
+        $row->loadMissing('author:id,name');
+
+        return response()->json(['data' => $this->present($row)]);
+    }
+
+    /**
      * What the dashboard reports, scoped the same way the list is.
      *
      * @return array<string, mixed>

@@ -118,6 +118,13 @@ class ReviewsController extends Controller
         if (is_string($from = $request->query('from')) && strtotime($from) !== false) {
             $query->where('reviewed_at', '>=', Carbon::parse($from)->startOfDay());
         }
+        if (is_string($to = $request->query('to')) && strtotime($to) !== false) {
+            $query->where('reviewed_at', '<=', Carbon::parse($to)->endOfDay());
+        }
+        // One account's reviews: the eKomi screen's account picker (audit 2026-11-27).
+        if (is_string($connection = $request->query('connection')) && $connection !== '') {
+            $query->where('connection_id', $connection);
+        }
 
         $locations = $this->locations(clone $query);
         // The Unanswered chip counts within every OTHER filter in play (Adeline, approved by Jose 2026-11-19:
@@ -136,7 +143,7 @@ class ReviewsController extends Controller
         $reviews = $query->paginate(min((int) $request->query('per_page', 50), 200));
 
         return response()->json([
-            'data' => array_map(fn (Review $r) => $this->present($r), $reviews->items()),
+            'data' => $this->presentAll($reviews->items()),
             'meta' => [
                 ...$this->pageMeta($reviews),
                 'unanswered'   => $unanswered,
@@ -197,7 +204,8 @@ class ReviewsController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $query = Customer::query();
+        // Only customers of branches this person reaches (audit 2026-11-27: it searched every company's).
+        $query = Customer::query()->whereIn('owning_franchise_id', $request->user()->reachableFranchises()->modelKeys());
         foreach ($words as $word) {
             $query->where('name', 'like', '%'.addcslashes($word, '%_').'%');
         }
@@ -212,6 +220,9 @@ class ReviewsController extends Controller
         $this->authorize('manage', $review);
         $input = $request->validate(['customer_id' => ['present', 'nullable', 'uuid']]);
         $customer = $input['customer_id'] === null ? null : Customer::query()->find($input['customer_id']);
+        if ($customer !== null && ! $request->user()->reachableFranchises()->contains('id', $customer->owning_franchise_id)) {
+            $customer = null;
+        }
         if ($input['customer_id'] !== null && $customer === null) {
             return response()->json(['message' => 'That customer could not be found.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -253,7 +264,7 @@ class ReviewsController extends Controller
             ->with(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])
             ->orderByDesc('reviewed_at')->paginate(50);
 
-        return response()->json(['data' => collect($page->items())->map(fn (Review $r) => $this->present($r))->all(),
+        return response()->json(['data' => $this->presentAll($page->items()),
             'meta' => ['counts' => $counts, 'total' => $page->total(), 'last_page' => $page->lastPage(),
                 // Why drafts wait, in one line (desk, 2026-11-10).
                 'drafts_note' => 'Drafts wait for one of three reasons: 3 stars or less are never posted by themselves; '
@@ -680,6 +691,21 @@ class ReviewsController extends Controller
         return null;
     }
 
+    /** @var array<string, \App\Models\ReviewLinkMatch>|null one query for a page, not one per row (audit 2026-11-27) */
+    private ?array $linkMatches = null;
+
+    /** @param list<Review> $reviews */
+    private function presentAll(array $reviews): array
+    {
+        $this->linkMatches = \App\Models\ReviewLinkMatch::query()->whereIn('review_id', array_map(fn (Review $r) => $r->id, $reviews))
+            ->get()->keyBy('review_id')->all();
+        try {
+            return array_map(fn (Review $r) => $this->present($r), $reviews);
+        } finally {
+            $this->linkMatches = null;
+        }
+    }
+
     /** @return array<string, mixed> */
     private function present(Review $review): array
     {
@@ -705,7 +731,8 @@ class ReviewsController extends Controller
             'customer'      => $review->customer?->only(['id', 'name', 'phone', 'email']),
             'match'         => $review->customer_match,
             // Which review link probably produced this review, for Confirm / Reject (Jose, 2026-11-09).
-            'link_match'    => ($lm = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->first()) === null ? null
+            'link_match'    => ($lm = $this->linkMatches !== null ? ($this->linkMatches[$review->id] ?? null)
+                : \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->first()) === null ? null
                 : $lm->only(['id', 'confidence', 'clicked', 'status']) + ['sent_at' => $lm->sent_at?->toIso8601String()],
             'job'           => $review->job === null ? null : [
                 'id'         => $review->job->id,

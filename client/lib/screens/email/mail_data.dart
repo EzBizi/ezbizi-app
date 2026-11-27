@@ -243,6 +243,7 @@ class MessageDetail {
     required this.subject,
     required this.fromName,
     required this.fromAddress,
+    this.fromAuthenticated,
     required this.to,
     required this.receivedAt,
     required this.seenBy,
@@ -261,6 +262,10 @@ class MessageDetail {
   final String subject;
   final String fromName;
   final String fromAddress;
+
+  /// The provider's DMARC verdict on the sender: true pass, false fail,
+  /// null not said. Only a pass earns a brand's check (audit 11-27).
+  final bool? fromAuthenticated;
   final List<String> to;
   final String? receivedAt;
   final List<SeenBy> seenBy;
@@ -308,6 +313,7 @@ class MessageDetail {
       fromName: from['name'] as String? ?? json['from_name'] as String? ?? '',
       fromAddress:
           from['address'] as String? ?? json['from_address'] as String? ?? '',
+      fromAuthenticated: json['from_authenticated'] as bool?,
       to: _addresses(json['to']),
       receivedAt: json['received_at'] as String? ?? json['sent_at'] as String?,
       seenBy: readSeenBy(json['seen_by']),

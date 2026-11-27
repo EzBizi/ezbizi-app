@@ -326,6 +326,18 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       };
     }
 
+    // Only what changed since the record was read, so a save here does not
+    // put back a field somebody else edited meanwhile (audit 2026-11-27).
+    final before = widget.vehicle;
+    dynamic loaded(String key) => switch (key) {
+      'company_id' => fleetMap(before['company'])?['id'],
+      'franchise_id' => fleetMap(before['franchise'])?['id'],
+      _ => before[key],
+    };
+    body.removeWhere(
+      (key, value) => key != 'ownership' && value == loaded(key),
+    );
+
     final response = await widget.api.patch(
       '/vehicles/${widget.vehicle['id']}',
       body,

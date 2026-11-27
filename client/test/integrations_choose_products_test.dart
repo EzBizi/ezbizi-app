@@ -97,10 +97,9 @@ void main() {
 
     final delete = calls.singleWhere((c) => c.$1 == 'DELETE');
     expect(delete.$2, '/api/v1/social/providers/google_ads/connections');
-    expect(jsonDecode(delete.$3), {
-      'code': '123456',
-      'account_email': 'owner@brightside.example',
-    });
+    // The whole family, every login (audit 11-27): account_email would
+    // narrow the disconnect to the first login's rows only.
+    expect(jsonDecode(delete.$3), {'code': '123456'});
   });
 
   testWidgets('WhatsApp stays when the family goes, and problems show', (

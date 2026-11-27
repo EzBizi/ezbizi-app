@@ -2,18 +2,25 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Customer;
 use App\Models\InspectionCode;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionReport;
+use App\Models\Job;
+use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
-use App\Support\Access\ScopeReach;
 use App\Support\Inspection\BindableFields;
+use App\Support\Inspection\BoundAnswers;
 use App\Support\Inspection\FieldSet;
 use App\Support\Inspection\FieldType;
 use App\Support\Inspection\InspectionScope;
 use App\Support\Inspection\LayoutPreset;
+use App\Support\Inspection\Rehearsal;
+use App\Support\Inspection\ReportDocument;
 use App\Support\Inspection\WorkingTitle;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -162,7 +169,7 @@ class InspectionDefinitionsController extends Controller
 
         $versionId = $input['version'] ?? 'draft';
         $version = $versionId === 'draft'
-            ? new \App\Models\InspectionDefinitionVersion([
+            ? new InspectionDefinitionVersion([
                 'version' => 0,
                 'screens' => $inspectionDefinition->screens ?? [],
                 'layout_preset' => $inspectionDefinition->layout_preset ?: LayoutPreset::DEFAULT,
@@ -172,14 +179,17 @@ class InspectionDefinitionsController extends Controller
                 ->findOrFail($versionId);
 
         $screens = $version->screens ?? [];
-        $customer = isset($input['customer_id']) ? \App\Models\Customer::query()->find($input['customer_id']) : null;
-        $job = isset($input['job_id']) ? \App\Models\Job::query()->find($input['job_id']) : null;
+        // Only a client or job in this person's view (audit 11-27): an id from
+        // another branch read as missing rather than filling the form.
+        $inView = ViewScope::forUser($request->user())->franchiseIds();
+        $customer = isset($input['customer_id']) ? Customer::query()->whereIn('owning_franchise_id', $inView)->find($input['customer_id']) : null;
+        $job = isset($input['job_id']) ? Job::query()->whereIn('franchise_id', $inView)->find($input['job_id']) : null;
 
         // Bound fields fill from the test customer and job exactly as a real
         // start would, then freeze drops what this form would not have asked.
-        $answers = \App\Support\Inspection\BoundAnswers::freeze($customer, $job, $screens, $input['answers']);
+        $answers = BoundAnswers::freeze($customer, $job, $screens, $input['answers']);
 
-        $report = new \App\Models\InspectionReport([
+        $report = new InspectionReport([
             'answers' => $answers,
             'definition_name' => $inspectionDefinition->name,
             'layout_preset' => $version->layout_preset,
@@ -194,9 +204,9 @@ class InspectionDefinitionsController extends Controller
         return response()->json(['data' => [
             // The walk uses the answers as typed, before freezing, so a
             // question shows its answer even on a screen that is skipped.
-            ...\App\Support\Inspection\Rehearsal::walk($screens, $input['answers']),
+            ...Rehearsal::walk($screens, $input['answers']),
             'answers' => $answers,
-            'preview_html' => app(\App\Support\Inspection\ReportDocument::class)->html($report),
+            'preview_html' => app(ReportDocument::class)->html($report),
         ]]);
     }
 
@@ -673,7 +683,7 @@ class InspectionDefinitionsController extends Controller
             // "the organization" from "the server did not say" would guess.
             'scope' => [
                 'type' => $definition->scope_type,
-                'id'   => $definition->scope_id,
+                'id' => $definition->scope_id,
             ],
             'intro' => $definition->intro,
             'layout_preset' => $definition->layout_preset ?: LayoutPreset::DEFAULT,

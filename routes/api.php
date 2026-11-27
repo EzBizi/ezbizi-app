@@ -2716,6 +2716,7 @@ Route::prefix('v1')
         // The list answers to Dashboard OR Composer, so its tab check lives in
         // NewslettersController::index rather than on the route.
         Route::get('newsletters', [NewslettersController::class, 'index']);
+        Route::get('newsletters/{newsletter}', [NewslettersController::class, 'show']);
 
         // Composer's own routes: everything that writes, previews or sends.
         Route::middleware('permission:newsletter.composer.view')->group(function () {

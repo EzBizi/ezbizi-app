@@ -152,12 +152,12 @@ final class WorkizWebSession
     public static function accounts(SocialConnection $connection): array
     {
         // Under the login's own lock (audit 11-27: switching to master unlocked let a
-        // concurrent sub-account read land master data under a branch), and cached.
+        // concurrent sub-account read land master data under a branch).
         try {
-            return Cache::remember('workiz-web:accounts:'.$connection->getKey(), 600,
-                fn () => Cache::lock('workiz-web:'.$connection->getKey(), 300)->block(120, fn () => self::listAccounts($connection)));
+            return Cache::lock('workiz-web:'.$connection->getKey(), 300)->block(120, fn () => self::listAccounts($connection));
         } catch (LockTimeoutException) {
-            return [];
+            // Busy: the caller's own inAccount() then meets the same lock and says BUSY.
+            return ['main' => 'Main account'];
         }
     }
 

@@ -90,7 +90,7 @@ class _ReportsTabState extends State<ReportsTab> {
     Files.download('$name.pdf', bytes);
   }
 
-  Future<void> _loadPhotos(Map<String, dynamic> report) async {
+  Future<void> _loadPhotos(Map<String, dynamic> report, int ticket) async {
     final answers = report['answers'];
     if (answers is! Map) return;
 
@@ -118,7 +118,7 @@ class _ReportsTabState extends State<ReportsTab> {
     for (final key in ids) {
       if (_photos.containsKey(key)) continue;
       final bytes = await widget.api.getBytes('/attachments/$key');
-      if (!mounted) return;
+      if (!mounted || ticket != _openTicket) return;
       setState(
         () => _photos[key] = bytes == null
             ? Uint8List(0)
@@ -219,9 +219,14 @@ class _ReportsTabState extends State<ReportsTab> {
     }
   }
 
+  /// The newest open wins: an older answer arriving late is dropped, and its
+  /// photo downloads stop (audit 11-27).
+  int _openTicket = 0;
+
   Future<void> _openReport(String id) async {
+    final ticket = ++_openTicket;
     final response = await widget.api.get('/inspections/reports/$id');
-    if (!mounted) return;
+    if (!mounted || ticket != _openTicket) return;
     if (!response.ok) {
       setState(() => _error = response.reason);
       return;
@@ -232,7 +237,7 @@ class _ReportsTabState extends State<ReportsTab> {
       _open = report;
       _photos.clear();
     });
-    await _loadPhotos(report);
+    await _loadPhotos(report, ticket);
   }
 
   Future<void> _archive(bool hide) async {

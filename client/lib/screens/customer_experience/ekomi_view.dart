@@ -130,7 +130,10 @@ class _EkomiViewState extends State<EkomiView> {
         final r = await widget.api.get('/reviews', {
           'source': 'ekomi',
           'from': formatCalendarDay(_span.from),
-          'per_page': '100',
+          'to': formatCalendarDay(_span.to),
+          'connection': ?_id,
+          // ponytail: one page of 200 (the server's cap); page when an account passes that in a period.
+          'per_page': '200',
         });
         if (!mounted || request != _request) return;
         setState(() {
@@ -420,9 +423,9 @@ class _EkomiViewState extends State<EkomiView> {
                   key: const ValueKey('ekomi-requests-search'),
                   hint: 'Name, email or job',
                   onSubmitted: (v) {
-                      _q = v;
-                      _loadTab();
-                    },
+                    _q = v;
+                    _loadTab();
+                  },
                 ),
               ),
               for (final e in _statuses.entries)

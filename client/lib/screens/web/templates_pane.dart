@@ -93,6 +93,7 @@ class _TemplatesPaneState extends State<TemplatesPane> {
           .where((f) => f['template'] == true)
           .toList();
       _values = (data['values'] as Map<String, dynamic>?) ?? const {};
+      _high = ((data['numbered_high'] as Map?)?['template'] as num?)?.toInt() ?? 0;
     });
   }
 
@@ -145,8 +146,11 @@ class _TemplatesPaneState extends State<TemplatesPane> {
     await _load();
   }
 
+  /// Highest template number ever used, from the server (audit 2026-11-27).
+  int _high = 0;
+
   void _add() {
-    var highest = 0;
+    var highest = _high;
 
     for (final key in _keys) {
       final match = RegExp(r'^template_([0-9]+)$').firstMatch(key);

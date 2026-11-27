@@ -384,6 +384,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return response.ok;
   }
 
+  /// The restore point before a starter could not be saved; nothing changed.
+  bool _starterFailed = false;
+
   void _useBlocks(List<Map<String, dynamic>> blocks) {
     setState(() {
       _snapshot();
@@ -2658,7 +2661,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// history first (as an import is), so Undo or History brings it back.
   /// Subject and preview text are filled only where empty.
   Future<void> _applyStarter(NewsletterStarter s, List<Map<String, dynamic>> blocks) async {
-    if (!await _beforeImport() || !mounted) return;
+    setState(() => _starterFailed = false);
+    final saved = await _beforeImport();
+    if (!mounted) return;
+    if (!saved) {
+      setState(() => _starterFailed = true);
+      return;
+    }
     final subject = widget.subject.text.trim();
     if (subject.isEmpty || subject == 'Untitled newsletter') widget.subject.text = s.subject;
     if (widget.preheader.text.trim().isEmpty) widget.preheader.text = s.preheader;
@@ -2836,9 +2845,11 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       'templates' => NewsletterTemplateGallery(
         company: widget.viewName,
         useLabel: 'Use in this draft',
-        note: widget.blocks.isEmpty && !_hasHtml
-            ? null
-            : 'Replaces this draft’s content. Undo or Version history brings it back.',
+        note: _starterFailed
+            ? 'The template was not applied: a restore point could not be saved. Try again.'
+            : widget.blocks.isEmpty && !_hasHtml
+                ? null
+                : 'Replaces this draft’s content. Undo or Version history brings it back.',
         api: widget.api,
         onUse: _locked ? null : _applyStarter,
       ),

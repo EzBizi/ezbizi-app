@@ -23,8 +23,10 @@ void main() {
     );
   });
 
-  test('apple is a verified brand unless dmarc failed', () {
-    expect(SenderBrand.verified('hello@email.apple.com'), isTrue);
+  // Audit 11-27: a brand in the From line is what a spoof always has, so
+  // only a DMARC pass earns the check; a silent provider does not.
+  test('apple is a verified brand only when dmarc passed', () {
+    expect(SenderBrand.verified('hello@email.apple.com'), isFalse);
     expect(
       SenderBrand.verified('hello@email.apple.com', authenticated: true),
       isTrue,
@@ -44,6 +46,7 @@ void main() {
           body: SenderAvatar(
             name: 'Apple Business',
             email: 'hello@email.apple.com',
+            authenticated: true,
           ),
         ),
       ),

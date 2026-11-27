@@ -38,15 +38,6 @@ final class FieldJobs
             ->get();
     }
 
-    /** Has this job an address Google has never been asked about? */
-    public function needsGeocode(Job $job): bool
-    {
-        $address = $job->customer ? FieldGeocode::addressOf($job->customer) : null;
-
-        return $address !== null
-            && ! FieldGeocode::query()->where('address_hash', FieldGeocode::hash($address))->exists();
-    }
-
     /**
      * Where a job is. With $ask, an address never seen before is geocoded now;
      * without it (the ingest path, which must stay fast) only a stored answer counts.

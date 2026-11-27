@@ -27,12 +27,21 @@ void main() {
     expect(find.text('Sales team'), findsOneWidget);
 
     // The wires are a painter, and nothing else in a widget test can see one.
-    expect(
-      find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is FlowWirePainter,
-      ),
-      findsOneWidget,
-    );
+    // Two layers (audit 2026-11-27): a still one with everything, painted
+    // once, and a moving one with only the dashes, each behind its own
+    // RepaintBoundary so the pulse never repaints the chart.
+    bool layer(Widget w, {required bool moving}) =>
+        w is CustomPaint &&
+        w.painter is FlowWirePainter &&
+        (w.painter! as FlowWirePainter).flowOnly == moving;
+    for (final moving in [false, true]) {
+      final paint = find.byWidgetPredicate((w) => layer(w, moving: moving));
+      expect(paint, findsOneWidget, reason: moving ? 'moving' : 'still');
+      expect(
+        find.ancestor(of: paint, matching: find.byType(RepaintBoundary)),
+        findsWidgets,
+      );
+    }
   });
 
   testWidgets('wide: a dead end says so on the node itself', (tester) async {
@@ -86,17 +95,31 @@ void main() {
   testWidgets('a line pointed nowhere is two nodes and still draws', (
     tester,
   ) async {
-    await _pump(tester, width: 1100, graph: {
-      'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'arrival', 'kind': 'arrival', 'title': 'Arrival',
-          'detail': 'Not pointed at EzBizi.', 'state': 'dead'},
-      ],
-      'edges': [
-        {'from': 'caller', 'to': 'arrival', 'label': ''},
-      ],
-    });
+    await _pump(
+      tester,
+      width: 1100,
+      graph: {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'arrival',
+            'kind': 'arrival',
+            'title': 'Arrival',
+            'detail': 'Not pointed at EzBizi.',
+            'state': 'dead',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'arrival', 'label': ''},
+        ],
+      },
+    );
 
     expect(tester.takeException(), isNull);
 
@@ -116,23 +139,47 @@ void main() {
   testWidgets('a skipped step draws in the chain, labelled for what it is', (
     tester,
   ) async {
-    await _pump(tester, width: 1100, graph: {
-      'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'arrival', 'kind': 'arrival', 'title': 'Arrival',
-          'detail': 'The line picks up.', 'state': 'ok'},
-        {'id': 'menu', 'kind': 'menu', 'title': 'Menu',
-          'detail': 'Plays nothing.', 'state': 'skipped'},
-        {'id': 'answer', 'kind': 'ring_group', 'title': 'Sales team',
-          'detail': 'Rings 3 people.', 'state': 'ok'},
-      ],
-      'edges': [
-        {'from': 'caller', 'to': 'arrival', 'label': ''},
-        {'from': 'arrival', 'to': 'menu', 'label': ''},
-        {'from': 'menu', 'to': 'answer', 'label': ''},
-      ],
-    });
+    await _pump(
+      tester,
+      width: 1100,
+      graph: {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'arrival',
+            'kind': 'arrival',
+            'title': 'Arrival',
+            'detail': 'The line picks up.',
+            'state': 'ok',
+          },
+          {
+            'id': 'menu',
+            'kind': 'menu',
+            'title': 'Menu',
+            'detail': 'Plays nothing.',
+            'state': 'skipped',
+          },
+          {
+            'id': 'answer',
+            'kind': 'ring_group',
+            'title': 'Sales team',
+            'detail': 'Rings 3 people.',
+            'state': 'ok',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'arrival', 'label': ''},
+          {'from': 'arrival', 'to': 'menu', 'label': ''},
+          {'from': 'menu', 'to': 'answer', 'label': ''},
+        ],
+      },
+    );
 
     expect(find.text('Menu'), findsOneWidget);
     expect(find.text('Does nothing'), findsOneWidget);
@@ -297,8 +344,12 @@ void main() {
   testWidgets('his real line draws: eleven nodes, three queues, no overflow', (
     tester,
   ) async {
-    Map<String, dynamic> node(String id, String kind, String title,
-        [String state = 'ok']) {
+    Map<String, dynamic> node(
+      String id,
+      String kind,
+      String title, [
+      String state = 'ok',
+    ]) {
       return {
         'id': id,
         'kind': kind,
@@ -308,43 +359,48 @@ void main() {
       };
     }
 
-    await _pump(tester, width: 1100, graph: {
-      'nodes': [
-        node('caller', 'caller', 'Caller'),
-        node('arrival', 'arrival', 'Arrives on General'),
-        node('menu', 'menu', 'Menu plays'),
-        node('g-appt', 'ring_group', 'Ring Appointment'),
-        node('g-exist', 'ring_group', 'Ring Existing Client'),
-        node('g-test', 'ring_group', 'Ring Testing'),
-        node('vm-hash', 'voicemail', 'Voicemail'),
-        node('queue-g-appt', 'queue', 'Hold for Appointment'),
-        node('queue-g-exist', 'queue', 'Hold for Existing Client'),
-        node('queue-g-test', 'queue', 'Hold for Testing'),
-        node('vm-end', 'voicemail', 'Voicemail'),
-      ],
-      'edges': [
-        {'from': 'caller', 'to': 'arrival', 'label': ''},
-        {'from': 'arrival', 'to': 'menu', 'label': ''},
-        {'from': 'menu', 'to': 'g-appt', 'label': 'Press 1'},
-        {'from': 'menu', 'to': 'g-exist', 'label': 'Press 2'},
-        {'from': 'menu', 'to': 'g-test', 'label': 'Press 3'},
-        {'from': 'menu', 'to': 'vm-hash', 'label': 'Press #'},
-        // The second route into one box, which is what his question was about.
-        {'from': 'menu', 'to': 'g-exist', 'label': 'No key pressed'},
-        {'from': 'g-appt', 'to': 'queue-g-appt', 'label': 'Everyone busy'},
-        {'from': 'g-exist', 'to': 'queue-g-exist', 'label': 'Everyone busy'},
-        {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
-        {'from': 'queue-g-appt', 'to': 'g-appt', 'label': 'try again'},
-        {'from': 'queue-g-exist', 'to': 'g-exist', 'label': 'try again'},
-        {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
-        {'from': 'queue-g-test', 'to': 'vm-end', 'label': 'Waited too long'},
-      ],
-    });
+    await _pump(
+      tester,
+      width: 1100,
+      graph: {
+        'nodes': [
+          node('caller', 'caller', 'Caller'),
+          node('arrival', 'arrival', 'Arrives on General'),
+          node('menu', 'menu', 'Menu plays'),
+          node('g-appt', 'ring_group', 'Ring Appointment'),
+          node('g-exist', 'ring_group', 'Ring Existing Client'),
+          node('g-test', 'ring_group', 'Ring Testing'),
+          node('vm-hash', 'voicemail', 'Voicemail'),
+          node('queue-g-appt', 'queue', 'Hold for Appointment'),
+          node('queue-g-exist', 'queue', 'Hold for Existing Client'),
+          node('queue-g-test', 'queue', 'Hold for Testing'),
+          node('vm-end', 'voicemail', 'Voicemail'),
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'arrival', 'label': ''},
+          {'from': 'arrival', 'to': 'menu', 'label': ''},
+          {'from': 'menu', 'to': 'g-appt', 'label': 'Press 1'},
+          {'from': 'menu', 'to': 'g-exist', 'label': 'Press 2'},
+          {'from': 'menu', 'to': 'g-test', 'label': 'Press 3'},
+          {'from': 'menu', 'to': 'vm-hash', 'label': 'Press #'},
+          // The second route into one box, which is what his question was about.
+          {'from': 'menu', 'to': 'g-exist', 'label': 'No key pressed'},
+          {'from': 'g-appt', 'to': 'queue-g-appt', 'label': 'Everyone busy'},
+          {'from': 'g-exist', 'to': 'queue-g-exist', 'label': 'Everyone busy'},
+          {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
+          {'from': 'queue-g-appt', 'to': 'g-appt', 'label': 'try again'},
+          {'from': 'queue-g-exist', 'to': 'g-exist', 'label': 'try again'},
+          {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
+          {'from': 'queue-g-test', 'to': 'vm-end', 'label': 'Waited too long'},
+        ],
+      },
+    );
 
     expect(
       tester.takeException(),
       isNull,
-      reason: 'An overflow or a layout assertion counts here: he cannot read a '
+      reason:
+          'An overflow or a layout assertion counts here: he cannot read a '
           'chart that renders past its box.',
     );
 
@@ -355,28 +411,47 @@ void main() {
     expect(
       find.text('Ring Existing Client'),
       findsOneWidget,
-      reason: 'Two keys reach this team and it is ONE box. Two would be the '
+      reason:
+          'Two keys reach this team and it is ONE box. Two would be the '
           'drawing Jose read as wrong.',
     );
   });
 
   testWidgets('his real line fits a phone too', (tester) async {
-    await _pump(tester, width: 400, graph: {
-      'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'g-test', 'kind': 'ring_group', 'title': 'Ring Testing',
-          'detail': 'Whoever is on duty is dialled.', 'state': 'ok'},
-        {'id': 'queue-g-test', 'kind': 'queue', 'title': 'Hold for Testing',
-          'detail': 'Callers wait and are told their place in line.',
-          'state': 'ok'},
-      ],
-      'edges': [
-        {'from': 'caller', 'to': 'g-test', 'label': ''},
-        {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
-        {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
-      ],
-    });
+    await _pump(
+      tester,
+      width: 400,
+      graph: {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'g-test',
+            'kind': 'ring_group',
+            'title': 'Ring Testing',
+            'detail': 'Whoever is on duty is dialled.',
+            'state': 'ok',
+          },
+          {
+            'id': 'queue-g-test',
+            'kind': 'queue',
+            'title': 'Hold for Testing',
+            'detail': 'Callers wait and are told their place in line.',
+            'state': 'ok',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'g-test', 'label': ''},
+          {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
+          {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
+        ],
+      },
+    );
 
     expect(tester.takeException(), isNull);
     expect(find.text('Hold for Testing'), findsOneWidget);
@@ -387,12 +462,28 @@ void main() {
   group('live calls', () {
     Map<String, dynamic> queueGraph() => {
       'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'g-sales', 'kind': 'ring_group', 'title': 'Sales team',
-          'detail': 'Rings 3 people.', 'state': 'ok'},
-        {'id': 'queue-g-sales', 'kind': 'queue', 'title': 'Hold for Sales',
-          'detail': 'Callers wait.', 'state': 'ok', 'ref': 'g-sales'},
+        {
+          'id': 'caller',
+          'kind': 'caller',
+          'title': 'Caller',
+          'detail': 'Somebody dials.',
+          'state': 'ok',
+        },
+        {
+          'id': 'g-sales',
+          'kind': 'ring_group',
+          'title': 'Sales team',
+          'detail': 'Rings 3 people.',
+          'state': 'ok',
+        },
+        {
+          'id': 'queue-g-sales',
+          'kind': 'queue',
+          'title': 'Hold for Sales',
+          'detail': 'Callers wait.',
+          'state': 'ok',
+          'ref': 'g-sales',
+        },
       ],
       'edges': [
         {'from': 'caller', 'to': 'g-sales', 'label': ''},
@@ -401,13 +492,18 @@ void main() {
     };
 
     testWidgets('a queue holding people says so on the tile', (tester) async {
-      await _pump(tester, width: 1100, graph: queueGraph(), live: {
-        'on_line': 2,
-        'queues': {
-          'g-sales': {'waiting': 4, 'average_wait_seconds': 73},
+      await _pump(
+        tester,
+        width: 1100,
+        graph: queueGraph(),
+        live: {
+          'on_line': 2,
+          'queues': {
+            'g-sales': {'waiting': 4, 'average_wait_seconds': 73},
+          },
+          'queues_known': true,
         },
-        'queues_known': true,
-      });
+      );
 
       expect(find.text('4 waiting \u00b7 1m 13s'), findsOneWidget);
       expect(find.text('2 calls on this line now'), findsOneWidget);
@@ -417,16 +513,22 @@ void main() {
     testWidgets('when Twilio could not be asked, the tile says nothing', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: queueGraph(), live: {
-        'on_line': 1,
-        'queues': <String, dynamic>{},
-        'queues_known': false,
-      });
+      await _pump(
+        tester,
+        width: 1100,
+        graph: queueGraph(),
+        live: {
+          'on_line': 1,
+          'queues': <String, dynamic>{},
+          'queues_known': false,
+        },
+      );
 
       expect(
         find.textContaining('waiting'),
         findsNothing,
-        reason: '"0 waiting" here is a confident lie at the exact moment we '
+        reason:
+            '"0 waiting" here is a confident lie at the exact moment we '
             'have no idea. The rest of the payload is still good.',
       );
       expect(
@@ -439,17 +541,23 @@ void main() {
     testWidgets('a known-empty queue reads zero rather than dashes', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: queueGraph(), live: {
-        'on_line': 0,
-        'queues': <String, dynamic>{},
-        'queues_known': true,
-      });
+      await _pump(
+        tester,
+        width: 1100,
+        graph: queueGraph(),
+        live: {
+          'on_line': 0,
+          'queues': <String, dynamic>{},
+          'queues_known': true,
+        },
+      );
 
       expect(find.text('0 waiting'), findsOneWidget);
       expect(
         find.textContaining('on this line now'),
         findsNothing,
-        reason: 'A permanent "0 on the line" is clutter on a screen whose '
+        reason:
+            'A permanent "0 on the line" is clutter on a screen whose '
             'normal state is nobody calling.',
       );
     });
@@ -460,13 +568,18 @@ void main() {
     testWidgets('a healthy line shows the live count AND the all-clear', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: queueGraph(), live: {
-        'on_line': 3,
-        'queues': {
-          'g-sales': {'waiting': 0, 'average_wait_seconds': 0},
+      await _pump(
+        tester,
+        width: 1100,
+        graph: queueGraph(),
+        live: {
+          'on_line': 3,
+          'queues': {
+            'g-sales': {'waiting': 0, 'average_wait_seconds': 0},
+          },
+          'queues_known': true,
         },
-        'queues_known': true,
-      });
+      );
 
       expect(find.text('3 calls on this line now'), findsOneWidget);
       expect(
@@ -476,13 +589,18 @@ void main() {
     });
 
     testWidgets('the phone view carries the same count', (tester) async {
-      await _pump(tester, width: 400, graph: queueGraph(), live: {
-        'on_line': 0,
-        'queues': {
-          'g-sales': {'waiting': 2, 'average_wait_seconds': 30},
+      await _pump(
+        tester,
+        width: 400,
+        graph: queueGraph(),
+        live: {
+          'on_line': 0,
+          'queues': {
+            'g-sales': {'waiting': 2, 'average_wait_seconds': 30},
+          },
+          'queues_known': true,
         },
-        'queues_known': true,
-      });
+      );
 
       expect(find.text('2 waiting \u00b7 30s'), findsOneWidget);
     });
@@ -554,7 +672,8 @@ void main() {
       expect(
         find.text('100%'),
         findsNothing,
-        reason: 'A wheel that moves the view instead of scaling it leaves the '
+        reason:
+            'A wheel that moves the view instead of scaling it leaves the '
             'zoom at 100% -- which is what no zoom looks like to a mouse.',
       );
     });
@@ -582,26 +701,55 @@ void main() {
   testWidgets('the answered call and what follows it are drawn', (
     tester,
   ) async {
-    await _pump(tester, width: 1100, graph: {
-      'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'g1', 'kind': 'ring_group', 'title': 'Sales team',
-          'detail': 'Rings 3 people.', 'state': 'ok'},
-        {'id': 'answered', 'kind': 'answered', 'title': 'Somebody answers',
-          'detail': 'The call connects.', 'state': 'ok'},
-        {'id': 'recorded', 'kind': 'recorded', 'title': 'Recorded',
-          'detail': 'The line records and transcribes.', 'state': 'ok'},
-        {'id': 'wrap', 'kind': 'wrap_up', 'title': 'Saved to Records',
-          'detail': 'A call tag is required.', 'state': 'ok'},
-      ],
-      'edges': [
-        {'from': 'caller', 'to': 'g1', 'label': ''},
-        {'from': 'g1', 'to': 'answered', 'label': 'Answered'},
-        {'from': 'answered', 'to': 'recorded', 'label': ''},
-        {'from': 'recorded', 'to': 'wrap', 'label': ''},
-      ],
-    });
+    await _pump(
+      tester,
+      width: 1100,
+      graph: {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'g1',
+            'kind': 'ring_group',
+            'title': 'Sales team',
+            'detail': 'Rings 3 people.',
+            'state': 'ok',
+          },
+          {
+            'id': 'answered',
+            'kind': 'answered',
+            'title': 'Somebody answers',
+            'detail': 'The call connects.',
+            'state': 'ok',
+          },
+          {
+            'id': 'recorded',
+            'kind': 'recorded',
+            'title': 'Recorded',
+            'detail': 'The line records and transcribes.',
+            'state': 'ok',
+          },
+          {
+            'id': 'wrap',
+            'kind': 'wrap_up',
+            'title': 'Saved to Records',
+            'detail': 'A call tag is required.',
+            'state': 'ok',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'g1', 'label': ''},
+          {'from': 'g1', 'to': 'answered', 'label': 'Answered'},
+          {'from': 'answered', 'to': 'recorded', 'label': ''},
+          {'from': 'recorded', 'to': 'wrap', 'label': ''},
+        ],
+      },
+    );
 
     expect(find.byIcon(Icons.call_end_outlined), findsOneWidget);
     expect(find.byIcon(Icons.fiber_manual_record_outlined), findsOneWidget);
@@ -609,7 +757,8 @@ void main() {
     expect(
       find.byIcon(Icons.circle_outlined),
       findsNothing,
-      reason: 'The control that distinguishes: this is the unknown-kind '
+      reason:
+          'The control that distinguishes: this is the unknown-kind '
           'fallback, and finding it here means one of the three has no entry '
           'and the test above passed on the other two.',
     );
@@ -626,11 +775,21 @@ void main() {
   group('changing a box from the chart', () {
     Map<String, dynamic> graphWith(Map<String, dynamic>? edit) => {
       'nodes': [
-        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-          'detail': 'Somebody dials.', 'state': 'ok'},
-        {'id': 'g1', 'kind': 'ring_group', 'title': 'Ring Appointment',
-          'detail': 'Whoever is on duty is dialled.', 'state': 'ok',
-          'edit': ?edit},
+        {
+          'id': 'caller',
+          'kind': 'caller',
+          'title': 'Caller',
+          'detail': 'Somebody dials.',
+          'state': 'ok',
+        },
+        {
+          'id': 'g1',
+          'kind': 'ring_group',
+          'title': 'Ring Appointment',
+          'detail': 'Whoever is on duty is dialled.',
+          'state': 'ok',
+          'edit': ?edit,
+        },
       ],
       'edges': [
         {'from': 'caller', 'to': 'g1', 'label': ''},
@@ -640,9 +799,11 @@ void main() {
     testWidgets('tapping a box says which Settings pane you are in', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: graphWith(
-        {'pane': 'ring-groups', 'id': 'rg-1'},
-      ));
+      await _pump(
+        tester,
+        width: 1100,
+        graph: graphWith({'pane': 'ring-groups', 'id': 'rg-1'}),
+      );
 
       await tester.tap(find.text('Ring Appointment'));
       await tester.pump();
@@ -650,7 +811,8 @@ void main() {
       expect(
         find.text('Settings › Phone › Ring groups'),
         findsOneWidget,
-        reason: 'Somebody changing a ring group from a chart should still know '
+        reason:
+            'Somebody changing a ring group from a chart should still know '
             'they changed a ring group, and where to find it again.',
       );
     });
@@ -669,9 +831,11 @@ void main() {
     testWidgets('the trail says what the rail says, not what we remember', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: graphWith(
-        {'pane': 'trust', 'id': 't-1'},
-      ));
+      await _pump(
+        tester,
+        width: 1100,
+        graph: graphWith({'pane': 'trust', 'id': 't-1'}),
+      );
 
       await tester.tap(find.text('Ring Appointment'));
       await tester.pump();
@@ -679,14 +843,13 @@ void main() {
       expect(
         find.text('Settings › Phone › Trust & caller identity'),
         findsOneWidget,
-        reason: 'A local list of labels would say "Trust" here, and pass every '
+        reason:
+            'A local list of labels would say "Trust" here, and pass every '
             'other assertion in this file.',
       );
     });
 
-    testWidgets('a step that is not a setting says so instead', (
-      tester,
-    ) async {
+    testWidgets('a step that is not a setting says so instead', (tester) async {
       await _pump(tester, width: 1100, graph: graphWith(null));
 
       await tester.tap(find.text('Ring Appointment'));
@@ -699,7 +862,8 @@ void main() {
       expect(
         find.textContaining('Settings › Phone ›'),
         findsNothing,
-        reason: 'A breadcrumb to a pane that does not edit this box would send '
+        reason:
+            'A breadcrumb to a pane that does not edit this box would send '
             'somebody looking for a setting that is not there.',
       );
     });
@@ -710,9 +874,11 @@ void main() {
     testWidgets('a pane this build does not know degrades to a door', (
       tester,
     ) async {
-      await _pump(tester, width: 1100, graph: graphWith(
-        {'pane': 'something-phone-added-later', 'id': 'x'},
-      ));
+      await _pump(
+        tester,
+        width: 1100,
+        graph: graphWith({'pane': 'something-phone-added-later', 'id': 'x'}),
+      );
 
       await tester.tap(find.text('Ring Appointment'));
       await tester.pump();
@@ -720,7 +886,8 @@ void main() {
       expect(
         find.textContaining('changed in Settings › Phone.'),
         findsOneWidget,
-        reason: 'The trail STOPS rather than naming a section. Falling back '
+        reason:
+            'The trail STOPS rather than naming a section. Falling back '
             'to the raw id would render "Settings › Phone › cost" for a '
             'section called Cost, sending somebody hunting a lowercase one.',
       );
@@ -732,9 +899,11 @@ void main() {
     });
 
     testWidgets('closing it puts the chart back', (tester) async {
-      await _pump(tester, width: 1100, graph: graphWith(
-        {'pane': 'ring-groups', 'id': 'rg-1'},
-      ));
+      await _pump(
+        tester,
+        width: 1100,
+        graph: graphWith({'pane': 'ring-groups', 'id': 'rg-1'}),
+      );
 
       await tester.tap(find.text('Ring Appointment'));
       await tester.pump();
@@ -750,30 +919,35 @@ void main() {
     /// editor used to be a screen PUSHED over the module. It draws in the
     /// chart's own place now, so it is a descendant of the chart pane, and its
     /// back arrow puts the flow back.
-    testWidgets('on a phone the editor takes the flow’s place, and back returns '
-        'to it', (tester) async {
-      await _pump(tester, width: 390, graph: graphWith(
-        {'pane': 'ring-groups', 'id': 'rg-1'},
-      ));
+    testWidgets(
+      'on a phone the editor takes the flow’s place, and back returns '
+      'to it',
+      (tester) async {
+        await _pump(
+          tester,
+          width: 390,
+          graph: graphWith({'pane': 'ring-groups', 'id': 'rg-1'}),
+        );
 
-      await tester.tap(find.text('Ring Appointment'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Ring Appointment'));
+        await tester.pumpAndSettle();
 
-      expect(
-        find.descendant(
-          of: find.byType(CallFlowChartPane),
-          matching: find.text('Settings › Phone › Ring groups'),
-        ),
-        findsOneWidget,
-        reason: 'The editor is not inside the chart pane: it was pushed.',
-      );
+        expect(
+          find.descendant(
+            of: find.byType(CallFlowChartPane),
+            matching: find.text('Settings › Phone › Ring groups'),
+          ),
+          findsOneWidget,
+          reason: 'The editor is not inside the chart pane: it was pushed.',
+        );
 
-      await tester.tap(find.byTooltip('Back to the call flow'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Back to the call flow'));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('Settings › Phone ›'), findsNothing);
-      expect(find.text('Ring Appointment'), findsOneWidget);
-    });
+        expect(find.textContaining('Settings › Phone ›'), findsNothing);
+        expect(find.text('Ring Appointment'), findsOneWidget);
+      },
+    );
   });
 
   _pickerGroup();
@@ -789,8 +963,13 @@ void main() {
 
     final one = CallFlowGraph(
       nodes: const [
-        FlowNode(id: 'caller', kind: 'caller', title: 'C', detail: '',
-            state: 'ok'),
+        FlowNode(
+          id: 'caller',
+          kind: 'caller',
+          title: 'C',
+          detail: '',
+          state: 'ok',
+        ),
         FlowNode(id: 'b', kind: 'b', title: 'B', detail: '', state: 'ok'),
       ],
       edges: const [FlowEdge(from: 'caller', to: 'b')],
@@ -943,11 +1122,7 @@ void _pickerGroup() {
   testWidgets('a line with no faults is not given a needs-attention group', (
     tester,
   ) async {
-    await _pump(
-      tester,
-      width: 1100,
-      lines: [twoLines().first],
-    );
+    await _pump(tester, width: 1100, lines: [twoLines().first]);
 
     await tester.tap(find.byType(TextButton).first);
     await tester.pumpAndSettle();
@@ -969,18 +1144,48 @@ void _pickerGroup() {
 /// greeting no caller reaches.
 Map<String, dynamic> _graph() => {
   'nodes': [
-    {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
-      'detail': 'Somebody dials +1 860 555 0142.', 'state': 'ok'},
-    {'id': 'menu', 'kind': 'menu', 'title': 'Menu',
-      'detail': 'Press 1 or 2.', 'state': 'ok'},
-    {'id': 'sales', 'kind': 'ring_group', 'title': 'Sales team',
-      'detail': 'Rings 3 people.', 'state': 'ok'},
-    {'id': 'service', 'kind': 'ring_group', 'title': 'Service team',
-      'detail': 'Nobody is in this group', 'state': 'dead'},
-    {'id': 'queue', 'kind': 'queue', 'title': 'Queue',
-      'detail': 'Holds and tries again.', 'state': 'ok'},
-    {'id': 'greeting', 'kind': 'menu', 'title': 'Greeting',
-      'detail': 'A recorded welcome.', 'state': 'skipped'},
+    {
+      'id': 'caller',
+      'kind': 'caller',
+      'title': 'Caller',
+      'detail': 'Somebody dials +1 860 555 0142.',
+      'state': 'ok',
+    },
+    {
+      'id': 'menu',
+      'kind': 'menu',
+      'title': 'Menu',
+      'detail': 'Press 1 or 2.',
+      'state': 'ok',
+    },
+    {
+      'id': 'sales',
+      'kind': 'ring_group',
+      'title': 'Sales team',
+      'detail': 'Rings 3 people.',
+      'state': 'ok',
+    },
+    {
+      'id': 'service',
+      'kind': 'ring_group',
+      'title': 'Service team',
+      'detail': 'Nobody is in this group',
+      'state': 'dead',
+    },
+    {
+      'id': 'queue',
+      'kind': 'queue',
+      'title': 'Queue',
+      'detail': 'Holds and tries again.',
+      'state': 'ok',
+    },
+    {
+      'id': 'greeting',
+      'kind': 'menu',
+      'title': 'Greeting',
+      'detail': 'A recorded welcome.',
+      'state': 'skipped',
+    },
   ],
   'edges': [
     {'from': 'caller', 'to': 'menu', 'label': ''},
@@ -1007,7 +1212,9 @@ Future<void> _pump(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/phone/call-flow/live')) {
         return http.Response(
-          jsonEncode({'data': live ?? {'on_line': 0, 'queues_known': false}}),
+          jsonEncode({
+            'data': live ?? {'on_line': 0, 'queues_known': false},
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -1032,8 +1239,11 @@ Future<void> _pump(
         );
       }
 
-      return http.Response('{}', 500,
-          headers: {'content-type': 'application/json'});
+      return http.Response(
+        '{}',
+        500,
+        headers: {'content-type': 'application/json'},
+      );
     }),
   );
 

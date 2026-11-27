@@ -48,10 +48,10 @@ class ComplaintsController extends Controller
             $query->where('franchise_id', $branch);
         }
         if (is_string($from = $request->query('from')) && strtotime($from)) {
-            $query->where('raised_at', '>=', Carbon::parse($from)->startOfDay());
+            $query->where('raised_at', '>=', Carbon::parse($from, \App\Support\Reports\ReportView::zone())->startOfDay()->utc());
         }
         if (is_string($to = $request->query('to')) && strtotime($to)) {
-            $query->where('raised_at', '<=', Carbon::parse($to)->endOfDay());
+            $query->where('raised_at', '<=', Carbon::parse($to, \App\Support\Reports\ReportView::zone())->endOfDay()->utc());
         }
         if (is_string($q = $request->query('q')) && trim($q) !== '') {
             $like = '%'.addcslashes(trim($q), '%_').'%';
