@@ -32,6 +32,18 @@ final class ClientMessages
 {
     public const KINDS = ['project_link', 'scheduled', 'day_before', 'complete', 'three_day_before', 'crew_day_before'];
 
+    /** The reminders that belong to one scheduled date. */
+    private const DATED = ['day_before', 'three_day_before', 'crew_day_before'];
+
+    /** Kept for a later retry; the job's note only on the first failure. */
+    private function failed(ProjectBoardMessage $claim, Job $job, string $note): void
+    {
+        $claim->update(['failed_at' => now(), 'failures' => $claim->failures + 1]);
+        if ($claim->failures === 1) {
+            $this->note($job, $note);
+        }
+    }
+
     public function __construct(
         private readonly PhoneTexts $texts,
         private readonly ScheduleTexts $schedule,
@@ -58,9 +70,18 @@ final class ClientMessages
         if ($text === null) {
             return null;
         }
-        // Claimed first, so two sweeps cannot both send it; released on failure.
+        // Claimed first, so two sweeps cannot both send it. A reminder is
+        // claimed per scheduled date (a rescheduled job is reminded again); a
+        // failed send keeps its claim and is retried with backoff, its note
+        // written once (audit 2026-11-27).
+        $forDate = in_array($kind, self::DATED, true) ? (string) $job->scheduled_for?->toDateString() : '';
+        $claim = ProjectBoardMessage::query()->where(['job_id' => $job->id, 'kind' => $kind, 'for_date' => $forDate])->first();
+        if ($claim !== null && ($claim->failed_at === null
+            || $claim->failed_at->gt(now()->subMinutes(min(1440, 15 * 2 ** min($claim->failures, 7)))))) {
+            return null;
+        }
         try {
-            $claim = ProjectBoardMessage::query()->create(['job_id' => $job->id, 'kind' => $kind]);
+            $claim ??= ProjectBoardMessage::query()->create(['job_id' => $job->id, 'kind' => $kind, 'for_date' => $forDate]);
         } catch (UniqueConstraintViolationException) {
             return null;
         }
@@ -68,11 +89,11 @@ final class ClientMessages
         if ($kind === 'crew_day_before') {
             // The crew's work order, the day before (Jose's PM flow, 2026-11-23).
             if (($why = $this->toCrew($job, $body)) !== null) {
-                $claim->delete();
-                $this->note($job, "Work order not sent to the crew: {$why}");
+                $this->failed($claim, $job, "Work order not sent to the crew: {$why}");
 
                 return $why;
             }
+            $claim->update(['failed_at' => null]);
 
             return null;
         }
@@ -84,11 +105,11 @@ final class ClientMessages
             }
             $this->texts->send($line, $to, $body, automated: true);
         } catch (Throwable $e) {
-            $claim->delete();
-            $this->note($job, "Client text ({$kind}) not sent: ".$e->getMessage());
+            $this->failed($claim, $job, "Client text ({$kind}) not sent: ".$e->getMessage());
 
             return $e->getMessage();
         }
+        $claim->update(['failed_at' => null]);
         $this->note($job, 'Text to client: '.$body);
         // At scheduling, as before, while the day-before crew text is off;
         // never both (desk, 2026-11-23).

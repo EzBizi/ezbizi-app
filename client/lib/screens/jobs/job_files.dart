@@ -71,8 +71,15 @@ class JobAttachments extends ChangeNotifier {
       maxReadable = limits['max_readable'] as String;
     }
     _notify();
+    if (_wantPictures) await loadPictures();
+  }
 
-    for (final row in items) {
+  /// Picture bytes only once the Files tab shows, not on every job opened
+  /// (audit 2026-11-27).
+  bool _wantPictures = false;
+  Future<void> loadPictures() async {
+    _wantPictures = true;
+    for (final row in [...items]) {
       await _fetchPicture(row);
     }
   }
@@ -211,6 +218,12 @@ class _JobFilesState extends State<JobFiles> {
 
   JobAttachments get _files => widget.files;
   bool get _canAdd => widget.addRefusal == null;
+
+  @override
+  void initState() {
+    super.initState();
+    _files.loadPictures();
+  }
 
   Future<void> _choose() async {
     final picked = await (widget.pick ?? Files.pickBytes)();
@@ -486,8 +499,9 @@ class _JobFilesState extends State<JobFiles> {
             runSpacing: gap,
             children: [
               for (final row in _files.items) _tile(context, row, side),
-              for (final upload in _files.uploads)
-                _uploadTile(context, upload, side),
+              // Two uploads can share a name (audit 2026-11-27).
+              for (final (i, upload) in _files.uploads.indexed)
+                KeyedSubtree(key: ValueKey('job-upload-slot-$i'), child: _uploadTile(context, upload, side)),
             ],
           ),
         if (_removeError != null) ...[

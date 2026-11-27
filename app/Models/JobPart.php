@@ -79,10 +79,12 @@ class JobPart extends Model implements StatesRetention
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
-    public static function techExpenses(?string $userId, \DateTimeInterface $from, \DateTimeInterface $to, bool $withReimbursed = false): \Illuminate\Support\Collection
+    public static function techExpenses(?string $userId, \DateTimeInterface $from, \DateTimeInterface $to, bool $withReimbursed = false, ?array $franchiseIds = null): \Illuminate\Support\Collection
     {
         return self::query()->with(['job:id,number,title', 'paidBy:id,name'])->whereNotNull('paid_by_user_id')
             ->when($userId, fn ($q) => $q->where('paid_by_user_id', $userId))
+            // In SQL, not by loading every job in view (audit 2026-11-27).
+            ->when($franchiseIds !== null, fn ($q) => $q->whereHas('job', fn ($j) => $j->whereIn('franchise_id', $franchiseIds)))
             ->where('paid_at', '>=', $from)->where('paid_at', '<', $to)
             ->when(! $withReimbursed, fn ($q) => $q->whereNull('reimbursed_at'))
             ->orderBy('paid_at')->get()

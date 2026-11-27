@@ -79,7 +79,7 @@ class EstimatesController extends Controller
         $page = $filtered()
             ->with(['franchise', 'customer', 'job'])
             ->orderByDesc('created_at')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: min(max((int) $request->query('per_page', 50), 1), 200));
 
         $meta = $this->pageMeta($page);
 
@@ -188,6 +188,10 @@ class EstimatesController extends Controller
         }
 
         DB::transaction(function () use ($estimate, $input, $before, $after) {
+            // Two saves at once: the second sees the first's status and stops,
+            // so estimate.accepted fires once (audit 2026-11-27).
+            abort_if(Estimate::query()->lockForUpdate()->whereKey($estimate->getKey())->value('status') !== $before,
+                Response::HTTP_CONFLICT, 'Someone changed this estimate just now. Reload it and try again.');
             $estimate->fill(array_intersect_key($input, array_flip(['title', 'note', 'issued_on'])));
             $estimate->status = $after;
 

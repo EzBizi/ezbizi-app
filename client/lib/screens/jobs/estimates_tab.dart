@@ -122,6 +122,7 @@ class _EstimatesTabState extends State<EstimatesTab> {
     super.dispose();
   }
 
+  String? _boardTerm;
   String? get _term => _search.text.trim().isEmpty ? null : _search.text.trim();
 
   /// [quiet]: a live re-read; a failure keeps the rows on screen.
@@ -411,9 +412,13 @@ class _EstimatesTabState extends State<EstimatesTab> {
               controller: _search,
               hint: 'Number or customer',
               onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _load(),
+              onSubmitted: (_) {
+                _boardTerm = _term;
+                _load();
+              },
               onClear: () {
                 _search.clear();
+                _boardTerm = null;
                 _load();
               },
             ),
@@ -452,7 +457,8 @@ class _EstimatesTabState extends State<EstimatesTab> {
       final board = EstimateBoard(
         api: widget.api,
         me: _me,
-        search: _term,
+        // The submitted term, not each keystroke (audit 2026-11-27).
+        search: _boardTerm,
         counts: _counts,
         transitions: _transitions,
         generation: _generation,
@@ -714,7 +720,9 @@ class _Line {
   /// What was typed as money, in cents: "$2,400", "2400.5" and "2,400.50"
   /// alike.
   int get unitMinor {
-    final cleaned = price.text.replaceAll(RegExp(r'[^0-9.]'), '');
+    // The minus is kept, so a negative is refused, never saved as positive
+    // (audit 2026-11-27).
+    final cleaned = price.text.replaceAll(RegExp(r'[^0-9.-]'), '');
     return ((double.tryParse(cleaned) ?? 0) * 100).round();
   }
 
@@ -1077,15 +1085,15 @@ class _EstimatePanelState extends State<EstimatePanel> {
     widget.onDone(true);
   }
 
-  /// The customer's jobs at the chosen franchise, to name one. Jobs has no
-  /// customer filter, so the search is by name and the ids decide.
+  /// The customer's jobs at the chosen franchise, to name one, by the
+  /// customer's id (audit 2026-11-27: a name search missed renamed ones).
   Future<void> _loadCustomerJobs() async {
     final customer = _customer;
     if (customer == null) return;
 
     final response = await widget.api.get('/jobs', {
       'when': 'all',
-      'search': '${customer['name'] ?? ''}',
+      'customer_id': '${customer['id']}',
       'per_page': '100',
     });
     if (!mounted || !response.ok || response.data is! List) return;
