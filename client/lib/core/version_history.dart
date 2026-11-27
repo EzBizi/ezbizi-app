@@ -15,6 +15,7 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
+      'Email: incoming mail can no longer break out of its styles, Outlook mailboxes no longer re-announce old mail when it is read or moved, and the search box only searches',
       'Website chat: a visitor only ever sees their own chat, never an earlier visitor with the same phone or email',
       'Reports: a WhatsApp report request no longer leaves the asker signed in on the queue worker for later jobs',
       'Leads: approving or booking a request twice no longer books two jobs or sends two texts',
