@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
+      'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+    ]),
     VersionRelease(version: '0.0.0659', date: '27 Nov 2026', items: [
       'Estimates: editing the title or note of an imported estimate never wipes its lines or total',
       'Reports: saved, sent and job reports keep to your view and permissions, CSV exports are safe to open, Thumbtack and Local Services use local days, and several report screens are fixed',
@@ -23,6 +26,9 @@ class VersionHistory {
       'Inspections: a double Submit files one report, failed saves stop Next, and multi-select answers keep every pick',
       'Chat: Mark all read really clears unread counts, a failed send keeps your text, and signing out of EzChat stops its notifications',
       'Memberships, Training, Monitoring, Marketing, Plaid and Grok AI: more fixes from the code audit',
+      'Leads: phone line moves need reach on both sides, Thumbtack updates no longer blank names, and editing a lead only sends what changed',
+      'Email: the verified-sender check only trusts a DMARC pass, and choosing a template no longer deletes your signature',
+      'Web Management and Inspections: the rest of the audit fixes, including smaller photo uploads',
     ]),
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', deployed: '2026-11-27 17:59', items: [
       'Training: tests can now be published from their editor, so learners can take them',
